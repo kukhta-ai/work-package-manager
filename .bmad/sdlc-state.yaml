@@ -9,7 +9,7 @@ branch: feature/foundation
 epic: foundation
 active_story: null
 review_cycle: 0
-completed_stories: [task-1, task-2, task-3]   # merged --no-ff into feature/foundation
+completed_stories: [task-1, task-2, task-3, task-4]   # merged --no-ff into feature/foundation
 
 # DIVERGENCES (recorded per AGENTS.md "record the change"):
 # 1. git cannot hold both a branch `feature/foundation` and `feature/foundation/task-N`

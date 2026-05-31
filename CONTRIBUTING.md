@@ -179,3 +179,85 @@ Opening a PR auto-populates the body from
 you verified it** (paste the three-command gate output); and **confirmation CI is green**. Fill it in fully
 — a reviewer approves against exactly that information, and (per the rules above) no one merges their own
 PR.
+
+## Versioning & releases
+
+This section governs the version of **the `wpm` builder itself** — the number in `package.json` (currently
+`0.1.0`). It applies the Semantic Versioning model that [`docs/08`](./docs/08-versioning-and-migrations.md)
+establishes for the artifacts the builder produces, to the builder as a published npm package, and defines
+how a release is cut and recorded. (Doc 08 itself is about *bundle* versioning; see [The builder's version
+is not a bundle's version](#the-builders-version-is-not-a-bundles-version) for the distinction.)
+
+### Semantic versioning for the builder
+
+The builder is versioned `MAJOR.MINOR.PATCH` with npm-style SemVer semantics. For *this tool*, the three
+levels mean:
+
+- **MAJOR** — a **breaking change** to the CLI surface or behaviour (a removed/renamed command, flag, or
+  exit-code change) **or to the generated-artifact contract** (the shape of what `wpm init` / `bundle new`
+  produce — manifest, `bundle.yml`, templates, the install-backlog contract) in a way that could break an
+  existing user or an already-generated project.
+- **MINOR** — a **backward-compatible** new command or capability: additive surface that doesn't change or
+  remove existing behaviour.
+- **PATCH** — a **backward-compatible bug fix** with no surface change: behaviour is corrected, nothing in
+  the CLI or generated-artifact contract changes shape.
+
+**For any change, decide:** *Could this break an existing user or a project the builder already generated?*
+→ **MAJOR**. *Else, does it add new surface?* → **MINOR**. *Else (it only fixes a bug)* → **PATCH**.
+
+Pre-1.0 caveat (honest): while the builder is `0.y.z`, the surface is still stabilizing — under SemVer a
+`0.x` line makes no stability promise, so a breaking change may land in a **minor** (`0.y`) bump rather than
+forcing `1.0.0`. The decision rule above still names each change's *intent*; the first stable surface is
+`1.0.0`.
+
+### The builder's version is not a bundle's version
+
+There are two completely independent version lines, in two different artifacts, and they never move
+together:
+
+| | The builder | A bundle the builder produces |
+|---|---|---|
+| Where the version lives | `package.json` (one version for the whole `wpm` tool) | that bundle's `bundle.yml` `version` (one per bundle) |
+| What it versions | the CLI + its generated-artifact contract | that single bundle's recipe/payload |
+| Whose artifact | this repo (`wpm`) | a *generated* bundle-project (a different repo) |
+| Cadence | bumped when the builder is released | bumped on the bundle's own cadence |
+| Inter-dependency | n/a | bundles depend on each other by npm-style `requires` constraints, validated by `wpm project validate` (doc 08) |
+
+A bundle carries a **stable `id` and a moving `version`** ([`docs/08`](./docs/08-versioning-and-migrations.md)
+§"Identity vs version"; doc 00 vocabulary). **Bumping the builder never bumps a generated bundle, and bumping
+a bundle never bumps the builder** — they are separate version lines in separate artifacts maintained by
+different actors. Consequently, **this `CHANGELOG.md` tracks the builder's releases only**; a generated
+project keeps its own per-bundle history in its bundles' `bundle.yml` files, not here.
+
+### Release process
+
+Cutting a builder release follows these steps (doc 12 §CI: "build on tag, publish to npm on tagged
+release"; §Distribution: `npm i -g`). It is the agreed **convention** — see the automation note below:
+
+1. **Bump** the version in `package.json` to `X.Y.Z` (per the rules above).
+2. **Roll the changelog**: move the entries under `## [Unreleased]` in `CHANGELOG.md` into a new
+   `## [X.Y.Z] - YYYY-MM-DD` heading, and leave a fresh, empty `## [Unreleased]` on top.
+3. **Commit** the bump + changelog roll (through the normal reviewed-PR flow — releases are not committed
+   straight to a protected branch; see [Pull requests, review & merge](#pull-requests-review--merge)).
+4. **Tag** the release commit `vX.Y.Z` and **push the tag**.
+5. **CI publishes**: the tag triggers the release workflow (`.github/workflows/release.yml`), which builds
+   the package and publishes it to npm. Users then install it with `npm i -g` (Backlog.md is a
+   `peerDependency`, pinged-not-bundled — doc 12 §Distribution).
+
+> **Automation note (not yet wired).** The publish workflow file (`release.yml`) and the `wpm build`
+> dry-run/package/publish command are **later** work — the foundation deliberately does not include them
+> yet; task-8 wires the CI **test** gate (the three-command suite), not the release/publish job. So treat
+> this section as the **convention** a release follows once that automation lands, not as a button that
+> exists today.
+
+### Changelog
+
+Release history lives in [`CHANGELOG.md`](./CHANGELOG.md), in
+[Keep a Changelog](https://keepachangelog.com/en/1.1.0/) format:
+
+- `## [Unreleased]` always sits on top and collects in-progress changes as they merge.
+- Each released version appears below it as `## [X.Y.Z] - YYYY-MM-DD`, with changes grouped under the
+  standard headings — **Added**, **Changed**, **Fixed**, **Removed** (and **Deprecated** / **Security** as
+  needed).
+- At release time, the [Release process](#release-process) moves the `[Unreleased]` entries under the new
+  version heading. The changelog records the **builder's** versions only (per the section above).
