@@ -3,28 +3,39 @@
 # Re-read on every resume; update at every phase boundary.
 # (Distinct from _bmad/ — that is BMAD's own install dir; this dot-dir is our tracker.)
 
-phase: 0
-phase_name: "Step 0 complete — SDLC tooling installed; awaiting go-ahead to begin Phase 1 (Analysis)"
-branch: dev
+phase: 5
+phase_name: "Autonomous build (BAUT) — per-story loop over the foundational backlog"
+branch: feature/foundation
 epic: foundation
 active_story: null
 review_cycle: 0
 
+# Phases 1-4 complete and committed:
+#   P1 (analyst) product-brief shim + P2 (pm) prd shim     -> dev    (90f2106, 1bafb82)
+#   P3 (architect) architecture/epics/readiness=PASS + (tea) test-design/framework/ci  -> feature/foundation (c6672fe)
+#   P4 (sm) sprint-status.yaml (33 stories, ready=task-1, 0 discrepancies)             -> feature/foundation (this commit)
+
+# User /goal of 2026-05-31 ("complete one by one backlog to task 33 ... full SDLC with
+# pre-initialised persistent subagents") is the go-ahead for the whole run: it satisfies the
+# Phase-1 entry gate and pre-authorizes the planning/solutioning gates (the plan-of-record is the
+# already-committed design set the user owns). Genuinely human-owned gates remain STOP points:
+# merging to dev/main and opening the handoff PR (Phase 7), and disposing an epic-gate CONCERNS/FAIL.
+
 # Persistent BMAD specialists are SPAWNed per-phase at runtime (Phase 1+), then RESUMEd.
 # None spawned yet: Step 0 installed the modules that back them, but no SDLC phase has begun.
 specialists:
-  analyst:      {spawned: false, role: "brief/requirements review vs docs/00-05",        backed_by: "bmad-agent-analyst, bmad-product-brief"}
-  pm:           {spawned: false, role: "PRD review vs docs/00-05",                        backed_by: "bmad-agent-pm, bmad-create-prd"}
-  ux-designer:  {spawned: false, role: "UX spec (optional)",                              backed_by: "bmad-agent-ux-designer"}
-  architect:    {spawned: false, role: "architecture conformance vs docs/12-13",          backed_by: "bmad-agent-architect, bmad-create-architecture, bmad-create-epics-and-stories, bmad-check-implementation-readiness"}
-  tea:          {spawned: false, role: "test design/framework/ci/trace/nfr/gate",         backed_by: "bmad-tea (Murat), bmad-testarch-*"}
-  sm:           {spawned: false, role: "story prep from backlog tasks",                   backed_by: "bmad-sprint-planning, bmad-sprint-status, bmad-create-story"}
-  worker:       {spawned: false, role: "dev-story implementation + automator review",     backed_by: "bmad-agent-dev, bmad-dev-story, bmad-story-automator, bmad-story-automator-review"}
-  investigator: {spawned: false, role: "systematic debugging at the epic gate",           backed_by: "bmad-investigate"}
-  retro:        {spawned: false, role: "epic retrospective",                              backed_by: "bmad-retrospective"}
+  analyst:      {spawned: true,  id: "adb3b965bed0792e1", role: "brief conformance vs docs/00-05",      status: "P1 done — product-brief shim; verdict: docs fully capture brief"}
+  pm:           {spawned: true,  id: "ad55659c67626dac3", role: "PRD conformance vs docs/00-05",        status: "P2 done — prd shim; no scope conflicts (noted wpm/installer bin placeholder)"}
+  ux-designer:  {spawned: false,                          role: "UX spec",                              status: "skipped — no GUI per docs/12"}
+  architect:    {spawned: true,  id: "af0958eff0e1846e5", role: "architecture conformance vs docs/12-13", status: "P3 done — architecture/epics/readiness=PASS; RESUME if a task reveals a design gap"}
+  tea:          {spawned: true,  id: "aa6e3730c6822131e", role: "test design/framework/ci/trace/nfr/gate", status: "P3 done — test-design/framework=vitest/ci=matrix; RESUME in P6 (trace/nfr/final gate)"}
+  sm:           {spawned: true,  id: "a58a6182b0009cbb7", role: "sprint setup + create-story per task",  status: "P4 done — sprint-status.yaml; worker owns create-story in the P5 loop"}
+  worker:       {spawned: false,                          role: "dev-story implementation (BMAD Amelia)", status: "spawning now for P5 story-1 (task-1); persistent across all 33 stories"}
+  reviewer:     {spawned: false,                          role: "separate-lane review (automator-review)", status: "spawn at first story; never self-approve in the worker's lane"}
+  investigator: {spawned: false,                          role: "systematic debugging at the epic gate", status: "spawn in P6 on cold-E2E failure"}
+  retro:        {spawned: false,                          role: "epic retrospective",                    status: "spawn after task-33 (end of P5)"}
 
-gates_pending:
-  - "User go-ahead to begin Phase 1 (Analysis). Per instruction, no backlog tasks / SDLC phases started yet."
+gates_pending: []   # planning/solutioning gates pre-authorized by the user /goal; remaining human gates: Phase 6 CONCERNS/FAIL disposition, Phase 7 PR + merge to dev/main.
 
 # Step 0 toolchain installed 2026-05-31, pinned for reproducibility:
 tooling:
