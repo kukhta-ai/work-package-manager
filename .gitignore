@@ -1,0 +1,18 @@
+# Local agent / orchestration state (not part of the project)
+.omc/
+.remember/
+
+# Delivered archive — extracted into the repo; kept locally, not tracked
+work-package-manager.zip
+
+# Node / TypeScript build output (the builder is a TS-ESM npm package; see docs/12)
+node_modules/
+dist/
+*.tsbuildinfo
+
+# Backlog.md transient locks (task state itself IS committed)
+backlog/.locks/
+
+# OS / editor cruft
+.DS_Store
+*.swp
