@@ -9,8 +9,8 @@ branch: feature/foundation
 epic: foundation
 active_story: null
 review_cycle: 0
-# Phase A COMPLETE (tasks 1-9: repo, conventions, toolchain). Next: Phase B (10-15: model + ports).
-completed_stories: [task-1, task-2, task-3, task-4, task-5, task-6, task-7, task-8, task-9]   # merged --no-ff into feature/foundation
+# Phase A COMPLETE (1-9). Phase B IN PROGRESS (10-15: model + ports). src/core/model/ landed; boundary rule live on real code.
+completed_stories: [task-1, task-2, task-3, task-4, task-5, task-6, task-7, task-8, task-9, task-10]   # merged --no-ff into feature/foundation
 
 # DIVERGENCES (recorded per AGENTS.md "record the change"):
 # 1. git cannot hold both a branch `feature/foundation` and `feature/foundation/task-N`
