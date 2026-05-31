@@ -9,10 +9,13 @@ branch: feature/foundation
 epic: foundation
 active_story: null
 review_cycle: 0
+# FORWARD NOTE (task-13 -> tasks 30/31): author the template manifest.yml/bundle.yml with SINGLE-SPACE
+# inline comments (canonical style). eemeli/yaml normalizes multi-space-before-comment document-wide on any
+# edit, so aligned comments would re-flow on a version bump; single-space keeps programmatic edits line-local.
 # Phase A COMPLETE (1-9). Phase B IN PROGRESS (10-15). DECISION (task-12, cross-cutting): the core is SYNCHRONOUS
 # (sync ports/adapters/operations; node:fs sync + execaSync for backlog). Rationale: sequential CLI, no concurrency
 # benefit, avoids async coloring across operations/lifecycle/tests; thin-builder does no network/long I/O (doc 13 §0).
-completed_stories: [task-1, task-2, task-3, task-4, task-5, task-6, task-7, task-8, task-9, task-10, task-11, task-12]   # merged --no-ff into feature/foundation
+completed_stories: [task-1, task-2, task-3, task-4, task-5, task-6, task-7, task-8, task-9, task-10, task-11, task-12, task-13]   # merged --no-ff into feature/foundation
 
 # DIVERGENCES (recorded per AGENTS.md "record the change"):
 # 1. git cannot hold both a branch `feature/foundation` and `feature/foundation/task-N`
