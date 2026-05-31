@@ -261,3 +261,54 @@ Release history lives in [`CHANGELOG.md`](./CHANGELOG.md), in
   needed).
 - At release time, the [Release process](#release-process) moves the `[Unreleased]` entries under the new
   version heading. The changelog records the **builder's** versions only (per the section above).
+
+## Tracking work — the dogfood backlog
+
+The builder **dogfoods Backlog.md**: all development work on `wpm` is tracked as tasks in the in-repo
+[`backlog/`](./backlog/) root — the same Backlog.md the builder itself shells out to for the install-backlogs
+it produces. Using the tool on its own development is deliberate (`docs/12` §"Dogfooding: the builder uses
+Backlog.md too"): it surfaces real Backlog.md UX issues we'd otherwise miss, and it documents the project's
+history as durable task records rather than only as commits. The foundational work — the tasks that turn the
+design set into code — lives there as a dependency-ordered backlog.
+
+### Operate the backlog only through the `backlog` CLI
+
+**Never hand-edit anything under `backlog/`.** The task files, `config.yml`, the sequence, and the indexes are
+CLI-managed state; editing them by hand corrupts the index and the task IDs. There is always a `backlog`
+command for what you need — opening a file under `backlog/tasks/` in an editor is never correct. (This mirrors
+the hard rule in [`AGENTS.md`](./AGENTS.md); a repo hook also blocks direct edits.) The everyday commands:
+
+```bash
+backlog task list --plain                  # the whole backlog (ALWAYS --plain for agents/scripts)
+backlog task <id> --plain                  # one task: its acceptance criteria + Definition of Done
+backlog sequence list                      # dependency-ordered plan — what's ready to work next
+backlog task edit <id> -s "In Progress"    # move a task into progress when you start it
+backlog task edit <id> --check-ac <n>      # tick acceptance criterion n (only once it truly holds)
+backlog task edit <id> --check-dod <n>     # tick Definition-of-Done item n
+backlog task edit <id> -s "Done"           # close it (only when AC + DoD are all satisfied)
+```
+
+For anything else, `backlog <cmd> --help`.
+
+### Status lifecycle and the Definition-of-Done gate
+
+Each task moves through a simple status lifecycle — **To Do → In Progress → Done** — and is gated by a
+**shared, project-level Definition of Done**. The DoD is configured once in `backlog/config.yml`
+(`definitionOfDone`), so **every** task carries the same three items:
+
+1. **Typechecks clean (`tsc --noEmit`) and Biome clean (`biome ci`)** — including the core import-boundary
+   rule.
+2. **Tests added and green (`vitest`)** — unit for pure logic, integration where it touches ports.
+3. **Public functions documented; no dead code; the core import-boundary rule is not violated.**
+
+A task is **not** marked `Done` until both its **acceptance criteria** and these **Definition-of-Done** items
+are observably satisfied and ticked (`--check-ac` / `--check-dod`). The DoD here is the same bar the
+[merge gate](#the-merge-gate-is-the-local-check-suite) enforces — the three-command suite, run locally, by the
+pre-commit hook, and in CI — so per-task completion and mergeability stay aligned.
+
+### The front door for working on the builder
+
+The agent front door for developing `wpm` is [`AGENTS.md`](./AGENTS.md) (and its `CLAUDE.md` symlink): it
+defines the BMAD-based SDLC — reading the design set, the persistent specialists, the per-story loop, and the
+user gates. This section is the quick reference that workflow relies on for the backlog mechanics; `AGENTS.md`
+is the authoritative process and is human-owned (changing it is a user gate, not a routine edit).
