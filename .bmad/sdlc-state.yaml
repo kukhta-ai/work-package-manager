@@ -8,8 +8,8 @@ phase_name: "Autonomous build (BAUT) — per-story loop over the foundational ba
 branch: feature/foundation
 epic: foundation
 active_story: null
-review_cycle: 1
-completed_stories: [task-1, task-2, task-3, task-4, task-5]   # merged --no-ff into feature/foundation
+review_cycle: 0
+completed_stories: [task-1, task-2, task-3, task-4, task-5, task-6]   # merged --no-ff into feature/foundation
 
 # DIVERGENCES (recorded per AGENTS.md "record the change"):
 # 1. git cannot hold both a branch `feature/foundation` and `feature/foundation/task-N`

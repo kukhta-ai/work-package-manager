@@ -1,6 +1,13 @@
 import { describe, expect, it } from "vitest";
-import pkg from "../package.json" with { type: "json" };
-import { type OutputSink, run } from "../src/cli.js";
+import pkg from "../../package.json" with { type: "json" };
+import { type OutputSink, run } from "../../src/cli.js";
+
+/**
+ * Isolated-logic (unit) test: exercises the CLI's `run()` purely in-process via an injected
+ * {@link OutputSink} — no real file system and no subprocess. This is the AC#2 demonstration for the
+ * harness (pure logic without touching fs/subprocess). The through-the-edges counterpart lives in
+ * `test/integration/`.
+ */
 
 /** A string-collecting {@link OutputSink} for asserting CLI output in-process. */
 function collector(): OutputSink & { text: string } {
