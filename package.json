@@ -7,6 +7,14 @@
   "engines": {
     "node": ">=20"
   },
+  "peerDependencies": {
+    "backlog.md": ">=1.0.0"
+  },
+  "peerDependenciesMeta": {
+    "backlog.md": {
+      "optional": false
+    }
+  },
   "bin": {
     "wpm": "./dist/cli.js",
     "installer": "./dist/cli.js"
@@ -16,7 +24,8 @@
     "docs"
   ],
   "scripts": {
-    "build": "tsc -p tsconfig.build.json",
+    "clean": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\"",
+    "build": "npm run clean && tsc -p tsconfig.build.json",
     "dev": "tsc -p tsconfig.build.json --watch",
     "typecheck": "tsc",
     "test": "vitest run",

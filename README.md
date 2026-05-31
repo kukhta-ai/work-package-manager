@@ -25,6 +25,22 @@ stable builder and install contract.
 
 ---
 
+## Prerequisites
+
+`wpm` requires **[Backlog.md](https://github.com/MrLesk/Backlog.md)** — a separate, external tool it
+**shells out to** for every task operation (it is the runtime engine behind the install-backlogs the
+builder produces; see `docs/12` §"Backlog.md adapter"). It is **not bundled**: `wpm` declares it as a
+`peerDependency`, so you install it yourself, globally, alongside `wpm`:
+
+```bash
+npm i -g backlog.md        # the required peer — install this first
+```
+
+Node.js **>= 20** is also required (`wpm` is an ESM-only package).
+
+> If Backlog.md is missing at runtime, the relevant command will tell you it's needed and point you at
+> `npm i -g backlog.md`. (That runtime check ships with the Backlog.md adapter.)
+
 ## What's in here
 
 ```
@@ -53,6 +69,32 @@ research/
 - **To build it:** unpack `builder-backlog.tar.gz`, then read `AGENTS.md` (the development front
   door) — it explains reading the docs, initializing the SDLC, and working the 33-task backlog
   bottom-up along the hexagonal core.
+
+## Development
+
+Standard Node + TypeScript (ESM) workflow. After `npm install` (which also installs the git pre-commit
+hook):
+
+```bash
+npm run build        # clean dist/, then compile src/ → dist/ (tsc; emits sourcemaps + .d.ts)
+npm run clean        # remove dist/ (cross-platform; run on its own if you just want a clean slate)
+npm run dev          # live-rebuild: tsc --watch, recompiles dist/ on every source change
+npm run typecheck    # type-check only (tsc, no emit) — separate from the test run
+npm test             # the whole vitest suite (npm run test:unit / test:integration for a split)
+npm run lint         # biome check (lint + format check, incl. the core import-boundary rule)
+```
+
+To exercise the in-development command **as if it were installed**, link it onto your `PATH`:
+
+```bash
+npm run build && npm link    # exposes the `wpm` (and `installer`) commands, pointed at your build
+wpm --version                # → the in-progress build's version
+npm rm -g wpm                # unlink when done (removes the global symlink)
+```
+
+`build` always cleans first, so a rebuild never carries stale output from a since-deleted source, and the
+emitted sourcemaps map `dist/*.js` back to the original `src/*.ts` for source-level debugging. See
+[`CONTRIBUTING.md`](./CONTRIBUTING.md) for branching, PR, and versioning conventions.
 
 ## A note on the word "installer"
 
