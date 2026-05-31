@@ -42,9 +42,13 @@
   "devDependencies": {
     "@biomejs/biome": "2.4.16",
     "@types/node": "25.9.1",
+    "@types/semver": "7.7.1",
     "husky": "9.1.7",
     "lint-staged": "17.0.7",
     "typescript": "6.0.3",
     "vitest": "4.1.7"
+  },
+  "dependencies": {
+    "semver": "7.8.1"
   }
 }
