@@ -1,0 +1,16 @@
+{
+  /* Production build config: extends the type-check-only base (tsconfig.json) and re-enables
+     emit for src/ only. `npm run build` uses this (`tsc -p tsconfig.build.json`) to produce the
+     reproducible dist/ output; the base stays the IDE + `typecheck` config that covers tests too. */
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "rootDir": "src",
+    "outDir": "dist",
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true
+  },
+  "include": ["src/**/*.ts"],
+  "exclude": ["node_modules", "dist", "test"]
+}
