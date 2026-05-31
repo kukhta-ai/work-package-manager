@@ -2,9 +2,6 @@
 .omc/
 .remember/
 
-# Delivered archive — extracted into the repo; kept locally, not tracked
-work-package-manager.zip
-
 # Node / TypeScript build output (the builder is a TS-ESM npm package; see docs/12)
 node_modules/
 dist/

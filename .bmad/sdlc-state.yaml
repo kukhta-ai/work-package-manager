@@ -1,0 +1,42 @@
+# SDLC state tracker for the work-package-manager (wpm) builder.
+# Authoritative position in the BMAD-based SDLC defined by AGENTS.md + docs/SDLC.md.
+# Re-read on every resume; update at every phase boundary.
+# (Distinct from _bmad/ — that is BMAD's own install dir; this dot-dir is our tracker.)
+
+phase: 0
+phase_name: "Step 0 complete — SDLC tooling installed; awaiting go-ahead to begin Phase 1 (Analysis)"
+branch: dev
+epic: foundation
+active_story: null
+review_cycle: 0
+
+# Persistent BMAD specialists are SPAWNed per-phase at runtime (Phase 1+), then RESUMEd.
+# None spawned yet: Step 0 installed the modules that back them, but no SDLC phase has begun.
+specialists:
+  analyst:      {spawned: false, role: "brief/requirements review vs docs/00-05",        backed_by: "bmad-agent-analyst, bmad-product-brief"}
+  pm:           {spawned: false, role: "PRD review vs docs/00-05",                        backed_by: "bmad-agent-pm, bmad-create-prd"}
+  ux-designer:  {spawned: false, role: "UX spec (optional)",                              backed_by: "bmad-agent-ux-designer"}
+  architect:    {spawned: false, role: "architecture conformance vs docs/12-13",          backed_by: "bmad-agent-architect, bmad-create-architecture, bmad-create-epics-and-stories, bmad-check-implementation-readiness"}
+  tea:          {spawned: false, role: "test design/framework/ci/trace/nfr/gate",         backed_by: "bmad-tea (Murat), bmad-testarch-*"}
+  sm:           {spawned: false, role: "story prep from backlog tasks",                   backed_by: "bmad-sprint-planning, bmad-sprint-status, bmad-create-story"}
+  worker:       {spawned: false, role: "dev-story implementation + automator review",     backed_by: "bmad-agent-dev, bmad-dev-story, bmad-story-automator, bmad-story-automator-review"}
+  investigator: {spawned: false, role: "systematic debugging at the epic gate",           backed_by: "bmad-investigate"}
+  retro:        {spawned: false, role: "epic retrospective",                              backed_by: "bmad-retrospective"}
+
+gates_pending:
+  - "User go-ahead to begin Phase 1 (Analysis). Per instruction, no backlog tasks / SDLC phases started yet."
+
+# Step 0 toolchain installed 2026-05-31, pinned for reproducibility:
+tooling:
+  backlog_md: "1.45.2"            # global npm CLI; operates backlog/ (task_prefix=task)
+  bmad_install_dir: "_bmad/"
+  bmad_cli: "bmad-method@6.8.0 (run via npx)"
+  bmad_modules:
+    core: "6.8.0"                 # built-in
+    bmm: "6.8.0"                  # built-in
+    tea: "1.19.0"                 # external, --all-stable
+    automator: "1.15.0"           # external, --all-stable (pinned stable, NOT next/HEAD per AGENTS.md Step 0.2)
+  tool_target: "claude-code"
+  claude_code_skills: ".claude/skills (56 skills)"
+
+last_updated: "2026-05-31"
