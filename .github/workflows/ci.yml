@@ -1,0 +1,86 @@
+# Continuous integration — the quality gate for the `wpm` builder.
+#
+# Runs the SAME three-command gate a contributor runs locally and the pre-commit hook runs on staged
+# files (docs/12 §"CI"; _bmad-output/test-artifacts/ci.md; CONTRIBUTING.md -> "Pull requests, review &
+# merge"). CI's added value is BREADTH -- the OS x Node matrix -- not a different or stronger gate.
+#
+# "A failure blocks merge" (AC#1): a failing run reports a red status on the push/PR. Turning that status
+# into a *required* check that actually prevents merging is a GitHub branch-protection SETTING (repo admin,
+# human-owned -- SDLC Phase 7); it is not configured here, by design. CONTRIBUTING already states PRs must
+# show green CI before merge.
+#
+# Release / publish to npm on tag is a SEPARATE workflow (release.yml) and is intentionally NOT part of
+# this file (task-4 note; ci.md section 6) -- this file is the quality gate only.
+#
+# Security note: no untrusted event input (issue/PR/commit text) is used in any run: step; the only
+# expression interpolations are trusted matrix values and github.workflow/github.ref, so there is no
+# workflow-injection surface here.
+
+name: CI
+
+on:
+  # Every push to any branch is checked (covers the working/story branches).
+  push:
+  # Every pull request targeting the integration/release branches is checked.
+  pull_request:
+    branches: [dev, main]
+
+# Cancel an in-progress run when a newer commit is pushed to the same ref, so superseded runs don't queue.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  gate:
+    name: gate (node ${{ matrix.node }} / ${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      # Don't cancel the other cells when one fails -- we want the full cross-platform picture.
+      fail-fast: false
+      matrix:
+        # Supported Node LTS lines x the three OSes (docs/12 section "CI"). The matrix is what gives the
+        # adapter layer real cross-OS coverage (e.g. the Windows symlink->copy fallback, path/line-ending
+        # behaviour) once those adapters exist.
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        node: [20, 22]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node ${{ matrix.node }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+
+      # Clean, reproducible install from the lockfile. This also runs `prepare` (husky), which is CI-safe
+      # (husky v9 only sets git's core.hooksPath). The checkout includes .git and the tracked
+      # .husky/pre-commit, so it completes without error.
+      #
+      # NOTE (task-14 seam): when the integration band starts shelling out to the real Backlog.md CLI, the
+      # backlog.md provisioning for those tests is added here (ci.md section 3.3). Today no integration test
+      # invokes backlog, so there is nothing to provision yet; `npm ci` already brings the declared peer
+      # into node_modules.
+      - name: Install dependencies
+        run: npm ci
+
+      # The three-command gate, in order, failing the job on the first non-zero exit. These are the
+      # IDENTICAL rules a developer runs locally -- `biome ci .` is Biome's CI mode of the same biome.json
+      # (the local `biome check` <-> CI `biome ci` mapping CONTRIBUTING documents), `tsc` type-checks with
+      # no emit, and `vitest run` runs the whole suite (unit + integration).
+      - name: Type-check (tsc --noEmit)
+        run: npm run typecheck
+
+      - name: Lint + format check (biome ci, incl. the core import-boundary rule)
+        run: npx biome ci .
+
+      # Build before testing so the integration test that runs the *built* binary (dist/cli.js via a bin
+      # symlink) actually executes rather than self-skipping on a missing dist/. This is artifact
+      # provisioning for the test step (the same `npm run build && npm test` a developer does locally), not
+      # a fourth gate leg -- the gate remains typecheck + biome ci + vitest.
+      - name: Build (emit dist/ for the built-binary integration test)
+        run: npm run build
+
+      - name: Test (vitest run -- unit + integration)
+        run: npm test
