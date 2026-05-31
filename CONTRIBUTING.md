@@ -102,3 +102,80 @@ Our convention therefore neither governs nor contradicts the executor's per-bund
 on different repos, at different times, under different agents. (Doc 09 frames the executor's unit of work
 as the *bundle*; it does not prescribe a git branch name for it, so there is no naming conflict to
 reconcile here.)
+
+## Pull requests, review & merge
+
+A pull request is how completed epic work reaches the integration branch: at the handoff, the epic branch
+is pushed and opened as a PR against `dev` (`docs/SDLC.md` Phase 7). This section defines what a PR must
+satisfy, how merges are performed, and the gate that blocks them. It governs *our development of the
+builder*; the `## Branching model` section above defines the branches these PRs flow through.
+
+### What a pull request must satisfy before merge
+
+A PR is mergeable only when all three hold (`AGENTS.md` Phase 7 + "User gates"; task-8):
+
+- **Passing checks.** CI runs the three-command gate — `tsc --noEmit`, `biome ci`, and `vitest` — and a
+  failure **blocks the merge** (task-8 AC#1). This is the *same* suite a contributor runs locally (see
+  [The merge gate is the local check suite](#the-merge-gate-is-the-local-check-suite)), green across the
+  supported Node/OS matrix.
+- **Review.** At least one approving review is required, and you **never self-merge** — merging into `dev`
+  (or `main`) is a human gate, performed by a reviewer other than the author (`AGENTS.md` → "User gates":
+  "merging into `dev` or `main`"; "Never self-merge to `dev` or `main`").
+- **A linked backlog task.** Every PR traces to a Backlog.md story by id — `Closes task-<id>` (or
+  `Relates to task-<id>` when it only advances one). No PR lands without a task it implements; the backlog
+  is the source of truth for *what* the change is for.
+
+### Merge strategy and why
+
+- **Story branch → epic branch: `--no-ff` (no fast-forward).** Each story is merged back into its epic
+  branch as an explicit merge commit (`git merge --no-ff feature/<epic>-task-<id>`), then the story branch
+  is deleted — exactly as the [Story-branch lifecycle](#story-branch-lifecycle) above describes. **Why
+  `--no-ff` and not squash or rebase:** it keeps each story an explicit, revertable merge unit and
+  preserves that story's real commit history, rather than flattening the epic into a single linear strand.
+  If a story has to be backed out, its merge commit is the one thing to revert, and its development steps
+  stay legible in the history.
+- **Epic branch → `dev`: reviewed pull request.** The epic branch lands on `dev` via a PR opened with
+  `gh pr create --base dev`, subject to the review and check rules above (`docs/SDLC.md` Phase 7).
+- **`dev` → `main`: a separate, deliberate human decision.** Promotion to the release branch is never
+  automatic and never bundled with the `dev` merge; it is a distinct human action (`docs/SDLC.md` Phase 7:
+  "promotion to main is a separate human decision"). See [What may never be committed to
+  `main`](#what-may-never-be-committed-to-main) for the rule that protects it.
+
+### The merge gate is the local check suite
+
+The gate that blocks a merge is **the same check suite you run locally** — there is no separate, stricter
+CI-only bar to be surprised by (task-8 AC#2). The three commands are:
+
+| Check | Locally | In CI (the merge gate) |
+|---|---|---|
+| Types | `npm run typecheck` (`tsc --noEmit`) | `tsc --noEmit` |
+| Lint + format | `npm run lint` (`biome check .`) | `biome ci` |
+| Tests | `npm test` (`vitest run`) | `vitest` |
+
+(`biome check` and `biome ci` enforce the **same** rules — including the core import-boundary rule from
+task-5; `ci` is just Biome's non-interactive, no-write CI mode. Run the local commands before opening a PR
+and you have already run the gate.)
+
+Crucially, the project **Definition of Done is a named, explicit part of what a PR must meet** — not an
+unwritten expectation. This echoes the install contract's *Definition-of-Done-as-gate* principle from
+[`docs/07`](./docs/07-install-contract.md) §"The enforcement — Definition of Done": there, the executor
+cannot mark a task Done until the receipt facts hold, so recording becomes something it *must* do to make
+progress; here the same enforcement shape is applied to **our development** DoD, so a change cannot merge
+until the DoD holds. (The two DoDs are distinct — doc 07's is the *executor's* install-receipt DoD; ours is
+the *builder-development* DoD below — but the "DoD gates the done/merge state" mechanism is the same.) Our
+development DoD, which the PR template carries as a checklist the author ticks, is (`AGENTS.md` §"Definition
+of Done"):
+
+1. it type-checks (`tsc --noEmit`) and Biome is clean — **including the core import-boundary rule**;
+2. tests are added and green (`vitest`) — unit for pure logic, integration where it touches ports;
+3. public functions are documented, with no dead code; and
+4. every acceptance criterion of the linked task is observably satisfied.
+
+### Opening a pull request
+
+Opening a PR auto-populates the body from
+[`.github/PULL_REQUEST_TEMPLATE.md`](./.github/PULL_REQUEST_TEMPLATE.md), which prompts you for: a
+**summary** of the change; the **linked task** (`Closes task-<id>`); the **DoD checklist** to tick; **how
+you verified it** (paste the three-command gate output); and **confirmation CI is green**. Fill it in fully
+— a reviewer approves against exactly that information, and (per the rules above) no one merges their own
+PR.
