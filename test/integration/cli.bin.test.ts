@@ -4,17 +4,16 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import pkg from "../package.json" with { type: "json" };
+import pkg from "../../package.json" with { type: "json" };
 
 /**
- * Guards the regression where the program entry-point check compared `import.meta.url` to
- * `process.argv[1]` directly: under a `bin` symlink (the `installer`/`wpm` install path) those
- * differ, so the CLI ran but produced no output. This drives the *built* binary through a symlink
- * — the real AC#1 invocation — to keep that path covered. It is skipped (not failed) when `dist/`
- * has not been built, so `vitest run` works on a fresh checkout without a prior build; CI builds
- * first, so the assertion runs there. The full integration harness is task-6.
+ * Through-the-edges (integration) test: drives the *built* `dist/cli.js` through a `bin` symlink — the
+ * real `installer`/`wpm` install path. It also guards the regression where the entry-point check compared
+ * `import.meta.url` to `process.argv[1]` directly: under a symlink those differ, so the CLI ran but
+ * produced no output. The test is skipped (not failed) when `dist/` has not been built, so `vitest run`
+ * works on a fresh checkout without a prior build; CI builds first, so the assertion runs there.
  */
-const builtCli = fileURLToPath(new URL("../dist/cli.js", import.meta.url));
+const builtCli = fileURLToPath(new URL("../../dist/cli.js", import.meta.url));
 const hasBuild = existsSync(builtCli);
 const describeIfBuilt = hasBuild ? describe : describe.skip;
 
