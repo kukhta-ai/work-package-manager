@@ -30,6 +30,12 @@ epic: cli
 # bundles/bundle-template/ metadata+tree (read-only); set(56)=resolveTemplate(name,"bundle") [template-resolver.ts; non-bundle-scope or unresolved => typed error exit!=0 change nothing] then
 # REPLACE bundles/bundle-template/ contents from the template files/ tree. `bundle template` is a FIXED subgroup (template is a reserved bundle verb, doc-10:150). After G2+H: R(82,83,84 build
 # dry-run/package/publish -- NOVEL, doc-12 pipeline, likely its own worker) + 34(init FULL, doc-10:137). Then CLI Phase-6 epic gate + feature/cli->dev handoff (surface to user).
+# FORWARD NOTE / DIVERGENCE (surfaced by worker11 building H; recorded, NOT fixed in H -- H is correct per AC55/56 which target bundles/bundle-template/): doc-10:150 step2 says
+# `bundle new` defaults its bundle template to the PROJECT'S bundles/bundle-template/, and doc-10:137 step5 says `init` copies the default bundle template THERE. But the CURRENT
+# create-bundle.ts (task-26, merged) resolves from the REGISTRY templates/bundle/<name> via resolveTemplate(name,"bundle") [line 219, default DEFAULT_BUNDLE_TEMPLATE] -- it does NOT
+# read bundles/bundle-template/. CONSEQUENCE: `bundle template set` (H, task-56) writes bundles/bundle-template/ but `bundle new` ignores it, so set is currently INERT for bundle new.
+# RECONCILE at task-34 (init FULL must create bundles/bundle-template/ per doc-10:137 step5) AND give create-bundle a default that PREFERS bundles/bundle-template/ when present (falling
+# back to the registry). This is a realization divergence (code vs doc-10:150), not a goal/vocab change -- record + SURFACE to user at the epic gate; not a user gate. H stays as-is.
 # CLI PROGRESS (11/51 merged into feature/cli): A(35,36 templates read), E(42,43,44 targets LIST-MGMT exemplar + the cross-cutting
 # materialise-root lifecycle fix), D(39,40,41 version), B(37,48,49 project reads). IN PROGRESS: G1(50,51,52 bundle new/enable/disable
 # -- completes bundle new + FIXES the --version bug + the advisor scaffold) on feature/cli-bundle-lifecycle.
