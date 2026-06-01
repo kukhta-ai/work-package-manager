@@ -20,6 +20,7 @@
     "installer": "./dist/cli.js"
   },
   "files": [
+    "agent-skills",
     "dist",
     "docs",
     "templates"

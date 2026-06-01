@@ -7,7 +7,7 @@ phase: 5
 phase_name: "Autonomous build (BAUT) — per-story loop over the foundational backlog"
 branch: feature/foundation
 epic: foundation
-active_story: null   # task-31 DONE (default bundle template, APPROVE). Next ready (Sequence 1): task-32 (builder's own agent skill); Sequence 2: 28 (--help), 29 (completion), 33 (walking skeleton). 31/33 foundation done.
+active_story: null   # task-32 DONE (builder's agent skill, APPROVE zero findings). 32/33 foundation. Sequence-1 COMPLETE. Sequence 2 left: 28 (--help content contract), 29 (tab-completion), 33 (walking skeleton -- the big E2E; also resolves the task-30 snippets-only forward note). All three need only task-27 (done) except 33 which needs Seq-1 (done).
 review_cycle: 0
 # HOOK FIX (committed standalone this branch): the block-backlog-manual-* hookify rules over-matched
 # templates/.../install-backlog/ (template content, not live backlog) and blocked authoring it. Added a
@@ -49,7 +49,7 @@ review_cycle: 0
 # DECISION (task-12, cross-cutting): the core is SYNCHRONOUS
 # (sync ports/adapters/operations; node:fs sync + execaSync for backlog). Rationale: sequential CLI, no concurrency
 # benefit, avoids async coloring across operations/lifecycle/tests; thin-builder does no network/long I/O (doc 13 §0).
-completed_stories: [task-1, task-2, task-3, task-4, task-5, task-6, task-7, task-8, task-9, task-10, task-11, task-12, task-13, task-14, task-15, task-16, task-17, task-18, task-19, task-20, task-21, task-22, task-23, task-24, task-25, task-26, task-27, task-30, task-31]   # merged --no-ff into feature/foundation -- A,B,C,D done; E:27; F:30,31
+completed_stories: [task-1, task-2, task-3, task-4, task-5, task-6, task-7, task-8, task-9, task-10, task-11, task-12, task-13, task-14, task-15, task-16, task-17, task-18, task-19, task-20, task-21, task-22, task-23, task-24, task-25, task-26, task-27, task-30, task-31, task-32]   # merged --no-ff into feature/foundation -- A,B,C,D done; E:27; F:30,31,32 (Seq-1 done)
 
 # PROCESS CORRECTION (2026-06-01, user-directed; AGENTS.md "Rule 3" committed 869c5b6):
 # Tasks 1-13 ran the SDLC at the ORCHESTRATION level only — the worker/reviewer/personas followed
