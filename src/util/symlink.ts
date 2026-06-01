@@ -1,4 +1,5 @@
-import { cpSync, symlinkSync } from "node:fs";
+import { cpSync, mkdirSync, symlinkSync } from "node:fs";
+import { dirname } from "node:path";
 import type { AliasResult } from "../core/ports/filesystem.js";
 
 /**
@@ -19,6 +20,8 @@ export interface SymlinkStrategyOptions {
   readonly symlink?: (target: string, linkPath: string) => void;
   /** The recursive-copy primitive; defaults to `node:fs` `cpSync` (recursive). */
   readonly copy?: (from: string, to: string) => void;
+  /** The make-directories primitive (`mkdir -p`), used for the link's parent; defaults to `node:fs`. */
+  readonly makeDirectories?: (path: string) => void;
 }
 
 /** Default recursive copy used for the Windows fallback (preserves bytes, including binary content). */
@@ -29,6 +32,11 @@ function defaultCopy(from: string, to: string): void {
 /** Default symlink primitive. */
 function defaultSymlink(target: string, linkPath: string): void {
   symlinkSync(target, linkPath);
+}
+
+/** Default `mkdir -p` primitive. */
+function defaultMakeDirectories(path: string): void {
+  mkdirSync(path, { recursive: true });
 }
 
 /**
@@ -46,6 +54,13 @@ export function ensureSymlinkOrCopy(
   linkPath: string,
   options: SymlinkStrategyOptions = {},
 ): AliasResult {
+  // The link's parent directory must exist before either mechanism can create the alias there. The real
+  // `fs.symlink`/`fs.cp` do NOT create missing parents (unlike the in-memory fake, which records the link's
+  // parent), so an alias like `.claude/skills` fails with ENOENT when `.claude/` is absent. Create it first
+  // so the real adapter matches the fake and reality (the alias dir is part of what the operation lays down).
+  const makeDirectories = options.makeDirectories ?? defaultMakeDirectories;
+  makeDirectories(dirname(linkPath));
+
   const platform = options.platform ?? process.platform;
   if (platform === "win32") {
     const copy = options.copy ?? defaultCopy;
