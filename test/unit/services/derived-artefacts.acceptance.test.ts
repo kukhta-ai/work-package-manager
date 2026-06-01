@@ -40,6 +40,7 @@ function bundle(name: string, version: string, summary: string): BundleManifest 
     confirmation: "safe",
     requires: new Map(),
     payload: { files: [], templates: [], scripts: [], skills: [] },
+    installerSkills: [],
   };
 }
 
@@ -66,6 +67,7 @@ function buildProject(): Project {
       meta: { name: "hermes-handoff", version: ver("1.0.0") },
       bundles: bundles.map((b) => b.id),
       targets: [parseAgentNameOrThrow("claude-code"), parseAgentNameOrThrow("codex")],
+      installerSkills: [],
     },
     bundles: new Map(bundles.map((b) => [b.id, b])),
   };

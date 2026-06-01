@@ -181,6 +181,7 @@ describe("initProject â€” the bootstrap operation (task-33; doc 10 init steps 1â
         meta: { name: "hermes-handoff", version: "0.1.0" as never },
         targets: [],
         bundles: [],
+        installerSkills: [],
       },
       bundles: new Map(),
     });

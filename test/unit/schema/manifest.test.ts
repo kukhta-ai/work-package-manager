@@ -79,6 +79,94 @@ describe("parseManifest — malformed (AC#3)", () => {
   });
 });
 
+// The top-level `installerSkills` registry (doc 10 row 178) — the PROJECT-scoped install-time helper-skill
+// registry (Family F), a list of `{name, path}` (the project analogue of a bundle's `installerSkills`). Purely
+// additive: absent ⇒ `[]`.
+describe("parseManifest — the installerSkills registry (Family F, doc 10 row 178)", () => {
+  const base = {
+    project: { name: "demo", version: "1.0.0" },
+    targets: ["claude-code"],
+    bundles: [],
+  };
+
+  it("absent installerSkills ⇒ [] (old/partial manifest.yml compat); targets/bundles unaffected", () => {
+    const r = parseManifest(base);
+    expect(r.ok).toBe(true);
+    if (r.ok) {
+      expect(r.value.installerSkills).toEqual([]);
+      expect(r.value.targets).toEqual(["claude-code"]);
+      expect(r.value.bundles).toEqual([]);
+    }
+  });
+
+  it("parses a populated installerSkills list of {name, path}", () => {
+    const r = parseManifest({
+      ...base,
+      installerSkills: [
+        { name: "detect-node", path: "installer-skills/detect-node/SKILL.md" },
+        { name: "relocated", path: "custom/relocated.md" },
+      ],
+    });
+    expect(r.ok).toBe(true);
+    if (r.ok) {
+      expect(r.value.installerSkills).toEqual([
+        { name: "detect-node", path: "installer-skills/detect-node/SKILL.md" },
+        { name: "relocated", path: "custom/relocated.md" },
+      ]);
+    }
+  });
+
+  it("round-trips a populated installerSkills: parse(serialize(parse(x))) preserves it", () => {
+    const first = parseManifest({
+      ...base,
+      installerSkills: [{ name: "inst", path: "installer-skills/inst/SKILL.md" }],
+    });
+    expect(first.ok).toBe(true);
+    if (first.ok) {
+      const second = parseManifest(serializeManifest(first.value));
+      expect(second.ok).toBe(true);
+      if (second.ok) {
+        expect(second.value.installerSkills).toEqual([
+          { name: "inst", path: "installer-skills/inst/SKILL.md" },
+        ]);
+      }
+    }
+  });
+
+  it("serialize always emits installerSkills (empty ⇒ [])", () => {
+    const r = parseManifest(base);
+    expect(r.ok).toBe(true);
+    if (r.ok) {
+      expect(serializeManifest(r.value).installerSkills).toEqual([]);
+    }
+  });
+
+  it.each([
+    ["installerSkills not a list", { ...base, installerSkills: "nope" }, "installerSkills"],
+    [
+      "installerSkills entry not a mapping",
+      { ...base, installerSkills: ["just-a-string"] },
+      "installerSkills",
+    ],
+    [
+      "installerSkills entry missing name",
+      { ...base, installerSkills: [{ path: "installer-skills/x/SKILL.md" }] },
+      "installerSkills",
+    ],
+    [
+      "installerSkills entry missing path",
+      { ...base, installerSkills: [{ name: "x" }] },
+      "installerSkills",
+    ],
+  ])("rejects %s naming %s", (_label, data, expectedField) => {
+    const r = parseManifest(data);
+    expect(r.ok).toBe(false);
+    if (!r.ok) {
+      expect(`${r.problem.field} ${r.problem.message}`).toContain(expectedField);
+    }
+  });
+});
+
 describe("parseManifest — invalid ids/agents reuse the model rules (AC#4)", () => {
   it("rejects a reserved bundle verb in bundles", () => {
     const r = parseManifest({

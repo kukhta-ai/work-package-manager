@@ -9,6 +9,7 @@ import {
   parseBundleId,
   parseSemVer,
 } from "../../model/index.js";
+import { parseSkillRefs } from "./bundle.js";
 import { isPlainObject, optionalString, requireArray, requireString } from "./problems.js";
 
 /**
@@ -27,6 +28,11 @@ export interface ManifestData {
   };
   readonly targets: readonly string[];
   readonly bundles: readonly string[];
+  /**
+   * The PROJECT-scoped install-time helper-skill registry (doc 10 row 178) — a top-level `manifest.yml` field, a
+   * list of `{name, path}` mappings (the project analogue of a bundle's `installerSkills`). Absent ⇒ empty.
+   */
+  readonly installerSkills: readonly { readonly name: string; readonly path: string }[];
 }
 
 const CTX = "manifest";
@@ -141,7 +147,15 @@ export function parseManifest(data: unknown): Parsed<Manifest> {
     bundles.push(parsed.value);
   }
 
-  return ok({ meta, bundles, targets });
+  // `installerSkills` is OPTIONAL and top-level (the project-scope analogue of a bundle's `installerSkills`).
+  // Absent ⇒ `[]`, purely additive (every existing `manifest.yml` — and the `minimal` template's, which has no
+  // such key — still parses). When present it must be a list of `{name, path}` mappings; it rides the SHARED
+  // `parseSkillRefs` validator (exported from the bundle schema), parameterised by the `installerSkills` field
+  // label so its errors name the right registry.
+  const installerSkills = parseSkillRefs(data.installerSkills, CTX, "installerSkills");
+  if (!installerSkills.ok) return installerSkills;
+
+  return ok({ meta, bundles, targets, installerSkills: installerSkills.value });
 }
 
 /**
@@ -166,5 +180,8 @@ export function serializeManifest(manifest: Manifest): ManifestData {
     },
     targets: manifest.targets.map((t) => t as string),
     bundles: manifest.bundles.map((b) => b as string),
+    // Always emit `installerSkills` (empty ⇒ `[]`), like `targets`/`bundles` — the project-scoped install-time
+    // helper-skill registry (doc 10 row 178). Round-trips with `parseManifest` (absent ⇒ empty).
+    installerSkills: manifest.installerSkills.map((s) => ({ name: s.name, path: s.path })),
   };
 }

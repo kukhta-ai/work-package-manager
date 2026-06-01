@@ -49,6 +49,7 @@ function bundle(
     confirmation: "safe",
     requires: req,
     payload: { files: [], templates: [], scripts: [], skills: [] },
+    installerSkills: [],
   };
 }
 

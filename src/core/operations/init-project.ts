@@ -120,7 +120,12 @@ export function initProject(deps: InitProjectDeps, input: InitProjectInput): Ope
   }
   const projection: Project = {
     rootPath: targetDir,
-    manifest: { meta: { name, version: semver.value }, targets: [], bundles: [] },
+    manifest: {
+      meta: { name, version: semver.value },
+      targets: [],
+      bundles: [],
+      installerSkills: [],
+    },
     bundles: new Map(),
   };
   const deriveArtefacts = makeArtefactDeriver({

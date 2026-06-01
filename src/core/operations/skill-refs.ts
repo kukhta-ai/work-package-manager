@@ -80,6 +80,29 @@ export const PAYLOAD_SKILLS_DESCRIPTOR: SkillRefDescriptor = {
   noun: "payload skill",
 };
 
+/**
+ * The `bundle installer-skills` descriptor (Family P) — `bundles/<id>/installer-skills/` ↔ the bundle-level
+ * `installerSkills` registry in `bundle.yml`, scaffolding from the `installer-skill.SKILL.md.tmpl` snippet and
+ * materialising the doc-11 "Write content for install-time skill" task. Reuses the O core's attach/scaffold/remove
+ * specs unchanged (parameterised by this descriptor); P additionally supplies a SCAN-based `list`
+ * ({@link scanInstallerSkillsSpec}) — the ONE pluggable piece O left — because installer-skills are union-scanned
+ * at install (doc 06), so `list` reflects on-disk reality rather than the registry. The registry still backs
+ * `add`/`remove`/completion (the deregister contract + the `remove` completion source), exactly as O's does.
+ *
+ * The registry is a TOP-LEVEL `bundle.yml` field (`["installerSkills"]`, a SIBLING of `payload`), NOT under
+ * `payload:` — installer-skills are install-time HELPERS, not delivered payload (doc 06 line 77 / doc 07 line 51).
+ */
+export const BUNDLE_INSTALLER_SKILLS_DESCRIPTOR: SkillRefDescriptor = {
+  onDiskDir: "installer-skills",
+  registryPath: ["installerSkills"],
+  select: (host) => host.installerSkills,
+  snippetPath: "installer-skill.SKILL.md.tmpl",
+  materialiseTitle: (name, hostId) => `Write content for install-time skill ${name} in ${hostId}`,
+  materialiseAc: (name, hostId) =>
+    `the stub's placeholder description and body for ${name} are replaced with real install-time helper content (active while the agent works ${hostId}'s installer-skills scope, per docs/06)`,
+  noun: "installer skill",
+};
+
 /** A bundle's manifest filename, under `bundles/<id>/`. */
 const BUNDLE_MANIFEST_FILE = "bundle.yml";
 
@@ -362,4 +385,35 @@ export function listSkillRefsSpec(
 function skillDir(skillMdPath: string): string {
   const slash = skillMdPath.lastIndexOf("/");
   return slash >= 0 ? skillMdPath.slice(0, slash + 1) : "";
+}
+
+/**
+ * The input to {@link scanInstallerSkillsSpec}: the host id and the helper NAMES already scanned off disk by the
+ * command layer (which owns the fs port). The scan itself is threaded in — like `bundle <id> show` threads its
+ * file tree — so the read's projection stays pure (no fs in the core read path).
+ */
+export interface ScanInstallerSkillsInput {
+  /** The host bundle whose install-time helpers were scanned (selected by the `bundle <id>` routing). */
+  readonly id: string;
+  /** The helper NAMES the command scanned under the host's `installer-skills/` (sorted, already filtered). */
+  readonly scannedNames: readonly string[];
+}
+
+/**
+ * `bundle <id> installer-skills list` (doc 10 row 174) — a directory-SCAN read, the ONE piece P/F supply beyond
+ * the O core. UNLIKE the registry-based {@link listSkillRefsSpec} (O — payload skills are inert until install, so
+ * the registry is authoritative), installer-skills are **union-scanned at install** (doc 06), so `list` reflects
+ * on-disk REALITY: an author-placed `installer-skills/<name>/SKILL.md` shows even if it was never `add`-registered,
+ * and a `remove`-deregistered helper whose SKILL.md is left still shows (the registry and the scan are allowed to
+ * diverge — the deliberate payload-vs-installer-skill split). The command performs the directory walk (it owns the
+ * fs port) and threads the resulting `scannedNames` in; this spec PROJECTS them, changing nothing (the read is
+ * pure). The command prints each name, or an empty marker.
+ *
+ * @returns The scan-list read spec (projects the threaded helper names).
+ */
+export function scanInstallerSkillsSpec(): ReadSpec<ScanInstallerSkillsInput, readonly string[]> {
+  return {
+    summary: (_project, { id }) => `bundle ${id} installer skills`,
+    project: (_project, { scannedNames }) => [...scannedNames],
+  };
 }

@@ -283,6 +283,7 @@ describe("makeArtefactDeriver (doc 13 §5 ④)", () => {
         },
         targets: ["claude-code" as never],
         bundles: ["web" as never],
+        installerSkills: [],
       },
       bundles: new Map([
         [
@@ -294,6 +295,7 @@ describe("makeArtefactDeriver (doc 13 §5 ④)", () => {
             confirmation: "safe",
             requires: new Map(),
             payload: { files: [], templates: [], scripts: [], skills: [] },
+            installerSkills: [],
           },
         ],
       ]),

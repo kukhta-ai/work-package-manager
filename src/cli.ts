@@ -40,6 +40,13 @@ import {
 import { createBundleSpec } from "./core/operations/create-bundle.js";
 import { makeArtefactDeriver } from "./core/operations/derive-artefacts-capability.js";
 import { initProject } from "./core/operations/init-project.js";
+import {
+  attachProjectInstallerSkillSpec,
+  conventionalProjectSkillPath,
+  isReservedInstallerSkillName,
+  removeProjectInstallerSkillSpec,
+  scaffoldProjectInstallerSkillSpec,
+} from "./core/operations/installer-skills-project.js";
 import { type LifecycleDeps, runMutation, runRead } from "./core/operations/lifecycle.js";
 import {
   addPayloadRefSpec,
@@ -56,11 +63,13 @@ import {
 } from "./core/operations/project-reads.js";
 import {
   attachSkillRefSpec,
+  BUNDLE_INSTALLER_SKILLS_DESCRIPTOR,
   conventionalSkillPath,
   listSkillRefsSpec,
   PAYLOAD_SKILLS_DESCRIPTOR,
   removeSkillRefSpec,
   scaffoldSkillRefSpec,
+  scanInstallerSkillsSpec,
 } from "./core/operations/skill-refs.js";
 import { addTargetSpec, listTargetsSpec, removeTargetSpec } from "./core/operations/targets.js";
 import { bumpVersionSpec, readVersionSpec, setVersionSpec } from "./core/operations/version.js";
@@ -299,6 +308,77 @@ function bundleFileTree(fs: FileSystem, root: string, id: string): string[] {
   };
   walk("");
   return out.sort();
+}
+
+/**
+ * Scan a bundle's install-time helper skills for the `bundle <id> installer-skills list` command (doc 10 row 174):
+ * the immediate subdirectory names under `bundles/<id>/installer-skills/` that CONTAIN a `SKILL.md`, sorted. A
+ * helper IS a `<name>/SKILL.md` folder, so a directory without a SKILL.md (or a stray file) is not a helper. This
+ * fs walk lives in the shell (which owns the FileSystem port) and is threaded into the pure
+ * {@link scanInstallerSkillsSpec} read — mirroring how {@link bundleFileTree} feeds `bundle <id> show`. Returns
+ * `[]` when the `installer-skills/` directory does not exist (a bundle with no install-time helpers).
+ *
+ * @param fs - The FileSystem port.
+ * @param root - The project root.
+ * @param id - The bundle id.
+ * @returns The helper-folder names (those containing a SKILL.md) under `bundles/<id>/installer-skills/`, sorted.
+ */
+function installerSkillNames(fs: FileSystem, root: string, id: string): string[] {
+  const base = join(root, "bundles", id, "installer-skills");
+  if (!fs.exists(base)) {
+    return [];
+  }
+  return fs
+    .list(base)
+    .filter((entry) => entry.kind === "directory" && fs.exists(join(base, entry.name, "SKILL.md")))
+    .map((entry) => entry.name)
+    .sort();
+}
+
+/**
+ * Read the resolved project's name from its `manifest.yml` (`project.name`) for the `project installer-skills`
+ * family's reserved-name refusal + `list` exclusion. The shell owns the fs port; it parses the manifest just as
+ * {@link requireEnabledBundle} does. Returns `""` when the manifest cannot be parsed (defensive — the project was
+ * already resolved by {@link requireProject}, so this is reached only on a corrupt manifest, which the operation
+ * layer would also reject).
+ *
+ * @param ctx - The command context (ports).
+ * @param root - The resolved project root.
+ * @returns The project name, or `""` when the manifest cannot be parsed.
+ */
+function projectName(ctx: CommandContext, root: string): string {
+  const manifest = parseManifest(parseYaml(ctx.deps.fs.read(join(root, MANIFEST_FILE))));
+  return manifest.ok ? manifest.value.meta.name : "";
+}
+
+/**
+ * Scan the PROJECT's install-time helper skills for `project installer-skills list` (doc 10 row 179): the
+ * immediate subdirectory names under the root `installer-skills/` that CONTAIN a `SKILL.md`, **EXCLUDING** the
+ * main `<project>-installer` skill and any `<id>-advisor` skill, sorted. The exclusion (AC46#1) is WHY `list`
+ * scans rather than reads the registry — the main installer + advisors are created by `init`/`bundle <id> advisor
+ * add`, not by `installer-skills add`, so they are real on-disk helper folders but not project-helper entries. The
+ * fs walk + exclusion live in the shell (which owns the FileSystem port + the project name) and are threaded into
+ * the pure {@link scanInstallerSkillsSpec} read. Returns `[]` when the `installer-skills/` dir does not exist.
+ *
+ * @param ctx - The command context (ports).
+ * @param root - The project root.
+ * @returns The project helper-folder names (minus the main installer + advisors), sorted.
+ */
+function projectInstallerSkillNames(ctx: CommandContext, root: string): string[] {
+  const base = join(root, "installer-skills");
+  if (!ctx.deps.fs.exists(base)) {
+    return [];
+  }
+  const reservedFor = projectName(ctx, root);
+  return ctx.deps.fs
+    .list(base)
+    .filter(
+      (entry) =>
+        entry.kind === "directory" && ctx.deps.fs.exists(join(base, entry.name, "SKILL.md")),
+    )
+    .map((entry) => entry.name)
+    .filter((name) => !isReservedInstallerSkillName(name, reservedFor))
+    .sort();
 }
 
 /** Render a {@link BundleView} as the human-readable `bundle <id> show` block (output lives in the shell). */
@@ -626,6 +706,18 @@ function formatSkillList(skills: readonly SkillRef[]): string {
   return skills.length === 0
     ? "(no payload skills)\n"
     : `${skills.map((skill) => skill.name).join("\n")}\n`;
+}
+
+/**
+ * Render a SCANNED install-time helper-skill list as a `bundle <id> installer-skills list` block — one helper NAME
+ * per line, or the `(no installer skills)` empty marker. Takes NAMES (not refs): `installer-skills list` SCANS the
+ * directory (doc 10 row 174), so it yields the on-disk helper-folder names directly, not registry entries.
+ *
+ * @param names - The scanned helper-folder names.
+ * @returns The formatted list, newline-terminated.
+ */
+function formatInstallerSkillList(names: readonly string[]): string {
+  return names.length === 0 ? "(no installer skills)\n" : `${names.join("\n")}\n`;
 }
 
 /**
@@ -1058,9 +1150,151 @@ const bundleSkillsModule: PerBundleCommandModule = {
 };
 
 /**
+ * `bundle <id> installer-skills` (+ `add` / `list` / `remove`) (doc 10 rows 173 / 174 / 175), the per-bundle
+ * INSTALLER-SKILLS family (Family P) — registers / inspects / deregisters the bundle's bundle-scoped INSTALL-TIME
+ * helper skills (`bundles/<id>/installer-skills/`, NOT delivered to the user — doc 06 line 77 / doc 07 line 51).
+ * It is the installer-skills TWIN of {@link bundleSkillsModule}: it rides the SAME generic, descriptor-driven
+ * skill-reference core ({@link BUNDLE_INSTALLER_SKILLS_DESCRIPTOR}) for `add`/`remove`, and supplies the one
+ * difference — a directory-SCAN `list` ({@link scanInstallerSkillsSpec}).
+ *
+ * `add <name> [--path <path>]` is the SAME 3-WAY scaffold-or-attach as `skills add` (doc 10 row 173; doc 10 line
+ * 32): the CLI shell resolves the target SKILL.md path, probes existence, and dispatches ATTACH
+ * ({@link attachSkillRefSpec}) / SCAFFOLD ({@link scaffoldSkillRefSpec}, WITH a ⑤ MATERIALISE of "Write content
+ * for install-time skill … in …") / ERROR (`--path` given but nothing there → a typed {@link NotFoundError} BEFORE
+ * `runMutation`). **AC77#4 (the scope-alias ensure) is delivered by the ④ RERENDER beat**: `scopePlan`
+ * (derived-artefacts) already plans the bundle's `installer-skills/` scope aliases for each declared target, and
+ * `runMutation`'s ④ RERENDER creates each missing one via `fs.ensureAlias` — so the leaf adds NO explicit alias
+ * code; a mutation (`add`) ensures them automatically (a project with no targets has no alias to create — correct,
+ * not a violation). `remove` deregisters from the `installerSkills` registry and LEAVES the SKILL.md on disk
+ * (79#1/#2). `list` SCANS the directory (74#1 — the helpers are union-scanned at install, so an author-placed or a
+ * `remove`-deregistered-but-left helper still shows; the registry and the scan deliberately diverge), with the fs
+ * walk in the shell ({@link installerSkillNames}) threaded into the pure read.
+ */
+const bundleInstallerSkillsModule: PerBundleCommandModule = {
+  register(sub, ctx, root, id) {
+    const installerSkills = sub
+      .command("installer-skills")
+      .description(
+        "register or inspect this bundle's install-time helper skills (not delivered) (doc 10)",
+      );
+
+    // ── installer-skills add <name> [--path <path>] ────────────────────────────────────────────────────────
+    const addLeaf = installerSkills
+      .command("add")
+      .argument(
+        "<name>",
+        "the install-time helper skill's name (its SKILL.md folder under installer-skills/<name>/)",
+      )
+      .option(
+        "--path <path>",
+        "attach an existing SKILL.md at this bundle-relative path instead of the conventional location",
+      )
+      .description(
+        "attach an existing install-time helper skill, or scaffold a stub + queue its writing if none exists (doc 10)",
+      )
+      .action((name: string, opts: { path?: string }) => {
+        // Resolve the target SKILL.md (bundle-relative): --path if given, else the conventional
+        // installer-skills/<name>/SKILL.md. The CLI owns the fs port, so the 3-way existence probe lives here (the
+        // same place `bundleSkillsModule` puts it).
+        const conventional = conventionalSkillPath(BUNDLE_INSTALLER_SKILLS_DESCRIPTOR, name);
+        const targetRel = opts.path ?? conventional;
+        const exists = ctx.deps.fs.exists(join(root, "bundles", id, targetRel));
+
+        if (opts.path !== undefined && !exists) {
+          // AC77#3: --path given but nothing there → typed error (exit 1), register nothing.
+          throw new NotFoundError(
+            `no SKILL.md at bundles/${id}/${opts.path} — omit --path to scaffold a stub at ${conventional}, or place the file there first`,
+          );
+        }
+
+        // AC77#4: the bundle's installer-skills scope aliases are ensured by the ④ RERENDER beat inside
+        // runMutation (scopePlan already plans them for each declared target) — the leaf needs no alias code.
+        const result = exists
+          ? runMutation(
+              lifecycleDepsFor(ctx, root),
+              { root },
+              attachSkillRefSpec(BUNDLE_INSTALLER_SKILLS_DESCRIPTOR),
+              { id, name, path: targetRel },
+            )
+          : runMutation(
+              lifecycleDepsFor(ctx, root),
+              { root },
+              scaffoldSkillRefSpec(BUNDLE_INSTALLER_SKILLS_DESCRIPTOR, {
+                builtinTemplatesRoot: ctx.deps.builtinTemplatesRoot,
+              }),
+              { id, name },
+            );
+        // AC77#6: the summary says attached vs scaffolded; formatResult adds the `materialised: N` line for the
+        // scaffold branch (the authoring task id is visible via the backlog the materialise writes into).
+        ctx.io.out.write(formatResult(result));
+      });
+    withExamples(addLeaf, [
+      {
+        command: "wpm bundle web-handoff installer-skills add detect-node",
+        note: "attach the SKILL.md the agent placed, or scaffold a stub + queue its writing",
+      },
+      {
+        command:
+          "wpm bundle web-handoff installer-skills add detect-node --path installer-skills/detect-node/SKILL.md",
+        note: "attach an existing SKILL.md at an explicit bundle-relative path",
+      },
+    ]);
+
+    // ── installer-skills list ──────────────────────────────────────────────────────────────────────────────
+    // SCAN (doc 10 row 174): enumerate the helper SKILL.md folders under bundles/<id>/installer-skills/. The fs
+    // walk lives here (the shell owns the port), threaded into the pure scan spec — mirroring `bundle <id> show`.
+    const listLeaf = installerSkills
+      .command("list")
+      .description(
+        "list this bundle's install-time helper skills (scanned under installer-skills/) (doc 10)",
+      )
+      .action(() => {
+        const scannedNames = installerSkillNames(ctx.deps.fs, root, id);
+        const { value } = runRead(ctx.deps.fs, { root }, scanInstallerSkillsSpec(), {
+          id,
+          scannedNames,
+        });
+        ctx.io.out.write(formatInstallerSkillList(value));
+      });
+    withExamples(listLeaf, [
+      {
+        command: `wpm bundle ${id} installer-skills list`,
+        note: "list this bundle's install-time helper skills",
+      },
+    ]);
+
+    // ── installer-skills remove <name> ─────────────────────────────────────────────────────────────────────
+    // Deregister-not-delete: the entry leaves the bundle.yml installerSkills registry but the SKILL.md stays on
+    // disk (doc 10 row 175). A name that is not registered ⇒ the operation's NotFound (exit 1, nothing changed).
+    const removeLeaf = installerSkills
+      .command("remove")
+      .argument(
+        "<name>",
+        "the registered install-time helper to deregister (the SKILL.md is left on disk)",
+      )
+      .description("deregister an install-time helper skill, leaving its SKILL.md on disk (doc 10)")
+      .action((name: string) => {
+        const result = runMutation(
+          lifecycleDepsFor(ctx, root),
+          { root },
+          removeSkillRefSpec(BUNDLE_INSTALLER_SKILLS_DESCRIPTOR),
+          { id, name },
+        );
+        ctx.io.out.write(formatResult(result));
+      });
+    withExamples(removeLeaf, [
+      {
+        command: "wpm bundle web-handoff installer-skills remove detect-node",
+        note: "deregister detect-node (its SKILL.md stays on disk)",
+      },
+    ]);
+  },
+};
+
+/**
  * The per-bundle subcommand modules, registered into the `bundle <id>` sub-program in order. A future per-bundle
- * family (tasks 77–81: installer-skills/advisor) appends its {@link PerBundleCommandModule} here — the routing
- * and the catch-all need no change. This is the bundle-`<id>` analogue of {@link TOP_LEVEL_MODULES}.
+ * family (tasks 80–81: advisor) appends its {@link PerBundleCommandModule} here — the routing and the catch-all
+ * need no change. This is the bundle-`<id>` analogue of {@link TOP_LEVEL_MODULES}.
  */
 const PER_BUNDLE_MODULES: readonly PerBundleCommandModule[] = [
   bundleShowModule,
@@ -1071,6 +1305,7 @@ const PER_BUNDLE_MODULES: readonly PerBundleCommandModule[] = [
   bundleTemplatesModule,
   bundleScriptsModule,
   bundleSkillsModule,
+  bundleInstallerSkillsModule,
 ];
 
 /** The completion specs for the per-bundle subcommands (keyed by the subcommand path WITHIN `bundle <id>`). */
@@ -1101,6 +1336,11 @@ const PER_BUNDLE_COMPLETION_SPECS: CompletionSpecs = {
   // completes from the REGISTERED `payload.skills` names. Both id-aware (read the host id off the context).
   "skills add": { args: ["skills-on-disk"] },
   "skills remove": { args: ["skills-registered"] },
+  // `bundle <id> installer-skills add <name>` (Family P) — completes from the helper-folder NAMES present under
+  // installer-skills/ (the attachable helpers, matching the directory-scan `list`). `installer-skills remove
+  // <name>` completes from the REGISTERED `installerSkills` names (AC79#4 — the deregister set). Both id-aware.
+  "installer-skills add": { args: ["installer-skills-on-disk"] },
+  "installer-skills remove": { args: ["installer-skills-registered"] },
 };
 
 /**
@@ -1679,6 +1919,136 @@ const projectModule: CommandModule = {
       { command: "wpm project targets remove hermes", note: "stop supporting Hermes" },
     ]);
 
+    // ── project installer-skills (+ add / list / remove) ────────────────────────────────────────────────────
+    // The PROJECT-scoped install-time helper-skill family (Family F; doc 10 rows 178/179/180) — the project
+    // analogue of `bundle <id> installer-skills` (P), wired as a `project` subgroup (like `targets`). `add` is the
+    // SAME 3-way scaffold-or-attach (the existence probe + dispatch lives here, the shell owning the fs port),
+    // PLUS a project-only reserved-name refusal (AC45#4); `list` SCANS the root installer-skills/ (excluding the
+    // main installer + advisors, AC46#1) via the scope-agnostic scan spec with the walk in the shell; `remove`
+    // deregisters from manifest.yml's installerSkills, leaving the SKILL.md on disk.
+    const installerSkills = group
+      .command("installer-skills")
+      .description(
+        "register or inspect the project's install-time helper skills (not delivered) (doc 10)",
+      );
+
+    // ── project installer-skills add <name> [--path <path>] ───────────────────────────────────────────────
+    const isAddLeaf = installerSkills
+      .command("add")
+      .argument(
+        "<name>",
+        "the install-time helper skill's name (its SKILL.md folder under installer-skills/<name>/)",
+      )
+      .option(
+        "--path <path>",
+        "attach an existing SKILL.md at this project-relative path instead of the conventional location",
+      )
+      .description(
+        "attach an existing project install-time helper skill, or scaffold a stub + queue its writing if none exists (doc 10)",
+      )
+      .action((name: string, opts: { path?: string }) => {
+        const root = requireProject(ctx, parent);
+        // AC45#4: refuse a reserved name (ends in -advisor, or == `<project>-installer`) as a USAGE error (exit 2)
+        // BEFORE the 3-way probe — a reserved name is invalid regardless of --path. The project name is read from
+        // manifest.yml. (Defense-in-depth: the operation `check` re-asserts this.)
+        const reservedFor = projectName(ctx, root);
+        if (isReservedInstallerSkillName(name, reservedFor)) {
+          const reason = name.endsWith("-advisor")
+            ? 'names ending in "-advisor" are reserved for bundle advisors'
+            : `"${name}" is the main installer skill (${reservedFor}-installer)`;
+          throw new UsageError(
+            `installer-skill name "${name}" is reserved — ${reason}; pick another name`,
+          );
+        }
+
+        // Resolve the target SKILL.md (project-root-relative): --path if given, else the conventional
+        // installer-skills/<name>/SKILL.md. The 3-way existence probe lives here (the shell owns the fs port).
+        const conventional = conventionalProjectSkillPath(name);
+        const targetRel = opts.path ?? conventional;
+        const exists = ctx.deps.fs.exists(join(root, targetRel));
+
+        if (opts.path !== undefined && !exists) {
+          // AC45#3: --path given but nothing there → typed error (exit 1), register nothing.
+          throw new NotFoundError(
+            `no SKILL.md at ${opts.path} — omit --path to scaffold a stub at ${conventional}, or place the file there first`,
+          );
+        }
+
+        const result = exists
+          ? runMutation(lifecycleDepsFor(ctx, root), { root }, attachProjectInstallerSkillSpec(), {
+              name,
+              path: targetRel,
+            })
+          : runMutation(
+              lifecycleDepsFor(ctx, root),
+              { root },
+              scaffoldProjectInstallerSkillSpec({
+                builtinTemplatesRoot: ctx.deps.builtinTemplatesRoot,
+              }),
+              { name },
+            );
+        // AC45#6: the summary says attached vs scaffolded; formatResult adds the `materialised: N` line for scaffold.
+        ctx.io.out.write(formatResult(result));
+      });
+    withExamples(isAddLeaf, [
+      {
+        command: "wpm project installer-skills add detect-node",
+        note: "attach the SKILL.md the agent placed (or --path it), else scaffold a stub + queue its writing",
+      },
+    ]);
+
+    // ── project installer-skills list ─────────────────────────────────────────────────────────────────────
+    // SCAN (doc 10 row 179): enumerate the root installer-skills/ helper folders, EXCLUDING the main
+    // <project>-installer + any *-advisor. The fs walk + exclusion live in the shell; the pure scan spec projects
+    // the threaded names.
+    const isListLeaf = installerSkills
+      .command("list")
+      .description(
+        "list the project's install-time helper skills (scanned under installer-skills/, excluding the main installer + advisors) (doc 10)",
+      )
+      .action(() => {
+        const root = requireProject(ctx, parent);
+        const scannedNames = projectInstallerSkillNames(ctx, root);
+        const { value } = runRead(ctx.deps.fs, { root }, scanInstallerSkillsSpec(), {
+          id: "",
+          scannedNames,
+        });
+        ctx.io.out.write(formatInstallerSkillList(value));
+      });
+    withExamples(isListLeaf, [
+      {
+        command: "wpm project installer-skills list",
+        note: "list the project's install-time helper skills",
+      },
+    ]);
+
+    // ── project installer-skills remove <name> ────────────────────────────────────────────────────────────
+    const isRemoveLeaf = installerSkills
+      .command("remove")
+      .argument(
+        "<name>",
+        "the registered install-time helper to deregister (the SKILL.md is left on disk)",
+      )
+      .description(
+        "deregister a project install-time helper skill, leaving its SKILL.md on disk (doc 10)",
+      )
+      .action((name: string) => {
+        const root = requireProject(ctx, parent);
+        const result = runMutation(
+          lifecycleDepsFor(ctx, root),
+          { root },
+          removeProjectInstallerSkillSpec(),
+          { name },
+        );
+        ctx.io.out.write(formatResult(result));
+      });
+    withExamples(isRemoveLeaf, [
+      {
+        command: "wpm project installer-skills remove detect-node",
+        note: "deregister detect-node (its SKILL.md stays on disk)",
+      },
+    ]);
+
     // ── project version ───────────────────────────────────────────────────────────────────────────────────
     // A command WITH subcommands AND its own action: bare `project version` runs this action (the read);
     // `bump`/`set` dispatch to their own leaves. commander lists the subcommands under "Commands:" in help.
@@ -1868,6 +2238,15 @@ export const COMPLETION_SPECS: CompletionSpecs = {
   },
   "project version bump": {
     args: ["bump-levels"], // <level> — the fixed major/minor/patch enum (reuses the built-in source)
+  },
+  // `project installer-skills add <name>` (Family F) — completes from the on-disk root installer-skills/ helper
+  // folders (minus the reserved main-installer + advisor names). `project installer-skills remove <name>`
+  // completes from the REGISTERED `manifest.installerSkills` names (AC47#5). Both NOT id-aware (project root).
+  "project installer-skills add": {
+    args: ["project-installer-skills-on-disk"],
+  },
+  "project installer-skills remove": {
+    args: ["project-installer-skills-registered"],
   },
   "bundle new": {
     // `--template` takes a BUNDLE template (a project template can't scaffold a bundle), so it completes from

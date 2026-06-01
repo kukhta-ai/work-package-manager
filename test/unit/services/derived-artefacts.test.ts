@@ -41,6 +41,7 @@ function bundle(name: string, summary: string): BundleManifest {
     confirmation: "safe",
     requires: new Map(),
     payload: { files: [], templates: [], scripts: [], skills: [] },
+    installerSkills: [],
   };
 }
 
@@ -53,6 +54,7 @@ function project(name: string, bundles: BundleManifest[], targets: string[]): Pr
       meta: { name, version: ver("1.0.0") },
       bundles: bundles.map((b) => b.id),
       targets: targets.map(agent),
+      installerSkills: [],
     },
     bundles: bundleMap,
   };
