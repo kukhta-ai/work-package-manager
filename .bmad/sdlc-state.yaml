@@ -7,8 +7,13 @@ phase: 5
 phase_name: "Autonomous build (BAUT) — per-story loop over the foundational backlog"
 branch: feature/foundation
 epic: foundation
-active_story: null   # task-27 DONE (commander composition root + DI + error handler + reserved-verb; the exemplar for tasks 34-84). Next ready (Sequence 1): task-30 (minimal project template), then 31 (bundle template), 32 (agent skill); Sequence 2: 28 (--help), 29 (completion), 33 (walking skeleton).
+active_story: null   # task-30 DONE (minimal project template, APPROVE). Next ready (Sequence 1): task-31 (default bundle template -- omit files/bundle.yml per the forward note), then 32 (agent skill); Sequence 2: 28 (--help), 29 (completion), 33 (walking skeleton).
 review_cycle: 0
+# OPERATIONAL NOTE (2026-06-01): the worker subagent (a67b0906...) hit a continuation glitch on task-30 -- its big
+# authoring run worked (449s/27 tools, all 3 skills) but two short follow-up turns returned 0 tool_uses (emitted
+# malformed/unexecuted tool calls). The orchestrator finished task-30's trivial gate cleanup (biome --write + 1 unused
+# import) and the drift-guard test directly. WATCH the worker's next dispatch; if it returns 0-tools again, spawn a
+# FRESH worker subagent (re-brief from the docs + this state) rather than re-poking the stuck session.
 # task-25 closed at cycle-2 PASS: keystone six-beat mutation lifecycle harness (src/core/operations/). Review caught + fixed
 # (A) biome noConfusingVoidType (void->undefined) and (B) a test+fake fidelity defect (MemoryFileSystem.exists masked broken-symlink
 # semantics; now faithfully follows aliases, broken->false =existsSync; fixtures create installer-skills/ modeling init). NOT a prod
@@ -20,11 +25,16 @@ review_cycle: 0
 # writes bundle.yml CANONICALLY (it is the structural source of truth for id/version/requires/confirmation, doc 10
 # step 4); a templated bundle.yml is render-then-clobbered (comments stripped). The template ships the rest of the
 # bundle shell (installer-skills/, install-backlog/config.yml with task_prefix, payload/) but leaves bundle.yml to the operation.
+# FORWARD NOTE (task-30 -> task-33 init): the front-door AGENTS.md + the orchestrator SKILL.md are the TWO derived
+# artefacts and currently live in BOTH templates/project/minimal/files/ (init copies) AND snippets/ (the task-19/26
+# deriver re-renders every mutation), byte-identical. To kill the drift hazard, make them snippets-ONLY and have init
+# render them via the task-19 deriver (the same path every mutation uses) -- single source. A drift-guard test in
+# minimal-project.test.ts pins the two pairs byte-identical until then. (Same class as the task-26 bundle.yml double-write.)
 # Phases A+B COMPLETE (1-15: toolchain + model + the 4 ports). Phase C next (16-22: services tier; first up task-16 render).
 # DECISION (task-12, cross-cutting): the core is SYNCHRONOUS
 # (sync ports/adapters/operations; node:fs sync + execaSync for backlog). Rationale: sequential CLI, no concurrency
 # benefit, avoids async coloring across operations/lifecycle/tests; thin-builder does no network/long I/O (doc 13 §0).
-completed_stories: [task-1, task-2, task-3, task-4, task-5, task-6, task-7, task-8, task-9, task-10, task-11, task-12, task-13, task-14, task-15, task-16, task-17, task-18, task-19, task-20, task-21, task-22, task-23, task-24, task-25, task-26, task-27]   # merged --no-ff into feature/foundation -- Phases A,B,C,D done; E started (27)
+completed_stories: [task-1, task-2, task-3, task-4, task-5, task-6, task-7, task-8, task-9, task-10, task-11, task-12, task-13, task-14, task-15, task-16, task-17, task-18, task-19, task-20, task-21, task-22, task-23, task-24, task-25, task-26, task-27, task-30]   # merged --no-ff into feature/foundation -- A,B,C,D done; E:27; F:30
 
 # PROCESS CORRECTION (2026-06-01, user-directed; AGENTS.md "Rule 3" committed 869c5b6):
 # Tasks 1-13 ran the SDLC at the ORCHESTRATION level only — the worker/reviewer/personas followed
@@ -64,8 +74,8 @@ specialists:
   architect:    {spawned: true,  id: "af0958eff0e1846e5", role: "architecture conformance vs docs/12-13", status: "P3 done — architecture/epics/readiness=PASS; RESUME if a task reveals a design gap"}
   tea:          {spawned: true,  id: "aa6e3730c6822131e", role: "test design/framework/ci/trace/nfr/gate", status: "P3 done — test-design/framework=vitest/ci=matrix; RESUME in P6 (trace/nfr/final gate)"}
   sm:           {spawned: true,  id: "a58a6182b0009cbb7", role: "sprint setup + create-story per task",  status: "P4 done — sprint-status.yaml; worker owns create-story in the P5 loop"}
-  worker:       {spawned: true,  id: "a67b0906de8ff721d", role: "dev-story implementation (BMAD Amelia)", last_skill: "create-story + dev-story + qa-generate-e2e-tests @ task-27 (+ dev-story re-run for guard-ordering polish)", status: "implemented tasks 1-27 (skill-driven from task-14); task-27 = the commander composition root"}
-  reviewer:     {spawned: true,  id: "a7f5a303c38f8ec6d", role: "separate-lane review",                  last_skill: "bmad-story-automator-review @ task-27 (APPROVE; report-only)", status: "reviewed through task-27; live commander-15 exit-code-table probe + DI/pattern/boundary checks"}
+  worker:       {spawned: true,  id: "a67b0906de8ff721d", role: "dev-story implementation (BMAD Amelia)", last_skill: "create-story + dev-story + qa-generate-e2e-tests @ task-30 (authoring run OK; cut off at gate cleanup -- see OPERATIONAL NOTE)", status: "implemented tasks 1-27,30; task-30 = minimal project template; FLAKY on continuations -- watch next dispatch"}
+  reviewer:     {spawned: true,  id: "a7f5a303c38f8ec6d", role: "separate-lane review",                  last_skill: "bmad-story-automator-review @ task-30 (APPROVE; report-only)", status: "reviewed through task-30; substantive doc-07 front-door conformance + duplication disposition (SHOULD, forward to task-33)"}
   investigator: {spawned: false,                          role: "systematic debugging at the epic gate", status: "spawn in P6 on cold-E2E failure"}
   retro:        {spawned: false,                          role: "epic retrospective",                    status: "spawn after task-33 (end of P5)"}
 
