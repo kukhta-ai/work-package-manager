@@ -5,10 +5,11 @@ import { fileURLToPath } from "node:url";
 import { Argument, Command, Option } from "commander";
 import { BacklogCli } from "./adapters/backlog-cli.js";
 import { NodeFileSystem } from "./adapters/node-fs.js";
+import { type BuildFormat, createArchive, pushArchive } from "./adapters/packager.js";
 import { ProcessEnvironment } from "./adapters/process-env.js";
 import { SystemClock } from "./adapters/system-clock.js";
 import { type CompletionSpecs, completeArgv } from "./completion/complete.js";
-import { BUMP_LEVELS, CONFIRMATION_LEVELS } from "./completion/enums.js";
+import { BUILD_FORMATS, BUMP_LEVELS, CONFIRMATION_LEVELS } from "./completion/enums.js";
 import { defaultRegistry } from "./completion/registry.js";
 import { NotFoundError, UsageError, ValidationError } from "./core/errors.js";
 import {
@@ -25,6 +26,7 @@ import {
 } from "./core/model/index.js";
 import { advisorSkillDir, advisorSkillPath } from "./core/operations/advisor.js";
 import { advisorAddSpec, advisorRemoveSpec } from "./core/operations/advisor-commands.js";
+import { type BuildPlan, computeBuildPlan } from "./core/operations/build.js";
 import { disableBundleSpec, enableBundleSpec } from "./core/operations/bundle-lifecycle.js";
 import {
   type BundleListRow,
@@ -60,7 +62,12 @@ import {
   removeProjectInstallerSkillSpec,
   scaffoldProjectInstallerSkillSpec,
 } from "./core/operations/installer-skills-project.js";
-import { type LifecycleDeps, runMutation, runRead } from "./core/operations/lifecycle.js";
+import {
+  type LifecycleDeps,
+  loadProject,
+  runMutation,
+  runRead,
+} from "./core/operations/lifecycle.js";
 import {
   addPayloadRefSpec,
   FILES_DESCRIPTOR,
@@ -2779,6 +2786,221 @@ function bundleDirectoryNames(fs: FileSystem, root: string): string[] {
 }
 
 /**
+ * Compute the {@link BuildPlan} for the project rooted at `root` (the shell glue every `build` leaf shares). Loads
+ * the project through the canonical {@link loadProject} (so build's view is byte-identical to every command's),
+ * reads the `bundles/` directory names for the validate gate, and threads both — plus the FileSystem port — into
+ * the pure {@link computeBuildPlan}. The pure plan does all the work (validate + frozen-lockfile + shippable
+ * enumeration); this only assembles its inputs. No effect.
+ *
+ * @param ctx - The command context (ports).
+ * @param root - The resolved project root.
+ * @returns The build plan.
+ */
+function loadBuildPlan(ctx: CommandContext, root: string): BuildPlan {
+  const project = loadProject(ctx.deps.fs, root);
+  return computeBuildPlan(ctx.deps.fs, root, {
+    project,
+    enabledBundleIds: project.manifest.bundles,
+    bundleDirectoryNames: bundleDirectoryNames(ctx.deps.fs, root),
+  });
+}
+
+/**
+ * Format a {@link BuildPlan} as the human-readable `build` output (output is not a port — doc 13 §3). On success
+ * it prints the would-ship file tree (one root-relative path per line) and, for each vendored artifact, its name +
+ * locked version + source (doc 08's plan-preview; AC82#3). On failure it prints the validation findings and/or the
+ * frozen-lockfile drift so the author sees exactly what to fix. The COMMAND decides the exit code from `plan.ok`;
+ * this only renders.
+ *
+ * @param plan - The computed build plan.
+ * @returns The formatted report, newline-terminated.
+ */
+function formatBuildPlan(plan: BuildPlan): string {
+  const lines: string[] = [];
+
+  // Validation findings (AC82#1) — each problem on its own line, matching `project validate`'s shape.
+  if (!plan.validation.ok) {
+    lines.push("validation failed:");
+    for (const problem of plan.validation.problems) {
+      const where = problem.field !== undefined ? ` [${problem.field}]` : "";
+      lines.push(`  - ${problem.message}${where}`);
+    }
+  }
+
+  // Frozen-lockfile drift (AC82#2) — name the drifted / missing / extra vendored artifacts.
+  if (!plan.lock.ok) {
+    lines.push("wpm.lock check failed (frozen-lockfile):");
+    for (const name of plan.lock.drifted) {
+      lines.push(`  - drifted: ${name} (vendored content no longer matches its locked hash)`);
+    }
+    for (const name of plan.lock.missing) {
+      lines.push(`  - missing: ${name} (pinned in wpm.lock but absent under installer-skills/)`);
+    }
+    for (const name of plan.lock.extra) {
+      lines.push(`  - extra: ${name} (present but not pinned in wpm.lock)`);
+    }
+  }
+
+  if (!plan.ok) {
+    return `${lines.join("\n")}\n`;
+  }
+
+  // Success: the would-ship tree (AC82#3) + the vendored summary.
+  lines.push(`would ship ${plan.shippable.length} file(s):`);
+  for (const path of plan.shippable) {
+    lines.push(`  ${path}`);
+  }
+  if (plan.vendored.length > 0) {
+    lines.push("vendored artifacts (frozen-lockfile, OK):");
+    for (const artifact of plan.vendored) {
+      lines.push(`  ${artifact.name}  ${artifact.version}  (${artifact.source})`);
+    }
+  }
+  return `${lines.join("\n")}\n`;
+}
+
+/**
+ * The `build` group module (doc 10 §`build`) — `build dry-run` / `build package` / `build publish` (tasks 82/83/
+ * 84). All three are project-BOUND (each resolves the project via {@link requireProject} — the canonical
+ * no-project error — before computing the plan) and share {@link loadBuildPlan} (the pure plan) + the
+ * {@link formatBuildPlan} renderer. `dry-run` performs NO effect (plan only); `package`/`publish` (later tasks)
+ * call the packager adapter for the archiving/pushing effect. The architecture's pure/infra split lives here: the
+ * plan is computed in `src/core/operations/build.ts` (pure over the ports), the effect in `src/adapters/
+ * packager.ts` (infra) — never in the core.
+ */
+const buildModule: CommandModule = {
+  register(parent, ctx) {
+    const group = parent
+      .command("build")
+      .description("package the project for distribution (doc 10)");
+
+    // ── build dry-run ─────────────────────────────────────────────────────────────────────────────────────────
+    // Validate + preview what would ship, producing NO artefact (doc 10 row 181). Runs the pure plan: validate
+    // (fail-fast — AC82#1), verify wpm.lock against the vendored content (fail on drift; a fresh project with no
+    // wpm.lock passes trivially — AC82#2), then print the would-ship tree + each vendored artifact's locked
+    // version + source (AC82#3). Exit 0 iff the plan is ok, else exit 1 (AC82#4) — the findings are printed, then
+    // a ValidationError (category → exit 1, no stack) carries the summary so the shared handler sets the code.
+    const dryRun = group
+      .command("dry-run")
+      .description(
+        "validate the project and preview the file tree that would ship, producing no artefact (doc 10)",
+      )
+      .action(() => {
+        const root = requireProject(ctx, parent); // AC82#5 (canonical no-project NotFound, exit 1)
+        const plan = loadBuildPlan(ctx, root);
+        ctx.io.out.write(formatBuildPlan(plan));
+        if (!plan.ok) {
+          // The findings ARE the output (above); throw so the handler maps this to exit 1 (AC82#4) without a stack.
+          const reason = !plan.validation.ok
+            ? `${plan.validation.problems.length} validation finding(s)`
+            : "wpm.lock drift";
+          throw new ValidationError(`build dry-run failed: ${reason}`);
+        }
+      });
+    withExamples(dryRun, [
+      {
+        command: "wpm build dry-run",
+        note: "validate + preview the shippable file tree without producing an artefact",
+      },
+    ]);
+
+    // ── build package [--format zip|tarball|git] ──────────────────────────────────────────────────────────────
+    // Produce a distributable archive of the shippable set (doc 10 row 182). Runs the SAME pure plan as dry-run —
+    // validate + verify wpm.lock — and FAILS before producing anything if the plan is not ok (AC83#1). On success
+    // the packager adapter (infra) archives EXACTLY the plan's shippable files in `--format` (default zip), and the
+    // command prints the output path (AC83#2). `.choices([...BUILD_FORMATS])` makes an unsupported `--format` VALUE
+    // a commander usage error → exit 2 (AC83#3); a missing archiving TOOL for a VALID format is an environment
+    // failure the adapter raises as a ValidationError → exit 1 (distinct from the bad-value exit 2). The archive is
+    // written to the cwd (never the project root, so a re-run cannot pollute the ship set).
+    const pkg = group
+      .command("package")
+      .description("produce a distributable archive of the shippable file set (doc 10)")
+      .addOption(
+        new Option("--format <format>", "the archive format")
+          .choices([...BUILD_FORMATS])
+          .default("zip"),
+      )
+      .action((opts: { format: BuildFormat }) => {
+        const root = requireProject(ctx, parent); // AC83#4 (canonical no-project NotFound, exit 1)
+        const plan = loadBuildPlan(ctx, root);
+        if (!plan.ok) {
+          // AC83#1: validate + lock must pass BEFORE producing anything. Print the findings, then exit 1.
+          ctx.io.out.write(formatBuildPlan(plan));
+          const reason = !plan.validation.ok
+            ? `${plan.validation.problems.length} validation finding(s)`
+            : "wpm.lock drift";
+          throw new ValidationError(`build package failed: ${reason}`);
+        }
+        const out = createArchive({
+          root,
+          outDir: ctx.deps.env.cwd(),
+          baseName: `${plan.name}-${plan.version}`,
+          format: opts.format,
+          files: plan.shippable,
+        });
+        ctx.io.out.write(`packaged ${plan.name} ${plan.version} → ${out}\n`); // AC83#2
+      });
+    withExamples(pkg, [
+      {
+        command: "wpm build package --format tarball",
+        note: "produce a .tgz of the shippable set (formats: zip [default], tarball, git)",
+      },
+    ]);
+
+    // ── build publish <destination> ───────────────────────────────────────────────────────────────────────────
+    // Build the package, THEN push it to <destination> (doc 10 row 183). ORDER is the contract: the package is
+    // built FIRST (validate + verify wpm.lock + produce the archive), and ONLY on success is it pushed — a failure
+    // in the build step (validation, lock drift, or the archive itself) throws BEFORE the push, so nothing is
+    // published (AC84#1/#2). The destination is resolved by the packager: an existing local directory receives a
+    // copy of the archive; anything else is treated as a git remote (`git push <dest> HEAD`). A real
+    // registry/npm publish is the same shell-out and is deferred to v2 (doc 12). `--format` mirrors `build
+    // package` (default zip) so a publish can choose a format whose tool is present.
+    const publish = group
+      .command("publish")
+      .description("build the package and push it to a destination (doc 10)")
+      .argument(
+        "<destination>",
+        "where to push the built package: an existing local directory, or a git remote (URL or remote name)",
+      )
+      .addOption(
+        new Option("--format <format>", "the archive format to build before pushing")
+          .choices([...BUILD_FORMATS])
+          .default("zip"),
+      )
+      .action((destination: string, opts: { format: BuildFormat }) => {
+        const root = requireProject(ctx, parent); // AC84#3 (canonical no-project NotFound, exit 1)
+
+        // AC84#1/#2: BUILD FIRST. A non-ok plan (validate/lock) prints its findings and throws BEFORE any push.
+        const plan = loadBuildPlan(ctx, root);
+        if (!plan.ok) {
+          ctx.io.out.write(formatBuildPlan(plan));
+          const reason = !plan.validation.ok
+            ? `${plan.validation.problems.length} validation finding(s)`
+            : "wpm.lock drift";
+          throw new ValidationError(`build publish failed (build step): ${reason}`);
+        }
+        const archive = createArchive({
+          root,
+          outDir: ctx.deps.env.cwd(),
+          baseName: `${plan.name}-${plan.version}`,
+          format: opts.format,
+          files: plan.shippable,
+        });
+
+        // Only now — with a successfully built archive — push it (AC84#1).
+        const { where } = pushArchive({ fs: ctx.deps.fs }, { root, archive, destination });
+        ctx.io.out.write(`published ${archive} → ${where}\n`);
+      });
+    withExamples(publish, [
+      {
+        command: "wpm build publish ./dist-out",
+        note: "build the package and place it in the ./dist-out directory (or a git remote)",
+      },
+    ]);
+  },
+};
+
+/**
  * The per-command completion declarations (task-29 AC#2/AC#3): which named source completes each option's value
  * or positional. The dispatch ({@link completeArgv}) reads this side-table by command path. A later leaf
  * (tasks 34–84) adds a completion by adding an entry here referencing a source NAME — no change to the
@@ -2838,6 +3060,11 @@ export const COMPLETION_SPECS: CompletionSpecs = {
   "bundle template set": {
     // <name> — bundle-scope templates (built-in + project-local), the SAME source `bundle new --template` uses.
     args: ["bundle-template-names"],
+  },
+  "build package": {
+    // `--format` completes from the fixed zip|tarball|git enum (the `build-formats` source, the same set the
+    // `.choices` enforces — one model source, `BUILD_FORMATS`).
+    options: { "--format": "build-formats" },
   },
   bundle: {
     // The dynamic `bundle <id>` position: complete the id from the enabled bundles, UNIONED with the fixed
@@ -3035,22 +3262,13 @@ function detectShell(shellEnv: string | undefined): string | undefined {
   return undefined;
 }
 
-/** Build a group module that only declares a group + description (its leaves are later tasks). */
-function groupOnly(name: string, description: string): CommandModule {
-  return {
-    register(parent) {
-      parent.command(name).description(description);
-    },
-  };
-}
-
 /** The doc-10 top-level groups, registered through the one pattern (AC#1). */
 const TOP_LEVEL_MODULES: readonly CommandModule[] = [
   initModule,
   templateModule,
   projectModule,
   bundleModule,
-  groupOnly("build", "package the project for distribution (doc 10)"),
+  buildModule,
   completionModule,
 ];
 

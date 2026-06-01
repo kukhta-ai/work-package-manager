@@ -57,7 +57,16 @@ export function runSync(
     });
     const stdout = typeof result.stdout === "string" ? result.stdout : "";
     const stderr = typeof result.stderr === "string" ? result.stderr : "";
-    const exitCode = result.exitCode ?? 0;
+    // Under `reject: false`, a SPAWN failure (e.g. the executable is not found) is reported as
+    // `failed: true` with NO `exitCode` — execa never ran a process. Coercing that to `0` would silently
+    // report a missing tool as success, so surface it as the spawn-failure error (the `catch` re-wraps it
+    // into the "Command could not be run" message a caller can detect).
+    if (result.exitCode === undefined) {
+      const command = `${file} ${args.join(" ")}`.trim();
+      const detail = result.failed && stderr ? `\n${stderr.trim()}` : "";
+      throw new Error(`__SPAWN_FAILURE__: ${command}${detail}`);
+    }
+    const exitCode = result.exitCode;
     if (exitCode !== 0) {
       const command = `${file} ${args.join(" ")}`.trim();
       throw new Error(
@@ -69,9 +78,17 @@ export function runSync(
     if (err instanceof Error && err.message.startsWith("Command failed (exit")) {
       throw err;
     }
-    // Spawn failure (e.g. executable not found) — surface the command and the underlying message.
+    // Spawn failure (e.g. executable not found). Two paths arrive here: the `__SPAWN_FAILURE__` sentinel from
+    // the `reject: false` no-exitCode case above, and a genuinely-thrown execa spawn error. Both become the
+    // single "Command could not be run" message callers can detect (so a missing tool is never a false success).
     const command = `${file} ${args.join(" ")}`.trim();
-    const reason = err instanceof Error ? err.message : String(err);
-    throw new Error(`Command could not be run: ${command}\n${reason}`);
+    const sentinel = "__SPAWN_FAILURE__: ";
+    const reason =
+      err instanceof Error && err.message.startsWith(sentinel)
+        ? err.message.slice(sentinel.length + command.length).trim()
+        : err instanceof Error
+          ? err.message
+          : String(err);
+    throw new Error(`Command could not be run: ${command}${reason ? `\n${reason}` : ""}`);
   }
 }

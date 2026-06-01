@@ -136,6 +136,10 @@ export interface ReadOutcome<T> {
 /**
  * ① LOAD — read the project at `root` into a fresh {@link Project} projection (no cache; loaded per call).
  *
+ * Exported because the `build` operation (task-82) needs the same loaded projection outside the six-beat harness
+ * (it computes a read-only plan, not a mutation) — reusing this keeps build's load byte-identical to every
+ * command's, rather than re-deriving it.
+ *
  * Reads `manifest.yml` and every enabled bundle's `bundle.yml` through the FileSystem port, parsing each via
  * the task-13 yaml leaf + the task-11 schema parsers. A malformed manifest surfaces as the parser's thrown
  * error (a template-authoring bug). A *missing* project is not handled here — task-24's `resolveContext`
@@ -146,7 +150,7 @@ export interface ReadOutcome<T> {
  * @param root - The absolute project root.
  * @returns The loaded project projection.
  */
-function loadProject(fs: FileSystem, root: string): Project {
+export function loadProject(fs: FileSystem, root: string): Project {
   const manifestResult = parseManifest(parseYaml(fs.read(join(root, MANIFEST_FILE))));
   if (!manifestResult.ok) {
     throw new Error(`invalid ${MANIFEST_FILE}: ${manifestResult.problem.message}`);
