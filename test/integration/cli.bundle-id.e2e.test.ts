@@ -712,3 +712,297 @@ describeIfBuilt(
     });
   },
 );
+
+/** Place a real file at bundles/<bundle>/payload/templates/<rel> under <proj> (creating parent dirs). */
+function placePayloadTemplate(proj: string, bundle: string, rel: string, content: string): string {
+  const abs = join(proj, "bundles", bundle, "payload", "templates", rel);
+  mkdirSync(dirname(abs), { recursive: true });
+  writeFileSync(abs, content, "utf8");
+  return abs;
+}
+
+describeIfBuilt(
+  "bundle <id> templates add / list / remove E2E via dist/cli.js (tasks 68/69/70)",
+  () => {
+    it("68#1 — `templates add` registers a placed template in bundle.yml payload; content unchanged (structure-not-content)", () => {
+      withTempDir((dir) => {
+        const proj = projectWithWeb(dir);
+        const filePath = placePayloadTemplate(proj, "web", "agents.md.tmpl", "# {{x}}");
+
+        const add = wpm(proj, ["bundle", "web", "templates", "add", "agents.md.tmpl"]);
+        expect(add.status).toBe(0);
+
+        const ymlText = readFileSync(join(proj, "bundles", "web", "bundle.yml"), "utf8");
+        // the real eemeli/yaml round-trip lists `agents.md.tmpl` under the `payload:` registry (tolerant of layout):
+        expect(ymlText).toContain("payload:");
+        expect(ymlText).toMatch(/payload:[\s\S]*templates:[\s\S]*agents\.md\.tmpl/);
+        // structure-not-content: the placed file's bytes are unchanged.
+        expect(readFileSync(filePath, "utf8")).toBe("# {{x}}");
+      });
+    });
+
+    it("68#2 — `templates add` for a path NOT on disk exits 1; bundle.yml unchanged", () => {
+      withTempDir((dir) => {
+        const proj = projectWithWeb(dir);
+        const path = join(proj, "bundles", "web", "bundle.yml");
+        const before = readFileSync(path, "utf8");
+        expect(wpm(proj, ["bundle", "web", "templates", "add", "ghost.tmpl"]).status).toBe(1);
+        expect(readFileSync(path, "utf8")).toBe(before); // nothing registered
+      });
+    });
+
+    it("69#1 — `templates list` shows the registered template; a fresh bundle prints (no templates)", () => {
+      withTempDir((dir) => {
+        const proj = projectWithWeb(dir);
+        // fresh bundle (createBundle inits payload.templates: []): list prints the empty marker.
+        expect(wpm(proj, ["bundle", "web", "templates", "list"]).stdout.trim()).toBe(
+          "(no templates)",
+        );
+
+        placePayloadTemplate(proj, "web", "agents.md.tmpl", "# t");
+        expect(wpm(proj, ["bundle", "web", "templates", "add", "agents.md.tmpl"]).status).toBe(0);
+        const list = wpm(proj, ["bundle", "web", "templates", "list"]);
+        expect(list.status).toBe(0);
+        expect(list.stdout).toContain("agents.md.tmpl");
+      });
+    });
+
+    it("70#1/70#2 — `templates remove` deregisters AND leaves the file on disk (deregister, not delete)", () => {
+      withTempDir((dir) => {
+        const proj = projectWithWeb(dir);
+        const filePath = placePayloadTemplate(proj, "web", "agents.md.tmpl", "# t");
+        expect(wpm(proj, ["bundle", "web", "templates", "add", "agents.md.tmpl"]).status).toBe(0);
+
+        const remove = wpm(proj, ["bundle", "web", "templates", "remove", "agents.md.tmpl"]);
+        expect(remove.status).toBe(0);
+        expect(remove.stdout).toContain("left at payload/templates/agents.md.tmpl"); // doc-10:168→167 message
+
+        // the entry is gone from bundle.yml:
+        const ymlText = readFileSync(join(proj, "bundles", "web", "bundle.yml"), "utf8");
+        expect(ymlText).not.toMatch(/^\s*-\s*agents\.md\.tmpl/m);
+        // BUT the file is left on disk with its content intact:
+        expect(existsSync(filePath)).toBe(true);
+        expect(readFileSync(filePath, "utf8")).toBe("# t");
+      });
+    });
+
+    it("70#3 — `templates remove` for a path NOT registered exits 1; bundle.yml unchanged", () => {
+      withTempDir((dir) => {
+        const proj = projectWithWeb(dir);
+        const path = join(proj, "bundles", "web", "bundle.yml");
+        const before = readFileSync(path, "utf8");
+        expect(wpm(proj, ["bundle", "web", "templates", "remove", "nope.tmpl"]).status).toBe(1);
+        expect(readFileSync(path, "utf8")).toBe(before);
+      });
+    });
+
+    it("completion: `templates add` lists placed templates; `templates remove` lists registered templates", () => {
+      withTempDir((dir) => {
+        const proj = projectWithWeb(dir);
+        placePayloadTemplate(proj, "web", "agents.md.tmpl", "# t");
+
+        // add → templates present on disk under payload/templates (resolved from cwd):
+        const addPos = cli(["__complete", "bundle", "web", "templates", "add", ""], { cwd: proj })
+          .stdout.split("\n")
+          .filter(Boolean);
+        expect(addPos).toContain("agents.md.tmpl");
+
+        // register it, then remove → completes from the REGISTERED refs:
+        expect(wpm(proj, ["bundle", "web", "templates", "add", "agents.md.tmpl"]).status).toBe(0);
+        const removePos = cli(["__complete", "bundle", "web", "templates", "remove", ""], {
+          cwd: proj,
+        })
+          .stdout.split("\n")
+          .filter(Boolean);
+        expect(removePos).toContain("agents.md.tmpl");
+      });
+    });
+
+    it("help: `bundle <id> templates add --help` reaches the leaf and documents the path positional + an example", () => {
+      withTempDir((dir) => {
+        const proj = projectWithWeb(dir);
+        const help = wpm(proj, ["bundle", "web", "templates", "add", "--help"]);
+        expect(help.status).toBe(0);
+        expect(help.stdout).toContain("bundle web templates add"); // the LEAF usage
+        expect(help.stdout).toContain("<path>");
+        expect(help.stdout).toMatch(/Example/i);
+      });
+    });
+
+    it("OLD bundle.yml WITHOUT a payload key still drives list (no templates) AND add (adds the field) — absent ⇒ empty", () => {
+      withTempDir((dir) => {
+        const proj = projectWithWeb(dir);
+        // OVERWRITE web's bundle.yml with a pre-L shape (NO `payload:` key), as an older project would have on disk.
+        const ymlPath = join(proj, "bundles", "web", "bundle.yml");
+        writeFileSync(
+          ymlPath,
+          "id: web\nversion: 0.1.0\nsummary: web bundle\nconfirmation: safe\nrequires: {}\n",
+          "utf8",
+        );
+
+        // list parses the old doc (absent payload ⇒ empty) and prints the empty marker:
+        const list = wpm(proj, ["bundle", "web", "templates", "list"]);
+        expect(list.status).toBe(0);
+        expect(list.stdout.trim()).toBe("(no templates)");
+
+        // add a placed template → exit 0 and the payload field is introduced:
+        placePayloadTemplate(proj, "web", "x.tmpl", "x");
+        expect(wpm(proj, ["bundle", "web", "templates", "add", "x.tmpl"]).status).toBe(0);
+        const after = readFileSync(ymlPath, "utf8");
+        expect(after).toContain("payload:");
+        expect(after).toMatch(/payload:[\s\S]*templates:[\s\S]*x\.tmpl/);
+      });
+    });
+  },
+);
+
+/**
+ * Place a real file at bundles/<bundle>/installer-scripts/<rel> under <proj> (creating parent dirs). NOTE:
+ * `installer-scripts/` is a SIBLING of `payload/` (doc 06:96), NOT under it.
+ */
+function placeInstallerScript(proj: string, bundle: string, rel: string, content: string): string {
+  const abs = join(proj, "bundles", bundle, "installer-scripts", rel);
+  mkdirSync(dirname(abs), { recursive: true });
+  writeFileSync(abs, content, "utf8");
+  return abs;
+}
+
+describeIfBuilt(
+  "bundle <id> scripts add / list / remove E2E via dist/cli.js (tasks 71/72/73)",
+  () => {
+    it("71#1 — `scripts add` registers a placed installer-script in bundle.yml payload; content unchanged (structure-not-content)", () => {
+      withTempDir((dir) => {
+        const proj = projectWithWeb(dir);
+        const filePath = placeInstallerScript(proj, "web", "probe.sh", "#!/bin/sh\necho hi\n");
+        // the script lives under installer-scripts/, a SIBLING of payload/ (NOT under payload/):
+        expect(existsSync(join(proj, "bundles", "web", "installer-scripts", "probe.sh"))).toBe(
+          true,
+        );
+        expect(existsSync(join(proj, "bundles", "web", "payload", "installer-scripts"))).toBe(
+          false,
+        );
+
+        const add = wpm(proj, ["bundle", "web", "scripts", "add", "probe.sh"]);
+        expect(add.status).toBe(0);
+
+        const ymlText = readFileSync(join(proj, "bundles", "web", "bundle.yml"), "utf8");
+        // the real eemeli/yaml round-trip lists `probe.sh` under the `payload:` registry (tolerant of layout):
+        expect(ymlText).toContain("payload:");
+        expect(ymlText).toMatch(/payload:[\s\S]*scripts:[\s\S]*probe\.sh/);
+        // structure-not-content: the placed file's bytes are unchanged.
+        expect(readFileSync(filePath, "utf8")).toBe("#!/bin/sh\necho hi\n");
+      });
+    });
+
+    it("71#2 — `scripts add` for a path NOT on disk exits 1; bundle.yml unchanged", () => {
+      withTempDir((dir) => {
+        const proj = projectWithWeb(dir);
+        const path = join(proj, "bundles", "web", "bundle.yml");
+        const before = readFileSync(path, "utf8");
+        expect(wpm(proj, ["bundle", "web", "scripts", "add", "ghost.sh"]).status).toBe(1);
+        expect(readFileSync(path, "utf8")).toBe(before); // nothing registered
+      });
+    });
+
+    it("72#1 — `scripts list` shows the registered installer-script; a fresh bundle prints (no scripts)", () => {
+      withTempDir((dir) => {
+        const proj = projectWithWeb(dir);
+        // fresh bundle (createBundle inits payload.scripts: []): list prints the empty marker.
+        expect(wpm(proj, ["bundle", "web", "scripts", "list"]).stdout.trim()).toBe("(no scripts)");
+
+        placeInstallerScript(proj, "web", "probe.sh", "#!/bin/sh\n");
+        expect(wpm(proj, ["bundle", "web", "scripts", "add", "probe.sh"]).status).toBe(0);
+        const list = wpm(proj, ["bundle", "web", "scripts", "list"]);
+        expect(list.status).toBe(0);
+        expect(list.stdout).toContain("probe.sh");
+      });
+    });
+
+    it("73#1/73#2 — `scripts remove` deregisters AND leaves the file on disk (deregister, not delete)", () => {
+      withTempDir((dir) => {
+        const proj = projectWithWeb(dir);
+        const filePath = placeInstallerScript(proj, "web", "probe.sh", "#!/bin/sh\n");
+        expect(wpm(proj, ["bundle", "web", "scripts", "add", "probe.sh"]).status).toBe(0);
+
+        const remove = wpm(proj, ["bundle", "web", "scripts", "remove", "probe.sh"]);
+        expect(remove.status).toBe(0);
+        expect(remove.stdout).toContain("left at installer-scripts/probe.sh"); // doc-10:169→167 message
+
+        // the entry is gone from bundle.yml:
+        const ymlText = readFileSync(join(proj, "bundles", "web", "bundle.yml"), "utf8");
+        expect(ymlText).not.toMatch(/^\s*-\s*probe\.sh/m);
+        // BUT the file is left on disk with its content intact:
+        expect(existsSync(filePath)).toBe(true);
+        expect(readFileSync(filePath, "utf8")).toBe("#!/bin/sh\n");
+      });
+    });
+
+    it("73#3 — `scripts remove` for a path NOT registered exits 1; bundle.yml unchanged", () => {
+      withTempDir((dir) => {
+        const proj = projectWithWeb(dir);
+        const path = join(proj, "bundles", "web", "bundle.yml");
+        const before = readFileSync(path, "utf8");
+        expect(wpm(proj, ["bundle", "web", "scripts", "remove", "nope.sh"]).status).toBe(1);
+        expect(readFileSync(path, "utf8")).toBe(before);
+      });
+    });
+
+    it("completion: `scripts add` lists placed installer-scripts; `scripts remove` lists registered scripts", () => {
+      withTempDir((dir) => {
+        const proj = projectWithWeb(dir);
+        placeInstallerScript(proj, "web", "probe.sh", "#!/bin/sh\n");
+
+        // add → installer-scripts present on disk (resolved from cwd):
+        const addPos = cli(["__complete", "bundle", "web", "scripts", "add", ""], { cwd: proj })
+          .stdout.split("\n")
+          .filter(Boolean);
+        expect(addPos).toContain("probe.sh");
+
+        // register it, then remove → completes from the REGISTERED refs:
+        expect(wpm(proj, ["bundle", "web", "scripts", "add", "probe.sh"]).status).toBe(0);
+        const removePos = cli(["__complete", "bundle", "web", "scripts", "remove", ""], {
+          cwd: proj,
+        })
+          .stdout.split("\n")
+          .filter(Boolean);
+        expect(removePos).toContain("probe.sh");
+      });
+    });
+
+    it("help: `bundle <id> scripts add --help` reaches the leaf and documents the path positional + an example", () => {
+      withTempDir((dir) => {
+        const proj = projectWithWeb(dir);
+        const help = wpm(proj, ["bundle", "web", "scripts", "add", "--help"]);
+        expect(help.status).toBe(0);
+        expect(help.stdout).toContain("bundle web scripts add"); // the LEAF usage
+        expect(help.stdout).toContain("<path>");
+        expect(help.stdout).toMatch(/Example/i);
+      });
+    });
+
+    it("OLD bundle.yml WITHOUT a payload key still drives list (no scripts) AND add (adds the field) — absent ⇒ empty", () => {
+      withTempDir((dir) => {
+        const proj = projectWithWeb(dir);
+        // OVERWRITE web's bundle.yml with a pre-L shape (NO `payload:` key), as an older project would have on disk.
+        const ymlPath = join(proj, "bundles", "web", "bundle.yml");
+        writeFileSync(
+          ymlPath,
+          "id: web\nversion: 0.1.0\nsummary: web bundle\nconfirmation: safe\nrequires: {}\n",
+          "utf8",
+        );
+
+        // list parses the old doc (absent payload ⇒ empty) and prints the empty marker:
+        const list = wpm(proj, ["bundle", "web", "scripts", "list"]);
+        expect(list.status).toBe(0);
+        expect(list.stdout.trim()).toBe("(no scripts)");
+
+        // add a placed installer-script → exit 0 and the payload field is introduced:
+        placeInstallerScript(proj, "web", "x.sh", "x");
+        expect(wpm(proj, ["bundle", "web", "scripts", "add", "x.sh"]).status).toBe(0);
+        const after = readFileSync(ymlPath, "utf8");
+        expect(after).toContain("payload:");
+        expect(after).toMatch(/payload:[\s\S]*scripts:[\s\S]*x\.sh/);
+      });
+    });
+  },
+);

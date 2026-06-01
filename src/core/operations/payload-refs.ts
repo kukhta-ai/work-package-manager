@@ -46,15 +46,45 @@ export interface PayloadRefDescriptor {
 }
 
 /**
- * The `files` descriptor (Family L) — `payload/files/` ↔ `bundle.yml`'s `payload.files`. The upcoming
- * `templates` (M) and `scripts` (N) families add their own descriptors the same way (each also adds its category
- * to the model's {@link BundlePayload} + the schema round-trip).
+ * The `files` descriptor (Family L) — `payload/files/` ↔ `bundle.yml`'s `payload.files`. The `templates` (M)
+ * and `scripts` (N) families add their own descriptors the same way (each also adds its category to the model's
+ * {@link BundlePayload} + the schema round-trip — the descriptor genericises the OPERATION, not the schema).
  */
 export const FILES_DESCRIPTOR: PayloadRefDescriptor = {
   onDiskDir: "payload/files",
   ymlPath: ["payload", "files"],
   select: (bundle) => bundle.payload.files,
   noun: "file",
+};
+
+/**
+ * The `templates` descriptor (Family M) — `payload/templates/` ↔ `bundle.yml`'s `payload.templates` (doc 10 row
+ * 168, "Same as `files`, against `payload/templates/`"). Parameterised templates ARE delivered to the
+ * environment (doc 06 line 77), a sibling of `payload/files/` under `payload/`. The same generic op as `files`;
+ * only the on-disk dir, the yml key path, the model selector, and the message noun differ.
+ */
+export const TEMPLATES_DESCRIPTOR: PayloadRefDescriptor = {
+  onDiskDir: "payload/templates",
+  ymlPath: ["payload", "templates"],
+  select: (bundle) => bundle.payload.templates,
+  noun: "template",
+};
+
+/**
+ * The `scripts` descriptor (Family N) — `installer-scripts/` ↔ `bundle.yml`'s `payload.scripts` (doc 10 row 169,
+ * "Same as `files`, against `installer-scripts/`"). NOTE the deliberate asymmetry: the ON-DISK directory is
+ * `installer-scripts` — a SIBLING of `payload/`, install-time tooling (probes, smoke tests) NOT delivered to the
+ * user (doc 06 line 77 / doc 07 line 51) — while the REGISTRY key stays under `payload.scripts` for
+ * representational consistency with files/templates (the `payload:` map is the reference registry, not a
+ * delivery claim; delivery is a downstream build concern, tasks 82–84). The descriptor decouples the on-disk dir
+ * from the yml key, so this is a one-field change: `onDiskDir` is `installer-scripts`, NOT
+ * `payload/installer-scripts`.
+ */
+export const SCRIPTS_DESCRIPTOR: PayloadRefDescriptor = {
+  onDiskDir: "installer-scripts",
+  ymlPath: ["payload", "scripts"],
+  select: (bundle) => bundle.payload.scripts,
+  noun: "script",
 };
 
 /** A bundle's manifest filename, under `bundles/<id>/`. */

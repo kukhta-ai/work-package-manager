@@ -45,6 +45,8 @@ import {
   FILES_DESCRIPTOR,
   listPayloadRefsSpec,
   removePayloadRefSpec,
+  SCRIPTS_DESCRIPTOR,
+  TEMPLATES_DESCRIPTOR,
 } from "./core/operations/payload-refs.js";
 import {
   type ProjectOrientation,
@@ -590,9 +592,17 @@ const bundleRequiresModule: PerBundleCommandModule = {
   },
 };
 
-/** Render a registered-payload-reference list as the `bundle <id> files list` block — one path per line. */
-function formatPathList(paths: readonly string[]): string {
-  return paths.length === 0 ? "(no files)\n" : `${paths.join("\n")}\n`;
+/**
+ * Render a registered-payload-reference list as a `bundle <id> <category> list` block — one path per line, or
+ * the `(no <noun>s)` empty marker. Parameterised by the descriptor noun so each per-bundle payload family (files
+ * L, templates M, scripts N) prints its own marker (`(no files)` / `(no templates)` / `(no scripts)`).
+ *
+ * @param paths - The registered reference paths.
+ * @param noun - The category noun (e.g. `file`, `template`).
+ * @returns The formatted list, newline-terminated.
+ */
+function formatPayloadList(paths: readonly string[], noun: string): string {
+  return paths.length === 0 ? `(no ${noun}s)\n` : `${paths.join("\n")}\n`;
 }
 
 /**
@@ -656,7 +666,7 @@ const bundleFilesModule: PerBundleCommandModule = {
         const { value } = runRead(ctx.deps.fs, { root }, listPayloadRefsSpec(FILES_DESCRIPTOR), {
           id,
         });
-        ctx.io.out.write(formatPathList(value));
+        ctx.io.out.write(formatPayloadList(value, FILES_DESCRIPTOR.noun));
       });
     withExamples(listLeaf, [
       { command: `wpm bundle ${id} files list`, note: "list registered payload files" },
@@ -691,10 +701,205 @@ const bundleFilesModule: PerBundleCommandModule = {
 };
 
 /**
+ * `bundle <id> templates` (+ `add` / `list` / `remove`) (doc 10 row 168, "Same as `files`, against
+ * `payload/templates/`"), the per-bundle TEMPLATES family — registers / inspects / deregisters parameterised
+ * template files under `payload/templates/`. A PURE REUSE of Family L: it rides the SAME generic
+ * descriptor-driven payload-reference operation, parameterised by {@link TEMPLATES_DESCRIPTOR} instead of
+ * {@link FILES_DESCRIPTOR}. Behaviour is identical to `files` (structure-not-content; deregister-not-delete; the
+ * on-disk existence check for `add` lives HERE, raising {@link NotFoundError} BEFORE `runMutation` so a
+ * non-existent path registers nothing — 68#2). The host `<id>` is already resolved + enabled-guarded by the
+ * per-bundle routing and threaded in.
+ */
+const bundleTemplatesModule: PerBundleCommandModule = {
+  register(sub, ctx, root, id) {
+    const templates = sub
+      .command("templates")
+      .description("register or inspect this bundle's payload/templates reference files (doc 10)");
+
+    // ── templates add <path> ─────────────────────────────────────────────────────────────────────────────────
+    const addLeaf = templates
+      .command("add")
+      .argument(
+        "<path>",
+        "a path the agent has already placed under payload/templates (relative to payload/templates)",
+      )
+      .description(
+        "register a parameterised template the agent placed under payload/templates (doc 10)",
+      )
+      .action((path: string) => {
+        // 68#2: the file MUST exist on disk under payload/templates/<path>; else a typed NotFound (exit 1) with
+        // nothing registered. The pure operation `check` has no ports, so the existence probe lives here.
+        const onDisk = join(root, "bundles", id, TEMPLATES_DESCRIPTOR.onDiskDir, path);
+        if (!ctx.deps.fs.exists(onDisk)) {
+          throw new NotFoundError(
+            `no file at bundles/${id}/${TEMPLATES_DESCRIPTOR.onDiskDir}/${path} — place the file there first, then register it`,
+          );
+        }
+        const result = runMutation(
+          lifecycleDepsFor(ctx, root),
+          { root },
+          addPayloadRefSpec(TEMPLATES_DESCRIPTOR),
+          { id, path },
+        );
+        ctx.io.out.write(formatResult(result));
+      });
+    withExamples(addLeaf, [
+      {
+        command: "wpm bundle web-handoff templates add agents.md.tmpl",
+        note: "register payload/templates/agents.md.tmpl the agent placed",
+      },
+    ]);
+
+    // ── templates list ───────────────────────────────────────────────────────────────────────────────────────
+    const listLeaf = templates
+      .command("list")
+      .description("list this bundle's registered payload/templates references (doc 10)")
+      .action(() => {
+        const { value } = runRead(
+          ctx.deps.fs,
+          { root },
+          listPayloadRefsSpec(TEMPLATES_DESCRIPTOR),
+          {
+            id,
+          },
+        );
+        ctx.io.out.write(formatPayloadList(value, TEMPLATES_DESCRIPTOR.noun));
+      });
+    withExamples(listLeaf, [
+      { command: `wpm bundle ${id} templates list`, note: "list registered payload templates" },
+    ]);
+
+    // ── templates remove <path> ──────────────────────────────────────────────────────────────────────────────
+    // Deregister-not-delete: the entry leaves bundle.yml but the file stays on disk (doc 10 row 168 → 167). A
+    // path that is not registered ⇒ the operation's NotFound (exit 1, nothing changed).
+    const removeLeaf = templates
+      .command("remove")
+      .argument(
+        "<path>",
+        "the registered payload/templates reference to deregister (the file is left on disk)",
+      )
+      .description("deregister a payload/templates reference, leaving the file on disk (doc 10)")
+      .action((path: string) => {
+        const result = runMutation(
+          lifecycleDepsFor(ctx, root),
+          { root },
+          removePayloadRefSpec(TEMPLATES_DESCRIPTOR),
+          { id, path },
+        );
+        ctx.io.out.write(formatResult(result));
+      });
+    withExamples(removeLeaf, [
+      {
+        command: "wpm bundle web-handoff templates remove agents.md.tmpl",
+        note: "deregister payload/templates/agents.md.tmpl (the file stays on disk)",
+      },
+    ]);
+  },
+};
+
+/**
+ * `bundle <id> scripts` (+ `add` / `list` / `remove`) (doc 10 row 169, "Same as `files`, against
+ * `installer-scripts/` (install-time tooling; NOT delivered to user)"), the per-bundle SCRIPTS family —
+ * registers / inspects / deregisters install-time script references under `installer-scripts/`. A PURE REUSE of
+ * Families L/M: it rides the SAME generic descriptor-driven payload-reference operation, parameterised by
+ * {@link SCRIPTS_DESCRIPTOR}. NOTE the deliberate asymmetry the descriptor encodes: the on-disk directory is
+ * `installer-scripts/` — a SIBLING of `payload/`, NOT delivered to the user (doc 06 line 77 / doc 07 line 51) —
+ * while the registry key stays `payload.scripts` (the `payload:` map is the reference registry, not a delivery
+ * claim). Behaviour is identical to `files`/`templates` (structure-not-content; deregister-not-delete; the
+ * on-disk existence check for `add` lives HERE, raising {@link NotFoundError} BEFORE `runMutation` so a
+ * non-existent path registers nothing — 71#2). The host `<id>` is already resolved + enabled-guarded by the
+ * per-bundle routing and threaded in.
+ */
+const bundleScriptsModule: PerBundleCommandModule = {
+  register(sub, ctx, root, id) {
+    const scripts = sub
+      .command("scripts")
+      .description(
+        "register or inspect this bundle's installer-scripts (install-time tooling; not delivered) (doc 10)",
+      );
+
+    // ── scripts add <path> ───────────────────────────────────────────────────────────────────────────────────
+    const addLeaf = scripts
+      .command("add")
+      .argument(
+        "<path>",
+        "a path the agent has already placed under installer-scripts (relative to installer-scripts)",
+      )
+      .description(
+        "register an install-time script the agent placed under installer-scripts (doc 10)",
+      )
+      .action((path: string) => {
+        // 71#2: the file MUST exist on disk under installer-scripts/<path>; else a typed NotFound (exit 1) with
+        // nothing registered. The pure operation `check` has no ports, so the existence probe lives here. NOTE:
+        // installer-scripts is a SIBLING of payload/ (doc 06/07), so the dir is `installer-scripts`, NOT
+        // `payload/installer-scripts` — supplied by SCRIPTS_DESCRIPTOR.onDiskDir.
+        const onDisk = join(root, "bundles", id, SCRIPTS_DESCRIPTOR.onDiskDir, path);
+        if (!ctx.deps.fs.exists(onDisk)) {
+          throw new NotFoundError(
+            `no file at bundles/${id}/${SCRIPTS_DESCRIPTOR.onDiskDir}/${path} — place the file there first, then register it`,
+          );
+        }
+        const result = runMutation(
+          lifecycleDepsFor(ctx, root),
+          { root },
+          addPayloadRefSpec(SCRIPTS_DESCRIPTOR),
+          { id, path },
+        );
+        ctx.io.out.write(formatResult(result));
+      });
+    withExamples(addLeaf, [
+      {
+        command: "wpm bundle web-handoff scripts add probe.sh",
+        note: "register installer-scripts/probe.sh the agent placed (install-time, not delivered)",
+      },
+    ]);
+
+    // ── scripts list ─────────────────────────────────────────────────────────────────────────────────────────
+    const listLeaf = scripts
+      .command("list")
+      .description("list this bundle's registered installer-scripts references (doc 10)")
+      .action(() => {
+        const { value } = runRead(ctx.deps.fs, { root }, listPayloadRefsSpec(SCRIPTS_DESCRIPTOR), {
+          id,
+        });
+        ctx.io.out.write(formatPayloadList(value, SCRIPTS_DESCRIPTOR.noun));
+      });
+    withExamples(listLeaf, [
+      { command: `wpm bundle ${id} scripts list`, note: "list registered installer-scripts" },
+    ]);
+
+    // ── scripts remove <path> ────────────────────────────────────────────────────────────────────────────────
+    // Deregister-not-delete: the entry leaves bundle.yml but the file stays on disk (doc 10 row 169 → 167). A
+    // path that is not registered ⇒ the operation's NotFound (exit 1, nothing changed).
+    const removeLeaf = scripts
+      .command("remove")
+      .argument(
+        "<path>",
+        "the registered installer-scripts reference to deregister (the file is left on disk)",
+      )
+      .description("deregister an installer-scripts reference, leaving the file on disk (doc 10)")
+      .action((path: string) => {
+        const result = runMutation(
+          lifecycleDepsFor(ctx, root),
+          { root },
+          removePayloadRefSpec(SCRIPTS_DESCRIPTOR),
+          { id, path },
+        );
+        ctx.io.out.write(formatResult(result));
+      });
+    withExamples(removeLeaf, [
+      {
+        command: "wpm bundle web-handoff scripts remove probe.sh",
+        note: "deregister installer-scripts/probe.sh (the file stays on disk)",
+      },
+    ]);
+  },
+};
+
+/**
  * The per-bundle subcommand modules, registered into the `bundle <id>` sub-program in order. A future per-bundle
- * family (tasks 68–81: templates/scripts/skills/installer-skills/advisor) appends its
- * {@link PerBundleCommandModule} here — the routing and the catch-all need no change. This is the bundle-`<id>`
- * analogue of {@link TOP_LEVEL_MODULES}.
+ * family (tasks 74–81: skills/installer-skills/advisor) appends its {@link PerBundleCommandModule} here — the
+ * routing and the catch-all need no change. This is the bundle-`<id>` analogue of {@link TOP_LEVEL_MODULES}.
  */
 const PER_BUNDLE_MODULES: readonly PerBundleCommandModule[] = [
   bundleShowModule,
@@ -702,6 +907,8 @@ const PER_BUNDLE_MODULES: readonly PerBundleCommandModule[] = [
   bundleVersionModule,
   bundleRequiresModule,
   bundleFilesModule,
+  bundleTemplatesModule,
+  bundleScriptsModule,
 ];
 
 /** The completion specs for the per-bundle subcommands (keyed by the subcommand path WITHIN `bundle <id>`). */
@@ -719,6 +926,14 @@ const PER_BUNDLE_COMPLETION_SPECS: CompletionSpecs = {
   // <path>` from the REGISTERED references. Both id-aware sources read the host id off the completion context.
   "files add": { args: ["payload-files-on-disk"] },
   "files remove": { args: ["payload-files-registered"] },
+  // `bundle <id> templates add|remove <path>` (Family M) — the same two id-aware shapes against
+  // payload/templates/ / the registered `payload.templates`.
+  "templates add": { args: ["payload-templates-on-disk"] },
+  "templates remove": { args: ["payload-templates-registered"] },
+  // `bundle <id> scripts add|remove <path>` (Family N) — the same two id-aware shapes against installer-scripts/
+  // (a sibling of payload/) / the registered `payload.scripts`.
+  "scripts add": { args: ["payload-scripts-on-disk"] },
+  "scripts remove": { args: ["payload-scripts-registered"] },
 };
 
 /**

@@ -3,8 +3,8 @@ import { bundleIds } from "./bundle-ids.js";
 import { bundleRequires } from "./bundle-requires.js";
 import { disabledBundleIds } from "./disabled-bundle-ids.js";
 import { FIXED_ENUM_SOURCES } from "./enums.js";
-import { payloadFilesOnDisk } from "./payload-files-on-disk.js";
-import { payloadFilesRegistered } from "./payload-files-registered.js";
+import { payloadFilesOnDisk, payloadOnDiskSource } from "./payload-files-on-disk.js";
+import { payloadFilesRegistered, payloadRegisteredSource } from "./payload-files-registered.js";
 import { CompletionRegistry } from "./sources.js";
 import { allTemplateNames, bundleTemplateNames, projectTemplateNames } from "./template-names.js";
 
@@ -40,6 +40,22 @@ export function defaultRegistry(): CompletionRegistry {
   // from files PRESENT on disk under payload/files/; `files remove <path>` from the REGISTERED refs.
   registry.register("payload-files-on-disk", payloadFilesOnDisk);
   registry.register("payload-files-registered", payloadFilesRegistered);
+  // The payload-templates sources (Family M) — the same two id-aware shapes against `payload/templates/` /
+  // `payload.templates`, bound through the shared factories (the operation behind them is descriptor-driven; the
+  // completion follows the same category seam).
+  registry.register("payload-templates-on-disk", payloadOnDiskSource("payload/templates"));
+  registry.register(
+    "payload-templates-registered",
+    payloadRegisteredSource((bundle) => bundle.payload.templates),
+  );
+  // The payload-scripts sources (Family N) — the same two shapes against `installer-scripts/` (a sibling of
+  // `payload/` on disk) / the registered `payload.scripts`. The on-disk factory takes the on-disk dir, so a
+  // non-`payload/` directory works unchanged.
+  registry.register("payload-scripts-on-disk", payloadOnDiskSource("installer-scripts"));
+  registry.register(
+    "payload-scripts-registered",
+    payloadRegisteredSource((bundle) => bundle.payload.scripts),
+  );
   registry.register("disabled-bundle-ids", disabledBundleIds);
   registry.register("template-names", allTemplateNames);
   registry.register("project-template-names", projectTemplateNames);
