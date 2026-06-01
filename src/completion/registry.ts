@@ -5,6 +5,8 @@ import { disabledBundleIds } from "./disabled-bundle-ids.js";
 import { FIXED_ENUM_SOURCES } from "./enums.js";
 import { payloadFilesOnDisk, payloadOnDiskSource } from "./payload-files-on-disk.js";
 import { payloadFilesRegistered, payloadRegisteredSource } from "./payload-files-registered.js";
+import { skillNamesOnDisk } from "./skills-on-disk.js";
+import { skillNamesRegistered } from "./skills-registered.js";
 import { CompletionRegistry } from "./sources.js";
 import { allTemplateNames, bundleTemplateNames, projectTemplateNames } from "./template-names.js";
 
@@ -56,6 +58,12 @@ export function defaultRegistry(): CompletionRegistry {
     "payload-scripts-registered",
     payloadRegisteredSource((bundle) => bundle.payload.scripts),
   );
+  // The payload-skill sources (Family O) — both id-aware (read `ctx.bundleId`): `skills add <name>` completes
+  // from the skill-folder NAMES present under payload/agent-skills/ (attachable skills); `skills remove <name>`
+  // from the REGISTERED `payload.skills` names. The registry, not a scan, is authoritative for the registered
+  // set because payload skills are inert until install (doc 06).
+  registry.register("skills-on-disk", skillNamesOnDisk);
+  registry.register("skills-registered", skillNamesRegistered);
   registry.register("disabled-bundle-ids", disabledBundleIds);
   registry.register("template-names", allTemplateNames);
   registry.register("project-template-names", projectTemplateNames);

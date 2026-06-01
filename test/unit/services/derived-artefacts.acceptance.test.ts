@@ -39,7 +39,7 @@ function bundle(name: string, version: string, summary: string): BundleManifest 
     summary,
     confirmation: "safe",
     requires: new Map(),
-    payload: { files: [], templates: [], scripts: [] },
+    payload: { files: [], templates: [], scripts: [], skills: [] },
   };
 }
 

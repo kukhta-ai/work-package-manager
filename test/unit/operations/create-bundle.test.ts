@@ -293,7 +293,7 @@ describe("makeArtefactDeriver (doc 13 §5 ④)", () => {
             summary: "web bundle",
             confirmation: "safe",
             requires: new Map(),
-            payload: { files: [], templates: [], scripts: [] },
+            payload: { files: [], templates: [], scripts: [], skills: [] },
           },
         ],
       ]),

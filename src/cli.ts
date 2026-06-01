@@ -19,6 +19,7 @@ import {
   parseVersionRange,
   RESERVED_BUNDLE_VERBS,
   type SemVer,
+  type SkillRef,
   type Template,
   type TemplateScope,
 } from "./core/model/index.js";
@@ -53,6 +54,14 @@ import {
   showProjectSpec,
   validateProjectSpec,
 } from "./core/operations/project-reads.js";
+import {
+  attachSkillRefSpec,
+  conventionalSkillPath,
+  listSkillRefsSpec,
+  PAYLOAD_SKILLS_DESCRIPTOR,
+  removeSkillRefSpec,
+  scaffoldSkillRefSpec,
+} from "./core/operations/skill-refs.js";
 import { addTargetSpec, listTargetsSpec, removeTargetSpec } from "./core/operations/targets.js";
 import { bumpVersionSpec, readVersionSpec, setVersionSpec } from "./core/operations/version.js";
 import type { BacklogMd, Clock, Environment, FileSystem } from "./core/ports/index.js";
@@ -606,6 +615,20 @@ function formatPayloadList(paths: readonly string[], noun: string): string {
 }
 
 /**
+ * Render a registered-payload-skill list as a `bundle <id> skills list` block — one skill NAME per line, or the
+ * `(no payload skills)` empty marker. Prints the names (the registry key the author reasons about); the stored
+ * paths are for `list`/validation to LOCATE each SKILL.md, not for the listing line.
+ *
+ * @param skills - The registered {@link SkillRef} entries.
+ * @returns The formatted list, newline-terminated.
+ */
+function formatSkillList(skills: readonly SkillRef[]): string {
+  return skills.length === 0
+    ? "(no payload skills)\n"
+    : `${skills.map((skill) => skill.name).join("\n")}\n`;
+}
+
+/**
  * `bundle <id> files` (+ `add` / `list` / `remove`) (doc 10 rows 165 / 166 / 167), the per-bundle FILES family —
  * registers / inspects / deregisters authoritative reference files under `payload/files/`. It rides the GENERIC
  * descriptor-driven payload-reference operation ({@link FILES_DESCRIPTOR}); the upcoming `templates` (M) and
@@ -897,9 +920,147 @@ const bundleScriptsModule: PerBundleCommandModule = {
 };
 
 /**
+ * `bundle <id> skills` (+ `add` / `list` / `remove`) (doc 10 rows 170 / 171 / 172), the per-bundle SKILLS family
+ * — registers / inspects / deregisters the bundle's PAYLOAD skills (the delivered runtime products under
+ * `payload/agent-skills/`). It rides the GENERIC, descriptor-driven skill-reference operation core
+ * ({@link PAYLOAD_SKILLS_DESCRIPTOR}); the upcoming installer-skill families (P: `bundle <id> installer-skills`;
+ * F: `project installer-skills`) each become a new descriptor + a near-identical module (+ their model/schema
+ * registry field + a scan-based `list`). The host `<id>` is already resolved + enabled-guarded by the per-bundle
+ * routing and threaded in.
+ *
+ * `add <name> [--path <path>]` is the 3-WAY scaffold-or-attach (doc 10 row 170; doc 10 line 32): the CLI shell —
+ * which owns the fs port — resolves the target SKILL.md path, probes existence, and dispatches:
+ *   - **ATTACH** (a SKILL.md exists at the resolved path) → {@link attachSkillRefSpec} (validate frontmatter +
+ *     register; NO materialise);
+ *   - **SCAFFOLD** (none exists AND no `--path`) → {@link scaffoldSkillRefSpec} (render a stub + register; WITH a
+ *     ⑤ MATERIALISE of the "Write payload skill …" task);
+ *   - **ERROR** (`--path` given but nothing there) → a typed {@link NotFoundError} BEFORE `runMutation`, so the
+ *     command registers nothing (74#3).
+ * This keeps the 3-way decision a thin CLI branch (the existence-probe-in-CLI pattern of `bundleFilesModule`)
+ * and the two core specs single-purpose + reusable. Structure-not-content: `add` never authors the SKILL.md body
+ * (scaffold renders a structural stub from the snippet; attach validates+registers what the author placed);
+ * `remove` deregisters and leaves the SKILL.md on disk (76#1/#2). `list` is registry-based (75#1) — payload
+ * skills are inert until install, so the registry is authoritative.
+ */
+const bundleSkillsModule: PerBundleCommandModule = {
+  register(sub, ctx, root, id) {
+    const skills = sub
+      .command("skills")
+      .description(
+        "register or inspect this bundle's payload/agent-skills (the delivered runtime products) (doc 10)",
+      );
+
+    // ── skills add <name> [--path <path>] ──────────────────────────────────────────────────────────────────
+    const addLeaf = skills
+      .command("add")
+      .argument(
+        "<name>",
+        "the payload skill's name (its SKILL.md folder under payload/agent-skills/<name>/)",
+      )
+      .option(
+        "--path <path>",
+        "attach an existing SKILL.md at this bundle-relative path instead of the conventional location",
+      )
+      .description(
+        "attach an existing payload skill, or scaffold a stub + queue its writing if none exists (doc 10)",
+      )
+      .action((name: string, opts: { path?: string }) => {
+        // Resolve the target SKILL.md (bundle-relative): --path if given, else the conventional
+        // payload/agent-skills/<name>/SKILL.md. The CLI owns the fs port, so the 3-way existence probe lives here
+        // (the pure operation `check` has no port — the same place `bundleFilesModule` puts its add check).
+        const conventional = conventionalSkillPath(PAYLOAD_SKILLS_DESCRIPTOR, name);
+        const targetRel = opts.path ?? conventional;
+        const exists = ctx.deps.fs.exists(join(root, "bundles", id, targetRel));
+
+        if (opts.path !== undefined && !exists) {
+          // 74#3: --path given but nothing there → typed error (exit 1), register nothing.
+          throw new NotFoundError(
+            `no SKILL.md at bundles/${id}/${opts.path} — omit --path to scaffold a stub at ${conventional}, or place the file there first`,
+          );
+        }
+
+        const result = exists
+          ? runMutation(
+              lifecycleDepsFor(ctx, root),
+              { root },
+              attachSkillRefSpec(PAYLOAD_SKILLS_DESCRIPTOR),
+              { id, name, path: targetRel },
+            )
+          : runMutation(
+              lifecycleDepsFor(ctx, root),
+              { root },
+              scaffoldSkillRefSpec(PAYLOAD_SKILLS_DESCRIPTOR, {
+                builtinTemplatesRoot: ctx.deps.builtinTemplatesRoot,
+              }),
+              { id, name },
+            );
+        // 74#4: the summary says attached vs scaffolded; formatResult adds the `materialised: N` line for the
+        // scaffold branch (the task id is visible via the authoring backlog the materialise writes into).
+        ctx.io.out.write(formatResult(result));
+      });
+    withExamples(addLeaf, [
+      {
+        command: "wpm bundle web-handoff skills add handoff-web",
+        note: "attach the SKILL.md the agent placed, or scaffold a stub + queue its writing",
+      },
+      {
+        command:
+          "wpm bundle web-handoff skills add handoff-web --path payload/agent-skills/handoff-web/SKILL.md",
+        note: "attach an existing SKILL.md at an explicit bundle-relative path",
+      },
+    ]);
+
+    // ── skills list ─────────────────────────────────────────────────────────────────────────────────────────
+    const listLeaf = skills
+      .command("list")
+      .description("list this bundle's registered payload skills (doc 10)")
+      .action(() => {
+        const { value } = runRead(
+          ctx.deps.fs,
+          { root },
+          listSkillRefsSpec(PAYLOAD_SKILLS_DESCRIPTOR),
+          {
+            id,
+          },
+        );
+        ctx.io.out.write(formatSkillList(value));
+      });
+    withExamples(listLeaf, [
+      { command: `wpm bundle ${id} skills list`, note: "list registered payload skills" },
+    ]);
+
+    // ── skills remove <name> ────────────────────────────────────────────────────────────────────────────────
+    // Deregister-not-delete: the entry leaves bundle.yml but the SKILL.md stays on disk (doc 10 row 172). A name
+    // that is not registered ⇒ the operation's NotFound (exit 1, nothing changed).
+    const removeLeaf = skills
+      .command("remove")
+      .argument(
+        "<name>",
+        "the registered payload skill to deregister (the SKILL.md is left on disk)",
+      )
+      .description("deregister a payload skill, leaving its SKILL.md on disk (doc 10)")
+      .action((name: string) => {
+        const result = runMutation(
+          lifecycleDepsFor(ctx, root),
+          { root },
+          removeSkillRefSpec(PAYLOAD_SKILLS_DESCRIPTOR),
+          { id, name },
+        );
+        ctx.io.out.write(formatResult(result));
+      });
+    withExamples(removeLeaf, [
+      {
+        command: "wpm bundle web-handoff skills remove handoff-web",
+        note: "deregister handoff-web (its SKILL.md stays on disk)",
+      },
+    ]);
+  },
+};
+
+/**
  * The per-bundle subcommand modules, registered into the `bundle <id>` sub-program in order. A future per-bundle
- * family (tasks 74–81: skills/installer-skills/advisor) appends its {@link PerBundleCommandModule} here — the
- * routing and the catch-all need no change. This is the bundle-`<id>` analogue of {@link TOP_LEVEL_MODULES}.
+ * family (tasks 77–81: installer-skills/advisor) appends its {@link PerBundleCommandModule} here — the routing
+ * and the catch-all need no change. This is the bundle-`<id>` analogue of {@link TOP_LEVEL_MODULES}.
  */
 const PER_BUNDLE_MODULES: readonly PerBundleCommandModule[] = [
   bundleShowModule,
@@ -909,6 +1070,7 @@ const PER_BUNDLE_MODULES: readonly PerBundleCommandModule[] = [
   bundleFilesModule,
   bundleTemplatesModule,
   bundleScriptsModule,
+  bundleSkillsModule,
 ];
 
 /** The completion specs for the per-bundle subcommands (keyed by the subcommand path WITHIN `bundle <id>`). */
@@ -934,6 +1096,11 @@ const PER_BUNDLE_COMPLETION_SPECS: CompletionSpecs = {
   // (a sibling of payload/) / the registered `payload.scripts`.
   "scripts add": { args: ["payload-scripts-on-disk"] },
   "scripts remove": { args: ["payload-scripts-registered"] },
+  // `bundle <id> skills add <name>` (Family O) — completes from the skill-folder NAMES present under
+  // payload/agent-skills/ (the attachable skills; a brand-new name yields none). `skills remove <name>`
+  // completes from the REGISTERED `payload.skills` names. Both id-aware (read the host id off the context).
+  "skills add": { args: ["skills-on-disk"] },
+  "skills remove": { args: ["skills-registered"] },
 };
 
 /**

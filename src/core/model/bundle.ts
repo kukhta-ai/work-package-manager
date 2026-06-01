@@ -3,6 +3,27 @@ import type { ConfirmationLevel } from "./manifest.js";
 import type { SemVer, VersionRange } from "./version.js";
 
 /**
+ * One registered payload skill (doc 10 row 170) — the delivered runtime product. A skill is identified by its
+ * `name` (the registry key, the `skills remove <name>` deregister key, the menu line in `skills list`) AND
+ * located by `path`, the bundle-relative path to its `SKILL.md` (the conventional
+ * `payload/agent-skills/<name>/SKILL.md`, or the `--path` location when the author relocated it).
+ *
+ * The path is carried — unlike the bare-string `files`/`templates`/`scripts` registries — because `--path` can
+ * move a skill's `SKILL.md` off the conventional location, so `skills list` and the downstream "Verify skill
+ * registration" authoring task (doc 11) must be able to LOCATE each registered skill's file. Payload skills are
+ * inert until install copies them into a scanned scope (doc 06), so this registry — not a directory scan — is
+ * the authoritative list of what a bundle delivers.
+ *
+ * The same `{ name, path }` shape is reused by the bundle/project installer-skill registries (P/F).
+ */
+export interface SkillRef {
+  /** The skill's registered name (the registry key + the `skills remove <name>` deregister key). */
+  readonly name: string;
+  /** The bundle-relative path to the skill's `SKILL.md` (conventional `payload/agent-skills/<name>/SKILL.md`, or a `--path` location). */
+  readonly path: string;
+}
+
+/**
  * A bundle's registered payload references (doc 10 `files`/`templates`/`scripts` rows; doc 06/07 payload layout)
  * — the registry of paths the author has registered under each on-disk payload category, kept in `bundle.yml` so
  * a reference can be DEREGISTERED (`files remove`) while the file is left on disk (doc 10 row 167). Distinct from
@@ -28,6 +49,14 @@ export interface BundlePayload {
    * disk; the references are kept here under the `payload:` registry for consistency with files/templates.
    */
   readonly scripts: readonly string[];
+  /**
+   * Registered payload skills (doc 10 row 170) — the delivered runtime products under `payload/agent-skills/`.
+   * Each is a {@link SkillRef} (`{ name, path }`): the `name` is the registry/deregister key, the `path` locates
+   * the `SKILL.md` (conventional `payload/agent-skills/<name>/SKILL.md`, or a `--path` location). Unlike
+   * files/templates/scripts, payload skills are inert until install copies them into a scanned scope (doc 06),
+   * so this registry — not a directory scan — is the authoritative list. Absent in `bundle.yml` ⇒ empty.
+   */
+  readonly skills: readonly SkillRef[];
 }
 
 /**
