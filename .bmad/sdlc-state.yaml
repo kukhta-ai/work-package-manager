@@ -7,8 +7,14 @@ phase: 6
 phase_name: "Epic gate — foundation epic-1 (cold E2E + tea trace/nfr + retro)"
 branch: feature/foundation
 epic: foundation
-active_story: null   # *** 33/33 FOUNDATION COMPLETE *** (all tasks merged into feature/foundation, gate green). task-33 walking skeleton APPROVE, readiness=YES. Phase 6 epic gate NEXT: (1) retro -> retrospective-epic-1; (2) tea testarch-trace + testarch-nfr; (3) COLD E2E via the CI sequence (npm ci -> typecheck -> biome ci -> build -> test); (4) final gate verdict. Then Phase 7: merge feature/foundation -> dev (user-authorized) -> surface status+doc-07 divergence -> git pull origin -> CLI epic tasks 34-84.
+active_story: null   # *** 33/33 FOUNDATION COMPLETE + PHASE-6 EPIC GATE = PASS ***
 review_cycle: 0
+# EPIC GATE (Phase 6) RESULT -- PASS:
+#   COLD E2E (CI sequence from clean): npm ci 0 vulns / tsc 0 / biome ci 0 (123 files) / build 0 / vitest 527 passed (58 files; binary + real-backlog tests ran cold).
+#   tea bmad-testarch-trace: PASS (P0 100%, P1 100%, overall 99% = 95/96 AC). The 1 gap was task-9 AC#3/#4 (doc-only agent-orientation) -- DISPOSED: observably satisfied by README (reaches docs 00-14) + AGENTS.md (orients + names the boundary rule); ticked. So now 96/96.
+#   tea bmad-testarch-nfr: PASS (Maintainability/Reliability/Security/Fake-Real-Parity all PASS; Perf/Scale N/A). Artifacts: _bmad-output/test-artifacts/{traceability/*, nfr-assessment.md}.
+#   retro bmad-retrospective: epic-1 readiness GREEN; retrospective-epic-1.md written. No epic-2 replan. Carry-forward for the CLI epic: test the real binary/loop-closure path; reuse the task-27/28/29 spine; cold-E2E-must-build-dist; keep fake<->real parity explicit in review.
+# PHASE 7 NEXT (user pre-authorized the dev merge): reconcile feature/foundation with origin/dev (which has the CLI epic: tasks 34-84 + doc 10/13 fixes + task-conventions; commits fd0ae0d/5905127/3fd60ba). NOTE: dev is checked out in a SIBLING worktree (work-package-manager-dev); likely conflicts on AGENTS.md/CLAUDE.md + the backlog index. Then git pull origin -> run the SAME skill-driven SDLC for tasks 34-84 (LIGHTER review loops -- the spine is established + mechanically guarded). Surface to user: the doc-07 line-67 divergence (their owned docs).
 # EPIC-GATE NOTE (Phase 6, task-29 S1): the cold E2E MUST follow the CI sequence (ci.yml): npm ci -> npm run typecheck
 # -> npx biome ci . -> npm run build -> npm test. The `npm run build` step is REQUIRED before `npm test` or the
 # built-binary integration tests (cli.bin.test.ts, gated on dist/cli.js via describeIfBuilt) SILENTLY SKIP. ci.yml
