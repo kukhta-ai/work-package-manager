@@ -1,8 +1,6 @@
 import { join } from "node:path";
-import { NotFoundError } from "../errors.js";
 import type { FileSystem } from "../ports/index.js";
-import { renderSnippet } from "../services/render.js";
-import { resolveTemplate } from "../services/template-resolver.js";
+import { renderSkillStub } from "./scaffold-skill.js";
 
 /**
  * The shared **advisor scaffold** (doc 10 row `bundle <id> advisor add`, step 1; also invoked by `bundle new`
@@ -17,10 +15,15 @@ import { resolveTemplate } from "../services/template-resolver.js";
  * returns `[]` without rewriting it — which is exactly what makes `bundle enable`'s "unless an advisor already
  * exists" fall out for free, and what makes `bundle new`/`advisor add` idempotent.
  *
- * **Pure over the FileSystem port** (doc 13 §1): it composes the task-17 template resolver and the task-16
- * render service and writes through the FileSystem port — importing only those services + the model + the
- * errors + `node:path`, never `node:fs`/`commander`/`execa`. The single source of the advisor-scaffold logic so
- * `bundle new`, `bundle enable`, and `bundle <id> advisor add` (task-80) cannot drift.
+ * It is now a thin specialisation of the shared {@link renderSkillStub} (the generalised stub renderer the
+ * payload-skill (O) and installer-skill (P/F) families also use): it supplies the advisor snippet path + the
+ * `{{bundle-id}}` substitution and the conventional advisor stub path, and inherits the resolve → render →
+ * write-unless-exists behaviour. The single source of the advisor-scaffold logic so `bundle new`, `bundle
+ * enable`, and `bundle <id> advisor add` cannot drift — and now shared with the other scaffold-or-attach
+ * families.
+ *
+ * **Pure over the FileSystem port** (doc 13 §1): it imports only the shared renderer + the port + `node:path`,
+ * never the CLI framework / subprocess library / `node:fs`.
  */
 
 /** The default project template the advisor snippet is resolved from (doc 10 §Templates: project `minimal`). */
@@ -45,9 +48,10 @@ export function advisorSkillPath(id: string): string {
 /**
  * Render the advisor stub for bundle `id` to `installer-skills/<id>-advisor/SKILL.md`, unless it already exists.
  *
- * Resolves the project template (project-local shadowing built-in, like the artefact deriver), finds its
- * `advisor.SKILL.md.tmpl` snippet, renders it with `{{bundle-id}}` → `id`, and writes the result through the
- * FileSystem port. A no-op (returns `[]`) when the stub is already present.
+ * Delegates to the shared {@link renderSkillStub}: it resolves the project template (project-local shadowing
+ * built-in, like the artefact deriver), finds its `advisor.SKILL.md.tmpl` snippet, renders it with
+ * `{{bundle-id}}` → `id`, and writes the result through the FileSystem port. A no-op (returns `[]`) when the
+ * stub is already present.
  *
  * @param deps - The built-in templates root + optional project template name.
  * @param fs - The FileSystem port.
@@ -63,31 +67,17 @@ export function scaffoldAdvisor(
   root: string,
   id: string,
 ): string[] {
-  const stubAbs = join(root, advisorSkillPath(id));
-  // doc 10 row 176 step 3: no-op if the advisor already exists (do not clobber authored content).
-  if (fs.exists(stubAbs)) {
-    return [];
-  }
-
-  const projectTemplateName = deps.projectTemplateName ?? DEFAULT_PROJECT_TEMPLATE;
-  const resolution = resolveTemplate(projectTemplateName, "project", {
+  return renderSkillStub(
+    {
+      builtinTemplatesRoot: deps.builtinTemplatesRoot,
+      ...(deps.projectTemplateName !== undefined
+        ? { projectTemplateName: deps.projectTemplateName }
+        : {}),
+    },
     fs,
-    builtinTemplatesRoot: deps.builtinTemplatesRoot,
-    projectTemplatesRoot: join(root, "templates"),
-  });
-  if (!resolution.found) {
-    throw new NotFoundError(
-      `project template "${projectTemplateName}" not found (searched: ${resolution.searched.join(", ")})`,
-    );
-  }
-  const snippet = resolution.template.snippets.find((s) => s.path === ADVISOR_SNIPPET_PATH);
-  if (snippet === undefined) {
-    throw new NotFoundError(
-      `project template "${projectTemplateName}" is missing the advisor snippet "${ADVISOR_SNIPPET_PATH}"`,
-    );
-  }
-
-  const rendered = renderSnippet(snippet, new Map([["bundle-id", id]]));
-  fs.write(stubAbs, rendered.content);
-  return [stubAbs];
+    root,
+    advisorSkillPath(id),
+    ADVISOR_SNIPPET_PATH,
+    new Map([["bundle-id", id]]),
+  );
 }

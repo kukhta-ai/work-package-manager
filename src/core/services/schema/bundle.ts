@@ -8,6 +8,7 @@ import {
   parseBundleId,
   parseSemVer,
   parseVersionRange,
+  type SkillRef,
   type VersionRange,
 } from "../../model/index.js";
 import { isPlainObject, requireString } from "./problems.js";
@@ -30,6 +31,7 @@ export interface BundleManifestData {
     readonly files: readonly string[];
     readonly templates: readonly string[];
     readonly scripts: readonly string[];
+    readonly skills: readonly { readonly name: string; readonly path: string }[];
   };
 }
 
@@ -147,10 +149,11 @@ export function parseBundleManifest(data: unknown): Parsed<BundleManifest> {
 }
 
 /**
- * Parse the optional `payload` mapping into a {@link BundlePayload} (doc 10 `files`/`templates`/`scripts` rows).
- * Absent ⇒ every category empty (old-bundle compatibility); a PARTIAL `payload` (e.g. only `files`) ⇒ the
- * missing categories are empty too. Validates that, when present, `payload` is a mapping and each present
- * category (`payload.files`, `payload.templates`) is a list of strings. Pure and total.
+ * Parse the optional `payload` mapping into a {@link BundlePayload} (doc 10 `files`/`templates`/`scripts`/`skills`
+ * rows). Absent ⇒ every category empty (old-bundle compatibility); a PARTIAL `payload` (e.g. only `files`) ⇒ the
+ * missing categories are empty too. Validates that, when present, `payload` is a mapping, each present
+ * path-list category (`payload.files`/`templates`/`scripts`) is a list of strings, and `payload.skills` is a
+ * list of `{name, path}` mappings. Pure and total.
  *
  * @param raw - The `payload` value (possibly `undefined`).
  * @param ctx - The bundle context for error messages.
@@ -159,7 +162,7 @@ export function parseBundleManifest(data: unknown): Parsed<BundleManifest> {
 function parsePayload(raw: unknown, ctx: string): Parsed<BundlePayload> {
   // Absent payload ⇒ every category empty. The field is purely additive: an old/partial bundle.yml still parses.
   if (raw === undefined) {
-    return ok({ files: [], templates: [], scripts: [] });
+    return ok({ files: [], templates: [], scripts: [], skills: [] });
   }
   if (!isPlainObject(raw)) {
     return {
@@ -174,7 +177,73 @@ function parsePayload(raw: unknown, ctx: string): Parsed<BundlePayload> {
   if (!templates.ok) return templates;
   const scripts = parsePayloadCategory(raw.scripts, "payload.scripts", ctx);
   if (!scripts.ok) return scripts;
-  return ok({ files: files.value, templates: templates.value, scripts: scripts.value });
+  // `skills` is a structured registry (a list of `{name, path}` mappings, not bare strings — a skill is keyed by
+  // name AND located by a relocatable path), so it has its own parser rather than `parsePayloadCategory`.
+  const skills = parseSkillRefs(raw.skills, ctx);
+  if (!skills.ok) return skills;
+  return ok({
+    files: files.value,
+    templates: templates.value,
+    scripts: scripts.value,
+    skills: skills.value,
+  });
+}
+
+/**
+ * Parse the optional `payload.skills` registry into a {@link SkillRef} list (doc 10 row 170). Absent ⇒ `[]`
+ * (old/partial-bundle compatibility, like the other categories); present ⇒ must be a list of mappings each with
+ * a string `name` AND a string `path` (else a field-precise {@link ValidationProblem} naming
+ * `payload.skills[i].…`). Unlike `parsePayloadCategory`, an entry is a mapping, not a bare string, because a
+ * skill is identified by its name and located by its (relocatable) `SKILL.md` path. Pure and total.
+ *
+ * @param raw - The `payload.skills` value (possibly `undefined`).
+ * @param ctx - The bundle context for error messages.
+ * @returns The parsed {@link SkillRef} list, or a {@link ValidationProblem}.
+ */
+function parseSkillRefs(raw: unknown, ctx: string): Parsed<readonly SkillRef[]> {
+  if (raw === undefined) {
+    return ok([]);
+  }
+  if (!Array.isArray(raw)) {
+    return {
+      ok: false,
+      problem: {
+        message: `${ctx}: "payload.skills" must be a list of { name, path } mappings`,
+        field: "payload.skills",
+      },
+    };
+  }
+  const skills: SkillRef[] = [];
+  for (let i = 0; i < raw.length; i++) {
+    const entry = raw[i];
+    const field = `payload.skills[${i}]`;
+    if (!isPlainObject(entry)) {
+      return {
+        ok: false,
+        problem: { message: `${ctx}: "${field}" must be a { name, path } mapping`, field },
+      };
+    }
+    if (typeof entry.name !== "string" || entry.name.length === 0) {
+      return {
+        ok: false,
+        problem: {
+          message: `${ctx}: "${field}.name" must be a non-empty string`,
+          field: `${field}.name`,
+        },
+      };
+    }
+    if (typeof entry.path !== "string" || entry.path.length === 0) {
+      return {
+        ok: false,
+        problem: {
+          message: `${ctx}: "${field}.path" must be a non-empty string`,
+          field: `${field}.path`,
+        },
+      };
+    }
+    skills.push({ name: entry.name, path: entry.path });
+  }
+  return ok(skills);
 }
 
 /**
@@ -219,12 +288,14 @@ export function serializeBundleManifest(bundle: BundleManifest): BundleManifestD
     confirmation: bundle.confirmation,
     requires,
     // Always emit `payload` with every category (an empty list serialises as `files: []` / `templates: []` /
-    // `scripts: []`) so a freshly-created bundle.yml carries the fields. Round-trips with `parseBundleManifest`
-    // (absent ⇒ empty; present ⇒ the same lists).
+    // `scripts: []` / `skills: []`) so a freshly-created bundle.yml carries the fields. Round-trips with
+    // `parseBundleManifest` (absent ⇒ empty; present ⇒ the same lists/refs). `skills` entries are `{name, path}`
+    // mappings (the structured payload-skill registry, doc 10 row 170).
     payload: {
       files: [...bundle.payload.files],
       templates: [...bundle.payload.templates],
       scripts: [...bundle.payload.scripts],
+      skills: bundle.payload.skills.map((skill) => ({ name: skill.name, path: skill.path })),
     },
   };
 }

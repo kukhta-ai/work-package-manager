@@ -1006,3 +1006,220 @@ describeIfBuilt(
     });
   },
 );
+
+/**
+ * Write a SKILL.md at the conventional payload path `bundles/<bundle>/payload/agent-skills/<name>/SKILL.md`,
+ * returning its absolute path. `content` is the full file (frontmatter + body). Mirrors `placeInstallerScript`.
+ */
+function placeSkill(proj: string, bundle: string, name: string, content: string): string {
+  const abs = join(proj, "bundles", bundle, "payload", "agent-skills", name, "SKILL.md");
+  mkdirSync(dirname(abs), { recursive: true });
+  writeFileSync(abs, content, "utf8");
+  return abs;
+}
+
+/** A valid SKILL.md (frontmatter with name + description) for an attach. */
+function validSkillMd(name: string): string {
+  return `---\nname: ${name}\ndescription: Do ${name} for the user at runtime.\n---\n\n# ${name}\nbody\n`;
+}
+
+describeIfBuilt(
+  "bundle <id> skills add / list / remove E2E via dist/cli.js (tasks 74/75/76)",
+  () => {
+    it("74#1 ATTACH — `skills add <id>-skill` attaches the shipped sample; registers {name,path}; content unchanged; NO materialised line", () => {
+      withTempDir((dir) => {
+        const proj = projectWithWeb(dir);
+        // A fresh `bundle new web` ships payload/agent-skills/web-skill/SKILL.md (the default template's sample).
+        const samplePath = join(
+          proj,
+          "bundles",
+          "web",
+          "payload",
+          "agent-skills",
+          "web-skill",
+          "SKILL.md",
+        );
+        expect(existsSync(samplePath)).toBe(true);
+        const sampleBefore = readFileSync(samplePath, "utf8");
+
+        const add = wpm(proj, ["bundle", "web", "skills", "add", "web-skill"]);
+        expect(add.status).toBe(0);
+        expect(add.stdout).toContain("attached");
+        expect(add.stdout).not.toContain("materialised"); // attach queues no writing
+
+        const ymlText = readFileSync(join(proj, "bundles", "web", "bundle.yml"), "utf8");
+        // the real eemeli/yaml round-trip records the {name, path} registry entry under `payload.skills`:
+        expect(ymlText).toMatch(/payload:[\s\S]*skills:[\s\S]*name:\s*web-skill/);
+        expect(ymlText).toMatch(
+          /skills:[\s\S]*path:\s*payload\/agent-skills\/web-skill\/SKILL\.md/,
+        );
+        // structure-not-content: the sample's bytes are unchanged.
+        expect(readFileSync(samplePath, "utf8")).toBe(sampleBefore);
+      });
+    });
+
+    it("74#2 SCAFFOLD — `skills add <new>` renders a stub (name + placeholder runtime-trigger desc, no authored prose), registers it, AND materialises the writing task (loop-closure, cold)", () => {
+      withTempDir((dir) => {
+        const proj = projectWithWeb(dir);
+        const add = wpm(proj, ["bundle", "web", "skills", "add", "fresh-skill"]);
+        expect(add.status).toBe(0);
+        expect(add.stdout).toContain("scaffolded");
+        expect(add.stdout).toContain("materialised");
+
+        // the structural stub exists at the conventional path with the substituted name + the placeholder desc:
+        const stubPath = join(
+          proj,
+          "bundles",
+          "web",
+          "payload",
+          "agent-skills",
+          "fresh-skill",
+          "SKILL.md",
+        );
+        expect(existsSync(stubPath)).toBe(true);
+        const stub = readFileSync(stubPath, "utf8");
+        expect(stub).toContain("name: fresh-skill"); // frontmatter name substituted
+        expect(stub).toContain("TODO"); // a placeholder, NOT invented prose
+
+        // it is registered:
+        const ymlText = readFileSync(join(proj, "bundles", "web", "bundle.yml"), "utf8");
+        expect(ymlText).toMatch(/skills:[\s\S]*name:\s*fresh-skill/);
+
+        // the doc-11 authoring task is materialised in the REAL .authoring-backlog (the materialise path ran cold):
+        expect(authoringTaskTitles(proj)).toContain("Write payload skill fresh-skill for web");
+      });
+    });
+
+    it("74#3 ERROR — `skills add <name> --path <missing>` exits non-zero; bundle.yml unchanged; no stub written", () => {
+      withTempDir((dir) => {
+        const proj = projectWithWeb(dir);
+        const ymlPath = join(proj, "bundles", "web", "bundle.yml");
+        const before = readFileSync(ymlPath, "utf8");
+        const res = wpm(proj, [
+          "bundle",
+          "web",
+          "skills",
+          "add",
+          "ghost",
+          "--path",
+          "payload/agent-skills/ghost/SKILL.md",
+        ]);
+        expect(res.status).not.toBe(0);
+        expect(readFileSync(ymlPath, "utf8")).toBe(before); // nothing registered
+        expect(
+          existsSync(join(proj, "bundles", "web", "payload", "agent-skills", "ghost", "SKILL.md")),
+        ).toBe(false); // no stub written
+      });
+    });
+
+    it("75#1 LIST — after attach + scaffold, `skills list` shows both names; a fresh bundle prints (no payload skills)", () => {
+      withTempDir((dir) => {
+        const proj = projectWithWeb(dir);
+        // a fresh bundle (createBundle inits payload.skills: []) prints the empty marker:
+        expect(wpm(proj, ["bundle", "web", "skills", "list"]).stdout.trim()).toBe(
+          "(no payload skills)",
+        );
+
+        expect(wpm(proj, ["bundle", "web", "skills", "add", "web-skill"]).status).toBe(0); // attach the sample
+        expect(wpm(proj, ["bundle", "web", "skills", "add", "fresh-skill"]).status).toBe(0); // scaffold a new one
+        const list = wpm(proj, ["bundle", "web", "skills", "list"]);
+        expect(list.status).toBe(0);
+        expect(list.stdout).toContain("web-skill");
+        expect(list.stdout).toContain("fresh-skill");
+      });
+    });
+
+    it("76#1/76#2 REMOVE — `skills remove` deregisters AND leaves the SKILL.md on disk (deregister, not delete)", () => {
+      withTempDir((dir) => {
+        const proj = projectWithWeb(dir);
+        const samplePath = join(
+          proj,
+          "bundles",
+          "web",
+          "payload",
+          "agent-skills",
+          "web-skill",
+          "SKILL.md",
+        );
+        expect(wpm(proj, ["bundle", "web", "skills", "add", "web-skill"]).status).toBe(0);
+
+        const remove = wpm(proj, ["bundle", "web", "skills", "remove", "web-skill"]);
+        expect(remove.status).toBe(0);
+        expect(remove.stdout).toContain("left at payload/agent-skills/web-skill/"); // doc-10:172 message
+
+        // the entry is gone from bundle.yml:
+        const ymlText = readFileSync(join(proj, "bundles", "web", "bundle.yml"), "utf8");
+        expect(ymlText).not.toMatch(/name:\s*web-skill/);
+        // BUT the SKILL.md is left on disk:
+        expect(existsSync(samplePath)).toBe(true);
+      });
+    });
+
+    it("76#3 — `skills remove` for a name NOT registered exits non-zero; bundle.yml unchanged", () => {
+      withTempDir((dir) => {
+        const proj = projectWithWeb(dir);
+        const ymlPath = join(proj, "bundles", "web", "bundle.yml");
+        const before = readFileSync(ymlPath, "utf8");
+        expect(wpm(proj, ["bundle", "web", "skills", "remove", "not-there"]).status).not.toBe(0);
+        expect(readFileSync(ymlPath, "utf8")).toBe(before);
+      });
+    });
+
+    it("completion: `skills add` lists on-disk skill folders; `skills remove` lists registered names", () => {
+      withTempDir((dir) => {
+        const proj = projectWithWeb(dir);
+        // a fresh bundle ships the web-skill folder on disk → add completes from the folder names:
+        const addPos = cli(["__complete", "bundle", "web", "skills", "add", ""], { cwd: proj })
+          .stdout.split("\n")
+          .filter(Boolean);
+        expect(addPos).toContain("web-skill");
+
+        // register it, then remove → completes from the REGISTERED names:
+        expect(wpm(proj, ["bundle", "web", "skills", "add", "web-skill"]).status).toBe(0);
+        const removePos = cli(["__complete", "bundle", "web", "skills", "remove", ""], {
+          cwd: proj,
+        })
+          .stdout.split("\n")
+          .filter(Boolean);
+        expect(removePos).toContain("web-skill");
+      });
+    });
+
+    it("help: `bundle <id> skills add --help` reaches the leaf and documents <name>, --path, an example", () => {
+      withTempDir((dir) => {
+        const proj = projectWithWeb(dir);
+        const help = wpm(proj, ["bundle", "web", "skills", "add", "--help"]);
+        expect(help.status).toBe(0);
+        expect(help.stdout).toContain("bundle web skills add"); // the LEAF usage
+        expect(help.stdout).toContain("<name>");
+        expect(help.stdout).toContain("--path");
+        expect(help.stdout).toMatch(/Example/i);
+      });
+    });
+
+    it("OLD bundle.yml WITHOUT a payload key still drives list (no payload skills) AND add (adds the field) — absent ⇒ empty", () => {
+      withTempDir((dir) => {
+        const proj = projectWithWeb(dir);
+        // OVERWRITE web's bundle.yml with a pre-payload shape (NO `payload:` key), as an older project would have.
+        const ymlPath = join(proj, "bundles", "web", "bundle.yml");
+        writeFileSync(
+          ymlPath,
+          "id: web\nversion: 0.1.0\nsummary: web bundle\nconfirmation: safe\nrequires: {}\n",
+          "utf8",
+        );
+
+        // list parses the old doc (absent payload ⇒ empty) and prints the empty marker:
+        const list = wpm(proj, ["bundle", "web", "skills", "list"]);
+        expect(list.status).toBe(0);
+        expect(list.stdout.trim()).toBe("(no payload skills)");
+
+        // attach a placed skill → exit 0 and the payload field is introduced:
+        placeSkill(proj, "web", "added", validSkillMd("added"));
+        expect(wpm(proj, ["bundle", "web", "skills", "add", "added"]).status).toBe(0);
+        const after = readFileSync(ymlPath, "utf8");
+        expect(after).toContain("payload:");
+        expect(after).toMatch(/payload:[\s\S]*skills:[\s\S]*name:\s*added/);
+      });
+    });
+  },
+);
