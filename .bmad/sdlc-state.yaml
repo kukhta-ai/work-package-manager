@@ -15,10 +15,11 @@ epic: cli
 # NEXT after I: the bundle <id> repeats flow fast -> J(59,60,61 version=reuse D), K-P(62-79 requires/files/templates/scripts/skills/
 # installer-skills = LIST-MGMT reuse E, via PerBundleCommandModule), Q(80,81 advisor=reuse scaffoldAdvisor); plus C(38 meta),
 # F(45,46,47 installer-skills scaffold-or-attach), H(55,56 bundle template), G2(53 remove[destructive],54 list), R(82,83,84 build), 34(init full).
-# WORKERS (rotate ~every 5-8 tasks; they parse-error on resume once the transcript is large): ACTIVE = (spawning #12 for task-34 init-full);
-# retired: ae8d2875 (#11: G2+H remove/list/template), a8d85641 (#10: Q+C), a3a2eee1 (#9: P+F), ac372bf3 (#8: O), aa98d211 (#7: M+N), a73ce42b (#6: K+L), adcb88d (#5: J), a6599e9 (#4: G1+I), a2b7fcc7 (#3: materialise+D+B), a7f5ad601 (#2: 31,32,28,29,33,merge,A,E), a67b0906 (#1: 1-27,30).
-# REVIEWER a7f5a303c38f8ec6d still reliable (~23 reviews, G2+H=APPROVE both; SHA-diffs binaries + writes exhaustive boundary tests. Watch for degradation -> spawn fresh reviewer if it 0-tools).
-# CLI 47/51 DONE (A,E,D,B,G1,I,J,K,L,M,N,O,P,F,Q,C,G2,H = 44+3). REMAINING = 4: task-34(init FULL) + R(82,83,84 build). ALL leaf families done except init-full + build. ABSOLUTE 80/84.
+# WORKERS (rotate ~every 5-8 tasks; they parse-error on resume once the transcript is large): ACTIVE = (spawning #13 for R build -- THE FINALE);
+# retired: aeca9935 (#12: task-34 init-full + bundle-template divergence CLOSED), ae8d2875 (#11: G2+H), a8d85641 (#10: Q+C), a3a2eee1 (#9: P+F), ac372bf3 (#8: O), aa98d211 (#7: M+N), a73ce42b (#6: K+L), adcb88d (#5: J), a6599e9 (#4: G1+I), a2b7fcc7 (#3: materialise+D+B), a7f5ad601 (#2: 31,32,28,29,33,merge,A,E), a67b0906 (#1: 1-27,30).
+# REVIEWER a7f5a303c38f8ec6d still reliable (~24 reviews, task-34=APPROVE; SHA-diffs binaries both-paths + inspects every changed test for regression-masking. Watch for degradation -> spawn fresh reviewer if it 0-tools).
+# CLI 48/51 DONE (A,E,D,B,G1,I,J,K,L,M,N,O,P,F,Q,C,G2,H,34 = 47+1). REMAINING = 3: R(82 dry-run, 83 package, 84 publish) = THE LAST BATCH -> task 84 = the goal's end. ABSOLUTE 81/84.
+# bundle-template DIVERGENCE CLOSED in task-34 (create-bundle prefers bundles/bundle-template/ when present; bundle template set is now live for bundle new -- binary-proven both paths).
 # NEXT BATCH = task-34 (init FULL) on feature/cli-init-full -- doc-10:137, all 12 steps. Extends the task-33 SKELETON initProject (src/core/operations/init-project.ts, which deliberately does
 # manifest+bundles tree+dirs but materialisedTaskTitles:[] -- NO materialise/aliases/gitignore). task-34 ADDS: AC#1 bundles/bundle-template/ MATERIALISED (the default bundle template copied
 # there -- this is the divergence-closing step) + empty installer-skills/templates/.authoring-backlog (task_prefix=authoring); AC#2 derived AGENTS.md + installer SKILL.md via the deriver
