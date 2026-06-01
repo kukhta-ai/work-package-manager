@@ -32,6 +32,15 @@ export interface CliIo {
   readonly err: OutputSink;
   /** Whether to include diagnostic detail (stack traces) for unexpected errors. */
   readonly debug: boolean;
+  /**
+   * The input stream a destructive command reads its confirmation answer from (the real entry point wires
+   * `process.stdin`; tests pass a `Readable.from([...])`). OPTIONAL — a command that never prompts ignores it,
+   * and when it is absent an unattended destructive command treats the missing input as a DECLINE (the safe
+   * default — never destroy without an explicit yes). Reading stdin lives in the shell, never in the core
+   * (doc 13 §3: stdin is not a port; the confirmation DECISION is made here, the pure operation acts only when
+   * confirmed).
+   */
+  readonly in?: NodeJS.ReadableStream;
 }
 
 /** The commander error codes that mean "help or version was displayed" — a successful, already-printed exit. */

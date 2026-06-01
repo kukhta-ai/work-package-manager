@@ -26,8 +26,19 @@ import {
 import { advisorSkillDir, advisorSkillPath } from "./core/operations/advisor.js";
 import { advisorAddSpec, advisorRemoveSpec } from "./core/operations/advisor-commands.js";
 import { disableBundleSpec, enableBundleSpec } from "./core/operations/bundle-lifecycle.js";
+import {
+  type BundleListRow,
+  hasKindLabel,
+  type KindCounts,
+  listBundlesSpec,
+} from "./core/operations/bundle-list.js";
 import { editBundleMetaSpec } from "./core/operations/bundle-meta.js";
 import { type BundleView, showBundleSpec } from "./core/operations/bundle-reads.js";
+import {
+  isRemovableBundle,
+  noSuchBundleError,
+  removeBundleSpec,
+} from "./core/operations/bundle-remove.js";
 import {
   addRequiresSpec,
   listRequiresSpec,
@@ -78,7 +89,7 @@ import { addTargetSpec, listTargetsSpec, removeTargetSpec } from "./core/operati
 import { bumpVersionSpec, readVersionSpec, setVersionSpec } from "./core/operations/version.js";
 import type { BacklogMd, Clock, Environment, FileSystem } from "./core/ports/index.js";
 import { resolveContext } from "./core/services/context.js";
-import { parseManifest } from "./core/services/schema/index.js";
+import { parseManifest, parseTemplateDescriptor } from "./core/services/schema/index.js";
 import {
   listTemplates,
   resolveTemplate,
@@ -86,6 +97,7 @@ import {
 } from "./core/services/template-resolver.js";
 import { withExamples } from "./help/examples.js";
 import { installCompletion, type Shell } from "./util/completion-install.js";
+import { readConfirmation } from "./util/confirm.js";
 import { type CliIo, runWithExit } from "./util/exit.js";
 import { parseYaml } from "./util/yaml.js";
 import { VERSION } from "./version.js";
@@ -260,6 +272,9 @@ interface PerBundleCommandModule {
 /** The project marker / manifest filename at the project root (shared by the per-bundle guard). */
 const MANIFEST_FILE = "manifest.yml";
 
+/** The project's default bundle-scaffold directory under `bundles/` (doc 10 rows 155/156). */
+const BUNDLE_TEMPLATE_DIR = "bundle-template";
+
 /**
  * Resolve the bundle context for a `bundle <id> …` invocation: require `<id>` to be an ENABLED bundle (in
  * `manifest.yml.bundles` with a `bundles/<id>/bundle.yml`), or raise a {@link NotFoundError} (exit 1) BEFORE the
@@ -382,6 +397,143 @@ function projectInstallerSkillNames(ctx: CommandContext, root: string): string[]
     .map((entry) => entry.name)
     .filter((name) => !isReservedInstallerSkillName(name, reservedFor))
     .sort();
+}
+
+/**
+ * Count the `kind:state` vs `kind:migration` tasks in a bundle's install-backlog for `bundle list` (doc 10 row
+ * 154 step 2). The install-backlog is NOT a discoverable Backlog.md root (doc 07 line 67), so this is an fs SCAN
+ * of `bundles/<id>/install-backlog/tasks/*.md` through the FileSystem port (which the shell owns), NOT a
+ * BacklogMd-port read — the `kind:` labels are read out of each task file's frontmatter via the pure
+ * {@link hasKindLabel}. Threaded into the pure {@link listBundlesSpec} read, mirroring how {@link bundleFileTree}
+ * feeds `bundle <id> show`. Returns `{ state: 0, migration: 0 }` when the install-backlog `tasks/` dir does not
+ * exist (a bundle whose recipe has not been filled in yet).
+ *
+ * @param fs - The FileSystem port.
+ * @param root - The project root.
+ * @param id - The bundle id whose install-backlog is scanned.
+ * @returns The `kind:state` / `kind:migration` task counts.
+ */
+function installBacklogKindCounts(fs: FileSystem, root: string, id: string): KindCounts {
+  const tasksDir = join(root, "bundles", id, "install-backlog", "tasks");
+  if (!fs.exists(tasksDir)) {
+    return { state: 0, migration: 0 };
+  }
+  let state = 0;
+  let migration = 0;
+  for (const entry of fs.list(tasksDir)) {
+    if (entry.kind !== "file" || !entry.name.endsWith(".md")) {
+      continue;
+    }
+    const text = fs.read(join(tasksDir, entry.name));
+    if (hasKindLabel(text, "state")) {
+      state += 1;
+    }
+    if (hasKindLabel(text, "migration")) {
+      migration += 1;
+    }
+  }
+  return { state, migration };
+}
+
+/**
+ * Render the `bundle list` rows as an aligned table (doc 10 row 154 step 3) — `id`, `version`, `state`,
+ * `migration` columns with a header, or a `(no bundles)` line when the project has none. Output lives in the shell
+ * (output is not a port — doc 13 §3).
+ *
+ * @param rows - The projected bundle rows (already id-sorted by the read).
+ * @returns The formatted table, newline-terminated.
+ */
+function formatBundleList(rows: readonly BundleListRow[]): string {
+  if (rows.length === 0) {
+    return "(no bundles)\n";
+  }
+  const header = { id: "id", version: "version", state: "state", migration: "migration" };
+  const idWidth = Math.max(header.id.length, ...rows.map((r) => r.id.length));
+  const versionWidth = Math.max(header.version.length, ...rows.map((r) => r.version.length));
+  const stateWidth = Math.max(header.state.length, ...rows.map((r) => String(r.stateCount).length));
+  const line = (id: string, version: string, state: string, migration: string): string =>
+    `${id.padEnd(idWidth)}  ${version.padEnd(versionWidth)}  ${state.padEnd(stateWidth)}  ${migration}`;
+  const lines = [line(header.id, header.version, header.state, header.migration)];
+  for (const r of rows) {
+    lines.push(line(r.id, r.version, String(r.stateCount), String(r.migrationCount)));
+  }
+  return `${lines.join("\n")}\n`;
+}
+
+/**
+ * List a directory tree as sorted relative file paths under `base` (the fs touch `bundle template show` needs for
+ * its tree summary). The generalised twin of {@link bundleFileTree} (which is `bundles/<id>/`-rooted): this takes
+ * any base dir. Recurses through the FileSystem port; a directory contributes its descendant files (not the
+ * directory entries themselves), so the summary is a flat, deterministic file list. Returns `[]` when `base` does
+ * not exist (the caller guards that case separately).
+ *
+ * @param fs - The FileSystem port.
+ * @param base - The absolute directory to walk.
+ * @returns The relative file paths under `base`, sorted.
+ */
+function dirFileTree(fs: FileSystem, base: string): string[] {
+  const out: string[] = [];
+  const walk = (rel: string): void => {
+    const abs = rel === "" ? base : join(base, rel);
+    if (!fs.exists(abs)) {
+      return;
+    }
+    for (const entry of fs.list(abs)) {
+      const childRel = rel === "" ? entry.name : `${rel}/${entry.name}`;
+      if (entry.kind === "directory") {
+        walk(childRel);
+      } else {
+        out.push(childRel);
+      }
+    }
+  };
+  walk("");
+  return out.sort();
+}
+
+/**
+ * Render the `bundle template show` block (doc 10 row 155: "its template metadata + tree") for the project's
+ * default bundle scaffold at `bundles/bundle-template/`. Output lives in the shell (output is not a port —
+ * doc 13 §3). The directory is the COPIED `files/` tree of some bundle template, so it normally carries NO
+ * `template.yml` of its own — the metadata is then just the header + the file tree. When a `template.yml` IS
+ * present (an author may place one), its description + parameters are printed too (mirroring the top-level
+ * `template show`). The caller has already guarded that `dir` exists.
+ *
+ * @param fs - The FileSystem port.
+ * @param dir - The absolute `bundles/bundle-template/` directory.
+ * @returns The formatted metadata + tree block, newline-terminated.
+ */
+function formatBundleTemplate(fs: FileSystem, dir: string): string {
+  const lines: string[] = [`Bundle template: bundles/${BUNDLE_TEMPLATE_DIR}/`];
+
+  // Optional descriptor: only present if an author placed a template.yml in the scaffold dir.
+  const descriptorPath = join(dir, "template.yml");
+  if (fs.exists(descriptorPath)) {
+    const parsed = parseTemplateDescriptor(parseYaml(fs.read(descriptorPath)));
+    if (parsed.ok) {
+      if (parsed.value.description !== undefined) {
+        lines.push(`Description: ${parsed.value.description}`);
+      }
+      if (parsed.value.parameters.length > 0) {
+        lines.push("Parameters:");
+        for (const p of parsed.value.parameters) {
+          const desc = p.description !== undefined ? `  ${p.description}` : "";
+          const def = p.default !== undefined ? ` (default: ${p.default})` : "";
+          lines.push(`  ${p.name}${desc}${def}`);
+        }
+      }
+    }
+  }
+
+  lines.push("Files:");
+  const files = dirFileTree(fs, dir);
+  if (files.length === 0) {
+    lines.push("  (none)");
+  }
+  for (const path of files) {
+    lines.push(`  ${path}`);
+  }
+  return `${lines.join("\n")}\n`;
 }
 
 /** Render a {@link BundleView} as the human-readable `bundle <id> show` block (output lives in the shell). */
@@ -1594,6 +1746,191 @@ const bundleModule: CommandModule = {
         note: "drop a bundle from the menu (keeps its files on disk)",
       },
     ]);
+
+    // ── bundle remove <id> [--yes] ──────────────────────────────────────────────────────────────────────────
+    // DESTRUCTIVE full teardown (doc 10 row 153): after confirmation, drop <id> from the manifest, delete its
+    // dir, delete its advisor stub, archive its authoring tasks, then ④ RERENDER drops it from the menu. The ONE
+    // genuinely-new mechanic is AUTHOR CONFIRMATION — there is no prompt in the spine. The DECISION is made HERE,
+    // in the shell (it owns process.stdin); the pure `removeBundleSpec` runs ONLY when confirmed (doc 13 §3:
+    // stdin is not a port). `--yes` skips the prompt (the scriptable affirmative); without it the action prompts
+    // and reads one line from `ctx.io.in`. Declining makes NO change and exits 0 (AC53#4 — "exits without
+    // error"). The action is async (it awaits the stdin read); the main program's `parseAsync` in `run()` is
+    // awaited, so the async rejection still flows through the shared `runWithExit` handler.
+    const removeLeaf = group
+      .command("remove")
+      .description(
+        "remove a bundle entirely: drop it from the manifest, delete its directory + advisor, archive its authoring tasks (doc 10)",
+      )
+      .argument(
+        "<id>",
+        "the bundle id to remove (its directory, advisor stub, and authoring tasks are deleted)",
+      )
+      .option("-y, --yes", "skip the destructive-action confirmation prompt")
+      .action(async (id: string, opts: { yes?: boolean }) => {
+        const root = requireProject(ctx, parent);
+
+        // Existence probe (the shell owns the fs port; the pure operation `check` has none): a bundle is
+        // removable iff it is enabled in the manifest OR has a dir on disk. Neither ⇒ a typed NotFound (exit 1)
+        // BEFORE confirming — so a typo never prompts then silently no-ops (AC53#2/#5: act only on a real bundle).
+        const manifest = parseManifest(parseYaml(ctx.deps.fs.read(join(root, MANIFEST_FILE))));
+        const bundles = manifest.ok ? (manifest.value.bundles as readonly string[]) : [];
+        const dirExists = ctx.deps.fs.exists(join(root, "bundles", id));
+        if (!isRemovableBundle({ manifest: { bundles } }, id, dirExists)) {
+          throw noSuchBundleError(id);
+        }
+
+        // AC53#1/#4 — confirm unless --yes; a declined confirmation makes no change and exits 0. With no input
+        // stream available (and no --yes), treat as a decline — the safe default for a destructive op.
+        let confirmed = opts.yes === true;
+        if (!confirmed && ctx.io.in !== undefined) {
+          ctx.io.err.write(
+            `remove bundle "${id}"? this deletes bundles/${id}/ and its advisor stub, and archives its authoring tasks. [y/N] `,
+          );
+          confirmed = await readConfirmation(ctx.io.in);
+        }
+        if (!confirmed) {
+          // AC53#4: no change, exit 0 (NOT an error).
+          ctx.io.out.write(`aborted — nothing removed\n`);
+          return;
+        }
+
+        const result = runMutation(lifecycleDepsFor(ctx, root), { root }, removeBundleSpec(), {
+          id,
+        });
+        ctx.io.out.write(formatResult(result));
+      });
+    withExamples(removeLeaf, [
+      {
+        command: "wpm bundle remove web-handoff --yes",
+        note: "delete a bundle and all its scaffolding without the confirmation prompt",
+      },
+    ]);
+
+    // ── bundle list ─────────────────────────────────────────────────────────────────────────────────────────
+    // READ (doc 10 row 154): enumerate the enabled bundles and print, per bundle, its id, its bundle.yml version,
+    // and the counts of kind:state vs kind:migration tasks in its install-backlog. The version comes from the
+    // loaded project (`project.bundles` already parsed each enabled bundle.yml); the kind counts are an fs SCAN of
+    // bundles/<id>/install-backlog/tasks/ — NOT a BacklogMd-port read, because the install-backlog is not a
+    // discoverable Backlog.md root (doc 07 line 67). The scan lives in the shell (which owns the fs port) and is
+    // threaded into the pure `listBundlesSpec` read, mirroring how `bundle <id> show` threads its file tree.
+    // Read-only — `runRead` writes nothing (AC54#2).
+    const listLeaf = group
+      .command("list")
+      .description(
+        "list each enabled bundle with its version and its install-backlog state/migration task counts (doc 10)",
+      )
+      .action(() => {
+        const root = requireProject(ctx, parent);
+        const manifest = parseManifest(parseYaml(ctx.deps.fs.read(join(root, MANIFEST_FILE))));
+        const ids = manifest.ok ? (manifest.value.bundles as readonly string[]) : [];
+        const counts = new Map(
+          ids.map((id) => [id, installBacklogKindCounts(ctx.deps.fs, root, id)] as const),
+        );
+        const { value: rows } = runRead(ctx.deps.fs, { root }, listBundlesSpec(), { counts });
+        ctx.io.out.write(formatBundleList(rows));
+      });
+    withExamples(listLeaf, [
+      {
+        command: "wpm bundle list",
+        note: "show each bundle's version + install-backlog task counts",
+      },
+    ]);
+
+    // ── bundle template (show / set) ────────────────────────────────────────────────────────────────────────
+    // The project's DEFAULT bundle SCAFFOLD at bundles/bundle-template/ — the files/ tree `bundle new`
+    // conceptually defaults to (doc 10 line 150 step 2). `template` is a FIXED bundle verb (in
+    // RESERVED_BUNDLE_VERBS), so it is a fixed SUBGROUP here, distinct from the TOP-LEVEL `wpm template` group
+    // (which reads the template REGISTRY). `show` inspects bundles/bundle-template/ (read-only); `set <name>`
+    // replaces its contents from a registered bundle-scope template.
+    const template = group
+      .command("template")
+      .description("the project's default bundle scaffold at bundles/bundle-template/ (doc 10)");
+
+    // ── bundle template show ────────────────────────────────────────────────────────────────────────────────
+    // READ (doc 10 row 155): print bundles/bundle-template/'s metadata + a tree summary. `init` ships no
+    // bundles/, so the dir is absent in a fresh project ⇒ a typed NotFound (exit 1) naming it + suggesting `set`.
+    // Read-only (AC55#2).
+    const templateShowLeaf = template
+      .command("show")
+      .description(
+        "print the project default bundle template's metadata and a tree summary of bundles/bundle-template/ (doc 10)",
+      )
+      .action(() => {
+        const root = requireProject(ctx, parent);
+        const dir = join(root, "bundles", BUNDLE_TEMPLATE_DIR);
+        if (!ctx.deps.fs.exists(dir)) {
+          throw new NotFoundError(
+            `no bundle template at bundles/${BUNDLE_TEMPLATE_DIR} — run \`wpm bundle template set <name>\` to create it from a registered bundle template`,
+          );
+        }
+        ctx.io.out.write(formatBundleTemplate(ctx.deps.fs, dir));
+      });
+    withExamples(templateShowLeaf, [
+      {
+        command: "wpm bundle template show",
+        note: "inspect the project default bundle scaffold",
+      },
+    ]);
+
+    // ── bundle template set <name> ──────────────────────────────────────────────────────────────────────────
+    // MUTATION (doc 10 row 156): resolve <name> as a BUNDLE-scope template, then REPLACE bundles/bundle-template/
+    // contents from its files/ tree. A name that does not resolve OR resolves to a non-bundle scope ⇒ a typed
+    // error (exit 1) changing nothing (AC56#2). On success, clear (fs.remove) THEN write each template file
+    // VERBATIM — NO {{placeholder}} substitution, because the scaffold keeps its placeholders for `bundle new` to
+    // fill when it instantiates from this template. This is a direct shell effect (resolve in core via the pure
+    // resolveTemplate; clear+write via the fs port), NOT runMutation — it touches only the scaffold dir, which is
+    // not part of the loaded Project nor an input to the front-door deriver, so there is nothing to ④ RERENDER.
+    const templateSetLeaf = template
+      .command("set")
+      .description(
+        "replace the project default bundle scaffold (bundles/bundle-template/) from a registered bundle-scope template (doc 10)",
+      )
+      .argument(
+        "<name>",
+        "the bundle-scope template to copy from (its files/ tree replaces bundles/bundle-template/)",
+      )
+      .action((name: string) => {
+        const root = requireProject(ctx, parent);
+        const resolution = resolveTemplate(name, "bundle", {
+          fs: ctx.deps.fs,
+          builtinTemplatesRoot: ctx.deps.builtinTemplatesRoot,
+          projectTemplatesRoot: join(root, "templates"),
+        });
+        if (!resolution.found) {
+          // AC56#2: a name that does not resolve as a BUNDLE template → typed NotFound (exit 1), nothing changed.
+          // (A project-scope name is ALREADY not-found here: a `bundle` resolution only searches the `bundle/`
+          // scope dir, so a `project/`-scoped template like `minimal` does not resolve as a bundle template.)
+          throw new NotFoundError(
+            `bundle template "${name}" not found (searched: ${resolution.searched.join(", ")})`,
+          );
+        }
+        // Defense-in-depth (AC56#2 wrong-scope): the resolver only finds `bundle/`-scope templates here, so the
+        // descriptor's scope is bundle by construction — assert it anyway so a mis-scoped descriptor is rejected
+        // before any write.
+        if (resolution.template.scope !== "bundle") {
+          throw new ValidationError(
+            `template "${name}" is not a bundle-scope template (scope: ${resolution.template.scope})`,
+          );
+        }
+
+        // AC56#1: REPLACE the contents — clear THEN copy (the fs port's copyTree MERGES into an existing dir, so a
+        // true replace is remove-first). Write each resolved file verbatim (no substitution).
+        const dest = join(root, "bundles", BUNDLE_TEMPLATE_DIR);
+        ctx.deps.fs.remove(dest);
+        for (const file of resolution.template.files) {
+          ctx.deps.fs.write(join(dest, file.path), file.content);
+        }
+        ctx.io.out.write(
+          `set bundle template from "${name}" → bundles/${BUNDLE_TEMPLATE_DIR}/ (${resolution.template.files.length} file(s))\n`,
+        );
+      });
+    withExamples(templateSetLeaf, [
+      {
+        command: "wpm bundle template set default",
+        note: "reset the project default bundle scaffold to the built-in `default`",
+      },
+    ]);
+
     // The dynamic `bundle <id> <subcommand>` space is routed BEFORE commander (in `run()` →
     // {@link dispatchPerBundle}), not as a subcommand here — see that function for why (commander's group-level
     // `--help` is greedy and would shadow a per-bundle leaf's `--help`). The fixed verbs above are the only
@@ -2413,6 +2750,13 @@ export const COMPLETION_SPECS: CompletionSpecs = {
   "bundle disable": {
     args: ["bundle-ids"], // <id> — the currently-enabled bundles from manifest.bundles (doc 10 row 151)
   },
+  "bundle remove": {
+    args: ["bundle-ids"], // <id> — the current (enabled) bundles, same source `disable` uses (doc 10 row 153)
+  },
+  "bundle template set": {
+    // <name> — bundle-scope templates (built-in + project-local), the SAME source `bundle new --template` uses.
+    args: ["bundle-template-names"],
+  },
   bundle: {
     // The dynamic `bundle <id>` position: complete the id from the enabled bundles, UNIONED with the fixed
     // verbs (new/enable/disable) by the dispatch — so `bundle <tab>` offers both (doc 10 §per-bundle ops).
@@ -2769,6 +3113,9 @@ if (isMainModule()) {
     out: { write: (s) => process.stdout.write(s) },
     err: { write: (s) => process.stderr.write(s) },
     debug,
+    // The confirmation input source for destructive commands (`bundle remove`); reading stdin lives in the shell
+    // (doc 13 §3). Tests pass a `Readable.from([...])` instead.
+    in: process.stdin,
   };
   void run(process.argv.slice(2), deps, io).then((code) => process.exit(code));
 }
