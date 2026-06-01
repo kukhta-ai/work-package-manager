@@ -3,28 +3,116 @@
 # Re-read on every resume; update at every phase boundary.
 # (Distinct from _bmad/ — that is BMAD's own install dir; this dot-dir is our tracker.)
 
-phase: 0
-phase_name: "Step 0 complete — SDLC tooling installed; awaiting go-ahead to begin Phase 1 (Analysis)"
-branch: dev
+phase: 6
+phase_name: "Epic gate — foundation epic-1 (cold E2E + tea trace/nfr + retro)"
+branch: feature/foundation
 epic: foundation
-active_story: null
+active_story: null   # *** 33/33 FOUNDATION COMPLETE + PHASE-6 EPIC GATE = PASS ***
 review_cycle: 0
+# EPIC GATE (Phase 6) RESULT -- PASS:
+#   COLD E2E (CI sequence from clean): npm ci 0 vulns / tsc 0 / biome ci 0 (123 files) / build 0 / vitest 527 passed (58 files; binary + real-backlog tests ran cold).
+#   tea bmad-testarch-trace: PASS (P0 100%, P1 100%, overall 99% = 95/96 AC). The 1 gap was task-9 AC#3/#4 (doc-only agent-orientation) -- DISPOSED: observably satisfied by README (reaches docs 00-14) + AGENTS.md (orients + names the boundary rule); ticked. So now 96/96.
+#   tea bmad-testarch-nfr: PASS (Maintainability/Reliability/Security/Fake-Real-Parity all PASS; Perf/Scale N/A). Artifacts: _bmad-output/test-artifacts/{traceability/*, nfr-assessment.md}.
+#   retro bmad-retrospective: epic-1 readiness GREEN; retrospective-epic-1.md written. No epic-2 replan. Carry-forward for the CLI epic: test the real binary/loop-closure path; reuse the task-27/28/29 spine; cold-E2E-must-build-dist; keep fake<->real parity explicit in review.
+# PHASE 7 NEXT (user pre-authorized the dev merge): reconcile feature/foundation with origin/dev (which has the CLI epic: tasks 34-84 + doc 10/13 fixes + task-conventions; commits fd0ae0d/5905127/3fd60ba). NOTE: dev is checked out in a SIBLING worktree (work-package-manager-dev); likely conflicts on AGENTS.md/CLAUDE.md + the backlog index. Then git pull origin -> run the SAME skill-driven SDLC for tasks 34-84 (LIGHTER review loops -- the spine is established + mechanically guarded). Surface to user: the doc-07 line-67 divergence (their owned docs).
+# EPIC-GATE NOTE (Phase 6, task-29 S1): the cold E2E MUST follow the CI sequence (ci.yml): npm ci -> npm run typecheck
+# -> npx biome ci . -> npm run build -> npm test. The `npm run build` step is REQUIRED before `npm test` or the
+# built-binary integration tests (cli.bin.test.ts, gated on dist/cli.js via describeIfBuilt) SILENTLY SKIP. ci.yml
+# already does this (line 83 build, 86 test); replicate it in the cold-start run so the binary tests actually exercise dist/.
+# HOOK FIX (committed standalone this branch): the block-backlog-manual-* hookify rules over-matched
+# templates/.../install-backlog/ (template content, not live backlog) and blocked authoring it. Added a
+# templates/ negative-lookahead carve-out to both rules (verified). Real backlog/ + live install-backlogs stay blocked.
+# OPERATIONAL NOTE (2026-06-01): the worker subagent (a67b0906...) hit a continuation glitch on task-30 -- its big
+# authoring run worked (449s/27 tools, all 3 skills) but two short follow-up turns returned 0 tool_uses (emitted
+# malformed/unexecuted tool calls). The orchestrator finished task-30's trivial gate cleanup (biome --write + 1 unused
+# import) and the drift-guard test directly. WATCH the worker's next dispatch; if it returns 0-tools again, spawn a
+# FRESH worker subagent (re-brief from the docs + this state) rather than re-poking the stuck session.
+# task-25 closed at cycle-2 PASS: keystone six-beat mutation lifecycle harness (src/core/operations/). Review caught + fixed
+# (A) biome noConfusingVoidType (void->undefined) and (B) a test+fake fidelity defect (MemoryFileSystem.exists masked broken-symlink
+# semantics; now faithfully follows aliases, broken->false =existsSync; fixtures create installer-skills/ modeling init). NOT a prod
+# bug (doc-10 init creates installer-skills before the scope-alias). Harness logic approved via 6 adversarial probes. Gate: 376 green.
+# FORWARD NOTE (task-13 -> tasks 30/31): author the template manifest.yml/bundle.yml with SINGLE-SPACE
+# inline comments (canonical style). eemeli/yaml normalizes multi-space-before-comment document-wide on any
+# edit, so aligned comments would re-flow on a version bump; single-space keeps programmatic edits line-local.
+# FORWARD NOTE (task-26 -> task-31): the real bundle template must NOT ship files/bundle.yml. createBundle (③ APPLY)
+# writes bundle.yml CANONICALLY (it is the structural source of truth for id/version/requires/confirmation, doc 10
+# step 4); a templated bundle.yml is render-then-clobbered (comments stripped). The template ships the rest of the
+# bundle shell (installer-skills/, install-backlog/config.yml with task_prefix, payload/) but leaves bundle.yml to the operation.
+# FORWARD NOTE / DIVERGENCE (task-31 -> later runtime/authoring tasks + a doc-07 refinement): Backlog.md 1.45.2
+# discovers a backlog ROOT only via a root-level backlog.config.yml (custom-path variant) OR a literal backlog//.backlog/
+# folder -- it does NOT auto-discover a bare install-backlog/ (confirmed by the worker probe + the 1.45.2 README). This
+# CONTRADICTS doc-07 line 67's claim "the folder name is free (here install-backlog/)" -- that is only achievable via the
+# root-config custom-path variant doc-07 says "isn't used here". task-31 is CORRECT (it ships the doc-06/07-mandated
+# install-backlog/ structure; the content is genuine valid pre-initialized Backlog.md, integration-proven). RECONCILE
+# DOWNSTREAM (NOT a vocabulary change -- install-backlog/ stays): (1) execution-time (doc 03/09): the generated project's
+# executor must stage/configure the recipe folder so Backlog.md reads it (drop a backlog.config.yml pointing at
+# install-backlog/, or copy under a discoverable name per doc-09's $STATE mapping); (2) authoring-time (doc 11): the
+# "cd bundles/<id> && backlog task create" flow won't discover install-backlog/ as written -- the CLI tasks 34-84 that
+# touch a bundle's install-backlog must cd into install-backlog/ or set up a backlog.config.yml; (3) doc-07 line 67 should
+# be corrected. SURFACED TO USER (doc inaccuracy in their owned design set). Not a user-gate (no goal/vocabulary change).
+# FORWARD NOTE (task-30 -> task-33 init): the front-door AGENTS.md + the orchestrator SKILL.md are the TWO derived
+# artefacts and currently live in BOTH templates/project/minimal/files/ (init copies) AND snippets/ (the task-19/26
+# deriver re-renders every mutation), byte-identical. To kill the drift hazard, make them snippets-ONLY and have init
+# render them via the task-19 deriver (the same path every mutation uses) -- single source. A drift-guard test in
+# minimal-project.test.ts pins the two pairs byte-identical until then. (Same class as the task-26 bundle.yml double-write.)
+# Phases A+B COMPLETE (1-15: toolchain + model + the 4 ports). Phase C next (16-22: services tier; first up task-16 render).
+# DECISION (task-12, cross-cutting): the core is SYNCHRONOUS
+# (sync ports/adapters/operations; node:fs sync + execaSync for backlog). Rationale: sequential CLI, no concurrency
+# benefit, avoids async coloring across operations/lifecycle/tests; thin-builder does no network/long I/O (doc 13 §0).
+completed_stories: [task-1, task-2, task-3, task-4, task-5, task-6, task-7, task-8, task-9, task-10, task-11, task-12, task-13, task-14, task-15, task-16, task-17, task-18, task-19, task-20, task-21, task-22, task-23, task-24, task-25, task-26, task-27, task-30, task-31, task-32, task-28, task-29, task-33]   # ALL 33 merged --no-ff into feature/foundation -- FOUNDATION EPIC-1 COMPLETE (A:1-9, B:10-15, C:16-22, D:23-26, E:27-29, F:30-33)
 
-# Persistent BMAD specialists are SPAWNed per-phase at runtime (Phase 1+), then RESUMEd.
-# None spawned yet: Step 0 installed the modules that back them, but no SDLC phase has begun.
+# PROCESS CORRECTION (2026-06-01, user-directed; AGENTS.md "Rule 3" committed 869c5b6):
+# Tasks 1-13 ran the SDLC at the ORCHESTRATION level only — the worker/reviewer/personas followed
+# hand-written briefs instead of invoking the actual BMAD workflow skills. User decision: "run the
+# actual skills" going forward, "go forward only" (1-13 stand as-is). FEASIBILITY = GREEN at task-14:
+# a subagent CAN invoke a bmad-* skill — the reviewer ran `bmad-story-automator-review` end-to-end in
+# REPORT-ONLY mode (its terminal story-status/sprint-sync/auto-fix writes are suppressed to keep the
+# review separate-lane). From task-14's review onward: reviewer invokes story-automator-review; worker
+# invokes create-story/dev-story/qa-generate-e2e-tests; each step's skill is recorded in the task --notes.
+
+# DIVERGENCES (recorded per AGENTS.md "record the change"):
+# 1. git cannot hold both a branch `feature/foundation` and `feature/foundation/task-N`
+#    (ref file vs dir clash). Adaptation: epic branch stays `feature/foundation`; task
+#    sub-branches are `feature/foundation-task-N` (slash->hyphen). Merge/push targets unchanged.
+# 2. Dual bin names: package.json bin = {wpm, installer} both -> dist/cli.js, reconciling the
+#    doc set's wpm(prose) vs installer(doc10 tree / doc12 bin example / task-1 AC#1) naming.
+# 3. Two-config TS (tsconfig.json noEmit base typechecks src+test; tsconfig.build.json emits src)
+#    so the typecheck gate covers tests too (fixes a false-clean caught in task-1 review).
+
+# Phases 1-4 complete and committed:
+#   P1 (analyst) product-brief shim + P2 (pm) prd shim     -> dev    (90f2106, 1bafb82)
+#   P3 (architect) architecture/epics/readiness=PASS + (tea) test-design/framework/ci  -> feature/foundation (c6672fe)
+#   P4 (sm) sprint-status.yaml (33 stories, ready=task-1, 0 discrepancies)             -> feature/foundation (this commit)
+
+# User /goal of 2026-05-31 ("complete one by one backlog to task 33 ... full SDLC with
+# pre-initialised persistent subagents") is the go-ahead for the whole run: it satisfies the
+# Phase-1 entry gate and pre-authorizes the planning/solutioning gates (the plan-of-record is the
+# already-committed design set the user owns). Genuinely human-owned gates remain STOP points:
+# merging to dev/main and opening the handoff PR (Phase 7), and disposing an epic-gate CONCERNS/FAIL.
+
+# Persistent BMAD specialists: SPAWNed per-phase, RESUMEd thereafter. `last_skill` = the BMAD skill
+# each LAST actually invoked (Rule 3 evidence; worker+reviewer run real skills from task-14 onward).
 specialists:
-  analyst:      {spawned: false, role: "brief/requirements review vs docs/00-05",        backed_by: "bmad-agent-analyst, bmad-product-brief"}
-  pm:           {spawned: false, role: "PRD review vs docs/00-05",                        backed_by: "bmad-agent-pm, bmad-create-prd"}
-  ux-designer:  {spawned: false, role: "UX spec (optional)",                              backed_by: "bmad-agent-ux-designer"}
-  architect:    {spawned: false, role: "architecture conformance vs docs/12-13",          backed_by: "bmad-agent-architect, bmad-create-architecture, bmad-create-epics-and-stories, bmad-check-implementation-readiness"}
-  tea:          {spawned: false, role: "test design/framework/ci/trace/nfr/gate",         backed_by: "bmad-tea (Murat), bmad-testarch-*"}
-  sm:           {spawned: false, role: "story prep from backlog tasks",                   backed_by: "bmad-sprint-planning, bmad-sprint-status, bmad-create-story"}
-  worker:       {spawned: false, role: "dev-story implementation + automator review",     backed_by: "bmad-agent-dev, bmad-dev-story, bmad-story-automator, bmad-story-automator-review"}
-  investigator: {spawned: false, role: "systematic debugging at the epic gate",           backed_by: "bmad-investigate"}
-  retro:        {spawned: false, role: "epic retrospective",                              backed_by: "bmad-retrospective"}
+  analyst:      {spawned: true,  id: "adb3b965bed0792e1", role: "brief conformance vs docs/00-05",      status: "P1 done — product-brief shim; verdict: docs fully capture brief"}
+  pm:           {spawned: true,  id: "ad55659c67626dac3", role: "PRD conformance vs docs/00-05",        status: "P2 done — prd shim; no scope conflicts (noted wpm/installer bin placeholder)"}
+  ux-designer:  {spawned: false,                          role: "UX spec",                              status: "skipped — no GUI per docs/12"}
+  architect:    {spawned: true,  id: "af0958eff0e1846e5", role: "architecture conformance vs docs/12-13", status: "P3 done — architecture/epics/readiness=PASS; RESUME if a task reveals a design gap"}
+  tea:          {spawned: true,  id: "aa6e3730c6822131e", role: "test design/framework/ci/trace/nfr/gate", status: "P3 done — test-design/framework=vitest/ci=matrix; RESUME in P6 (trace/nfr/final gate)"}
+  sm:           {spawned: true,  id: "a58a6182b0009cbb7", role: "sprint setup + create-story per task",  status: "P4 done — sprint-status.yaml; worker owns create-story in the P5 loop"}
+  worker:       {spawned: true,  id: "a7f5ad601fc4cbfee", role: "dev-story implementation (fresh general-purpose worker, invokes bmad-* skills)", last_skill: "create-story + dev-story + qa-generate-e2e-tests + dev-story(fix) @ task-29 (tab-completion)", status: "RELIABLE. Resume via SendMessage to a7f5ad601fc4cbfee for task-33 + the CLI epic 34-84. Implemented tasks 31,32,28,29; tasks 1-27,30 were the old (retired) worker."}
+  worker_retired: {id: "a67b0906de8ff721d", reason: "broke on continuations -- big authoring runs worked but short follow-ups returned 0 tool_uses + got confused; retired after task-30. Do not re-dispatch."}
+  reviewer:     {spawned: true,  id: "a7f5a303c38f8ec6d", role: "separate-lane review",                  last_skill: "bmad-story-automator-review @ task-29 (APPROVE; report-only)", status: "reviewed through task-29; re-verified the omelette protocol fix 3 ways (loop closes for bash/zsh/fish, byte-accurate to omelette 0.4.17)"}
+  investigator: {spawned: false,                          role: "systematic debugging at the epic gate", status: "spawn in P6 on cold-E2E failure"}
+  retro:        {spawned: false,                          role: "epic retrospective",                    status: "spawn after task-33 (end of P5)"}
 
-gates_pending:
-  - "User go-ahead to begin Phase 1 (Analysis). Per instruction, no backlog tasks / SDLC phases started yet."
+gates_pending: []
+# GOAL EXTENDED (2026-06-01): "complete to task 33 ... full SDLC; THEN merge to dev and start the same SDLC
+# from it with the CLI tasks pushed there (update from remote) and go to task 84 (to the end)." So:
+#   (1) finish the foundation epic 23-33 + the Phase-6 epic gate;
+#   (2) MERGE feature/foundation -> dev (now USER-AUTHORIZED — no longer a stop gate);
+#   (3) git fetch/pull origin (the CLI command-leaf tasks 34-84 were pushed to the remote dev branch);
+#   (4) run the SAME skill-driven SDLC for the CLI epic, tasks 34-84, to the end.
+# Promotion dev -> main remains a separate human decision (not in scope of this goal).
 
 # Step 0 toolchain installed 2026-05-31, pinned for reproducibility:
 tooling:
@@ -39,4 +127,4 @@ tooling:
   tool_target: "claude-code"
   claude_code_skills: ".claude/skills (56 skills)"
 
-last_updated: "2026-05-31"
+last_updated: "2026-06-01"

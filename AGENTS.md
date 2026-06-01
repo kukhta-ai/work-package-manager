@@ -61,7 +61,7 @@ record the change. Concretely:
 
 ---
 
-## Two hard rules — read first, they override convenience
+## Three hard rules — read first, they override convenience
 
 **1. Backlog.md is operated *only* through its CLI. Never hand-edit anything under `backlog/`.**
 Every task touch — create, read, status, acceptance-criteria check, dependency, note, archive — goes
@@ -89,8 +89,21 @@ task create` or acceptance-criteria edit.
 formatting/lint with the formatter and linter (never manual whitespace), manage dependencies through
 the package manager (never hand-edit the manifest), apply review feedback by re-running the relevant
 workflow. Hand-writing files is for genuinely new logic only — not for what a tool does deterministically.
-This extends to BMAD: drive its agents and workflows through their commands; do not transcribe their
-outputs by hand.
+This extends to BMAD — its workflows are **run**, not transcribed (Rule 3).
+
+**3. The BMAD workflows are *run*, not paraphrased — inside the specialist whose workflow it is.** Every
+persona step in the SDLC below is a literal invocation of its BMAD skill *by that persistent subagent*: the
+`worker` invokes `create-story`, then `dev-story`, then `qa-generate-e2e-tests`; the reviewer invokes
+`story-automator-review`; the planning personas invoke `product-brief` / `prd` / `create-architecture` /
+`testarch-*`. You **steer** each workflow from the committed docs — you supply its elicitation answers (see
+"How the doc-set maps onto BMAD") — but you never replace it with a hand-written brief that merely *describes*
+what the workflow would do. A freehand approximation of a workflow is the same defect as hand-editing a task
+file instead of using its CLI: it looks like the SDLC and isn't. Make each invocation **visible** — record
+*which* skill the specialist actually ran, in its state-file entry and the story's `--notes`, so a skipped
+workflow can't hide behind plausible output. If a skill genuinely cannot run unattended, that is a deviation
+to **surface** (name the blocker, drive the step from the docs as a stated fallback, record it) — never a
+silent substitution. Confirm *once*, at Step 0's confirmation step, that a spawned specialist can actually
+invoke its skill; never assume it.
 
 ---
 
@@ -218,8 +231,12 @@ within its lifetime (the diagram's SPAWN vs RESUME distinction).
    `analyst, pm, ux-designer, architect, tea, sm`, plus the build **worker** and **investigator** roles
    (spun from `dev`/`qa`) and **retro** (from the retrospective workflow). Record, in the state file below,
    that each is initialized and what role it plays. Resume them by their session rather than re-spawning.
-5. **Confirm** the install: the BMAD agents respond to their commands, the `testarch-*` and `story-automator`
-   workflows are present, and `bmad-help` (if available) reports the installed modules.
+5. **Confirm** the install *and that a subagent can drive it*: the BMAD agents respond to their commands, the
+   `testarch-*` and `story-automator` workflows are present, `bmad-help` (if available) reports the modules —
+   and, decisively, **a spawned specialist subagent can itself invoke its skill** (run one persona's skill from
+   inside its own subagent once, end-to-end, before trusting the loop to it). If a subagent cannot load or run a
+   BMAD skill, STOP and surface it: the SDLC below assumes the workflow runs *inside* the specialist (Rule 3),
+   not that you paraphrase it on their behalf — so this is a precondition, not a nicety.
 
 > Persistent != stateless: a specialist spawned in an early phase is **resumed** in a later one (e.g. `tea` is
 > spawned in solutioning and resumed at the epic gate; a `worker` spawned for a story is resumed across its
@@ -241,13 +258,13 @@ re-read it on every resume. Keep two things in sync:
    epic: foundation                       # the epic in flight (the foundation backlog)
    active_story: task-12                  # the backlog task being built, or null
    review_cycle: 2                        # which build->review cycle this story is on
-   specialists:                           # persistent subagents and their state
-     analyst:   {spawned: true,  role: "brief/req review vs docs"}
-     pm:        {spawned: true,  role: "PRD review vs docs 00-05"}
-     architect: {spawned: true,  role: "architecture conformance vs 12/13"}
-     tea:       {spawned: true,  role: "test design / trace / nfr / gate"}
-     sm:        {spawned: true,  role: "story prep from backlog tasks"}
-     worker:    {spawned: true,  role: "dev-story implementation"}
+   specialists:                           # persistent subagents: spawned? + role + the BMAD skill each LAST actually ran (Rule 3 evidence)
+     analyst:   {spawned: true,  role: "brief/req review vs docs",          last_skill: "product-brief"}
+     pm:        {spawned: true,  role: "PRD review vs docs 00-05",          last_skill: "prd"}
+     architect: {spawned: true,  role: "architecture conformance vs 12/13", last_skill: "create-architecture"}
+     tea:       {spawned: true,  role: "test design / trace / nfr / gate",  last_skill: "testarch-test-design"}
+     sm:        {spawned: true,  role: "story prep from backlog tasks",     last_skill: "create-story"}
+     worker:    {spawned: true,  role: "dev-story implementation",          last_skill: "dev-story @ task-12"}
    gates_pending: []                      # any user gate you are waiting on
    last_updated: "<timestamp>"
    ```
@@ -350,18 +367,22 @@ Then:
    and `review_cycle: 0` in the state file. The acceptance criteria are the contract — they say *what* must be
    true, not *how* (the standard is `docs/task-writing-conventions.md`); you pick the how, within `13`'s layering.
 2. **Branch.** `git checkout feature/foundation && git checkout -b feature/foundation/task-<id>`. Update `branch`.
-3. **create-story (worker).** Spawn/resume the worker on BMAD `create-story` to turn the task into a concrete
-   work spec grounded in the docs. (The task is the story; this fleshes the implementation plan.)
-4. **dev-story (worker).** Implement the task with its tests together — the DoD requires type-clean, lint-clean
-   (incl. the core-boundary rule), and green tests.
-5. **qa-generate-e2e-tests (worker / tea).** Add end-to-end/acceptance tests for the task's behavior.
-6. **story-automator-review cycle (worker).** Run the automator review + the full local check suite (the same
-   lint/type/test gate CI runs). Treat findings as blocking; bump `review_cycle`. Loop dev-story -> review
-   **until clean**, up to ~5 cycles. If it won't converge, record why via `--notes` and raise it.
+3. **create-story (worker).** The worker **invokes the `create-story` skill** (the Skill tool) — not a
+   hand-written spec (Rule 3) — to turn the task into a concrete work spec grounded in the docs, steered from
+   `13`/`10` and the task's AC. (The task is the story; this fleshes the implementation plan.)
+4. **dev-story (worker).** The worker **invokes `dev-story`** to implement the task with its tests together —
+   the DoD requires type-clean, lint-clean (incl. the core-boundary rule), and green tests.
+5. **qa-generate-e2e-tests (worker / tea).** **Invoke `qa-generate-e2e-tests`** to add the end-to-end/acceptance
+   tests for the task's behavior.
+6. **story-automator-review cycle (reviewer — a *separate* subagent, never the worker self-reviewing).** The
+   reviewer **invokes `story-automator-review`** + runs the full local check suite (the same lint/type/test gate
+   CI runs). Treat findings as blocking; bump `review_cycle`. Loop dev-story -> review **until clean**, up to ~5
+   cycles. If it won't converge, record why via `--notes` and raise it.
 7. **Verify against acceptance criteria.** Criterion by criterion, each observably true; tick as they pass
    (`--check-ac <n>`). Never tick what you haven't shown.
-8. **Record & close.** Tick DoD items (`--check-dod <n>`), add a decision note if worth keeping, then
-   `backlog task edit <id> -s "Done"`.
+8. **Record & close.** Tick DoD items (`--check-dod <n>`), record in `--notes` which BMAD skills this story
+   actually ran (create-story / dev-story / qa / review — Rule 3's evidence trail), add a decision note if
+   worth keeping, then `backlog task edit <id> -s "Done"`.
 9. **Integrate.** Commit on the sub-branch (message references `task-<id>`); `git checkout feature/foundation &&
    git merge --no-ff feature/foundation/task-<id>`; `git branch -d feature/foundation/task-<id>`. Clear
    `active_story`; update state.
