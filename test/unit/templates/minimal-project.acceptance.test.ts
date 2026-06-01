@@ -49,7 +49,12 @@ function freshParams(name = "hermes-handoff"): Map<string, string> {
   ]);
 }
 
-/** Render the minimal template's `files/` into `ROOT`; return the produced relative paths. */
+/**
+ * Instantiate the minimal template into `ROOT` exactly as `init` does (task-33): copy the `files/` tree with
+ * substitution, AND render the two DERIVED artefacts (front-door `AGENTS.md` + the orchestrator `SKILL.md`) from
+ * the `snippets/` tree — the single source after the task-33 collapse (they are no longer in `files/`). Returns
+ * the produced relative paths.
+ */
 function instantiate(fs: MemoryFileSystem, params: Map<string, string>): string[] {
   const res = resolveTemplate("minimal", "project", { fs, builtinTemplatesRoot: BUILTIN });
   if (!res.found) throw new Error("minimal template not found");
@@ -57,6 +62,14 @@ function instantiate(fs: MemoryFileSystem, params: Map<string, string>): string[
   for (const file of renderTree(res.template.files, params)) {
     fs.write(join(ROOT, file.path), file.content);
     produced.push(file.path);
+  }
+  // The derived artefacts come from snippets/ (front-door = `AGENTS.md`; orchestrator = `…-installer/SKILL.md`):
+  for (const snippet of res.template.snippets) {
+    if (snippet.path === "AGENTS.md" || snippet.path.endsWith("-installer/SKILL.md")) {
+      const r = renderSnippet(snippet, params);
+      fs.write(join(ROOT, r.path), r.content);
+      produced.push(r.path);
+    }
   }
   return produced;
 }

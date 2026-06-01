@@ -171,11 +171,18 @@ describe("--help content contract (task-28, doc 10 discoverability)", () => {
       expect(newCmd.registeredArguments.length).toBeGreaterThan(0);
       expect(fullHelp(newCmd)).toContain(EXAMPLE_HEADING);
 
-      // init: a bare group placeholder — no own options, no args → the rule does NOT demand an example:
+      // template: a bare group placeholder — no own options, no args → the rule does NOT demand an example.
+      // (`init` is a real leaf now (task-33: <name> + --at), so it correctly DOES carry one — see below.)
+      const templateCmd = find("template");
+      expect(ownOptions(templateCmd).length).toBe(0);
+      expect(templateCmd.registeredArguments.length).toBe(0);
+      expect(fullHelp(templateCmd)).not.toContain(EXAMPLE_HEADING);
+
+      // init: now a real leaf with an option + a positional → the rule fires, so it carries an example:
       const initCmd = find("init");
-      expect(ownOptions(initCmd).length).toBe(0);
-      expect(initCmd.registeredArguments.length).toBe(0);
-      expect(fullHelp(initCmd)).not.toContain(EXAMPLE_HEADING);
+      expect(ownOptions(initCmd).length).toBeGreaterThan(0);
+      expect(initCmd.registeredArguments.length).toBeGreaterThan(0);
+      expect(fullHelp(initCmd)).toContain(EXAMPLE_HEADING);
     });
   });
 

@@ -3,11 +3,11 @@
 # Re-read on every resume; update at every phase boundary.
 # (Distinct from _bmad/ — that is BMAD's own install dir; this dot-dir is our tracker.)
 
-phase: 5
-phase_name: "Autonomous build (BAUT) — per-story loop over the foundational backlog"
+phase: 6
+phase_name: "Epic gate — foundation epic-1 (cold E2E + tea trace/nfr + retro)"
 branch: feature/foundation
 epic: foundation
-active_story: null   # task-29 DONE (tab-completion; APPROVE; orchestrator caught + worker fixed the omelette-script-vs-__complete protocol mismatch). ONLY task-33 left (the walking skeleton) -> then the Phase-6 epic gate -> merge to dev.
+active_story: null   # *** 33/33 FOUNDATION COMPLETE *** (all tasks merged into feature/foundation, gate green). task-33 walking skeleton APPROVE, readiness=YES. Phase 6 epic gate NEXT: (1) retro -> retrospective-epic-1; (2) tea testarch-trace + testarch-nfr; (3) COLD E2E via the CI sequence (npm ci -> typecheck -> biome ci -> build -> test); (4) final gate verdict. Then Phase 7: merge feature/foundation -> dev (user-authorized) -> surface status+doc-07 divergence -> git pull origin -> CLI epic tasks 34-84.
 review_cycle: 0
 # EPIC-GATE NOTE (Phase 6, task-29 S1): the cold E2E MUST follow the CI sequence (ci.yml): npm ci -> npm run typecheck
 # -> npx biome ci . -> npm run build -> npm test. The `npm run build` step is REQUIRED before `npm test` or the
@@ -53,7 +53,7 @@ review_cycle: 0
 # DECISION (task-12, cross-cutting): the core is SYNCHRONOUS
 # (sync ports/adapters/operations; node:fs sync + execaSync for backlog). Rationale: sequential CLI, no concurrency
 # benefit, avoids async coloring across operations/lifecycle/tests; thin-builder does no network/long I/O (doc 13 §0).
-completed_stories: [task-1, task-2, task-3, task-4, task-5, task-6, task-7, task-8, task-9, task-10, task-11, task-12, task-13, task-14, task-15, task-16, task-17, task-18, task-19, task-20, task-21, task-22, task-23, task-24, task-25, task-26, task-27, task-30, task-31, task-32, task-28, task-29]   # merged --no-ff into feature/foundation -- A,B,C,D done; E:27,28,29; F:30,31,32 -- only task-33 (walking skeleton) left
+completed_stories: [task-1, task-2, task-3, task-4, task-5, task-6, task-7, task-8, task-9, task-10, task-11, task-12, task-13, task-14, task-15, task-16, task-17, task-18, task-19, task-20, task-21, task-22, task-23, task-24, task-25, task-26, task-27, task-30, task-31, task-32, task-28, task-29, task-33]   # ALL 33 merged --no-ff into feature/foundation -- FOUNDATION EPIC-1 COMPLETE (A:1-9, B:10-15, C:16-22, D:23-26, E:27-29, F:30-33)
 
 # PROCESS CORRECTION (2026-06-01, user-directed; AGENTS.md "Rule 3" committed 869c5b6):
 # Tasks 1-13 ran the SDLC at the ORCHESTRATION level only — the worker/reviewer/personas followed
