@@ -2,17 +2,19 @@
 import { realpathSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { Command, Option } from "commander";
+import { Argument, Command, Option } from "commander";
 import { BacklogCli } from "./adapters/backlog-cli.js";
 import { NodeFileSystem } from "./adapters/node-fs.js";
 import { ProcessEnvironment } from "./adapters/process-env.js";
 import { SystemClock } from "./adapters/system-clock.js";
 import { type CompletionSpecs, completeArgv } from "./completion/complete.js";
+import { BUMP_LEVELS } from "./completion/enums.js";
 import { defaultRegistry } from "./completion/registry.js";
 import { NotFoundError, UsageError } from "./core/errors.js";
 import {
   type AgentName,
   parseAgentName,
+  parseSemVer,
   RESERVED_BUNDLE_VERBS,
   type Template,
   type TemplateScope,
@@ -22,6 +24,7 @@ import { makeArtefactDeriver } from "./core/operations/derive-artefacts-capabili
 import { initProject } from "./core/operations/init-project.js";
 import { type LifecycleDeps, runMutation, runRead } from "./core/operations/lifecycle.js";
 import { addTargetSpec, listTargetsSpec, removeTargetSpec } from "./core/operations/targets.js";
+import { bumpVersionSpec, readVersionSpec, setVersionSpec } from "./core/operations/version.js";
 import type { BacklogMd, Clock, Environment, FileSystem } from "./core/ports/index.js";
 import { resolveContext } from "./core/services/context.js";
 import {
@@ -533,6 +536,72 @@ const projectModule: CommandModule = {
     withExamples(removeLeaf, [
       { command: "wpm project targets remove hermes", note: "stop supporting Hermes" },
     ]);
+
+    // ── project version ───────────────────────────────────────────────────────────────────────────────────
+    // A command WITH subcommands AND its own action: bare `project version` runs this action (the read);
+    // `bump`/`set` dispatch to their own leaves. commander lists the subcommands under "Commands:" in help.
+    const version = group
+      .command("version")
+      .description("the project's release version: print it, or bump/set it (doc 10)")
+      .action(() => {
+        const root = requireProject(ctx, parent);
+        const { value } = runRead(ctx.deps.fs, { root }, readVersionSpec(), undefined);
+        ctx.io.out.write(`${value}\n`);
+      });
+    withExamples(version, [
+      { command: "wpm project version", note: "print the project's release version" },
+    ]);
+
+    // ── project version bump <major|minor|patch> ──────────────────────────────────────────────────────────
+    // `.choices([...BUMP_LEVELS])` on the positional makes a bad value AND a missing required arg a commander
+    // USAGE error (exit 2, changing nothing — AC#2) without a hand-rolled check; the level set is the model's
+    // single source (the same `BUMP_LEVELS` the `"bump-levels"` completion enum uses).
+    const bumpLeaf = version
+      .command("bump")
+      .addArgument(
+        new Argument("<level>", "the semver level to advance the version by").choices([
+          ...BUMP_LEVELS,
+        ]),
+      )
+      .description(
+        "advance the release version by a semver level (major, minor, or patch) (doc 10)",
+      )
+      .action((level: (typeof BUMP_LEVELS)[number]) => {
+        const root = requireProject(ctx, parent);
+        const result = runMutation(lifecycleDepsFor(ctx, root), { root }, bumpVersionSpec(), {
+          level,
+        });
+        ctx.io.out.write(formatResult(result));
+      });
+    withExamples(bumpLeaf, [
+      {
+        command: "wpm project version bump minor",
+        note: "advance the minor version (e.g. 1.2.3 → 1.3.0)",
+      },
+    ]);
+
+    // ── project version set <explicit> ────────────────────────────────────────────────────────────────────
+    // A non-semver `<explicit>` is a bad CLI argument ⇒ a USAGE error (exit 2, changing nothing — AC#2; doc 13
+    // §7). Validate at the boundary via `parseSemVer` and raise `UsageError` (NOT `ValidationError`, which is
+    // exit 1) so the operation receives an already-valid `SemVer`.
+    const setLeaf = version
+      .command("set")
+      .argument("<version>", "the explicit semver to set as the release version")
+      .description("set the release version to an explicit semver value (doc 10)")
+      .action((versionRaw: string) => {
+        const root = requireProject(ctx, parent);
+        const parsed = parseSemVer(versionRaw);
+        if (!parsed.ok) {
+          throw new UsageError(parsed.problem.message);
+        }
+        const result = runMutation(lifecycleDepsFor(ctx, root), { root }, setVersionSpec(), {
+          version: parsed.value,
+        });
+        ctx.io.out.write(formatResult(result));
+      });
+    withExamples(setLeaf, [
+      { command: "wpm project version set 1.0.0", note: "pin the release version to 1.0.0" },
+    ]);
   },
 };
 
@@ -559,6 +628,9 @@ const COMPLETION_SPECS: CompletionSpecs = {
   },
   "project targets remove": {
     args: ["installed-target-names"], // <agent> — the project's current targets (for `remove`)
+  },
+  "project version bump": {
+    args: ["bump-levels"], // <level> — the fixed major/minor/patch enum (reuses the built-in source)
   },
   "bundle new": {
     // `--template` takes a BUNDLE template (a project template can't scaffold a bundle), so it completes from

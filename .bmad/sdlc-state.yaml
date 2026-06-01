@@ -5,8 +5,11 @@
 
 phase: 5
 phase_name: "CLI epic-2 (BAUT) — per-FAMILY build loop over tasks 34-84"
-branch: feature/cli
+branch: feature/cli-version
 epic: cli
+# CLI PROGRESS: merged into feature/cli -> A(35,36 templates+S1), E(42,43,44 targets list-mgmt exemplar + the cross-cutting
+# materialise-root lifecycle fix). IN PROGRESS: D(39,40,41 project version) on feature/cli-version. 5/51 CLI tasks done.
+# Patterns established: READ (templates A), LIST-MGMT add/list/remove (targets E + warning channel + alias asymmetry). Establishing: VERSION (D).
 # *** FOUNDATION EPIC-1 DONE + gate PASS + MERGED TO dev (e1a0fb2). *** Now epic-2 = the CLI command leaves (34-84, 51 tasks).
 # dev = foundation + the CLI epic (tasks 34-84 + doc fixes + task-conventions); local dev == origin/dev + the foundation merge (NOT yet pushed to origin -- deferred, outward-facing).
 # CLI epic branch topology: feature/cli (off dev) -> per-GROUP sub-branches -> merged back; then feature/cli -> dev at the end.
