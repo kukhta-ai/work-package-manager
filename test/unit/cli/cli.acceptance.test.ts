@@ -70,6 +70,11 @@ function seedDeps(): CliDeps {
     `${BUILTIN}/project/minimal/snippets/installer-skills/{{project-name}}-installer/SKILL.md`,
     "---\nname: {{project-name}}-installer\n---\nInstall {{project-name}}.\n",
   );
+  // The advisor snippet `bundle new`'s auto-advisor renders (doc 10 step 6).
+  fs.write(
+    `${BUILTIN}/project/minimal/snippets/advisor.SKILL.md.tmpl`,
+    "---\nname: {{bundle-id}}-advisor\n---\n\n# {{bundle-id}} advisor\n",
+  );
   fs.write(
     `${BUILTIN}/bundle/default/template.yml`,
     "name: default\nscope: bundle\nparameters:\n  - name: bundle-id\n  - name: version\n",

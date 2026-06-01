@@ -160,7 +160,7 @@ describe("default bundle template — createBundle end-to-end (doc 06/07/08/09)"
     expect(agents).toContain("install-backlog"); // points at the recipe
 
     // The result is observable:
-    expect(result.summary).toBe(`created bundle ${SAMPLE_ID}`);
+    expect(result.summary).toBe(`created bundle ${SAMPLE_ID} (advisor scaffolded)`);
   });
 
   it("AC#1 — the template ships NO bundle.yml; the operation writes it exactly once (no double-write)", () => {

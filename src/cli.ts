@@ -19,6 +19,7 @@ import {
   type Template,
   type TemplateScope,
 } from "./core/model/index.js";
+import { disableBundleSpec, enableBundleSpec } from "./core/operations/bundle-lifecycle.js";
 import { createBundleSpec } from "./core/operations/create-bundle.js";
 import { makeArtefactDeriver } from "./core/operations/derive-artefacts-capability.js";
 import { initProject } from "./core/operations/init-project.js";
@@ -256,6 +257,51 @@ const bundleModule: CommandModule = {
       {
         command: "wpm bundle new web-handoff --version 0.2.0",
         note: "create web-handoff pinned to 0.2.0",
+      },
+    ]);
+
+    // ── bundle enable <id> [--no-advisor] ─────────────────────────────────────────────────────────────────
+    // Add a previously-created-but-disabled bundle dir back to the manifest (doc 10 row 150). A mutation: ④
+    // RERENDER re-includes it in the menu; ⑤ MATERIALISE the per-bundle set idempotently; unless --no-advisor
+    // (or an advisor already exists), the shared advisor scaffold runs.
+    const enableLeaf = group
+      .command("enable")
+      .description("enable a previously-created bundle directory in the manifest (doc 10)")
+      .argument("<id>", "the disabled-but-present bundle id to enable")
+      .option("--no-advisor", "skip the advisor scaffold")
+      .action((id: string, opts: { advisor?: boolean }) => {
+        const root = requireProject(ctx, parent);
+        const result = runMutation(
+          lifecycleDepsFor(ctx, root),
+          { root },
+          enableBundleSpec({ builtinTemplatesRoot: ctx.deps.builtinTemplatesRoot }),
+          { id, advisor: opts.advisor },
+        );
+        ctx.io.out.write(formatResult(result));
+        writeWarnings(ctx, result.warnings);
+      });
+    withExamples(enableLeaf, [
+      { command: "wpm bundle enable web-handoff", note: "enable a previously-created bundle" },
+    ]);
+
+    // ── bundle disable <id> ───────────────────────────────────────────────────────────────────────────────
+    // Remove a bundle from the manifest, leaving its directory on disk but inert (doc 10 row 151). A mutation:
+    // ④ RERENDER drops it from the menu. No file/advisor teardown (that is `bundle remove`).
+    const disableLeaf = group
+      .command("disable")
+      .description("remove a bundle from the manifest (its directory stays on disk) (doc 10)")
+      .argument("<id>", "the enabled bundle id to disable")
+      .action((id: string) => {
+        const root = requireProject(ctx, parent);
+        const result = runMutation(lifecycleDepsFor(ctx, root), { root }, disableBundleSpec(), {
+          id,
+        });
+        ctx.io.out.write(formatResult(result));
+      });
+    withExamples(disableLeaf, [
+      {
+        command: "wpm bundle disable web-handoff",
+        note: "drop a bundle from the menu (keeps its files on disk)",
       },
     ]);
   },
@@ -734,7 +780,7 @@ function bundleDirectoryNames(fs: FileSystem, root: string): string[] {
  * completion plumbing. The one wired today is the worked proof: `bundle new --template` → `"template-names"`,
  * and `bundle new <id>` declares NO source (a brand-new id yields no suggestions, doc 10).
  */
-const COMPLETION_SPECS: CompletionSpecs = {
+export const COMPLETION_SPECS: CompletionSpecs = {
   init: {
     args: [undefined], // <name> — a brand-new project name, no suggestions (doc 10)
   },
@@ -759,6 +805,12 @@ const COMPLETION_SPECS: CompletionSpecs = {
     // the scope-filtered `bundle-template-names` source — the worked proof of a state-dependent completion.
     options: { "--template": "bundle-template-names" },
     args: [undefined], // <id> — a new id, no suggestions
+  },
+  "bundle enable": {
+    args: ["disabled-bundle-ids"], // <id> — bundle dirs present on disk but NOT in the manifest (doc 10 row 150)
+  },
+  "bundle disable": {
+    args: ["bundle-ids"], // <id> — the currently-enabled bundles from manifest.bundles (doc 10 row 151)
   },
   "completion install": {
     options: { "--shell": "shells" },
@@ -869,6 +921,21 @@ function isCompletionCallback(argv: readonly string[]): boolean {
   return argv.includes(COMPGEN_FLAG) || COMP_SHELL_FLAGS.some((flag) => argv.includes(flag));
 }
 
+/**
+ * Whether `argv` is a request for the PROGRAM's own version (`wpm --version` / `wpm -V`). The program version
+ * option is registered under `-V` only (see {@link buildProgram}) so it never shadows a subcommand's own
+ * `--version` (e.g. `bundle new <id> --version <v>`); the program's long `--version` is therefore handled here,
+ * at the top level, before commander parses. A version request is a bare leading `--version`/`-V` — the FIRST
+ * token is the flag — so a subcommand line like `bundle new web --version 0.2.0` (which starts with `bundle`) is
+ * NOT matched and flows to the subcommand. (`-V` is still also wired on the program for the canonical form.)
+ *
+ * @param argv - The user arguments (excluding `node` and the script path).
+ * @returns `true` when the first token requests the program version.
+ */
+function isProgramVersionRequest(argv: readonly string[]): boolean {
+  return argv.length > 0 && (argv[0] === "--version" || argv[0] === "-V");
+}
+
 /** Resolve the target shell from an explicit `--shell` value or the `$SHELL` env var; a usage error otherwise. */
 function resolveShell(explicit: string | undefined, shellEnv: string | undefined): Shell {
   const candidate = explicit ?? detectShell(shellEnv);
@@ -923,7 +990,15 @@ export function buildProgram(deps: CliDeps, io: CliIo): Command {
   program
     .name("wpm")
     .description("the work-package-manager authoring CLI (doc 10)")
-    .version(VERSION, "-V, --version", "print the version")
+    // The program version is registered under `-V` ONLY (not the default `-V, --version`). commander's
+    // `.version()` registers a GLOBAL option that, with the default long `--version`, is matched against a
+    // SUBCOMMAND's line BEFORE the subcommand's own option — so `bundle new <id> --version <v>` would print the
+    // program version and exit instead of setting the bundle's version (a real bug: the in-process tests passed
+    // only because they exercised the `-v` short form). Scoping the program version to `-V` lets every
+    // subcommand own its own `--version`, and leaves `-C/--project` placement untouched (unlike
+    // `enablePositionalOptions`, which breaks `-C` after a subcommand). The program's own long `--version`
+    // (`wpm --version`) is preserved by intercepting it at the top level in `run()` — see there.
+    .version(VERSION, "-V", "print the version")
     .option(
       "-C, --project <path>",
       "operate on the project at <path> (overrides the upward search)",
@@ -972,6 +1047,15 @@ export async function run(argv: readonly string[], deps: CliDeps, io: CliIo): Pr
   if (argv.length > 0 && argv[0] === COMPLETE_COMMAND) {
     return runWithExit(io, async () => {
       emitCompletions(argv.slice(1), deps, io);
+    });
+  }
+  // The program's own `--version`/`-V` is handled here, before commander parses: the program registers its
+  // version under `-V` only (so a subcommand's `--version` is never shadowed), and this top-level interception
+  // keeps `wpm --version` printing the program version. A subcommand line never starts with the flag, so it is
+  // not intercepted (see `isProgramVersionRequest`).
+  if (isProgramVersionRequest(argv)) {
+    return runWithExit(io, async () => {
+      io.out.write(`${VERSION}\n`);
     });
   }
   return runWithExit(io, async () => {
