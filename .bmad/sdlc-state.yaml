@@ -5,7 +5,7 @@
 
 phase: 5
 phase_name: "CLI epic-2 (BAUT) — per-FAMILY build loop over tasks 34-84"
-branch: feature/cli-bundle-id
+branch: feature/cli
 epic: cli
 # CLI 14/51 merged: A(35,36) E(42,43,44) D(39,40,41) B(37,48,49) G1(50,51,52 bundle new[+--version fix]/enable/disable).
 # IN REVIEW: I(57,58 bundle <id> show/meta) on feature/cli-bundle-id -- ESTABLISHES the bundle <id> ROUTING: run()-level pre-routing
@@ -15,11 +15,20 @@ epic: cli
 # NEXT after I: the bundle <id> repeats flow fast -> J(59,60,61 version=reuse D), K-P(62-79 requires/files/templates/scripts/skills/
 # installer-skills = LIST-MGMT reuse E, via PerBundleCommandModule), Q(80,81 advisor=reuse scaffoldAdvisor); plus C(38 meta),
 # F(45,46,47 installer-skills scaffold-or-attach), H(55,56 bundle template), G2(53 remove[destructive],54 list), R(82,83,84 build), 34(init full).
-# WORKERS (rotate ~every 5-8 tasks; they parse-error on resume once the transcript is large): ACTIVE = adcb88d80b7ef703e (#5, J bundle version);
-# retired: a6599e9 (#4: G1+I), a2b7fcc7 (#3: materialise-fix+D+B), a7f5ad601 (#2: 31,32,28,29,33,merge,A,E), a67b0906 (#1: 1-27,30).
-# REVIEWER a7f5a303c38f8ec6d still reliable (~16 reviews; watch for degradation -> spawn fresh reviewer if it 0-tools).
-# CLI 16/51 merged (A,E,D,B,G1,I). bundle <id> ROUTING + registry established (I). NEXT: J(59-61 bundle version, in progress) then the
-# bundle <id> repeats K-Q via PerBundleCommandModule (BATCH 2-3 families/dispatch, lighter reviews) + C,F,G2,H,R,34.
+# WORKERS (rotate ~every 5-8 tasks; they parse-error on resume once the transcript is large): ACTIVE = (spawning #6 for K+L);
+# retired: adcb88d (#5: J bundle version), a6599e9 (#4: G1+I), a2b7fcc7 (#3: materialise-fix+D+B), a7f5ad601 (#2: 31,32,28,29,33,merge,A,E), a67b0906 (#1: 1-27,30).
+# REVIEWER a7f5a303c38f8ec6d still reliable (~17 reviews, J=APPROVE; watch for degradation -> spawn fresh reviewer if it 0-tools).
+# CLI 19/51 merged (A,E,D,B,G1,I,J). bundle <id> ROUTING + registry established (I); J VALIDATED the registry reuse (ONE module, no routing change).
+# NEXT BATCH = K+L on feature/cli-bundle-reqfiles: K(62-64 requires) is CLEAN reuse (model+schema already have requires; edit bundle.yml.requires via
+# the editYaml seam J uses; cycle warn via resolve() in version-constraint.ts -> cycles.length>0; materialise "Adapt <id>...to use <dep>" [add] /
+# "Verify <id> no longer references <dep>" [remove] idempotent-by-title, doc-11 sec 82-83). L(65-67 files) is HEAVIER: doc-10:165 says register in a
+# bundle.yml PAYLOAD LIST and remove=deregister-not-delete -> L INTRODUCES a payload-reference registry into bundle.yml (schema round-trip + model +
+# createBundle empty-init) because doc-06:137's bundle.yml field list (id/version/summary/confirmation/requires) is NOT exhaustive vs doc-10's CLI
+# contract. DOC-10-LED realization refinement (record divergence, flag at gate; NOT a user gate -- goals/vocab untouched). L builds a GENERIC
+# payload-ref op (descriptor: on-disk dir + bundle.yml list-key + noun) + fs-existence check in LOAD, so M(68-70 templates=payload/templates) and
+# N(71-73 scripts=installer-scripts) are THIN descriptors. J NIT carry-forward to K: multi-target title-keying de-dupes correctly but the surviving
+# task AC names only the first-iterated target (doc-mandated; fine). After K+L: M+N (reuse L), then O+P(skills/installer-skills scaffold-or-attach,reuse F),
+# Q(advisor), C(38 meta), G2(53 remove[destructive],54 list), H(55,56 bundle template), R(82,83,84 build), 34(init full).
 # CLI PROGRESS (11/51 merged into feature/cli): A(35,36 templates read), E(42,43,44 targets LIST-MGMT exemplar + the cross-cutting
 # materialise-root lifecycle fix), D(39,40,41 version), B(37,48,49 project reads). IN PROGRESS: G1(50,51,52 bundle new/enable/disable
 # -- completes bundle new + FIXES the --version bug + the advisor scaffold) on feature/cli-bundle-lifecycle.
