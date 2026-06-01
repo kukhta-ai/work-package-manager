@@ -63,8 +63,24 @@ function subcommand(cmd: Command, name: string): Command | undefined {
 }
 
 /**
+ * The names of a command's user-facing subcommands: excludes commander's auto `help` AND any HIDDEN command
+ * (e.g. the `bundle <id>` routing's `* [args...]` catch-all, registered `{ hidden: true }`) so an internal
+ * dispatch helper never leaks into the suggestions. `_hidden` is commander's own per-command hidden flag.
+ */
+function visibleSubcommandNames(cmd: Command): string[] {
+  return cmd.commands
+    .filter((c) => c.name() !== "help" && (c as unknown as { _hidden?: boolean })._hidden !== true)
+    .map((c) => c.name());
+}
+
+/**
  * Resolve the deepest command the typed words descend into, plus the operand words consumed under it (the
  * non-option words that are NOT subcommand names — i.e. the positional arguments typed so far).
+ *
+ * A value-taking GLOBAL option on the program root (`-C <path>` / `--project <path>`) consumes the FOLLOWING
+ * word as its value — that value must NOT be mistaken for a positional operand or a subcommand name. (Without
+ * this, `wpm -C <dir> bundle <tab>` made `<dir>` an operand under the program, so the descent never reached
+ * `bundle` and the bundle id-position completion broke — the completion-vs-dispatch asymmetry on `-C` placement.)
  */
 function descend(
   root: Command,
@@ -72,8 +88,14 @@ function descend(
 ): { command: Command; operands: string[] } {
   let command = root;
   const operands: string[] = [];
-  for (const word of words) {
+  for (let i = 0; i < words.length; i++) {
+    const word = words[i] as string;
     if (word.startsWith("-")) {
+      // A value-taking option of the PROGRAM root (the globals `-C`/`--project`) swallows its value token.
+      const opt = findOption(root, word);
+      if (opt !== undefined && optionTakesValue(opt)) {
+        i += 1; // skip the value, so it is neither an operand nor a subcommand name
+      }
       continue; // options are not part of the command path
     }
     const child = subcommand(command, word);
@@ -142,10 +164,16 @@ export function completeArgv(
     return prefixFilterLocal(collectFlags(command), partial);
   }
 
-  // (3) A group/command position: suggest subcommands (+ flags).
-  const subNames = command.commands.filter((c) => c.name() !== "help").map((c) => c.name());
+  // (3) A group/command position: suggest subcommands (+ flags). A command MAY also accept a dynamic positional
+  // at this index (e.g. `bundle <id>` — the group has the fixed verbs AND takes an enabled-bundle id); when it
+  // declares an `args[index]` source AND has subcommands, UNION the (visible) subcommand names with the source's
+  // suggestions so both complete. Hidden commands (the `*` routing catch-all) are excluded.
+  const subNames = visibleSubcommandNames(command);
   if (subNames.length > 0) {
-    return prefixFilterLocal(subNames, partial);
+    const positionalSource = spec?.args?.[operands.length];
+    const positional =
+      positionalSource !== undefined ? deps.registry.resolve(positionalSource, ctx) : [];
+    return prefixFilterLocal([...subNames, ...positional], partial);
   }
 
   // (4) A leaf at a positional: resolve the declared source for this positional index, else no suggestions.
