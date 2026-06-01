@@ -10,6 +10,7 @@ import {
 import { renderTree } from "../services/render.js";
 import { serializeBundleManifest } from "../services/schema/index.js";
 import { resolveTemplate } from "../services/template-resolver.js";
+import { scaffoldAdvisor } from "./advisor.js";
 import type { ApplyContext, OperationSpec } from "./lifecycle.js";
 
 /**
@@ -52,6 +53,11 @@ export interface CreateBundleDeps {
   readonly builtinTemplatesRoot: string;
   /** The bundle template name to scaffold from (default `default`; doc 10 `--template`). */
   readonly bundleTemplateName?: string;
+  /**
+   * The project template whose advisor snippet is rendered for the auto-advisor (default `minimal`; doc 10 step
+   * 6 → the `bundle <id> advisor add` action). Only used when the advisor is scaffolded (`advisor !== false`).
+   */
+  readonly projectTemplateName?: string;
 }
 
 /**
@@ -166,7 +172,8 @@ export function createBundleSpec(deps: CreateBundleDeps): OperationSpec<CreateBu
   const bundleTemplateName = deps.bundleTemplateName ?? DEFAULT_BUNDLE_TEMPLATE;
 
   return {
-    summary: (_project, input) => `created bundle ${input.id}`,
+    summary: (_project, input) =>
+      `created bundle ${input.id}${input.advisor !== false ? " (advisor scaffolded)" : ""}`,
 
     /**
      * ② CHECK — validate all requested input (the id AND the version) and reject a duplicate, before any
@@ -250,6 +257,25 @@ export function createBundleSpec(deps: CreateBundleDeps): OperationSpec<CreateBu
         });
         fs.write(manifestPath, next);
         changedPaths.push(manifestPath);
+      }
+
+      // (d) Auto-advisor (doc 10 step 6): unless `--no-advisor` (`advisor === false`), render the advisor stub
+      // at installer-skills/<id>-advisor/SKILL.md via the shared scaffold (no-op if it already exists). The
+      // matching "Write advisor content for <id>" authoring task is added by ⑤ MATERIALISE below.
+      if (input.advisor !== false) {
+        for (const path of scaffoldAdvisor(
+          {
+            builtinTemplatesRoot: deps.builtinTemplatesRoot,
+            ...(deps.projectTemplateName !== undefined
+              ? { projectTemplateName: deps.projectTemplateName }
+              : {}),
+          },
+          fs,
+          root,
+          id,
+        )) {
+          changedPaths.push(path);
+        }
       }
 
       return { changedPaths };

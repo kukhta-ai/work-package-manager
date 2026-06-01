@@ -5,12 +5,18 @@
 
 phase: 5
 phase_name: "CLI epic-2 (BAUT) — per-FAMILY build loop over tasks 34-84"
-branch: feature/cli-project-reads
+branch: feature/cli-bundle-lifecycle
 epic: cli
-# CLI PROGRESS (merged into feature/cli): A(35,36 templates+S1 read pattern), E(42,43,44 targets LIST-MGMT exemplar + the
-# cross-cutting materialise-root lifecycle fix), D(39,40,41 version pattern). IN REVIEW: B(37,48,49 project reads) on feature/cli-project-reads.
-# 8/51 done -> 11 after B. Patterns established: READ (A), LIST-MGMT add/list/remove (E, warning channel + alias asymmetry), VERSION (D, reused by bundle version).
-# Worker a2b7fcc7 did ~7 tasks (materialise-fix + D + B) -> ROTATE to a fresh worker for the next group.
+# WORKERS (rotate ~every 5-8 tasks; they parse-error on resume once the transcript is large): ACTIVE = a6599e933139a9ca8 (#4, G1 bundle lifecycle);
+# retired: a2b7fcc7 (#3: materialise-fix + D version + B reads), a7f5ad601 (#2: 31,32,28,29,33,merge,A,E), a67b0906 (#1: 1-27,30).
+# REVIEWER a7f5a303c38f8ec6d still reliable (watch for degradation -> spawn fresh reviewer if it 0-tools).
+# CLI PROGRESS (11/51 merged into feature/cli): A(35,36 templates read), E(42,43,44 targets LIST-MGMT exemplar + the cross-cutting
+# materialise-root lifecycle fix), D(39,40,41 version), B(37,48,49 project reads). IN PROGRESS: G1(50,51,52 bundle new/enable/disable
+# -- completes bundle new + FIXES the --version bug + the advisor scaffold) on feature/cli-bundle-lifecycle.
+# Patterns established: READ (A), LIST-MGMT add/list/remove (E, warning channel + alias asymmetry), VERSION (D, reused by bundle version).
+# Remaining after G1: G2(53 remove[destructive: confirm/archive/delete],54 list[install-backlog counts]); C(38 meta); F(45,46,47 installer-skills
+# scaffold-or-attach); H(55,56 bundle template); I(57,58 bundle <id> show/meta -> establishes bundle <id> routing); J(59,60,61 bundle version=reuse D);
+# K-P(62-79 bundle <id> requires/files/templates/scripts/skills/installer-skills = LIST-MGMT reuse E); Q(80,81 advisor); R(82,83,84 build); 34(init full, after G).
 # BUG FOR GROUP G (task-50 bundle new): the real binary `bundle new <id> --version <v>` prints the PROGRAM version and creates
 # nothing -- the program's `--version` (registered via .version()) shadows the subcommand's `--version` option (an in-process-vs-binary
 # gap; run() tests pass). doc-10:149 makes `--version` a real bundle-new option. Fix when rebuilding bundle new in G (commander config:

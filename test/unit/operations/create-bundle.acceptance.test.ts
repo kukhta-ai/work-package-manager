@@ -65,6 +65,11 @@ function setUpProject(): { fs: MemoryFileSystem; backlog: FakeBacklog } {
     `${BUILTIN}/project/minimal/snippets/installer-skills/{{project-name}}-installer/SKILL.md`,
     "---\nname: {{project-name}}-installer\n---\nInstall {{project-name}}.\n",
   );
+  // The advisor snippet the auto-advisor renders (doc 10 step 6).
+  fs.write(
+    `${BUILTIN}/project/minimal/snippets/advisor.SKILL.md.tmpl`,
+    "---\nname: {{bundle-id}}-advisor\n---\n\n# {{bundle-id}} advisor\n",
+  );
 
   // Fixture bundle template (the scaffolded dir tree, incl. the per-bundle alias target).
   fs.write(
@@ -147,7 +152,7 @@ describe("createBundle — acceptance (composition proof; doc 13 §5, doc 10 bun
       });
 
       // Everything about the outcome is readable from the returned OperationResult...
-      expect(result.summary).toBe("created bundle web-handoff");
+      expect(result.summary).toBe("created bundle web-handoff (advisor scaffolded)");
       expect(result.changedPaths).toContain(`${ROOT}/bundles/web-handoff/bundle.yml`);
       expect(result.changedPaths).toContain(`${ROOT}/manifest.yml`);
       expect(result.changedPaths).toContain(`${ROOT}/AGENTS.md`);

@@ -63,6 +63,11 @@ function seed(): { fs: MemoryFileSystem; backlog: FakeBacklog } {
     `${BUILTIN}/project/minimal/snippets/installer-skills/{{project-name}}-installer/SKILL.md`,
     "---\nname: {{project-name}}-installer\n---\nInstall {{project-name}}.\n",
   );
+  // The advisor snippet `bundle new`'s auto-advisor renders (doc 10 step 6).
+  fs.write(
+    `${BUILTIN}/project/minimal/snippets/advisor.SKILL.md.tmpl`,
+    "---\nname: {{bundle-id}}-advisor\n---\n\n# {{bundle-id}} advisor\n",
+  );
 
   // Bundle template (built-in): the dir tree `bundle new` scaffolds (incl. the alias target dir).
   fs.write(
@@ -142,7 +147,7 @@ describe("createBundle — end-to-end through the lifecycle (doc 13 §5; doc 10 
     expect(perBundleAuthoringTasks("web", { advisor: true })).toHaveLength(12);
 
     // the OperationResult is observable (AC#2):
-    expect(result.summary).toBe("created bundle web");
+    expect(result.summary).toBe("created bundle web (advisor scaffolded)");
     expect(result.changedPaths).toContain(`${ROOT}/bundles/web/bundle.yml`);
     expect(result.changedPaths).toContain(`${ROOT}/manifest.yml`);
     expect(result.changedPaths).toContain(`${ROOT}/AGENTS.md`);
