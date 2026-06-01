@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
@@ -279,6 +279,115 @@ describeIfBuilt("bundle <id> routing + show/meta E2E via dist/cli.js (tasks 57/5
       expect(idPos).toContain("web"); // enabled id resolved via the leading -C
       expect(idPos).toContain("doc");
       expect(idPos).toContain("new"); // and the fixed verbs
+    });
+  });
+});
+
+/** The titles of the authoring tasks Backlog.md tracks in <proj>/.authoring-backlog (the real materialise root). */
+function authoringTaskTitles(proj: string): string {
+  // The version-bump lifecycle materialises into the project's own Backlog.md root at .authoring-backlog (doc 10
+  // step 6; doc 11 §"Materialised by `wpm bundle <id> version bump`").
+  return execFileSync("backlog", ["task", "list", "--plain"], {
+    encoding: "utf8",
+    cwd: join(proj, ".authoring-backlog"),
+  });
+}
+
+/** init a real project at <dir>/demo + create bundles `a` and `b`, where `b` requires `a`; return the path. */
+function projectWithRequirer(dir: string): string {
+  const proj = join(dir, "demo");
+  execFileSync(process.execPath, [builtCli, "init", "demo", "--at", proj], { encoding: "utf8" });
+  for (const id of ["a", "b"]) {
+    execFileSync(process.execPath, [builtCli, "bundle", "new", id, "-C", proj], {
+      encoding: "utf8",
+    });
+  }
+  // FIXTURE: make bundle `b` REQUIRE bundle `a` by hand. `bundle <id> requires add` (family K) is NOT built yet,
+  // so the test sets the `requires` map directly on disk — replacing b's canonical empty `requires: {}` with a
+  // constraint naming `a`. This makes the cross-bundle requirer-constraint task materialise when `a` is bumped.
+  const bYmlPath = join(proj, "bundles", "b", "bundle.yml");
+  const bYml = readFileSync(bYmlPath, "utf8");
+  writeFileSync(bYmlPath, bYml.replace(/^requires:\s*\{\}\s*$/m, "requires:\n  a: ^0.1.0"), "utf8");
+  return proj;
+}
+
+describeIfBuilt("bundle <id> version / bump / set E2E via dist/cli.js (tasks 59/60/61)", () => {
+  it("`bundle <id> version` prints the bundle's scaffolded version (0.1.0)", async () => {
+    await withTempDir((dir) => {
+      const proj = projectWithWeb(dir);
+      const out = wpm(proj, ["bundle", "web", "version"]);
+      expect(out.status).toBe(0);
+      expect(out.stdout.trim()).toBe("0.1.0");
+    });
+  });
+
+  it("`bundle <id> version bump minor` advances the version (comments preserved) AND materialises the bump tasks — incl the cross-bundle requirer-constraint — into the REAL .authoring-backlog", async () => {
+    await withTempDir((dir) => {
+      const proj = projectWithRequirer(dir); // a + b, where b requires a
+
+      const bump = wpm(proj, ["bundle", "a", "version", "bump", "minor"]);
+      expect(bump.status).toBe(0);
+      // printed the new version + a materialised line:
+      expect(bump.stdout).toContain("0.2.0");
+      expect(bump.stdout).toMatch(/materialised: \d+ authoring task\(s\)/);
+
+      // bundles/a/bundle.yml advanced to 0.2.0; the canonical bundle.yml structure is intact:
+      const aYml = readFileSync(join(proj, "bundles", "a", "bundle.yml"), "utf8");
+      expect(aYml).toMatch(/version:\s*0\.2\.0/);
+      expect(aYml).toMatch(/id:\s*a/); // untouched key survives
+
+      // The four bump tasks LANDED in the real .authoring-backlog — ESPECIALLY the cross-bundle requirer task
+      // (proves the requirer scan ran over the REAL loaded project, finding b's requires:{a}).
+      const titles = authoringTaskTitles(proj);
+      expect(titles).toContain("Review state-tasks for a at 0.2.0");
+      expect(titles).toContain("Consider migration tasks for a 0.1.0→0.2.0");
+      expect(titles).toContain("Simulate upgrade for a from 0.1.0 to 0.2.0");
+      expect(titles).toContain("Review version constraint on a at 0.2.0");
+    });
+  });
+
+  it("`bundle <id> version set 2.0.0` writes the explicit version; a bad level/version exits 2 unchanged", async () => {
+    await withTempDir((dir) => {
+      const proj = projectWithWeb(dir);
+      const path = join(proj, "bundles", "web", "bundle.yml");
+
+      expect(wpm(proj, ["bundle", "web", "version", "set", "2.0.0"]).status).toBe(0);
+      expect(readFileSync(path, "utf8")).toMatch(/version:\s*2\.0\.0/);
+
+      // a bogus bump level → exit 2 (commander invalid-choice), bundle.yml unchanged:
+      const before = readFileSync(path, "utf8");
+      expect(wpm(proj, ["bundle", "web", "version", "bump", "bogus"]).status).toBe(2);
+      // a non-semver set value → exit 2, unchanged:
+      expect(wpm(proj, ["bundle", "web", "version", "set", "not-a-version"]).status).toBe(2);
+      expect(readFileSync(path, "utf8")).toBe(before);
+    });
+  });
+
+  it("completion: `__complete bundle <id> version bump` offers major/minor/patch; `version --help` documents bump + set", async () => {
+    await withTempDir((dir) => {
+      const proj = projectWithWeb(dir);
+
+      const levels = cli(["__complete", "bundle", "web", "version", "bump", ""], { cwd: proj })
+        .stdout.split("\n")
+        .filter(Boolean);
+      expect(levels).toContain("major");
+      expect(levels).toContain("minor");
+      expect(levels).toContain("patch");
+
+      const versionHelp = wpm(proj, ["bundle", "web", "version", "--help"]);
+      expect(versionHelp.status).toBe(0);
+      expect(versionHelp.stdout).toContain("bundle web version"); // the leaf's usage, not the group's
+      expect(versionHelp.stdout).toContain("bump");
+      expect(versionHelp.stdout).toContain("set");
+    });
+  });
+
+  it("a version round-trip: bump → version reflects it (read sees the mutation through the real binary)", async () => {
+    await withTempDir((dir) => {
+      const proj = projectWithWeb(dir);
+      expect(wpm(proj, ["bundle", "web", "version"]).stdout.trim()).toBe("0.1.0");
+      expect(wpm(proj, ["bundle", "web", "version", "bump", "major"]).status).toBe(0);
+      expect(wpm(proj, ["bundle", "web", "version"]).stdout.trim()).toBe("1.0.0");
     });
   });
 });

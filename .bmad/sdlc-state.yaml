@@ -15,9 +15,11 @@ epic: cli
 # NEXT after I: the bundle <id> repeats flow fast -> J(59,60,61 version=reuse D), K-P(62-79 requires/files/templates/scripts/skills/
 # installer-skills = LIST-MGMT reuse E, via PerBundleCommandModule), Q(80,81 advisor=reuse scaffoldAdvisor); plus C(38 meta),
 # F(45,46,47 installer-skills scaffold-or-attach), H(55,56 bundle template), G2(53 remove[destructive],54 list), R(82,83,84 build), 34(init full).
-# WORKERS (rotate ~every 5-8 tasks; they parse-error on resume once the transcript is large): ACTIVE = a6599e933139a9ca8 (#4, G1 bundle lifecycle);
-# retired: a2b7fcc7 (#3: materialise-fix + D version + B reads), a7f5ad601 (#2: 31,32,28,29,33,merge,A,E), a67b0906 (#1: 1-27,30).
-# REVIEWER a7f5a303c38f8ec6d still reliable (watch for degradation -> spawn fresh reviewer if it 0-tools).
+# WORKERS (rotate ~every 5-8 tasks; they parse-error on resume once the transcript is large): ACTIVE = adcb88d80b7ef703e (#5, J bundle version);
+# retired: a6599e9 (#4: G1+I), a2b7fcc7 (#3: materialise-fix+D+B), a7f5ad601 (#2: 31,32,28,29,33,merge,A,E), a67b0906 (#1: 1-27,30).
+# REVIEWER a7f5a303c38f8ec6d still reliable (~16 reviews; watch for degradation -> spawn fresh reviewer if it 0-tools).
+# CLI 16/51 merged (A,E,D,B,G1,I). bundle <id> ROUTING + registry established (I). NEXT: J(59-61 bundle version, in progress) then the
+# bundle <id> repeats K-Q via PerBundleCommandModule (BATCH 2-3 families/dispatch, lighter reviews) + C,F,G2,H,R,34.
 # CLI PROGRESS (11/51 merged into feature/cli): A(35,36 templates read), E(42,43,44 targets LIST-MGMT exemplar + the cross-cutting
 # materialise-root lifecycle fix), D(39,40,41 version), B(37,48,49 project reads). IN PROGRESS: G1(50,51,52 bundle new/enable/disable
 # -- completes bundle new + FIXES the --version bug + the advisor scaffold) on feature/cli-bundle-lifecycle.

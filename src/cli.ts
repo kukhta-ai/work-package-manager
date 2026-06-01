@@ -24,6 +24,11 @@ import {
 import { disableBundleSpec, enableBundleSpec } from "./core/operations/bundle-lifecycle.js";
 import { editBundleMetaSpec } from "./core/operations/bundle-meta.js";
 import { type BundleView, showBundleSpec } from "./core/operations/bundle-reads.js";
+import {
+  bumpBundleVersionSpec,
+  readBundleVersionSpec,
+  setBundleVersionSpec,
+} from "./core/operations/bundle-version.js";
 import { createBundleSpec } from "./core/operations/create-bundle.js";
 import { makeArtefactDeriver } from "./core/operations/derive-artefacts-capability.js";
 import { initProject } from "./core/operations/init-project.js";
@@ -387,16 +392,102 @@ const bundleMetaModule: PerBundleCommandModule = {
 };
 
 /**
+ * `bundle <id> version` (+ `bump` / `set`) (doc 10 rows 159 / 160 / 161), the per-bundle VERSION family — the
+ * bundle-`<id>` analogue of the project `version` group. The bare `version` action is a READ (`runRead`, prints
+ * the raw version); `bump` and `set` are mutations (`runMutation`, so the harness's ④ RERENDER + ⑤ MATERIALISE
+ * run automatically). The `<id>` is already resolved + enabled-guarded by the per-bundle routing and threaded in;
+ * no leaf re-resolves it. Mirrors the project `version` group's shape (a command WITH a bare action AND `bump`/
+ * `set` subcommands), but operates on `bundles/<id>/bundle.yml`'s `version`.
+ */
+const bundleVersionModule: PerBundleCommandModule = {
+  register(sub, ctx, root, id) {
+    // ── bundle <id> version (bare = READ) ──────────────────────────────────────────────────────────────────
+    // A command WITH subcommands AND its own action: bare `version` runs this read; `bump`/`set` dispatch to
+    // their own leaves (commander lists them under "Commands:" in help — 59#4 documents bump+set). Prints the
+    // raw version (59#1), matching the project `version` read's `${value}\n` form.
+    const version = sub
+      .command("version")
+      .description("this bundle's version: print it, or bump/set it (doc 10)")
+      .action(() => {
+        const { value } = runRead(ctx.deps.fs, { root }, readBundleVersionSpec(), { id });
+        ctx.io.out.write(`${value}\n`);
+      });
+    withExamples(version, [
+      { command: `wpm bundle ${id} version`, note: "print this bundle's version" },
+    ]);
+
+    // ── bundle <id> version bump <major|minor|patch> ───────────────────────────────────────────────────────
+    // `.choices([...BUMP_LEVELS])` on the positional makes a bad value AND a missing required arg a commander
+    // USAGE error (exit 2, changing nothing — 60#3) with no hand-rolled check; BUMP_LEVELS is the model's single
+    // source (the same set the `"bump-levels"` completion enum uses). The bump materialises the doc-11 task set
+    // (the summary line is the new version; `formatResult` adds the `materialised: N` line — 60#1/60#2).
+    const bumpLeaf = version
+      .command("bump")
+      .addArgument(
+        new Argument("<level>", "the semver level to advance the version by").choices([
+          ...BUMP_LEVELS,
+        ]),
+      )
+      .description(
+        "advance this bundle's version by a semver level (major, minor, or patch) (doc 10)",
+      )
+      .action((level: (typeof BUMP_LEVELS)[number]) => {
+        const result = runMutation(lifecycleDepsFor(ctx, root), { root }, bumpBundleVersionSpec(), {
+          id,
+          level,
+        });
+        ctx.io.out.write(formatResult(result));
+      });
+    withExamples(bumpLeaf, [
+      {
+        command: `wpm bundle ${id} version bump minor`,
+        note: "advance the minor version (e.g. 0.1.0 → 0.2.0)",
+      },
+    ]);
+
+    // ── bundle <id> version set <v> ────────────────────────────────────────────────────────────────────────
+    // A non-semver `<v>` is a bad CLI argument ⇒ a USAGE error (exit 2, changing nothing — 61#2; doc 13 §7).
+    // Validate at the boundary via `parseSemVer` and raise `UsageError` (NOT `ValidationError`, which is exit 1)
+    // so the operation receives an already-valid `SemVer`. No materialise (doc 10 row 161).
+    const setLeaf = version
+      .command("set")
+      .argument("<version>", "the explicit semver to set as this bundle's version")
+      .description("set this bundle's version to an explicit semver value (doc 10)")
+      .action((versionRaw: string) => {
+        const parsed = parseSemVer(versionRaw);
+        if (!parsed.ok) {
+          throw new UsageError(parsed.problem.message);
+        }
+        const result = runMutation(lifecycleDepsFor(ctx, root), { root }, setBundleVersionSpec(), {
+          id,
+          version: parsed.value,
+        });
+        ctx.io.out.write(formatResult(result));
+      });
+    withExamples(setLeaf, [
+      { command: `wpm bundle ${id} version set 1.0.0`, note: "pin this bundle's version to 1.0.0" },
+    ]);
+  },
+};
+
+/**
  * The per-bundle subcommand modules, registered into the `bundle <id>` sub-program in order. A future per-bundle
- * family (tasks 59–81: version/requires/files/templates/scripts/skills/installer-skills/advisor) appends its
+ * family (tasks 62–81: requires/files/templates/scripts/skills/installer-skills/advisor) appends its
  * {@link PerBundleCommandModule} here — the routing and the catch-all need no change. This is the bundle-`<id>`
  * analogue of {@link TOP_LEVEL_MODULES}.
  */
-const PER_BUNDLE_MODULES: readonly PerBundleCommandModule[] = [bundleShowModule, bundleMetaModule];
+const PER_BUNDLE_MODULES: readonly PerBundleCommandModule[] = [
+  bundleShowModule,
+  bundleMetaModule,
+  bundleVersionModule,
+];
 
 /** The completion specs for the per-bundle subcommands (keyed by the subcommand path WITHIN `bundle <id>`). */
 const PER_BUNDLE_COMPLETION_SPECS: CompletionSpecs = {
   meta: { options: { "--confirmation-level": "confirmation-levels" } },
+  // `bundle <id> version bump <level>` — the fixed major/minor/patch enum (reuses the built-in `bump-levels`
+  // source; the project `version bump` uses the same one). The `<id>` already completes on `bundle <tab>`.
+  "version bump": { args: ["bump-levels"] },
 };
 
 /**
