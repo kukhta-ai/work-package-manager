@@ -2048,18 +2048,45 @@ function stripGlobalOptions(tokens: readonly string[]): string[] {
 }
 
 /**
- * The `init <name>` command — the WALKING SKELETON's command surface (task-33; doc 10 §`init`). init is the
+ * Parse repeated `--param key=value` flags (doc 10:137 step 3) into a substitution map. Each value splits on the
+ * FIRST `=` (so a value may itself contain `=`); a pair with no `=` (or an empty key) is a USAGE error (exit 2),
+ * the right class for a malformed argument (doc 13 §7). Returns an empty map when none were given.
+ *
+ * @param pairs - The raw `key=value` strings commander collected (repeatable option), or `undefined`.
+ * @returns The parsed param map.
+ * @throws {UsageError} If any pair lacks an `=` or has an empty key.
+ */
+function parseParams(pairs: readonly string[] | undefined): Map<string, string> {
+  const params = new Map<string, string>();
+  for (const pair of pairs ?? []) {
+    const eq = pair.indexOf("=");
+    if (eq <= 0) {
+      throw new UsageError(`invalid --param "${pair}": expected key=value`);
+    }
+    params.set(pair.slice(0, eq), pair.slice(eq + 1));
+  }
+  return params;
+}
+
+/**
+ * The `init <name>` command — the project-creating front door (task-34; doc 10 §`init`, all 12 steps). init is the
  * BOOTSTRAP: it CREATES a project, so its action does NOT resolve an existing one (no `resolveContext`) — it
  * resolves the TARGET DIR (where to write) and calls the {@link initProject} operation. The project root is
  * `--at <path>` when given, else `<cwd>/<name>` (doc 10 line 194: "init writes to `<path>` if `--at <path>` is
  * given (default cwd)"; doc 12's worked example `wpm init my-installer` then `cd my-installer` shows the
  * default-cwd case nests the project under `<name>`).
+ *
+ * Flags: `--template <name>` picks the project template (default `minimal`); `--list-templates` prints the
+ * available project templates and exits WITHOUT creating anything (AC#6); `--param key=value` (repeatable) adds
+ * placeholder-substitution values (AC#6). `--template`/`--list-templates` complete from the project templates.
  */
 const initModule: CommandModule = {
   register(parent, ctx) {
     const leaf = parent
       .command("init")
-      .description("scaffold a new project root from the minimal template (doc 10)")
+      .description(
+        "scaffold a new project root from a project template (default: minimal) (doc 10)",
+      )
       .argument(
         "<name>",
         "the new project's name (kebab-case; becomes the manifest name and the installer-skill name)",
@@ -2068,30 +2095,79 @@ const initModule: CommandModule = {
         "--at <path>",
         "create the project at <path> (default: a <name>/ directory in the cwd)",
       )
-      .action((name: string, opts: { at?: string }) => {
-        // Resolve the target dir: --at <path> (resolved against cwd) when given, else <cwd>/<name>.
-        const cwd = ctx.deps.env.cwd();
-        const targetDir = opts.at !== undefined ? resolve(cwd, opts.at) : join(cwd, name);
-
-        const result = initProject(
-          {
-            fs: ctx.deps.fs,
-            backlog: ctx.deps.backlog,
-            builtinTemplatesRoot: ctx.deps.builtinTemplatesRoot,
+      .option("--template <name>", "the project template to scaffold from", "minimal")
+      .option(
+        "--list-templates",
+        "list the available project templates and exit without creating a project",
+      )
+      .option(
+        "--param <key=value>",
+        "a placeholder-substitution value (repeatable, e.g. --param author=me)",
+        (value: string, previous: string[] = []) => [...previous, value],
+      )
+      .action(
+        (
+          name: string,
+          opts: {
+            at?: string;
+            template?: string;
+            listTemplates?: boolean;
+            param?: string[];
           },
-          { targetDir, name },
-        );
-        ctx.io.out.write(formatResult(result));
-      });
+        ) => {
+          // --list-templates (AC#6): print the available PROJECT templates and exit 0, creating nothing. This
+          // fires before any target-dir resolution or write — `init --list-templates demo` inspects only.
+          if (opts.listTemplates === true) {
+            const templates = listTemplates(
+              { fs: ctx.deps.fs, builtinTemplatesRoot: ctx.deps.builtinTemplatesRoot },
+              { scope: "project" },
+            );
+            ctx.io.out.write(formatProjectTemplateList(templates));
+            return;
+          }
+
+          // Resolve the target dir: --at <path> (resolved against cwd) when given, else <cwd>/<name>.
+          const cwd = ctx.deps.env.cwd();
+          const targetDir = opts.at !== undefined ? resolve(cwd, opts.at) : join(cwd, name);
+          const params = parseParams(opts.param);
+
+          const result = initProject(
+            {
+              fs: ctx.deps.fs,
+              backlog: ctx.deps.backlog,
+              builtinTemplatesRoot: ctx.deps.builtinTemplatesRoot,
+            },
+            {
+              targetDir,
+              name,
+              ...(opts.template !== undefined ? { templateName: opts.template } : {}),
+              params,
+            },
+          );
+          ctx.io.out.write(formatResult(result));
+        },
+      );
 
     withExamples(leaf, [
       {
-        command: "wpm init hermes-handoff --at ./my-installer",
-        note: "scaffold a project at ./my-installer",
+        command: "wpm init hermes-handoff --template minimal --at ./my-installer",
+        note: "scaffold a project at ./my-installer from the minimal template (or `--list-templates` to list them, `--param k=v` to add substitutions)",
       },
     ]);
   },
 };
+
+/** Render the `init --list-templates` output: the available project-scope template names, one per line. */
+function formatProjectTemplateList(templates: readonly TemplateSummary[]): string {
+  const lines = ["Available project templates:"];
+  if (templates.length === 0) {
+    lines.push("  (none)");
+  }
+  for (const t of templates) {
+    lines.push(`  ${t.name}`);
+  }
+  return `${lines.join("\n")}\n`;
+}
 
 /** The two template scopes, for the `--scope` choices + validation. */
 const TEMPLATE_SCOPES: readonly TemplateScope[] = ["project", "bundle"];
@@ -2711,6 +2787,12 @@ function bundleDirectoryNames(fs: FileSystem, root: string): string[] {
  */
 export const COMPLETION_SPECS: CompletionSpecs = {
   init: {
+    // `--template`/`--list-templates` complete from the PROJECT-scope templates (AC#8); a project template can't
+    // scaffold a bundle, so the source is `project-template-names`, not the unscoped `template-names`.
+    options: {
+      "--template": "project-template-names",
+      "--list-templates": "project-template-names",
+    },
     args: [undefined], // <name> — a brand-new project name, no suggestions (doc 10)
   },
   "template list": {

@@ -208,3 +208,53 @@ describeIfBuilt("bundle lifecycle via the built dist/cli.js (task-50/51/52 — r
     });
   });
 });
+
+/**
+ * The §4 reconciliation (task-34): `bundle template set` is now LIVE for `bundle new`. `init` materialises
+ * `bundles/bundle-template/`; editing it (directly or via `bundle template set`) changes what `bundle new`
+ * clones by default. Driven through the real `dist/cli.js`. Skipped when `dist/` is unbuilt.
+ */
+describeIfBuilt(
+  "§4 reconciliation — `bundle new` clones the project's bundles/bundle-template/ (task-34)",
+  () => {
+    it("after init, an edit to bundles/bundle-template/ is reflected in the next `bundle new` scaffold", async () => {
+      await withTempDir((dir) => {
+        const proj = join(dir, "demo");
+        execFileSync(process.execPath, [builtCli, "init", "demo", "--at", proj], {
+          encoding: "utf8",
+        });
+        // init materialised the project default bundle scaffold:
+        expect(existsSync(join(proj, "bundles", "bundle-template", "AGENTS.md.tmpl"))).toBe(true);
+
+        // Edit the scaffold: drop a NEW marker file in it (an author refining their default bundle shape). The
+        // file name carries a placeholder so we also prove substitution runs over the cloned tree.
+        writeFileSync(
+          join(proj, "bundles", "bundle-template", "payload", "files", "MARKER-{{bundle-id}}.txt"),
+          "default for {{bundle-id}}\n",
+        );
+
+        // `bundle new web` (no --template) now clones the EDITED bundles/bundle-template/:
+        expect(wpm(proj, ["bundle", "new", "web"]).status).toBe(0);
+        const marker = join(proj, "bundles", "web", "payload", "files", "MARKER-web.txt");
+        expect(existsSync(marker)).toBe(true); // the edit is reflected (set is LIVE), with the id substituted
+        expect(readFileSync(marker, "utf8")).toBe("default for web\n");
+      });
+    });
+
+    it("after `bundle template set default`, `bundle new` still scaffolds a working bundle", async () => {
+      await withTempDir((dir) => {
+        const proj = join(dir, "demo");
+        execFileSync(process.execPath, [builtCli, "init", "demo", "--at", proj], {
+          encoding: "utf8",
+        });
+        // Reset the scaffold from the built-in default (the H command), then clone it:
+        expect(wpm(proj, ["bundle", "template", "set", "default"]).status).toBe(0);
+        expect(wpm(proj, ["bundle", "new", "web"]).status).toBe(0);
+        expect(existsSync(join(proj, "bundles", "web", "bundle.yml"))).toBe(true);
+        expect(readFileSync(join(proj, "bundles", "web", "bundle.yml"), "utf8")).toMatch(
+          /id:\s*web/,
+        );
+      });
+    });
+  },
+);

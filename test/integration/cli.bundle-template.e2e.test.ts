@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
@@ -48,13 +48,16 @@ function initProjectAt(dir: string): string {
 }
 
 describeIfBuilt("bundle template show / set E2E via dist/cli.js (tasks 55/56)", () => {
-  it("55 — `show` on a fresh project (init ships no bundles/) exits non-zero naming the dir", async () => {
+  it("55 — after the FULL init (task-34), `show` on a fresh project SUCCEEDS (init now materialises bundles/bundle-template/)", async () => {
     await withTempDir((dir) => {
       const proj = initProjectAt(dir);
-      // a freshly-init'd project has NO bundles/bundle-template/ (the minimal template ships no bundles/).
-      expect(existsSync(join(proj, "bundles", "bundle-template"))).toBe(false);
+      // task-34: the FULL `init` materialises the default bundle template at bundles/bundle-template/, so it is
+      // PRESENT in a freshly-init'd project (this supersedes the skeleton-era "init ships no bundles/" assertion).
+      expect(existsSync(join(proj, "bundles", "bundle-template"))).toBe(true);
       const out = wpm(proj, ["bundle", "template", "show"]);
-      expect(out.status).not.toBe(0);
+      expect(out.status).toBe(0);
+      expect(out.stdout).toContain("Bundle template: bundles/bundle-template/");
+      expect(out.stdout).toContain("AGENTS.md.tmpl");
     });
   });
 
@@ -93,10 +96,27 @@ describeIfBuilt("bundle template show / set E2E via dist/cli.js (tasks 55/56)", 
   it("56#2 — an unresolved name fails (non-zero) changing nothing", async () => {
     await withTempDir((dir) => {
       const proj = initProjectAt(dir);
+      // task-34: init now materialises bundles/bundle-template/, so "changing nothing" is asserted by snapshotting
+      // the scaffold tree BEFORE the failed `set` and confirming it is byte-identical AFTER (not by its absence).
+      const scaffold = join(proj, "bundles", "bundle-template");
+      const snapshot = (): Record<string, string> => {
+        const out: Record<string, string> = {};
+        const walk = (d: string): void => {
+          for (const e of readdirSync(d, { withFileTypes: true })) {
+            const child = join(d, e.name);
+            if (e.isDirectory()) walk(child);
+            else out[child.slice(scaffold.length)] = readFileSync(child, "utf8");
+          }
+        };
+        walk(scaffold);
+        return out;
+      };
+      const before = snapshot();
+
       const out = wpm(proj, ["bundle", "template", "set", "does-not-exist"]);
       expect(out.status).not.toBe(0);
-      // nothing was created:
-      expect(existsSync(join(proj, "bundles", "bundle-template"))).toBe(false);
+      // the failed `set` changed nothing — the scaffold tree is unchanged:
+      expect(snapshot()).toEqual(before);
     });
   });
 
