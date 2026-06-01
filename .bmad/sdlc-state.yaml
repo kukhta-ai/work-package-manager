@@ -3,10 +3,20 @@
 # Re-read on every resume; update at every phase boundary.
 # (Distinct from _bmad/ — that is BMAD's own install dir; this dot-dir is our tracker.)
 
-phase: 6
-phase_name: "CLI epic-2 — Phase 6 EPIC GATE (cold E2E + tea trace/nfr + retro)"
+phase: 7
+phase_name: "CLI epic-2 — Phase 7 HANDOFF (feature/cli -> dev) — AWAITING USER on the dev merge"
 branch: feature/cli
 epic: cli
+# *** CLI EPIC-2 PHASE-6 GATE = PASS (clean). All 84 backlog tasks DONE (foundation 1-33 + CLI 34-84). ***
+#   cold E2E from clean: npm ci 0 / tsc 0 / biome ci 0 (189 files) / build 0 / vitest 1174 passed (93 files).
+#   tea testarch-trace = PASS (250/250 ACs covered, P0/P1/overall 100%, ZERO gaps; double-covered unit+real-binary E2E).
+#   tea testarch-nfr = PASS (Maintainability/Reliability/Security/Fake-Real-Parity all PASS; Perf/Scale N/A; 0 concerns).
+#   retro = GREEN (epic-2 readiness GREEN; carry-forwards: doc-07:67 reconciliation [human doc fix, downstream], the dev merge [human gate]).
+#   Gate artifacts committed b10cf2f: _bmad-output/test-artifacts/{traceability/*-cli-epic.*, nfr-assessment-cli-epic.md} + implementation-artifacts/retrospective-epic-2.md.
+# BRANCH STATE: dev = foundation epic (e1a0fb2) + origin/dev content (3fd60ba: CLI task defs + doc fixes, an ancestor of both dev and feature/cli).
+#   feature/cli = 39 commits ahead of dev = the full CLI epic implementation, gate-PASS. origin/dev tip 3fd60ba (local dev NOT yet pushed -- deferred, outward-facing).
+# PHASE 7 = feature/cli -> dev. AGENTS.md: "Never self-merge to dev or main" (Phase 7 = human reviews PR + merges). The goal pre-authorized foundation->dev;
+#   the CLI->dev merge "to the end" is ambiguous + a human gate -> SURFACED to user (AskUserQuestion). dev->main + the origin push stay separate human decisions (out of scope).
 # *** CLI EPIC COMPLETE: all 51 tasks (34-84) DONE + merged --no-ff into feature/cli (R merge 377bf93). ALL 84 backlog tasks done. ***
 # PHASE 6 EPIC GATE IN PROGRESS: (1) cold CI-sequence E2E from clean [running]; (2) tea[aa6e3730] testarch-trace (CLI AC coverage matrix) + testarch-nfr; (3) retro retrospective-epic-2; (4) final verdict.
 # THEN PHASE 7 HANDOFF: feature/cli -> dev. AGENTS.md says never self-merge to dev (open a PR, human merges); the goal "to task 84 (to the end)" + the pre-authorized foundation->dev merge -> SURFACE to user for the dev-merge decision. dev->main stays separate.
