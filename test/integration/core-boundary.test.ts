@@ -20,11 +20,17 @@ const repoRoot = resolve(fileURLToPath(new URL("../..", import.meta.url)));
 const coreDir = join(repoRoot, "src", "core");
 const biomeBin = join(repoRoot, "node_modules", ".bin", "biome");
 
-/** Absolute paths of every fixture we may create, so cleanup is exhaustive regardless of which test ran. */
+/**
+ * Absolute paths of every fixture we may create. Names are suffixed with the process id so that two
+ * concurrently-running vitest processes use distinct files and never clobber each other's fixtures or
+ * cleanup (these are written into the shared real `src/core/` directory). Cleanup is exhaustive regardless
+ * of which test ran.
+ */
+const pid = process.pid;
 const fixtures = {
-  forbidden: join(coreDir, "__boundary_fixture_forbidden__.ts"),
-  allowed: join(coreDir, "__boundary_fixture_allowed__.ts"),
-  outsideCore: join(repoRoot, "src", "__boundary_fixture_outside__.ts"),
+  forbidden: join(coreDir, `__boundary_fixture_forbidden_${pid}__.ts`),
+  allowed: join(coreDir, `__boundary_fixture_allowed_${pid}__.ts`),
+  outsideCore: join(repoRoot, "src", `__boundary_fixture_outside_${pid}__.ts`),
 } as const;
 
 /** Whether this test created `src/core/` itself (so it should remove it on cleanup), vs it pre-existing. */

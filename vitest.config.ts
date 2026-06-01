@@ -16,6 +16,13 @@ import { defineConfig } from "vitest/config";
  * derived-artefacts exist — tasks 16+; they are added then.) `globals: false` everywhere: tests import
  * from "vitest" explicitly. Type-checking is a separate command (`npm run typecheck` = `tsc`), not part of
  * this run (AC#3).
+ *
+ * **Integration tests run serially** (`fileParallelism: false`, a single fork). They drive stateful, shared
+ * external resources — the real `backlog` CLI (which keeps per-machine global state), the real `src/core/`
+ * directory (the import-boundary fixture test writes there), and the built binary — so running their files
+ * in parallel workers lets those resources collide. Serial execution is the robust fix (a stateful-external
+ * integration suite is legitimately serial); it is NOT masking with retries. The **unit** project stays
+ * fully parallel — it is pure, in-memory, and shares no state.
  */
 export default defineConfig({
   test: {
@@ -34,6 +41,9 @@ export default defineConfig({
           environment: "node",
           globals: false,
           include: ["test/integration/**/*.test.ts"],
+          // Serialize the integration files: no parallel file workers, so stateful external resources
+          // (the real `backlog` CLI, the shared src/core/ fixture path, the built binary) never collide.
+          fileParallelism: false,
         },
       },
     ],
