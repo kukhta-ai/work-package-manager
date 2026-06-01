@@ -10,7 +10,7 @@ import { SystemClock } from "./adapters/system-clock.js";
 import { type CompletionSpecs, completeArgv } from "./completion/complete.js";
 import { BUMP_LEVELS } from "./completion/enums.js";
 import { defaultRegistry } from "./completion/registry.js";
-import { NotFoundError, UsageError } from "./core/errors.js";
+import { NotFoundError, UsageError, ValidationError } from "./core/errors.js";
 import {
   type AgentName,
   parseAgentName,
@@ -23,6 +23,11 @@ import { createBundleSpec } from "./core/operations/create-bundle.js";
 import { makeArtefactDeriver } from "./core/operations/derive-artefacts-capability.js";
 import { initProject } from "./core/operations/init-project.js";
 import { type LifecycleDeps, runMutation, runRead } from "./core/operations/lifecycle.js";
+import {
+  type ProjectOrientation,
+  showProjectSpec,
+  validateProjectSpec,
+} from "./core/operations/project-reads.js";
 import { addTargetSpec, listTargetsSpec, removeTargetSpec } from "./core/operations/targets.js";
 import { bumpVersionSpec, readVersionSpec, setVersionSpec } from "./core/operations/version.js";
 import type { BacklogMd, Clock, Environment, FileSystem } from "./core/ports/index.js";
@@ -96,6 +101,28 @@ function formatResult(result: {
   }
   if (result.materialisedTaskTitles.length > 0) {
     lines.push(`materialised: ${result.materialisedTaskTitles.length} authoring task(s)`);
+  }
+  return `${lines.join("\n")}\n`;
+}
+
+/**
+ * Format a {@link ProjectOrientation} as the human-readable `project show` block (doc 10 row 140): the identity
+ * fields, then the targets and the enabled bundles each on their own line. Output lives in the shell (doc 13 §3);
+ * `--json` renders the SAME value via `JSON.stringify` so the two forms cannot diverge.
+ */
+function formatOrientation(o: ProjectOrientation): string {
+  const lines = [`name:        ${o.name}`, `version:     ${o.version}`];
+  if (o.description !== undefined) {
+    lines.push(`description: ${o.description}`);
+  }
+  lines.push(`root:        ${o.root}`);
+  lines.push(`targets:     ${o.targets.length > 0 ? o.targets.join(", ") : "(none)"}`);
+  lines.push("bundles:");
+  if (o.bundles.length === 0) {
+    lines.push("  (none)");
+  }
+  for (const b of o.bundles) {
+    lines.push(`  ${b.id} ${b.version}${b.summary.length > 0 ? ` — ${b.summary}` : ""}`);
   }
   return `${lines.join("\n")}\n`;
 }
@@ -602,8 +629,103 @@ const projectModule: CommandModule = {
     withExamples(setLeaf, [
       { command: "wpm project version set 1.0.0", note: "pin the release version to 1.0.0" },
     ]);
+
+    // ── project show [--json] ─────────────────────────────────────────────────────────────────────────────
+    // A READ: project the orientation off the loaded project and render it as text, or as JSON with --json (the
+    // SAME value, so the two forms cannot diverge). Read-only (AC 37#3) — `runRead` writes nothing.
+    const showLeaf = group
+      .command("show")
+      .description(
+        "print the project's orientation: name, version, targets, and enabled bundles (doc 10)",
+      )
+      .option("--json", "emit the orientation as machine-readable JSON")
+      .action((opts: { json?: boolean }) => {
+        const root = requireProject(ctx, parent);
+        const { value } = runRead(ctx.deps.fs, { root }, showProjectSpec(), undefined);
+        ctx.io.out.write(
+          opts.json === true ? `${JSON.stringify(value, null, 2)}\n` : formatOrientation(value),
+        );
+      });
+    withExamples(showLeaf, [
+      { command: "wpm project show --json", note: "print the orientation as JSON for tooling" },
+    ]);
+
+    // ── project root ──────────────────────────────────────────────────────────────────────────────────────
+    // A READ that prints JUST the resolved root path on a single line (no padding/decoration) so it composes in
+    // a shell substitution: `cd "$(wpm project root)/bundles/…"` (doc 10:204). `requireProject` already resolved
+    // it; print it directly — read-only, nothing reloaded.
+    const rootLeaf = group
+      .command("root")
+      .description(
+        "print the resolved project root path on one line (composable in $(...)) (doc 10)",
+      )
+      .action(() => {
+        const root = requireProject(ctx, parent);
+        ctx.io.out.write(`${root}\n`);
+      });
+    withExamples(rootLeaf, [
+      {
+        command: 'cd "$(wpm project root)"',
+        note: "change into the project root from anywhere inside it",
+      },
+    ]);
+
+    // ── project validate ──────────────────────────────────────────────────────────────────────────────────
+    // A READ that REPORTS coherence findings (doc 10 row 148) by backing the task-20 `validateProject` service,
+    // which aggregates EVERY problem in one pass (AC#2). The CLI reads the `bundles/` directory names (the fs
+    // touch the pure service needs) and threads them as the read input; a coherent project exits 0, and ANY
+    // finding exits 1 (AC#4) — achieved by printing the per-finding lines to stdout, then throwing a
+    // `ValidationError` (category → exit 1, no stack) carrying a terse summary so the shared handler sets the
+    // code. No side effects (AC#3).
+    const validateLeaf = group
+      .command("validate")
+      .description("check project coherence and report every finding (doc 10)")
+      .action(() => {
+        const root = requireProject(ctx, parent);
+        const bundleDirNames = bundleDirectoryNames(ctx.deps.fs, root);
+        const { value: report } = runRead(
+          ctx.deps.fs,
+          { root },
+          validateProjectSpec(),
+          bundleDirNames,
+        );
+        if (report.ok) {
+          ctx.io.out.write("project is coherent: no problems found\n");
+          return;
+        }
+        for (const problem of report.problems) {
+          const where = problem.field !== undefined ? ` [${problem.field}]` : "";
+          ctx.io.out.write(`- ${problem.message}${where}\n`);
+        }
+        // The findings ARE the output (above); throw so the handler maps this to exit 1 (AC#4) without a stack.
+        throw new ValidationError(
+          `project validation failed: ${report.problems.length} finding(s)`,
+        );
+      });
+    withExamples(validateLeaf, [
+      { command: "wpm project validate", note: "report any project-coherence problems" },
+    ]);
   },
 };
+
+/** The directory under a project root that holds the bundles (doc 10). */
+const BUNDLES_DIR = "bundles";
+
+/**
+ * List the bundle DIRECTORY names under `<root>/bundles/` (the fs touch the pure `validateProject` service needs
+ * to detect orphans). Returns `[]` when `bundles/` does not exist — an init'd project with no bundles has none.
+ * Only directory entries are returned; stray files are not bundle dirs.
+ */
+function bundleDirectoryNames(fs: FileSystem, root: string): string[] {
+  const bundlesPath = join(root, BUNDLES_DIR);
+  if (!fs.exists(bundlesPath)) {
+    return [];
+  }
+  return fs
+    .list(bundlesPath)
+    .filter((entry) => entry.kind === "directory")
+    .map((entry) => entry.name);
+}
 
 /**
  * The per-command completion declarations (task-29 AC#2/AC#3): which named source completes each option's value
