@@ -7,7 +7,7 @@ phase: 5
 phase_name: "Autonomous build (BAUT) — per-story loop over the foundational backlog"
 branch: feature/foundation
 epic: foundation
-active_story: null   # task-32 DONE (builder's agent skill, APPROVE zero findings). 32/33 foundation. Sequence-1 COMPLETE. Sequence 2 left: 28 (--help content contract), 29 (tab-completion), 33 (walking skeleton -- the big E2E; also resolves the task-30 snippets-only forward note). All three need only task-27 (done) except 33 which needs Seq-1 (done).
+active_story: null   # task-28 DONE (--help content contract + the completeness guard; APPROVE, 2 NITs fixed). 33/33 minus task-29,33. Sequence 2 left: 29 (tab-completion), 33 (walking skeleton). help mechanism src/help/examples.ts (withExamples) is reusable for the 34-84 leaves; the guard forces each to ship non-empty help.
 review_cycle: 0
 # HOOK FIX (committed standalone this branch): the block-backlog-manual-* hookify rules over-matched
 # templates/.../install-backlog/ (template content, not live backlog) and blocked authoring it. Added a
@@ -49,7 +49,7 @@ review_cycle: 0
 # DECISION (task-12, cross-cutting): the core is SYNCHRONOUS
 # (sync ports/adapters/operations; node:fs sync + execaSync for backlog). Rationale: sequential CLI, no concurrency
 # benefit, avoids async coloring across operations/lifecycle/tests; thin-builder does no network/long I/O (doc 13 §0).
-completed_stories: [task-1, task-2, task-3, task-4, task-5, task-6, task-7, task-8, task-9, task-10, task-11, task-12, task-13, task-14, task-15, task-16, task-17, task-18, task-19, task-20, task-21, task-22, task-23, task-24, task-25, task-26, task-27, task-30, task-31, task-32]   # merged --no-ff into feature/foundation -- A,B,C,D done; E:27; F:30,31,32 (Seq-1 done)
+completed_stories: [task-1, task-2, task-3, task-4, task-5, task-6, task-7, task-8, task-9, task-10, task-11, task-12, task-13, task-14, task-15, task-16, task-17, task-18, task-19, task-20, task-21, task-22, task-23, task-24, task-25, task-26, task-27, task-30, task-31, task-32, task-28]   # merged --no-ff into feature/foundation -- A,B,C,D done; E:27,28; F:30,31,32
 
 # PROCESS CORRECTION (2026-06-01, user-directed; AGENTS.md "Rule 3" committed 869c5b6):
 # Tasks 1-13 ran the SDLC at the ORCHESTRATION level only — the worker/reviewer/personas followed
@@ -89,7 +89,7 @@ specialists:
   architect:    {spawned: true,  id: "af0958eff0e1846e5", role: "architecture conformance vs docs/12-13", status: "P3 done — architecture/epics/readiness=PASS; RESUME if a task reveals a design gap"}
   tea:          {spawned: true,  id: "aa6e3730c6822131e", role: "test design/framework/ci/trace/nfr/gate", status: "P3 done — test-design/framework=vitest/ci=matrix; RESUME in P6 (trace/nfr/final gate)"}
   sm:           {spawned: true,  id: "a58a6182b0009cbb7", role: "sprint setup + create-story per task",  status: "P4 done — sprint-status.yaml; worker owns create-story in the P5 loop"}
-  worker:       {spawned: true,  id: "a7f5ad601fc4cbfee", role: "dev-story implementation (fresh general-purpose worker, invokes bmad-* skills)", last_skill: "create-story + dev-story + qa-generate-e2e-tests @ task-31 (default bundle template; 99 tools, full loop, gate green)", status: "RELIABLE -- replaced the stuck a67b0906. Resume via SendMessage to a7f5ad601fc4cbfee for tasks 32,28,29,33,34+. Implemented task-31; tasks 1-27,30 were the old worker."}
+  worker:       {spawned: true,  id: "a7f5ad601fc4cbfee", role: "dev-story implementation (fresh general-purpose worker, invokes bmad-* skills)", last_skill: "create-story + dev-story + qa-generate-e2e-tests @ task-28 (--help contract)", status: "RELIABLE. Resume via SendMessage to a7f5ad601fc4cbfee for tasks 29,33,34+. Implemented tasks 31,32,28; tasks 1-27,30 were the old (retired) worker."}
   worker_retired: {id: "a67b0906de8ff721d", reason: "broke on continuations -- big authoring runs worked but short follow-ups returned 0 tool_uses + got confused; retired after task-30. Do not re-dispatch."}
   reviewer:     {spawned: true,  id: "a7f5a303c38f8ec6d", role: "separate-lane review",                  last_skill: "bmad-story-automator-review @ task-31 (APPROVE; report-only)", status: "reviewed through task-31; confirmed the Backlog.md folder divergence via the 1.45.2 README (forward-note, not a defect)"}
   investigator: {spawned: false,                          role: "systematic debugging at the epic gate", status: "spawn in P6 on cold-E2E failure"}
