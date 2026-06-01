@@ -81,12 +81,38 @@ backlog task create "<title>" --ac "..." --dep <id>   # only if the process belo
 ```
 For anything else: `backlog <cmd> --help`. Never a text editor.
 
+The CLI governs *how* you touch a task; **the acceptance-criteria contract below governs *what* goes into
+one** — and reading that contract (`docs/task-writing-conventions.md`) is mandatory before any `backlog
+task create` or acceptance-criteria edit.
+
 **2. Prefer tools over hand-editing, everywhere a tool exists.** Scaffold with generators, fix
 formatting/lint with the formatter and linter (never manual whitespace), manage dependencies through
 the package manager (never hand-edit the manifest), apply review feedback by re-running the relevant
 workflow. Hand-writing files is for genuinely new logic only — not for what a tool does deterministically.
 This extends to BMAD: drive its agents and workflows through their commands; do not transcribe their
 outputs by hand.
+
+---
+
+## How tasks are written — read the contract before you create one
+
+**Before you create or edit any task, you must have read `docs/task-writing-conventions.md` in full. This
+is mandatory, not optional** — do not run `backlog task create`, and do not add or change a task's
+acceptance criteria, until you have. That doc is the binding standard for task *content*; what follows is
+only the gate, not a substitute for reading it.
+
+The contract in one line: a task's **acceptance criteria state an observable outcome (the *what*), never
+the method (the *how*)** — one concern per criterion, negative and edge behaviour covered as outcomes too,
+and the Definition of Done never restated per task. Name a thing only when it is a genuine boundary (an
+exit code, a file format, a port's method shape, a typed error kind) — *specify the seam, leave the
+stuffing.* A task whose criteria prescribe steps is mis-written: the same defect class as hand-editing a
+task file instead of using its CLI. The doc's **author checklist** is the gate for "well-formed," and its
+**worked rewrites** show *how*→*what* in this backlog's own style.
+
+This binds **both** backlogs, for the same reason (`00`'s core bet): wpm's own foundation tasks *and* the
+work-package bundles wpm ships. A *how*-criterion both destroys the executing agent's adaptation and
+leaves a shipped bundle with nothing to verify against — so the discipline is a correctness requirement
+here, not a style preference.
 
 ---
 
@@ -104,6 +130,9 @@ problems, and style are fixed; architecture and code-level detail are refinable 
 - **`docs/14`** — lineage appendix (skim).
 - **`docs/SDLC.md`** — the development process as a sequence diagram (this file's companion; the authoritative flow).
 - **`FOUNDATION.md` + `backlog/`** — the 33 foundational tasks, in dependency order, that turn `13` into code.
+- **`docs/task-writing-conventions.md`** — how tasks and their acceptance criteria are written: the *what*-not-*how*
+  contract. Governs **both** backlogs — wpm's own foundation backlog *and* every bundle wpm ships (`00`, `07`, `11`).
+  **Mandatory reading before you create or edit any task** (see the contract under the hard rules).
 
 **Enforced architectural invariant (`13`):** nothing under `src/core/` may import the CLI framework, the
 subprocess library, or OS/file-system modules. The core is pure; effects live behind injected ports. A
@@ -319,7 +348,7 @@ Then:
 
 1. **Claim & read.** `backlog task edit <id> -s "In Progress"`; `backlog task <id> --plain`. Set `active_story`
    and `review_cycle: 0` in the state file. The acceptance criteria are the contract — they say *what* must be
-   true, not *how*; you pick the how, within `13`'s layering.
+   true, not *how* (the standard is `docs/task-writing-conventions.md`); you pick the how, within `13`'s layering.
 2. **Branch.** `git checkout feature/foundation && git checkout -b feature/foundation/task-<id>`. Update `branch`.
 3. **create-story (worker).** Spawn/resume the worker on BMAD `create-story` to turn the task into a concrete
    work spec grounded in the docs. (The task is the story; this fleshes the implementation plan.)
