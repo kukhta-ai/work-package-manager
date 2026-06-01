@@ -77,8 +77,26 @@ export class MemoryFileSystem implements FileSystem {
 
   /** @inheritdoc */
   exists(path: string): boolean {
-    const p = this.normalize(path);
-    return this.files.has(p) || this.directories.has(p);
+    return this.existsResolved(this.normalize(path), new Set<string>());
+  }
+
+  /**
+   * Faithful existence check that **follows aliases the way `existsSync` follows a symlink** (the real
+   * adapter's behaviour). A direct file or directory at `p` exists. Otherwise, if `p` is a recorded alias
+   * link, its existence is that of its *target* — so a **broken** alias (target absent) is `false`, exactly as
+   * `existsSync` returns `false` for a dangling symlink. Alias chains are followed transitively; a cycle is
+   * bounded by a visited-set and reported as `false`, mirroring `existsSync`'s `ELOOP → false` (so the fake
+   * can never loop forever). This parity matters because a derivation's idempotency (task-19 `planChanges` /
+   * task-25 lifecycle) probes `exists(linkPath)`: a non-broken alias must read as present so it is not
+   * "re-created" on a redundant re-run.
+   */
+  private existsResolved(p: string, visited: Set<string>): boolean {
+    if (this.files.has(p) || this.directories.has(p)) return true;
+    const target = this.aliases.get(p);
+    if (target === undefined) return false;
+    if (visited.has(p)) return false; // alias cycle → ELOOP-equivalent
+    visited.add(p);
+    return this.existsResolved(target, visited);
   }
 
   /** @inheritdoc */

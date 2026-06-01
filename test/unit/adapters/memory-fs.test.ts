@@ -119,6 +119,33 @@ describe("MemoryFileSystem (the in-memory FileSystem fake — AC#1)", () => {
     expect(fs.aliasTarget("/.claude/skills")).toBe("/installer-skills");
   });
 
+  it("exists follows an alias to its target: broken link is false, then true once the target exists", () => {
+    // Parity with the real adapter's `existsSync`, which follows the symlink: a dangling link is `false`,
+    // and the same link reads as present once its target is created. (Guards task-19/task-25 idempotency,
+    // whose re-derivation probes `exists(linkPath)`.)
+    const fs = new MemoryFileSystem();
+    fs.ensureAlias("/installer-skills", "/.claude/skills"); // target does NOT exist yet
+    expect(fs.exists("/.claude/skills")).toBe(false); // broken link → false (ELOOP-free)
+
+    fs.makeDirectories("/installer-skills"); // now the target exists
+    expect(fs.exists("/.claude/skills")).toBe(true); // link resolves → true
+  });
+
+  it("exists resolves a chain of aliases and does not hang on a cycle", () => {
+    const fs = new MemoryFileSystem();
+    // A chain a → b → real dir resolves to true.
+    fs.makeDirectories("/real");
+    fs.ensureAlias("/real", "/b");
+    fs.ensureAlias("/b", "/a");
+    expect(fs.exists("/a")).toBe(true);
+
+    // A cycle x → y → x terminates and yields false (mirrors existsSync's ELOOP → false).
+    const cyc = new MemoryFileSystem();
+    cyc.ensureAlias("/y", "/x");
+    cyc.ensureAlias("/x", "/y");
+    expect(cyc.exists("/x")).toBe(false);
+  });
+
   it("normalizes paths (trailing slash, '.', '..') consistently", () => {
     const fs = new MemoryFileSystem();
     fs.write("/a/b/../c.txt", "v");
