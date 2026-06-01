@@ -62,17 +62,19 @@ describe("parseBundleManifest — well-formed (AC#1, AC#2)", () => {
   });
 });
 
-describe("parseBundleManifest — the payload reference registry (Family L)", () => {
-  it("an ABSENT payload key ⇒ payload.files is empty (old-bundle.yml compatibility)", () => {
+describe("parseBundleManifest — the payload reference registry (L files + M templates + N scripts)", () => {
+  it("an ABSENT payload key ⇒ every category (files, templates, scripts) is empty (old-bundle.yml compatibility)", () => {
     // The well-formed fixture omits `payload` entirely (as every pre-L bundle.yml does).
     const r = parseBundleManifest(wellFormed());
     expect(r.ok).toBe(true);
     if (r.ok) {
       expect(r.value.payload.files).toEqual([]);
+      expect(r.value.payload.templates).toEqual([]);
+      expect(r.value.payload.scripts).toEqual([]);
     }
   });
 
-  it("a populated payload.files parses to the list, in order", () => {
+  it("a populated payload.files parses to the list, in order (templates absent ⇒ empty)", () => {
     const r = parseBundleManifest({
       ...wellFormed(),
       payload: { files: ["agents.md", "sub/x.json"] },
@@ -80,29 +82,79 @@ describe("parseBundleManifest — the payload reference registry (Family L)", ()
     expect(r.ok).toBe(true);
     if (r.ok) {
       expect(r.value.payload.files).toEqual(["agents.md", "sub/x.json"]);
+      expect(r.value.payload.templates).toEqual([]); // partial payload: the missing category is empty
     }
   });
 
-  it("an empty payload.files parses to []", () => {
-    const r = parseBundleManifest({ ...wellFormed(), payload: { files: [] } });
+  it("a populated payload.templates parses to the list, in order (files absent ⇒ empty)", () => {
+    const r = parseBundleManifest({
+      ...wellFormed(),
+      payload: { templates: ["agents.md.tmpl", "sub/x.json.tmpl"] },
+    });
+    expect(r.ok).toBe(true);
+    if (r.ok) {
+      expect(r.value.payload.templates).toEqual(["agents.md.tmpl", "sub/x.json.tmpl"]);
+      expect(r.value.payload.files).toEqual([]); // partial payload: the missing category is empty
+    }
+  });
+
+  it("a populated payload.scripts parses to the list, in order (files/templates absent ⇒ empty)", () => {
+    const r = parseBundleManifest({
+      ...wellFormed(),
+      payload: { scripts: ["probe.sh", "sub/smoke.sh"] },
+    });
+    expect(r.ok).toBe(true);
+    if (r.ok) {
+      expect(r.value.payload.scripts).toEqual(["probe.sh", "sub/smoke.sh"]);
+      expect(r.value.payload.files).toEqual([]); // partial payload: the missing categories are empty
+      expect(r.value.payload.templates).toEqual([]);
+    }
+  });
+
+  it("all three categories populated parse independently", () => {
+    const r = parseBundleManifest({
+      ...wellFormed(),
+      payload: { files: ["a.md"], templates: ["t.md.tmpl"], scripts: ["probe.sh"] },
+    });
+    expect(r.ok).toBe(true);
+    if (r.ok) {
+      expect(r.value.payload.files).toEqual(["a.md"]);
+      expect(r.value.payload.templates).toEqual(["t.md.tmpl"]);
+      expect(r.value.payload.scripts).toEqual(["probe.sh"]);
+    }
+  });
+
+  it("an empty payload.files / payload.templates / payload.scripts parses to []", () => {
+    const r = parseBundleManifest({
+      ...wellFormed(),
+      payload: { files: [], templates: [], scripts: [] },
+    });
     expect(r.ok).toBe(true);
     if (r.ok) {
       expect(r.value.payload.files).toEqual([]);
+      expect(r.value.payload.templates).toEqual([]);
+      expect(r.value.payload.scripts).toEqual([]);
     }
   });
 
-  it("a payload mapping with no files key ⇒ empty", () => {
+  it("a payload mapping with no category keys ⇒ every category empty", () => {
     const r = parseBundleManifest({ ...wellFormed(), payload: {} });
     expect(r.ok).toBe(true);
     if (r.ok) {
       expect(r.value.payload.files).toEqual([]);
+      expect(r.value.payload.templates).toEqual([]);
+      expect(r.value.payload.scripts).toEqual([]);
     }
   });
 
-  it("round-trips a populated payload: parse(serialize(parse(x))) preserves payload.files", () => {
+  it("round-trips a populated payload: parse(serialize(parse(x))) preserves files, templates AND scripts", () => {
     const first = parseBundleManifest({
       ...wellFormed(),
-      payload: { files: ["a.md", "b.json"] },
+      payload: {
+        files: ["a.md", "b.json"],
+        templates: ["t1.tmpl", "t2.tmpl"],
+        scripts: ["probe.sh", "smoke.sh"],
+      },
     });
     expect(first.ok).toBe(true);
     if (first.ok) {
@@ -110,15 +162,21 @@ describe("parseBundleManifest — the payload reference registry (Family L)", ()
       expect(second.ok).toBe(true);
       if (second.ok) {
         expect(second.value.payload.files).toEqual(["a.md", "b.json"]);
+        expect(second.value.payload.templates).toEqual(["t1.tmpl", "t2.tmpl"]);
+        expect(second.value.payload.scripts).toEqual(["probe.sh", "smoke.sh"]);
       }
     }
   });
 
-  it("serialize always emits payload.files (empty ⇒ [])", () => {
+  it("serialize always emits payload.files, payload.templates AND payload.scripts (empty ⇒ [])", () => {
     const r = parseBundleManifest(wellFormed());
     expect(r.ok).toBe(true);
     if (r.ok) {
-      expect(serializeBundleManifest(r.value).payload).toEqual({ files: [] });
+      expect(serializeBundleManifest(r.value).payload).toEqual({
+        files: [],
+        templates: [],
+        scripts: [],
+      });
     }
   });
 
@@ -129,6 +187,26 @@ describe("parseBundleManifest — the payload reference registry (Family L)", ()
       "payload.files entry not a string",
       { ...wellFormed(), payload: { files: ["ok", 5] } },
       "payload.files",
+    ],
+    [
+      "payload.templates not a list",
+      { ...wellFormed(), payload: { templates: "t.tmpl" } },
+      "payload.templates",
+    ],
+    [
+      "payload.templates entry not a string",
+      { ...wellFormed(), payload: { templates: ["ok", 5] } },
+      "payload.templates",
+    ],
+    [
+      "payload.scripts not a list",
+      { ...wellFormed(), payload: { scripts: "probe.sh" } },
+      "payload.scripts",
+    ],
+    [
+      "payload.scripts entry not a string",
+      { ...wellFormed(), payload: { scripts: ["ok", 5] } },
+      "payload.scripts",
     ],
   ])("rejects %s naming %s", (_label, data, expectedField) => {
     const r = parseBundleManifest(data);

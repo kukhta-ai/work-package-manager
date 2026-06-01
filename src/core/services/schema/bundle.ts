@@ -26,7 +26,11 @@ export interface BundleManifestData {
   readonly summary: string;
   readonly confirmation: string;
   readonly requires: Readonly<Record<string, string>>;
-  readonly payload: { readonly files: readonly string[] };
+  readonly payload: {
+    readonly files: readonly string[];
+    readonly templates: readonly string[];
+    readonly scripts: readonly string[];
+  };
 }
 
 /**
@@ -124,8 +128,9 @@ export function parseBundleManifest(data: unknown): Parsed<BundleManifest> {
   }
 
   // `payload` is OPTIONAL: absent in an OLD `bundle.yml` ⇒ every category empty (so the field is purely
-  // additive and pre-existing bundles still parse). When present it must be a mapping; `payload.files`, when
-  // present, must be a list of path strings (the registered relative paths under `payload/files/`).
+  // additive and pre-existing bundles still parse). When present it must be a mapping; each category
+  // (`payload.files`, `payload.templates`), when present, must be a list of path strings (the registered
+  // relative paths under that category's on-disk directory).
   const payloadResult = parsePayload(data.payload, ctx);
   if (!payloadResult.ok) {
     return payloadResult;
@@ -142,17 +147,19 @@ export function parseBundleManifest(data: unknown): Parsed<BundleManifest> {
 }
 
 /**
- * Parse the optional `payload` mapping into a {@link BundlePayload} (doc 10 `files`/`templates` rows). Absent ⇒
- * every category empty (old-bundle compatibility). Validates that, when present, `payload` is a mapping and
- * `payload.files` is a list of strings. Pure and total.
+ * Parse the optional `payload` mapping into a {@link BundlePayload} (doc 10 `files`/`templates`/`scripts` rows).
+ * Absent ⇒ every category empty (old-bundle compatibility); a PARTIAL `payload` (e.g. only `files`) ⇒ the
+ * missing categories are empty too. Validates that, when present, `payload` is a mapping and each present
+ * category (`payload.files`, `payload.templates`) is a list of strings. Pure and total.
  *
  * @param raw - The `payload` value (possibly `undefined`).
  * @param ctx - The bundle context for error messages.
  * @returns The parsed {@link BundlePayload}, or a {@link ValidationProblem}.
  */
 function parsePayload(raw: unknown, ctx: string): Parsed<BundlePayload> {
+  // Absent payload ⇒ every category empty. The field is purely additive: an old/partial bundle.yml still parses.
   if (raw === undefined) {
-    return ok({ files: [] });
+    return ok({ files: [], templates: [], scripts: [] });
   }
   if (!isPlainObject(raw)) {
     return {
@@ -160,20 +167,36 @@ function parsePayload(raw: unknown, ctx: string): Parsed<BundlePayload> {
       problem: { message: `${ctx}: "payload" must be a mapping`, field: "payload" },
     };
   }
-  const filesRaw = raw.files;
-  if (filesRaw === undefined) {
-    return ok({ files: [] });
+  // Each category is independently optional (absent ⇒ empty) and, when present, must be a list of path strings.
+  const files = parsePayloadCategory(raw.files, "payload.files", ctx);
+  if (!files.ok) return files;
+  const templates = parsePayloadCategory(raw.templates, "payload.templates", ctx);
+  if (!templates.ok) return templates;
+  const scripts = parsePayloadCategory(raw.scripts, "payload.scripts", ctx);
+  if (!scripts.ok) return scripts;
+  return ok({ files: files.value, templates: templates.value, scripts: scripts.value });
+}
+
+/**
+ * Parse one optional `payload.<category>` sequence into a string list. Absent ⇒ `[]`; present ⇒ must be a list
+ * of path strings (else a field-precise {@link ValidationProblem} naming `payload.<category>`). Pure and total.
+ *
+ * @param raw - The category value (possibly `undefined`).
+ * @param field - The dotted field name for messages (e.g. `payload.templates`).
+ * @param ctx - The bundle context for error messages.
+ * @returns The parsed path list, or a {@link ValidationProblem}.
+ */
+function parsePayloadCategory(raw: unknown, field: string, ctx: string): Parsed<readonly string[]> {
+  if (raw === undefined) {
+    return ok([]);
   }
-  if (!Array.isArray(filesRaw) || filesRaw.some((entry) => typeof entry !== "string")) {
+  if (!Array.isArray(raw) || raw.some((entry) => typeof entry !== "string")) {
     return {
       ok: false,
-      problem: {
-        message: `${ctx}: "payload.files" must be a list of path strings`,
-        field: "payload.files",
-      },
+      problem: { message: `${ctx}: "${field}" must be a list of path strings`, field },
     };
   }
-  return ok({ files: [...(filesRaw as string[])] });
+  return ok([...(raw as string[])]);
 }
 
 /**
@@ -195,8 +218,13 @@ export function serializeBundleManifest(bundle: BundleManifest): BundleManifestD
     summary: bundle.summary,
     confirmation: bundle.confirmation,
     requires,
-    // Always emit `payload` (an empty list serialises as `files: []`) so a freshly-created bundle.yml carries
-    // the field. Round-trips with `parseBundleManifest` (absent ⇒ empty; present ⇒ the same list).
-    payload: { files: [...bundle.payload.files] },
+    // Always emit `payload` with every category (an empty list serialises as `files: []` / `templates: []` /
+    // `scripts: []`) so a freshly-created bundle.yml carries the fields. Round-trips with `parseBundleManifest`
+    // (absent ⇒ empty; present ⇒ the same lists).
+    payload: {
+      files: [...bundle.payload.files],
+      templates: [...bundle.payload.templates],
+      scripts: [...bundle.payload.scripts],
+    },
   };
 }

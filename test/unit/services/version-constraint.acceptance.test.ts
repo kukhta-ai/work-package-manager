@@ -48,7 +48,7 @@ function bundle(
     summary: `${name} bundle`,
     confirmation: "safe",
     requires: req,
-    payload: { files: [] },
+    payload: { files: [], templates: [], scripts: [] },
   };
 }
 
