@@ -15,24 +15,21 @@ epic: cli
 # NEXT after I: the bundle <id> repeats flow fast -> J(59,60,61 version=reuse D), K-P(62-79 requires/files/templates/scripts/skills/
 # installer-skills = LIST-MGMT reuse E, via PerBundleCommandModule), Q(80,81 advisor=reuse scaffoldAdvisor); plus C(38 meta),
 # F(45,46,47 installer-skills scaffold-or-attach), H(55,56 bundle template), G2(53 remove[destructive],54 list), R(82,83,84 build), 34(init full).
-# WORKERS (rotate ~every 5-8 tasks; they parse-error on resume once the transcript is large): ACTIVE = (spawning #9 for P+F);
-# retired: ac372bf3 (#8: O skills), aa98d211 (#7: M+N), a73ce42b (#6: K+L), adcb88d (#5: J), a6599e9 (#4: G1+I), a2b7fcc7 (#3: materialise+D+B), a7f5ad601 (#2: 31,32,28,29,33,merge,A,E), a67b0906 (#1: 1-27,30).
-# REVIEWER a7f5a303c38f8ec6d still reliable (~20 reviews, O=APPROVE; it even built a pre-O worktree to SHA-diff the advisor stub. Watch for degradation -> spawn fresh reviewer if it 0-tools).
-# CLI 34/51 merged (A,E,D,B,G1,I,J,K,L,M,N,O = 31+3). O ESTABLISHED the skill scaffold-or-attach pattern: skill-refs.ts (SkillRefDescriptor + generic attach/scaffold/list/remove
-# specs), scaffold-skill.ts (renderSkillStub, generalized from scaffoldAdvisor -- advisor.ts delegates, proven byte-identical), frontmatter.ts (pure validator name+description),
-# bundle.yml payload.skills registry as {name,path} objects. The ONE piece P/F swap is listSkillRefsSpec (O=registry-read; P/F=directory-SCAN) + completion source. REMAINING = 17:
-# P(77-79),F(45-47),Q(80,81),C(38),G2(53,54),H(55,56),R(82-84),34.
-# NEXT BATCH = P+F on feature/cli-bundle-installer-skills -- the INSTALLER-SKILLS twins, reuse O's skill-refs core. P=bundle <id> installer-skills (77,78,79), F=project
-# installer-skills (45,46,47). Both: same 3-way add via SkillRefDescriptor but snippet=installer-skill.SKILL.md.tmpl. P scope=bundles/<id>/installer-skills/<name>/, registry in
-# bundle.yml (a NEW field, NOT under payload -- installer-skills are not payload; e.g. bundle.installerSkills), materialise "Write content for install-time skill <name> in <id>",
-# PLUS doc-10:173 step5 "ensure the bundle installer-skills scope aliases exist (create if absent)". F scope=root installer-skills/<name>/, registry in manifest.yml (a NEW
-# Manifest field, e.g. installerSkills), materialise "Write content for install-time skill <name>", PLUS doc-10:178 step1 REFUSE a <name> ending in -advisor or matching the main
-# <project>-installer skill name (reserved). DESIGN DECISION the worker must resolve+record (doc tension): list is doc-spec'd SCAN-based (doc-10:174/179, AC78#1/46#1 "enumerate
-# SKILL.md files UNDER the dir"; F EXCLUDES the main installer + the <id>-advisor skills) -- but add "registers"/remove "deregisters"/completion "from registered" imply a registry.
-# CLEAN RECONCILIATION (my lean, worker decides): list SCANS the dir; a registry tracks add/remove/completion; remove deregisters BUT leaves the file (so a scan still shows it until
-# manual delete -- exactly what "delete it yourself" conveys). This is the deliberate payload-vs-installer-skill split (payload=registered-for-build, O; installer=union-scanned-at-
-# install, P/F). Record the divergence. After P+F: Q(80,81 advisor=reuse scaffoldAdvisor directly, add/remove only, NO <name>/list -- lightest)+C(38 meta=meta-set), G2(53 remove
-# destructive: confirm/archive/delete,54 list), H(55,56 bundle template show/set), R(82,83,84 build dry-run/package/publish -- NOVEL ops per doc-12 build pipeline), 34(init FULL).
+# WORKERS (rotate ~every 5-8 tasks; they parse-error on resume once the transcript is large): ACTIVE = (spawning #10 for Q+C);
+# retired: a3a2eee1 (#9: P+F installer-skills), ac372bf3 (#8: O), aa98d211 (#7: M+N), a73ce42b (#6: K+L), adcb88d (#5: J), a6599e9 (#4: G1+I), a2b7fcc7 (#3: materialise+D+B), a7f5ad601 (#2: 31,32,28,29,33,merge,A,E), a67b0906 (#1: 1-27,30).
+# REVIEWER a7f5a303c38f8ec6d still reliable (~21 reviews, P+F=APPROVE both; it measures durations + SHA-diffs binaries. Watch for degradation -> spawn fresh reviewer if it 0-tools).
+# CLI 40/51 merged (A,E,D,B,G1,I,J,K,L,M,N,O,P,F = 34+6). ALL SKILL families (O payload, P bundle installer, F project installer) DONE via the skill-refs core; scaffold-or-attach +
+# frontmatter validator + the {name,path} registries (bundle.yml payload.skills + installerSkills, manifest.yml installerSkills) are vetted. list = registry (O) or SCAN (P/F).
+# vitest.config integration testTimeout=60000 (justified, scoped). REMAINING = 11: Q(80,81),C(38),G2(53,54),H(55,56),R(82-84),34.
+# NEXT BATCH = Q+C on feature/cli-advisor-meta -- both LIGHT, heavy reuse. Q = bundle <id> advisor add/remove (80,81): add = call the EXISTING scaffoldAdvisor (advisor.ts, already
+# used by bundle new step6) -- renders installer-skills/<id>-advisor/SKILL.md from the advisor snippet, no-op if exists -- PLUS materialise "Write advisor content for <id>"
+# (idempotent by title; bundle new already does this, so the add-action helper likely exists -- expose it as the command + reuse). remove (81) = delete installer-skills/<id>-advisor/
+# dir + close/archive the "Write advisor content for <id>" task if open; "nothing to remove" if absent. NO <name>, NO list (one advisor per bundle). doc-10:176-177. C = project meta
+# (38): project meta [--name --description --license --repository --author] edits manifest.yml project:(ProjectMeta -- ALL 5 fields ALREADY in the model) from provided flags, omitted
+# untouched, comment+order preserving via editYaml; no-flags => no-change + "nothing updated"; carries the ④ re-render (name feeds AGENTS.md + installer SKILL.md). Reuse the version.ts/
+# installer-skills-project.ts manifest-edit pattern. doc-10:141. After Q+C: G2(53 bundle remove[DESTRUCTIVE: confirm + delete bundles/<id>/ + drop from manifest + archive the bundle's
+# .authoring-backlog tasks + delete advisor stub + re-render],54 bundle list[enabled bundles + install-backlog task counts]), H(55,56 bundle template show/set), R(82,83,84 build
+# dry-run/package/publish -- NOVEL, doc-12 build pipeline -- likely its own batch), 34(init FULL per doc-10:137, deps task-50 done -- supersedes the task-33 skeleton init).
 # CLI PROGRESS (11/51 merged into feature/cli): A(35,36 templates read), E(42,43,44 targets LIST-MGMT exemplar + the cross-cutting
 # materialise-root lifecycle fix), D(39,40,41 version), B(37,48,49 project reads). IN PROGRESS: G1(50,51,52 bundle new/enable/disable
 # -- completes bundle new + FIXES the --version bug + the advisor scaffold) on feature/cli-bundle-lifecycle.
