@@ -7,7 +7,7 @@ phase: 5
 phase_name: "Autonomous build (BAUT) — per-story loop over the foundational backlog"
 branch: feature/foundation
 epic: foundation
-active_story: null   # Phase C (services 16-22). Skill-driven loop: worker create-story->dev-story->qa; reviewer story-automator-review
+active_story: null   # Phases A+B+C COMPLETE (1-22). Phase D next (23-26: errors, context, the mutation lifecycle, one representative operation).
 review_cycle: 0
 # FORWARD NOTE (task-13 -> tasks 30/31): author the template manifest.yml/bundle.yml with SINGLE-SPACE
 # inline comments (canonical style). eemeli/yaml normalizes multi-space-before-comment document-wide on any
@@ -16,7 +16,7 @@ review_cycle: 0
 # DECISION (task-12, cross-cutting): the core is SYNCHRONOUS
 # (sync ports/adapters/operations; node:fs sync + execaSync for backlog). Rationale: sequential CLI, no concurrency
 # benefit, avoids async coloring across operations/lifecycle/tests; thin-builder does no network/long I/O (doc 13 §0).
-completed_stories: [task-1, task-2, task-3, task-4, task-5, task-6, task-7, task-8, task-9, task-10, task-11, task-12, task-13, task-14, task-15, task-16, task-17, task-18, task-19, task-20, task-21]   # merged --no-ff into feature/foundation
+completed_stories: [task-1, task-2, task-3, task-4, task-5, task-6, task-7, task-8, task-9, task-10, task-11, task-12, task-13, task-14, task-15, task-16, task-17, task-18, task-19, task-20, task-21, task-22]   # merged --no-ff into feature/foundation
 
 # PROCESS CORRECTION (2026-06-01, user-directed; AGENTS.md "Rule 3" committed 869c5b6):
 # Tasks 1-13 ran the SDLC at the ORCHESTRATION level only — the worker/reviewer/personas followed
