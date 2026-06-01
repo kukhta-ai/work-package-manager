@@ -1,0 +1,7 @@
+name: minimal
+scope: project
+description: A minimal bundle-project root — manifest, front-door AGENTS.md, the unattended-loop prompt, an entry README, and the project's orchestrator skill. No bundles yet; add them with `bundle new`.
+parameters:
+  - name: project-name
+    description: The project's name (kebab-case); becomes the manifest name and the orchestrator skill name.
+    required: true
