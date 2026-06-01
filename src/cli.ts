@@ -8,18 +8,22 @@ import { NodeFileSystem } from "./adapters/node-fs.js";
 import { ProcessEnvironment } from "./adapters/process-env.js";
 import { SystemClock } from "./adapters/system-clock.js";
 import { type CompletionSpecs, completeArgv } from "./completion/complete.js";
-import { BUMP_LEVELS } from "./completion/enums.js";
+import { BUMP_LEVELS, CONFIRMATION_LEVELS } from "./completion/enums.js";
 import { defaultRegistry } from "./completion/registry.js";
 import { NotFoundError, UsageError, ValidationError } from "./core/errors.js";
 import {
   type AgentName,
+  type ConfirmationLevel,
   parseAgentName,
   parseSemVer,
   RESERVED_BUNDLE_VERBS,
+  type SemVer,
   type Template,
   type TemplateScope,
 } from "./core/model/index.js";
 import { disableBundleSpec, enableBundleSpec } from "./core/operations/bundle-lifecycle.js";
+import { editBundleMetaSpec } from "./core/operations/bundle-meta.js";
+import { type BundleView, showBundleSpec } from "./core/operations/bundle-reads.js";
 import { createBundleSpec } from "./core/operations/create-bundle.js";
 import { makeArtefactDeriver } from "./core/operations/derive-artefacts-capability.js";
 import { initProject } from "./core/operations/init-project.js";
@@ -33,6 +37,7 @@ import { addTargetSpec, listTargetsSpec, removeTargetSpec } from "./core/operati
 import { bumpVersionSpec, readVersionSpec, setVersionSpec } from "./core/operations/version.js";
 import type { BacklogMd, Clock, Environment, FileSystem } from "./core/ports/index.js";
 import { resolveContext } from "./core/services/context.js";
+import { parseManifest } from "./core/services/schema/index.js";
 import {
   listTemplates,
   resolveTemplate,
@@ -41,6 +46,7 @@ import {
 import { withExamples } from "./help/examples.js";
 import { installCompletion, type Shell } from "./util/completion-install.js";
 import { type CliIo, runWithExit } from "./util/exit.js";
+import { parseYaml } from "./util/yaml.js";
 import { VERSION } from "./version.js";
 
 export type { CliIo, OutputSink } from "./util/exit.js";
@@ -174,10 +180,256 @@ function writeWarnings(ctx: CommandContext, warnings: readonly string[] | undefi
   }
 }
 
+// ════════════════════════════════════════════════════════════════════════════════════════════════════════════
+// The per-bundle subcommand space — `bundle <id> <subcommand>` (doc 10 §"per-bundle operations")
+//
+// `bundle <id>` enters a FRESH subcommand space on a specific bundle (show / meta / version / requires / files /
+// templates / scripts / skills / installer-skills / advisor — tasks 57–81). `<id>` is a DYNAMIC enabled-bundle
+// id, distinct from the FIXED `bundle` verbs (`new`/`enable`/`disable`/`remove`/`list`/`template`), which is
+// disambiguated cleanly because ids are validated to NOT be reserved verbs (task-26/27 `RESERVED_BUNDLE_VERBS`).
+//
+// ROUTING (validated against commander v15): a hidden variadic default catch-all `bundle.command("* [args...]")`
+// with `allowUnknownOption(true)` captures `bundle <id> <tail…>` (commander matches the named verbs FIRST, so
+// `bundle new …` is unaffected). Its action resolves the project + the enabled bundle, then forwards the
+// post-id tail to a PER-BUNDLE SUB-PROGRAM that parses each leaf NATIVELY (its own options/choices/help). The
+// global `-C/--project` is stripped by commander from any position before the variadic args are computed, so
+// `-C` placement is untouched (unlike `enablePositionalOptions`, which would break it). Inner CommanderErrors
+// (invalid-choice/help/version) propagate through the awaited inner `parseAsync` to the outer `runWithExit`,
+// which already maps them (invalid→2, help/version→0); a leaf's `DomainError` → exit 1.
+// ════════════════════════════════════════════════════════════════════════════════════════════════════════════
+
 /**
- * The `bundle` group module — and the ONE proof-of-concept leaf for task-27, `bundle new <id>`, which
- * exercises the whole path (DI → resolveContext → runMutation → format → exit). The group's other leaves are
- * later tasks (34+); only `bundle new` is wired here, since its operation already exists (task-26).
+ * A per-bundle subcommand module — the bundle-`<id>`-space analogue of {@link CommandModule}. A family in the
+ * per-bundle space (tasks 57–81) registers its `bundle <id> <sub>` leaf by adding one of these to
+ * {@link PER_BUNDLE_MODULES}; the routing builds the sub-program and calls each module's `register` with the
+ * already-resolved project root and bundle id, so a leaf never re-resolves them.
+ */
+interface PerBundleCommandModule {
+  /**
+   * Attach this leaf (or leaves) to the per-bundle sub-program.
+   *
+   * @param sub - The per-bundle sub-program (its `name` is `bundle <id>`).
+   * @param ctx - The command context (ports + I/O).
+   * @param root - The already-resolved project root.
+   * @param id - The already-validated enabled bundle id.
+   */
+  register(sub: Command, ctx: CommandContext, root: string, id: string): void;
+}
+
+/** The project marker / manifest filename at the project root (shared by the per-bundle guard). */
+const MANIFEST_FILE = "manifest.yml";
+
+/**
+ * Resolve the bundle context for a `bundle <id> …` invocation: require `<id>` to be an ENABLED bundle (in
+ * `manifest.yml.bundles` with a `bundles/<id>/bundle.yml`), or raise a {@link NotFoundError} (exit 1) BEFORE the
+ * per-bundle sub-program parses — so every per-bundle leaf gets the same precise failure for a bad id. Pure over
+ * the FileSystem port: reads + parses the manifest and probes the bundle's `bundle.yml`.
+ *
+ * @param ctx - The command context (ports).
+ * @param root - The resolved project root.
+ * @param id - The bundle id from the `bundle <id>` routing.
+ * @throws {NotFoundError} When `<id>` is not an enabled bundle.
+ */
+function requireEnabledBundle(ctx: CommandContext, root: string, id: string): void {
+  const manifest = parseManifest(parseYaml(ctx.deps.fs.read(join(root, MANIFEST_FILE))));
+  const enabled = manifest.ok && (manifest.value.bundles as readonly string[]).includes(id);
+  if (!enabled || !ctx.deps.fs.exists(join(root, "bundles", id, "bundle.yml"))) {
+    throw new NotFoundError(
+      `bundle "${id}" is not an enabled bundle — run \`wpm bundle list\` to see enabled bundles, or \`wpm bundle enable ${id}\``,
+    );
+  }
+}
+
+/**
+ * List a bundle's directory tree as sorted relative paths under `bundles/<id>/` (the fs touch `bundle <id> show`
+ * needs for its tree summary — threaded into the pure read as input). Recurses through the FileSystem port; a
+ * directory contributes its descendant files (not the directory entries themselves), so the summary is a flat,
+ * deterministic file list. Returns `[]` when the bundle dir does not exist (defensive; the guard already ran).
+ *
+ * @param fs - The FileSystem port.
+ * @param root - The project root.
+ * @param id - The bundle id.
+ * @returns The relative file paths under `bundles/<id>/`, sorted.
+ */
+function bundleFileTree(fs: FileSystem, root: string, id: string): string[] {
+  const base = join(root, "bundles", id);
+  const out: string[] = [];
+  const walk = (rel: string): void => {
+    const abs = rel === "" ? base : join(base, rel);
+    if (!fs.exists(abs)) {
+      return;
+    }
+    for (const entry of fs.list(abs)) {
+      const childRel = rel === "" ? entry.name : `${rel}/${entry.name}`;
+      if (entry.kind === "directory") {
+        walk(childRel);
+      } else {
+        out.push(childRel);
+      }
+    }
+  };
+  walk("");
+  return out.sort();
+}
+
+/** Render a {@link BundleView} as the human-readable `bundle <id> show` block (output lives in the shell). */
+function formatBundleView(view: BundleView): string {
+  const lines = [
+    `id:           ${view.id}`,
+    `version:      ${view.version}`,
+    `summary:      ${view.summary}`,
+    `confirmation: ${view.confirmation}`,
+    "requires:",
+  ];
+  if (view.requires.length === 0) {
+    lines.push("  (none)");
+  }
+  for (const req of view.requires) {
+    lines.push(`  ${req.id} ${req.range}`);
+  }
+  lines.push("files:");
+  if (view.tree.length === 0) {
+    lines.push("  (none)");
+  }
+  for (const path of view.tree) {
+    lines.push(`  ${path}`);
+  }
+  return `${lines.join("\n")}\n`;
+}
+
+/**
+ * `bundle <id> show` (doc 10 row 157), a READ. Lists the bundle's file tree via the FileSystem port, threads it
+ * (with the id) into the pure {@link showBundleSpec} projection through `runRead`, and prints the formatted view.
+ * Read-only (AC#3). A non-enabled id is already rejected by the routing's {@link requireEnabledBundle}; the read
+ * stays defensive (its projection raises {@link NotFoundError} too).
+ */
+const bundleShowModule: PerBundleCommandModule = {
+  register(sub, ctx, root, id) {
+    const leaf = sub
+      .command("show")
+      .description("print this bundle's bundle.yml metadata and a tree summary (doc 10)")
+      .action(() => {
+        const tree = bundleFileTree(ctx.deps.fs, root, id);
+        const { value } = runRead(ctx.deps.fs, { root }, showBundleSpec(), { id, tree });
+        ctx.io.out.write(formatBundleView(value));
+      });
+    withExamples(leaf, [
+      { command: "wpm bundle web-handoff show", note: "inspect a bundle's metadata + files" },
+    ]);
+  },
+};
+
+/**
+ * `bundle <id> meta [--version <v>] [--summary <s>] [--confirmation-level safe|dangerous]` (doc 10 row 158), a
+ * MUTATION. Validates `--version` (semver) and `--confirmation-level` (the `safe|dangerous` choice) at the
+ * boundary, requires at least one flag, then rides `runMutation` with {@link editBundleMetaSpec} so the edit is
+ * comment-and-key-order-preserving and ④ RERENDER reflects a changed summary in the menu.
+ */
+const bundleMetaModule: PerBundleCommandModule = {
+  register(sub, ctx, root, id) {
+    const leaf = sub
+      .command("meta")
+      .description(
+        "edit this bundle's bundle.yml metadata: version, summary, confirmation level (doc 10)",
+      )
+      .option("--version <version>", "set the bundle's version (semver)")
+      .option("--summary <summary>", "set the bundle's one-line menu summary")
+      .addOption(
+        new Option(
+          "--confirmation-level <level>",
+          "how much consent this bundle's steps need",
+        ).choices([...CONFIRMATION_LEVELS]),
+      )
+      .action(
+        (opts: { version?: string; summary?: string; confirmationLevel?: ConfirmationLevel }) => {
+          // At least one field must be provided — a no-flag invocation would write nothing (doc 10 row 158:
+          // "Update fields from flags"). Surface it as a usage error (exit 2) rather than a silent no-op.
+          if (
+            opts.version === undefined &&
+            opts.summary === undefined &&
+            opts.confirmationLevel === undefined
+          ) {
+            throw new UsageError(
+              "bundle <id> meta needs at least one of --version, --summary, --confirmation-level",
+            );
+          }
+
+          // `--version` SETS the bundle's version (the same `bundle.yml.version` field). Validate at the
+          // boundary: a bad semver is a USAGE error (exit 2), like `project version set`.
+          let version: SemVer | undefined;
+          if (opts.version !== undefined) {
+            const parsed = parseSemVer(opts.version);
+            if (!parsed.ok) {
+              throw new UsageError(parsed.problem.message);
+            }
+            version = parsed.value;
+          }
+
+          const result = runMutation(lifecycleDepsFor(ctx, root), { root }, editBundleMetaSpec(), {
+            id,
+            ...(version !== undefined ? { version } : {}),
+            ...(opts.summary !== undefined ? { summary: opts.summary } : {}),
+            ...(opts.confirmationLevel !== undefined
+              ? { confirmation: opts.confirmationLevel }
+              : {}),
+          });
+          ctx.io.out.write(formatResult(result));
+        },
+      );
+    withExamples(leaf, [
+      {
+        command:
+          'wpm bundle web-handoff meta --summary "web handoff installer" --confirmation-level dangerous',
+        note: "set a bundle's summary + consent level",
+      },
+    ]);
+  },
+};
+
+/**
+ * The per-bundle subcommand modules, registered into the `bundle <id>` sub-program in order. A future per-bundle
+ * family (tasks 59–81: version/requires/files/templates/scripts/skills/installer-skills/advisor) appends its
+ * {@link PerBundleCommandModule} here — the routing and the catch-all need no change. This is the bundle-`<id>`
+ * analogue of {@link TOP_LEVEL_MODULES}.
+ */
+const PER_BUNDLE_MODULES: readonly PerBundleCommandModule[] = [bundleShowModule, bundleMetaModule];
+
+/** The completion specs for the per-bundle subcommands (keyed by the subcommand path WITHIN `bundle <id>`). */
+const PER_BUNDLE_COMPLETION_SPECS: CompletionSpecs = {
+  meta: { options: { "--confirmation-level": "confirmation-levels" } },
+};
+
+/**
+ * Build the per-bundle sub-program for a resolved `<id>`: a fresh commander {@link Command} (name `bundle <id>`)
+ * carrying every {@link PER_BUNDLE_MODULES} leaf, with `exitOverride` so a usage/help/version outcome throws a
+ * `CommanderError` the outer {@link runWithExit} maps, and its output routed to the SAME I/O sinks so help and
+ * errors reach the user. The resolved `root` + `id` are threaded into each leaf (no re-resolution).
+ *
+ * @param ctx - The command context (ports + I/O).
+ * @param root - The resolved project root.
+ * @param id - The validated enabled bundle id.
+ * @returns The configured per-bundle sub-program.
+ */
+function buildPerBundleProgram(ctx: CommandContext, root: string, id: string): Command {
+  const sub = new Command();
+  sub.name(`bundle ${id}`).description(`operate on bundle ${id} (doc 10)`);
+  sub.exitOverride();
+  sub.configureOutput({
+    writeOut: (s) => ctx.io.out.write(s),
+    writeErr: (s) => ctx.io.err.write(s),
+    outputError: (s, _write) => ctx.io.err.write(s),
+  });
+  sub.showHelpAfterError();
+  for (const module of PER_BUNDLE_MODULES) {
+    module.register(sub, ctx, root, id);
+  }
+  return sub;
+}
+
+/**
+ * The `bundle` group module: the FIXED verbs `new` / `enable` / `disable` (the bundle-membership lifecycle) PLUS
+ * the dynamic `bundle <id> <subcommand>` routing (the hidden `*` catch-all → a per-bundle sub-program). The
+ * fixed verbs are named subcommands commander matches first; a non-verb first token enters the per-bundle space.
  */
 const bundleModule: CommandModule = {
   register(parent, ctx) {
@@ -304,8 +556,121 @@ const bundleModule: CommandModule = {
         note: "drop a bundle from the menu (keeps its files on disk)",
       },
     ]);
+    // The dynamic `bundle <id> <subcommand>` space is routed BEFORE commander (in `run()` →
+    // {@link dispatchPerBundle}), not as a subcommand here — see that function for why (commander's group-level
+    // `--help` is greedy and would shadow a per-bundle leaf's `--help`). The fixed verbs above are the only
+    // `bundle` subcommands commander itself dispatches.
   },
 };
+
+/** The reserved `bundle` verbs that are NOT dynamic bundle ids — handled by commander's named subcommands. */
+function isReservedBundleVerb(token: string): boolean {
+  return RESERVED_BUNDLE_VERBS.includes(token);
+}
+
+/**
+ * Whether `argv` is a per-bundle invocation `bundle <id> …` that must be routed to the per-bundle sub-program
+ * (rather than commander's main program). True when the first token is `bundle`, the second exists, is not a
+ * flag, and is not a fixed `bundle` verb (`new`/`enable`/`disable`/`remove`/`list`/`template`) — i.e. it is a
+ * dynamic bundle id. A bare `bundle`, `bundle <verb> …`, or `bundle --help` is NOT per-bundle (commander's main
+ * program handles those, including the group help).
+ *
+ * @param argv - The user arguments (after the program name; may include the global `-C`/`--debug` anywhere).
+ * @returns `true` when the line enters the per-bundle space.
+ */
+function isPerBundleInvocation(argv: readonly string[]): boolean {
+  // Strip the global flags (`-C <path>`/`--project <path>`/`--debug`, wherever they appear) via the SHARED helper
+  // so dispatch and completion recognise the per-bundle shape identically. After stripping, it is per-bundle iff
+  // the first token is `bundle` and the second is a dynamic id (a non-flag, non-reserved-verb token).
+  const tokens = stripGlobalOptions(argv);
+  if (tokens[0] !== "bundle") {
+    return false;
+  }
+  const next = tokens[1];
+  return next !== undefined && !next.startsWith("-") && !isReservedBundleVerb(next);
+}
+
+/**
+ * Route a per-bundle invocation `bundle <id> <subcommand> …` (doc 10 §"per-bundle operations"). Resolves the
+ * project + the enabled bundle, then parses the per-bundle tail with a per-bundle sub-program (each leaf parsed
+ * NATIVELY — its own options/choices/help). This runs BEFORE commander's main program (in {@link run}) so a
+ * per-bundle leaf's `--help`/`-h` is NOT shadowed by the `bundle` group's greedy auto-help (which fires for any
+ * `--help` among the group's args); the named verbs + bare `bundle` still go through the main program.
+ *
+ * The global `-C/--project` is honoured wherever it appears (extracted here, exactly as commander would). The
+ * inner `parseAsync` runs under the caller's {@link runWithExit}, so its CommanderErrors (invalid-choice/help/
+ * version → 2/0) and a leaf's `DomainError` (→ 1) map through the one handler with no new code.
+ *
+ * @param argv - The full user argv (`… bundle <id> <tail…>`, with `-C` possibly anywhere).
+ * @param deps - The assembled dependencies.
+ * @param io - The output sinks + debug flag.
+ */
+async function dispatchPerBundle(argv: readonly string[], deps: CliDeps, io: CliIo): Promise<void> {
+  // Extract the global `-C/--project` value, then strip ALL globals (the SHARED helper, the same one completion
+  // uses) to recover `["bundle", "<id>", ...tail]`.
+  const projectOverride = extractProjectOption(argv);
+  const positional = stripGlobalOptions(argv);
+  const id = positional[1] as string;
+  const tail = positional.slice(2);
+
+  const ctx: CommandContext = { deps, io };
+  // A `--help`/`-h` request renders the per-bundle leaf's usage and must NOT require a project or an enabled
+  // bundle (help is help — consistent with the named verbs' `--help`). The sub-program (built with a placeholder
+  // root; no leaf action runs for a help request) handles `--help` and throws `commander.help` → exit 0.
+  if (tail.includes("--help") || tail.includes("-h")) {
+    await buildPerBundleProgram(ctx, "", id).parseAsync(tail, { from: "user" });
+    return;
+  }
+
+  const context = resolveContext(
+    { fs: deps.fs, env: deps.env },
+    projectOverride !== undefined ? { projectOverride } : undefined,
+  );
+  if (!context.found) {
+    throw new NotFoundError(NO_PROJECT_MESSAGE);
+  }
+  const root = context.root;
+  requireEnabledBundle(ctx, root, id);
+  await buildPerBundleProgram(ctx, root, id).parseAsync(tail, { from: "user" });
+}
+
+/** Extract the `-C/--project <path>` value from `argv` (the global project override), or `undefined`. */
+function extractProjectOption(argv: readonly string[]): string | undefined {
+  for (let i = 0; i < argv.length - 1; i++) {
+    if (argv[i] === "-C" || argv[i] === "--project") {
+      return argv[i + 1];
+    }
+  }
+  return undefined;
+}
+
+/**
+ * Strip the GLOBAL flags (`-C <path>` / `--project <path>` (each consumes its value) and the boolean `--debug`)
+ * from a token list, leaving only the command tokens. This is the SINGLE source of the global-stripping used by
+ * BOTH per-bundle dispatch ({@link isPerBundleInvocation}, {@link dispatchPerBundle}) AND per-bundle completion
+ * ({@link computeCompletions}) — so the two cannot drift on global-flag placement (the review's S1: completion
+ * must recognise `wpm -C <dir> bundle web …` as per-bundle exactly as dispatch does). `-C`/`--project` consume
+ * the FOLLOWING token as their value (a trailing `-C` with no value contributes nothing); every other token —
+ * including the final partial during completion — is preserved in order.
+ *
+ * @param tokens - The raw tokens (after the program name).
+ * @returns The tokens with the global flags (and their values) removed, order preserved.
+ */
+function stripGlobalOptions(tokens: readonly string[]): string[] {
+  const out: string[] = [];
+  for (let i = 0; i < tokens.length; i++) {
+    const tok = tokens[i];
+    if (tok === "-C" || tok === "--project") {
+      i += 1; // also skip the value
+      continue;
+    }
+    if (tok === "--debug") {
+      continue;
+    }
+    out.push(tok as string);
+  }
+  return out;
+}
 
 /**
  * The `init <name>` command — the WALKING SKELETON's command surface (task-33; doc 10 §`init`). init is the
@@ -812,6 +1177,11 @@ export const COMPLETION_SPECS: CompletionSpecs = {
   "bundle disable": {
     args: ["bundle-ids"], // <id> — the currently-enabled bundles from manifest.bundles (doc 10 row 151)
   },
+  bundle: {
+    // The dynamic `bundle <id>` position: complete the id from the enabled bundles, UNIONED with the fixed
+    // verbs (new/enable/disable) by the dispatch — so `bundle <tab>` offers both (doc 10 §per-bundle ops).
+    args: ["bundle-ids"],
+  },
   "completion install": {
     options: { "--shell": "shells" },
   },
@@ -874,17 +1244,57 @@ const COMPGEN_FLAG = "--compgen";
  * @param io - The output sinks.
  */
 function emitCompletions(words: readonly string[], deps: CliDeps, io: CliIo): void {
-  const program = buildProgram(deps, io);
-  const suggestions = completeArgv(program, words, {
+  const suggestions = computeCompletions(words, deps, io);
+  if (suggestions.length > 0) {
+    io.out.write(`${suggestions.join("\n")}\n`);
+  }
+}
+
+/**
+ * Resolve completion suggestions for `words`, special-casing the dynamic `bundle <id> …` per-bundle space (which
+ * a static commander tree can't model, since the per-bundle sub-program is built per-id at dispatch). Everything
+ * else goes straight to {@link completeArgv} over the main program tree.
+ *
+ * For `bundle <id> <tail…>` where `<id>` is NOT a fixed verb and NOT a flag and the id is already complete (the
+ * subcommand or beyond is being typed), build the per-bundle sub-program for that id and recurse `completeArgv`
+ * into it with the post-id tail + the per-bundle specs — so `bundle web <tab>` → `show`/`meta`, and `bundle web
+ * meta --confirmation-level <tab>` → `safe`/`dangerous`. The id POSITION itself (`bundle <tab>`) is handled by
+ * the main tree's `bundle` spec (the verbs unioned with the enabled-bundle ids).
+ */
+function computeCompletions(words: readonly string[], deps: CliDeps, io: CliIo): string[] {
+  const ctxDeps = {
     fs: deps.fs,
     env: deps.env,
     builtinTemplatesRoot: deps.builtinTemplatesRoot,
     registry: defaultRegistry(),
-    specs: COMPLETION_SPECS,
-  });
-  if (suggestions.length > 0) {
-    io.out.write(`${suggestions.join("\n")}\n`);
+  };
+
+  // Detect the per-bundle prefix on the GLOBAL-STRIPPED words — the SAME `stripGlobalOptions` dispatch uses — so
+  // completion recognises `wpm -C <dir> bundle web <tab>` as per-bundle exactly as execution does (S1: without
+  // this, a leading `-C <path>` made `words[0]` be `-C`, the check failed, and the bundle GROUP verbs were
+  // mis-suggested instead of the per-bundle leaves). It is per-bundle when, after stripping, `bundle <id> …` has
+  // the id ALREADY complete (≥ 3 tokens) and the id is a non-flag, non-reserved-verb token.
+  const stripped = stripGlobalOptions(words);
+  if (
+    stripped.length >= 3 &&
+    stripped[0] === "bundle" &&
+    stripped[1] !== undefined &&
+    !stripped[1].startsWith("-") &&
+    !RESERVED_BUNDLE_VERBS.includes(stripped[1])
+  ) {
+    const id = stripped[1];
+    const ctx: CommandContext = { deps, io };
+    // The per-bundle sub-program is the SAME tree dispatch builds; for completion only its shape matters, so a
+    // placeholder root is fine (no leaf action runs during completion). Recurse over the post-id tail of the
+    // STRIPPED words (the global flags are not part of the per-bundle subcommand line).
+    const sub = buildPerBundleProgram(ctx, "", id);
+    return completeArgv(sub, stripped.slice(2), { ...ctxDeps, specs: PER_BUNDLE_COMPLETION_SPECS });
   }
+
+  // The non-per-bundle fall-through uses the ORIGINAL words (NOT stripped) so completing a global flag or its
+  // value — e.g. `wpm -C <tab>` / `wpm --project <tab>` — is unaffected.
+  const program = buildProgram(deps, io);
+  return completeArgv(program, words, { ...ctxDeps, specs: COMPLETION_SPECS });
 }
 
 /**
@@ -1056,6 +1466,15 @@ export async function run(argv: readonly string[], deps: CliDeps, io: CliIo): Pr
   if (isProgramVersionRequest(argv)) {
     return runWithExit(io, async () => {
       io.out.write(`${VERSION}\n`);
+    });
+  }
+  // The dynamic `bundle <id> <subcommand>` space is routed here, BEFORE commander, so a per-bundle leaf's
+  // `--help`/`-h` reaches the per-bundle sub-program instead of being shadowed by the `bundle` group's greedy
+  // auto-help. Fixed verbs (`bundle new …`), a bare `bundle`, and `bundle --help` are NOT per-bundle and flow to
+  // the main program below (which renders the group help and dispatches the named verbs natively).
+  if (isPerBundleInvocation(argv)) {
+    return runWithExit(io, async () => {
+      await dispatchPerBundle(argv, deps, io);
     });
   }
   return runWithExit(io, async () => {

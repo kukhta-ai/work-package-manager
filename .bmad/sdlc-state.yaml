@@ -5,8 +5,16 @@
 
 phase: 5
 phase_name: "CLI epic-2 (BAUT) — per-FAMILY build loop over tasks 34-84"
-branch: feature/cli-bundle-lifecycle
+branch: feature/cli-bundle-id
 epic: cli
+# CLI 14/51 merged: A(35,36) E(42,43,44) D(39,40,41) B(37,48,49) G1(50,51,52 bundle new[+--version fix]/enable/disable).
+# IN REVIEW: I(57,58 bundle <id> show/meta) on feature/cli-bundle-id -- ESTABLISHES the bundle <id> ROUTING: run()-level pre-routing
+# (isPerBundleInvocation/dispatchPerBundle, before commander, like the --version interception) + a REUSABLE registry
+# PerBundleCommandModule/PER_BUNDLE_MODULES/buildPerBundleProgram + requireEnabledBundle guard. The 21 bundle-<id> repeats (J-Q)
+# add ONE module each, no routing change. ALSO: program --version is now -V-only + a run() interception (G1 fix).
+# NEXT after I: the bundle <id> repeats flow fast -> J(59,60,61 version=reuse D), K-P(62-79 requires/files/templates/scripts/skills/
+# installer-skills = LIST-MGMT reuse E, via PerBundleCommandModule), Q(80,81 advisor=reuse scaffoldAdvisor); plus C(38 meta),
+# F(45,46,47 installer-skills scaffold-or-attach), H(55,56 bundle template), G2(53 remove[destructive],54 list), R(82,83,84 build), 34(init full).
 # WORKERS (rotate ~every 5-8 tasks; they parse-error on resume once the transcript is large): ACTIVE = a6599e933139a9ca8 (#4, G1 bundle lifecycle);
 # retired: a2b7fcc7 (#3: materialise-fix + D version + B reads), a7f5ad601 (#2: 31,32,28,29,33,merge,A,E), a67b0906 (#1: 1-27,30).
 # REVIEWER a7f5a303c38f8ec6d still reliable (watch for degradation -> spawn fresh reviewer if it 0-tools).
