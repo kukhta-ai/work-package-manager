@@ -1433,3 +1433,152 @@ describeIfBuilt(
     });
   },
 );
+
+/** The project-root advisor stub path for bundle `<bundle>` under `<proj>` (doc 10: installer-skills/<id>-advisor/). */
+function advisorSkillMd(proj: string, bundle: string): string {
+  return join(proj, "installer-skills", `${bundle}-advisor`, "SKILL.md");
+}
+
+/** Create bundle `<id>` under `<proj>` WITHOUT the auto-advisor (`--no-advisor`), returning the run result. */
+function bundleNewNoAdvisor(proj: string, id: string): { stdout: string; status: number } {
+  return cli(["bundle", "new", id, "--no-advisor", "-C", proj]);
+}
+
+describeIfBuilt("bundle <id> advisor add / remove E2E via dist/cli.js (tasks 80/81)", () => {
+  it("baseline — a fresh `bundle new web` already scaffolded the advisor + materialised its content task", async () => {
+    await withTempDir((dir) => {
+      const proj = projectWithWeb(dir);
+      // `bundle new` step 6 rendered the advisor stub at the PROJECT root installer-skills/web-advisor/SKILL.md.
+      expect(existsSync(advisorSkillMd(proj, "web"))).toBe(true);
+      expect(readFileSync(advisorSkillMd(proj, "web"), "utf8")).toContain("name: web-advisor");
+      // and materialised the "Write advisor content for web" task in the REAL .authoring-backlog.
+      expect(authoringTaskTitles(proj)).toContain("Write advisor content for web");
+    });
+  });
+
+  it("80#3/80#2 — `advisor add` on a bundle whose advisor exists is a NO-OP (idempotent; task count stays one)", async () => {
+    await withTempDir((dir) => {
+      const proj = projectWithWeb(dir);
+      const stubBefore = readFileSync(advisorSkillMd(proj, "web"), "utf8");
+
+      const add = wpm(proj, ["bundle", "web", "advisor", "add"]);
+      expect(add.status).toBe(0);
+      expect(add.stdout).toContain("already exists — nothing to do"); // the no-op (80#3)
+      // the stub bytes are unchanged (no clobber):
+      expect(readFileSync(advisorSkillMd(proj, "web"), "utf8")).toBe(stubBefore);
+      // the content task is NOT duplicated — exactly one occurrence in the real authoring backlog (80#2):
+      const titles = authoringTaskTitles(proj);
+      const occurrences = titles
+        .split("\n")
+        .filter((l) => l.includes("Write advisor content for web")).length;
+      expect(occurrences).toBe(1);
+    });
+  });
+
+  it("80#1/80#2 — `advisor add` on a `--no-advisor` bundle SCAFFOLDS the stub + materialises the content task (cold)", async () => {
+    await withTempDir((dir) => {
+      const proj = projectWithWeb(dir);
+      // create `doc` WITHOUT the advisor: no stub, no content task.
+      expect(bundleNewNoAdvisor(proj, "doc").status).toBe(0);
+      expect(existsSync(advisorSkillMd(proj, "doc"))).toBe(false);
+      expect(authoringTaskTitles(proj)).not.toContain("Write advisor content for doc");
+
+      const add = wpm(proj, ["bundle", "doc", "advisor", "add"]);
+      expect(add.status).toBe(0);
+      expect(add.stdout).toMatch(/changed: \d+ path/); // scaffolded
+      expect(add.stdout).toMatch(/materialised: 1 authoring task\(s\)/);
+
+      // the stub now exists at the conventional path with the substituted name + a TODO placeholder (no prose):
+      expect(existsSync(advisorSkillMd(proj, "doc"))).toBe(true);
+      const stub = readFileSync(advisorSkillMd(proj, "doc"), "utf8");
+      expect(stub).toContain("name: doc-advisor");
+      expect(stub).toContain("TODO");
+      // and the doc-11 content task is now materialised in the REAL .authoring-backlog (loop-closure, cold):
+      expect(authoringTaskTitles(proj)).toContain("Write advisor content for doc");
+    });
+  });
+
+  it("81#1/81#2 — `advisor remove` deletes the stub dir AND archives the open content task", async () => {
+    await withTempDir((dir) => {
+      const proj = projectWithWeb(dir);
+      // a `--no-advisor` bundle then `advisor add` (advisor present + task OPEN).
+      expect(bundleNewNoAdvisor(proj, "doc").status).toBe(0);
+      expect(wpm(proj, ["bundle", "doc", "advisor", "add"]).status).toBe(0);
+      expect(existsSync(advisorSkillMd(proj, "doc"))).toBe(true);
+      expect(authoringTaskTitles(proj)).toContain("Write advisor content for doc");
+
+      const remove = wpm(proj, ["bundle", "doc", "advisor", "remove"]);
+      expect(remove.status).toBe(0);
+      // the advisor DIRECTORY is gone (81#1):
+      expect(existsSync(advisorSkillMd(proj, "doc"))).toBe(false);
+      expect(existsSync(join(proj, "installer-skills", "doc-advisor"))).toBe(false);
+      // the content task is archived — gone from the ACTIVE `backlog task list --plain` (81#2):
+      expect(authoringTaskTitles(proj)).not.toContain("Write advisor content for doc");
+    });
+  });
+
+  it("81#3 — `advisor remove` on a bundle with NO advisor reports 'nothing to remove' and changes nothing", async () => {
+    await withTempDir((dir) => {
+      const proj = projectWithWeb(dir);
+      expect(bundleNewNoAdvisor(proj, "doc2").status).toBe(0); // no advisor
+      const backlogBefore = authoringTaskTitles(proj);
+
+      const remove = wpm(proj, ["bundle", "doc2", "advisor", "remove"]);
+      expect(remove.status).toBe(0);
+      expect(remove.stdout).toContain("nothing to remove"); // (81#3)
+      // no advisor directory was created, and the authoring backlog is unchanged:
+      expect(existsSync(join(proj, "installer-skills", "doc2-advisor"))).toBe(false);
+      expect(authoringTaskTitles(proj)).toBe(backlogBefore);
+    });
+  });
+
+  it("round-trip — add → remove → add on a `--no-advisor` bundle re-scaffolds AND materialises a FRESH content task", async () => {
+    await withTempDir((dir) => {
+      const proj = projectWithWeb(dir);
+      expect(bundleNewNoAdvisor(proj, "doc").status).toBe(0);
+
+      // add: scaffold + materialise.
+      expect(wpm(proj, ["bundle", "doc", "advisor", "add"]).status).toBe(0);
+      expect(existsSync(advisorSkillMd(proj, "doc"))).toBe(true);
+
+      // remove: dir gone + task archived (gone from the active list).
+      expect(wpm(proj, ["bundle", "doc", "advisor", "remove"]).status).toBe(0);
+      expect(existsSync(advisorSkillMd(proj, "doc"))).toBe(false);
+      expect(authoringTaskTitles(proj)).not.toContain("Write advisor content for doc");
+
+      // add AGAIN: re-scaffolds AND materialises a FRESH task (the archived one does not block the create).
+      const readd = wpm(proj, ["bundle", "doc", "advisor", "add"]);
+      expect(readd.status).toBe(0);
+      expect(readd.stdout).toMatch(/materialised: 1 authoring task\(s\)/);
+      expect(existsSync(advisorSkillMd(proj, "doc"))).toBe(true);
+      expect(authoringTaskTitles(proj)).toContain("Write advisor content for doc");
+    });
+  });
+
+  it("help: `advisor add --help` and `advisor remove --help` reach the leaf with an example", async () => {
+    await withTempDir((dir) => {
+      const proj = projectWithWeb(dir);
+      const addHelp = wpm(proj, ["bundle", "web", "advisor", "add", "--help"]);
+      expect(addHelp.status).toBe(0);
+      expect(addHelp.stdout).toContain("bundle web advisor add"); // the LEAF usage
+      expect(addHelp.stdout).toMatch(/Usage:/);
+      expect(addHelp.stdout).toMatch(/Example/i);
+
+      const removeHelp = wpm(proj, ["bundle", "web", "advisor", "remove", "--help"]);
+      expect(removeHelp.status).toBe(0);
+      expect(removeHelp.stdout).toContain("bundle web advisor remove");
+      expect(removeHelp.stdout).toMatch(/Example/i);
+    });
+  });
+
+  it("completion: `__complete bundle <id> advisor` offers add and remove", async () => {
+    await withTempDir((dir) => {
+      const proj = projectWithWeb(dir);
+      const subPos = cli(["__complete", "bundle", "web", "advisor", ""], { cwd: proj })
+        .stdout.split("\n")
+        .filter(Boolean);
+      expect(subPos).toContain("add");
+      expect(subPos).toContain("remove");
+    });
+  });
+});

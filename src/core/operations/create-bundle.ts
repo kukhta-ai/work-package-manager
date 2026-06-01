@@ -10,7 +10,7 @@ import {
 import { renderTree } from "../services/render.js";
 import { serializeBundleManifest } from "../services/schema/index.js";
 import { resolveTemplate } from "../services/template-resolver.js";
-import { scaffoldAdvisor } from "./advisor.js";
+import { advisorContentTaskTitle, scaffoldAdvisor } from "./advisor.js";
 import type { ApplyContext, OperationSpec } from "./lifecycle.js";
 
 /**
@@ -105,7 +105,9 @@ export function perBundleAuthoringTasks(
 
   if (opts.advisor) {
     tasks.push({
-      title: `Write advisor content for ${id}`,
+      // The title is sourced from `advisorContentTaskTitle` (advisor.ts) so `bundle new`/`enable` and
+      // `bundle <id> advisor add`/`remove` all materialise/archive the IDENTICAL title (doc 11 idempotency-by-title).
+      title: advisorContentTaskTitle(id),
       acceptanceCriteria: [
         `installer-skills/${id}-advisor/SKILL.md has a real trigger description (firing on the user's need) and a recommendation body, replacing the template-rendered placeholder`,
       ],

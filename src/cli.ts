@@ -23,6 +23,8 @@ import {
   type Template,
   type TemplateScope,
 } from "./core/model/index.js";
+import { advisorSkillDir, advisorSkillPath } from "./core/operations/advisor.js";
+import { advisorAddSpec, advisorRemoveSpec } from "./core/operations/advisor-commands.js";
 import { disableBundleSpec, enableBundleSpec } from "./core/operations/bundle-lifecycle.js";
 import { editBundleMetaSpec } from "./core/operations/bundle-meta.js";
 import { type BundleView, showBundleSpec } from "./core/operations/bundle-reads.js";
@@ -56,6 +58,7 @@ import {
   SCRIPTS_DESCRIPTOR,
   TEMPLATES_DESCRIPTOR,
 } from "./core/operations/payload-refs.js";
+import { editProjectMetaSpec } from "./core/operations/project-meta.js";
 import {
   type ProjectOrientation,
   showProjectSpec,
@@ -1292,9 +1295,99 @@ const bundleInstallerSkillsModule: PerBundleCommandModule = {
 };
 
 /**
+ * `bundle <id> advisor` (+ `add` / `remove`) (doc 10 rows 176 / 177), the per-bundle ADVISOR family (Family Q) —
+ * scaffolds or removes the bundle's ONE pull-UX advisor (its recommend-on-match installer-skill at the project
+ * root's `installer-skills/<id>-advisor/`). Because there is exactly ONE advisor per bundle, the command takes NO
+ * `<name>`, NO `--path`, and has NO `list` (contrast the bundle's MANY payload/installer skills, families O/P).
+ *
+ * `add` is **the same action `bundle new` step 6 and `bundle enable` step 3 already run, exposed standalone**: it
+ * rides `runMutation` with {@link advisorAddSpec} — ③ APPLY renders the advisor stub via the shared
+ * `scaffoldAdvisor` (no-op if it already exists), ⑤ MATERIALISE the "Write advisor content for `<id>`" task
+ * (title-idempotent). On a true no-op (advisor already present AND the task already materialised) the leaf prints
+ * a friendly line rather than the changed/materialised summary (AC80#3). `remove` rides {@link advisorRemoveSpec}
+ * — ③ APPLY deletes `installer-skills/<id>-advisor/` and archives the open content task; when no advisor exists it
+ * reports "nothing to remove" and changes nothing (AC81#3, surfaced as an empty change set + a warning). The host
+ * `<id>` is already resolved + enabled-guarded by the per-bundle routing and threaded in.
+ */
+const bundleAdvisorModule: PerBundleCommandModule = {
+  register(sub, ctx, root, id) {
+    const advisor = sub
+      .command("advisor")
+      .description(
+        "scaffold or remove this bundle's pull-UX advisor (its one recommend-on-match skill) (doc 10)",
+      );
+
+    // ── advisor add ───────────────────────────────────────────────────────────────────────────────────────────
+    // Render the advisor stub (no-op if it already exists) + materialise the "Write advisor content" task — the
+    // SAME action `bundle new` step 6 runs. No positional, no flags.
+    const addLeaf = advisor
+      .command("add")
+      .description(
+        "render the advisor stub + queue its content-writing task (no-op if it already exists) (doc 10)",
+      )
+      .action(() => {
+        const result = runMutation(
+          lifecycleDepsFor(ctx, root),
+          { root },
+          advisorAddSpec({ builtinTemplatesRoot: ctx.deps.builtinTemplatesRoot }),
+          { id },
+        );
+        // AC80#3: a true no-op is when the advisor already existed — i.e. the scaffold did NOT (re)write the
+        // advisor SKILL.md AND no content task was materialised. We key on the advisor SKILL.md path
+        // SPECIFICALLY (not `changedPaths.length`): the ④ RERENDER beat may re-ensure the bundle's scope alias on
+        // every run (its target is absent until a bundle installer-skill is added), which is benign lifecycle
+        // noise, not evidence the advisor was scaffolded. The scaffold writing the advisor SKILL.md, or a task
+        // being materialised, is the real "something happened" signal.
+        const advisorAbs = join(root, advisorSkillPath(id));
+        const scaffolded = result.changedPaths.includes(advisorAbs);
+        if (!scaffolded && result.materialisedTaskTitles.length === 0) {
+          ctx.io.out.write(`advisor for ${id} already exists — nothing to do\n`);
+        } else {
+          ctx.io.out.write(formatResult(result));
+        }
+      });
+    withExamples(addLeaf, [
+      {
+        command: `wpm bundle ${id} advisor add`,
+        note: "scaffold the advisor stub + queue writing its content",
+      },
+    ]);
+
+    // ── advisor remove ────────────────────────────────────────────────────────────────────────────────────────
+    // Delete installer-skills/<id>-advisor/ + archive the open content task; "nothing to remove" when absent.
+    const removeLeaf = advisor
+      .command("remove")
+      .description("delete this bundle's advisor stub + archive its content-writing task (doc 10)")
+      .action(() => {
+        const result = runMutation(lifecycleDepsFor(ctx, root), { root }, advisorRemoveSpec(), {
+          id,
+        });
+        // AC81#3: when no advisor exists the spec deletes nothing — report "nothing to remove". We key on the
+        // advisor DIRECTORY appearing in `changedPaths` (the delete recorded it), NOT `changedPaths.length`: the
+        // ④ RERENDER beat can re-render the front-door / re-ensure scope aliases on a fresh project even when the
+        // advisor was absent, which is benign noise. The advisor dir being among the changed paths is the precise
+        // "the advisor was actually removed" signal. The spec's warning (if any) goes to stderr.
+        const advisorDirAbs = join(root, advisorSkillDir(id));
+        if (!result.changedPaths.includes(advisorDirAbs)) {
+          ctx.io.out.write(`no advisor for ${id} — nothing to remove\n`);
+        } else {
+          ctx.io.out.write(formatResult(result));
+        }
+        writeWarnings(ctx, result.warnings);
+      });
+    withExamples(removeLeaf, [
+      {
+        command: `wpm bundle ${id} advisor remove`,
+        note: "delete the advisor stub + close its content task",
+      },
+    ]);
+  },
+};
+
+/**
  * The per-bundle subcommand modules, registered into the `bundle <id>` sub-program in order. A future per-bundle
- * family (tasks 80–81: advisor) appends its {@link PerBundleCommandModule} here — the routing and the catch-all
- * need no change. This is the bundle-`<id>` analogue of {@link TOP_LEVEL_MODULES}.
+ * family appends its {@link PerBundleCommandModule} here — the routing and the catch-all need no change. This is
+ * the bundle-`<id>` analogue of {@link TOP_LEVEL_MODULES}.
  */
 const PER_BUNDLE_MODULES: readonly PerBundleCommandModule[] = [
   bundleShowModule,
@@ -1306,6 +1399,7 @@ const PER_BUNDLE_MODULES: readonly PerBundleCommandModule[] = [
   bundleScriptsModule,
   bundleSkillsModule,
   bundleInstallerSkillsModule,
+  bundleAdvisorModule,
 ];
 
 /** The completion specs for the per-bundle subcommands (keyed by the subcommand path WITHIN `bundle <id>`). */
@@ -2046,6 +2140,65 @@ const projectModule: CommandModule = {
       {
         command: "wpm project installer-skills remove detect-node",
         note: "deregister detect-node (its SKILL.md stays on disk)",
+      },
+    ]);
+
+    // ── project meta [--name ...] [--description ...] [--license ...] [--repository ...] [--author ...] ────────
+    // Edit the project's descriptive metadata in manifest.yml; only PROVIDED flags change (omitted untouched —
+    // AC38#1), comment-and-key-order-preservingly (AC38#2). A `--name` change re-renders the derived front-door +
+    // installer skill (the ④ RERENDER beat, since the project name feeds them — doc 10 line 34). With NO flags it
+    // is an exit-0 NO-OP that touches nothing and reports it (AC38#3) — distinct from `bundle <id> meta`'s exit-2.
+    const metaLeaf = group
+      .command("meta")
+      .description(
+        "edit the project's metadata in manifest.yml: name, description, license, repository, author (doc 10)",
+      )
+      .option(
+        "--name <name>",
+        "set the project name (also re-renders AGENTS.md + the installer skill)",
+      )
+      .option("--description <description>", "set the project's one-line description")
+      .option("--license <license>", "set the project's SPDX license identifier")
+      .option("--repository <repository>", "set the project's repository URL")
+      .option("--author <author>", "set the project's author")
+      .action(
+        (opts: {
+          name?: string;
+          description?: string;
+          license?: string;
+          repository?: string;
+          author?: string;
+        }) => {
+          const root = requireProject(ctx, parent);
+          // AC38#3: with NO flags, make no change and report nothing was updated — exit 0, WITHOUT entering the
+          // lifecycle (so ④ RERENDER does not run; nothing on disk changes, a true no-op).
+          const provided =
+            opts.name !== undefined ||
+            opts.description !== undefined ||
+            opts.license !== undefined ||
+            opts.repository !== undefined ||
+            opts.author !== undefined;
+          if (!provided) {
+            ctx.io.out.write(
+              "nothing to update — pass at least one of --name, --description, --license, --repository, --author\n",
+            );
+            return;
+          }
+          const result = runMutation(lifecycleDepsFor(ctx, root), { root }, editProjectMetaSpec(), {
+            ...(opts.name !== undefined ? { name: opts.name } : {}),
+            ...(opts.description !== undefined ? { description: opts.description } : {}),
+            ...(opts.license !== undefined ? { license: opts.license } : {}),
+            ...(opts.repository !== undefined ? { repository: opts.repository } : {}),
+            ...(opts.author !== undefined ? { author: opts.author } : {}),
+          });
+          ctx.io.out.write(formatResult(result));
+        },
+      );
+    withExamples(metaLeaf, [
+      {
+        command:
+          'wpm project meta --name acme-installer --description "Acme onboarding" --license MIT',
+        note: "set the project's name, description, and license (only the named fields change)",
       },
     ]);
 

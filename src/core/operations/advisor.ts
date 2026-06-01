@@ -40,9 +40,36 @@ export interface AdvisorDeps {
   readonly projectTemplateName?: string;
 }
 
+/**
+ * The project-relative directory of a bundle's advisor stub: `installer-skills/<id>-advisor/` (doc 10). This is
+ * the directory `bundle <id> advisor remove` deletes (doc 10 row 177 step 1) and the parent of the advisor's
+ * {@link advisorSkillPath}. Exported as the single source of the advisor directory so the scaffold (which writes
+ * the SKILL.md under it) and the remove (which deletes the whole directory) cannot drift.
+ *
+ * @param id - The bundle id the advisor serves.
+ * @returns The project-relative advisor directory.
+ */
+export function advisorSkillDir(id: string): string {
+  return join("installer-skills", `${id}-advisor`);
+}
+
 /** The project-relative path of a bundle's advisor stub: `installer-skills/<id>-advisor/SKILL.md` (doc 10). */
 export function advisorSkillPath(id: string): string {
-  return join("installer-skills", `${id}-advisor`, "SKILL.md");
+  return join(advisorSkillDir(id), "SKILL.md");
+}
+
+/**
+ * The title of the "Write advisor content for `<id>`" authoring task (doc 11 §3) — the single source of that
+ * task's title, so `bundle new`/`bundle enable` (which materialise it via {@link perBundleAuthoringTasks}) and
+ * `bundle <id> advisor add`/`remove` (which materialise it and archive it by title) all agree byte-for-byte. A
+ * divergence here would orphan the task on `advisor remove` (it archives by exact title), so it MUST be one
+ * function (doc 11: "Idempotency, where it matters, is by title").
+ *
+ * @param id - The bundle id whose advisor content is to be written.
+ * @returns The authoring task's title.
+ */
+export function advisorContentTaskTitle(id: string): string {
+  return `Write advisor content for ${id}`;
 }
 
 /**
