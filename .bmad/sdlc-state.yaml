@@ -5,11 +5,16 @@
 
 phase: 5
 phase_name: "CLI epic-2 (BAUT) — per-FAMILY build loop over tasks 34-84"
-branch: feature/cli-version
+branch: feature/cli-project-reads
 epic: cli
-# CLI PROGRESS: merged into feature/cli -> A(35,36 templates+S1), E(42,43,44 targets list-mgmt exemplar + the cross-cutting
-# materialise-root lifecycle fix). IN PROGRESS: D(39,40,41 project version) on feature/cli-version. 5/51 CLI tasks done.
-# Patterns established: READ (templates A), LIST-MGMT add/list/remove (targets E + warning channel + alias asymmetry). Establishing: VERSION (D).
+# CLI PROGRESS (merged into feature/cli): A(35,36 templates+S1 read pattern), E(42,43,44 targets LIST-MGMT exemplar + the
+# cross-cutting materialise-root lifecycle fix), D(39,40,41 version pattern). IN REVIEW: B(37,48,49 project reads) on feature/cli-project-reads.
+# 8/51 done -> 11 after B. Patterns established: READ (A), LIST-MGMT add/list/remove (E, warning channel + alias asymmetry), VERSION (D, reused by bundle version).
+# Worker a2b7fcc7 did ~7 tasks (materialise-fix + D + B) -> ROTATE to a fresh worker for the next group.
+# BUG FOR GROUP G (task-50 bundle new): the real binary `bundle new <id> --version <v>` prints the PROGRAM version and creates
+# nothing -- the program's `--version` (registered via .version()) shadows the subcommand's `--version` option (an in-process-vs-binary
+# gap; run() tests pass). doc-10:149 makes `--version` a real bundle-new option. Fix when rebuilding bundle new in G (commander config:
+# scope the version flag so subcommand --version options aren't shadowed; the task-29 worker noted enablePositionalOptions broke -C, so find another way).
 # *** FOUNDATION EPIC-1 DONE + gate PASS + MERGED TO dev (e1a0fb2). *** Now epic-2 = the CLI command leaves (34-84, 51 tasks).
 # dev = foundation + the CLI epic (tasks 34-84 + doc fixes + task-conventions); local dev == origin/dev + the foundation merge (NOT yet pushed to origin -- deferred, outward-facing).
 # CLI epic branch topology: feature/cli (off dev) -> per-GROUP sub-branches -> merged back; then feature/cli -> dev at the end.
