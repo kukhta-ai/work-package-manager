@@ -15,7 +15,16 @@ review_cycle: 0
 # Phase A COMPLETE (1-9). Phase B IN PROGRESS (10-15). DECISION (task-12, cross-cutting): the core is SYNCHRONOUS
 # (sync ports/adapters/operations; node:fs sync + execaSync for backlog). Rationale: sequential CLI, no concurrency
 # benefit, avoids async coloring across operations/lifecycle/tests; thin-builder does no network/long I/O (doc 13 §0).
-completed_stories: [task-1, task-2, task-3, task-4, task-5, task-6, task-7, task-8, task-9, task-10, task-11, task-12, task-13]   # merged --no-ff into feature/foundation
+completed_stories: [task-1, task-2, task-3, task-4, task-5, task-6, task-7, task-8, task-9, task-10, task-11, task-12, task-13, task-14]   # merged --no-ff into feature/foundation
+
+# PROCESS CORRECTION (2026-06-01, user-directed; AGENTS.md "Rule 3" committed 869c5b6):
+# Tasks 1-13 ran the SDLC at the ORCHESTRATION level only — the worker/reviewer/personas followed
+# hand-written briefs instead of invoking the actual BMAD workflow skills. User decision: "run the
+# actual skills" going forward, "go forward only" (1-13 stand as-is). FEASIBILITY = GREEN at task-14:
+# a subagent CAN invoke a bmad-* skill — the reviewer ran `bmad-story-automator-review` end-to-end in
+# REPORT-ONLY mode (its terminal story-status/sprint-sync/auto-fix writes are suppressed to keep the
+# review separate-lane). From task-14's review onward: reviewer invokes story-automator-review; worker
+# invokes create-story/dev-story/qa-generate-e2e-tests; each step's skill is recorded in the task --notes.
 
 # DIVERGENCES (recorded per AGENTS.md "record the change"):
 # 1. git cannot hold both a branch `feature/foundation` and `feature/foundation/task-N`
@@ -37,8 +46,8 @@ completed_stories: [task-1, task-2, task-3, task-4, task-5, task-6, task-7, task
 # already-committed design set the user owns). Genuinely human-owned gates remain STOP points:
 # merging to dev/main and opening the handoff PR (Phase 7), and disposing an epic-gate CONCERNS/FAIL.
 
-# Persistent BMAD specialists are SPAWNed per-phase at runtime (Phase 1+), then RESUMEd.
-# None spawned yet: Step 0 installed the modules that back them, but no SDLC phase has begun.
+# Persistent BMAD specialists: SPAWNed per-phase, RESUMEd thereafter. `last_skill` = the BMAD skill
+# each LAST actually invoked (Rule 3 evidence; worker+reviewer run real skills from task-14 onward).
 specialists:
   analyst:      {spawned: true,  id: "adb3b965bed0792e1", role: "brief conformance vs docs/00-05",      status: "P1 done — product-brief shim; verdict: docs fully capture brief"}
   pm:           {spawned: true,  id: "ad55659c67626dac3", role: "PRD conformance vs docs/00-05",        status: "P2 done — prd shim; no scope conflicts (noted wpm/installer bin placeholder)"}
@@ -46,8 +55,8 @@ specialists:
   architect:    {spawned: true,  id: "af0958eff0e1846e5", role: "architecture conformance vs docs/12-13", status: "P3 done — architecture/epics/readiness=PASS; RESUME if a task reveals a design gap"}
   tea:          {spawned: true,  id: "aa6e3730c6822131e", role: "test design/framework/ci/trace/nfr/gate", status: "P3 done — test-design/framework=vitest/ci=matrix; RESUME in P6 (trace/nfr/final gate)"}
   sm:           {spawned: true,  id: "a58a6182b0009cbb7", role: "sprint setup + create-story per task",  status: "P4 done — sprint-status.yaml; worker owns create-story in the P5 loop"}
-  worker:       {spawned: false,                          role: "dev-story implementation (BMAD Amelia)", status: "spawning now for P5 story-1 (task-1); persistent across all 33 stories"}
-  reviewer:     {spawned: false,                          role: "separate-lane review (automator-review)", status: "spawn at first story; never self-approve in the worker's lane"}
+  worker:       {spawned: true,  id: "a67b0906de8ff721d", role: "dev-story implementation (BMAD Amelia)", last_skill: "dev-story @ task-14 cycle-1 (first actual BMAD-skill invocation by the worker)", status: "implemented tasks 1-14; 1-13 freehand pre-Rule-3, task-14 fix via dev-story"}
+  reviewer:     {spawned: true,  id: "a7f5a303c38f8ec6d", role: "separate-lane review",                  last_skill: "bmad-story-automator-review @ task-14 (report-only; loaded+ran GREEN)", status: "reviewed tasks 1,5,6,10,11,12,13,14; task-14 via the actual BMAD skill"}
   investigator: {spawned: false,                          role: "systematic debugging at the epic gate", status: "spawn in P6 on cold-E2E failure"}
   retro:        {spawned: false,                          role: "epic retrospective",                    status: "spawn after task-33 (end of P5)"}
 
@@ -66,4 +75,4 @@ tooling:
   tool_target: "claude-code"
   claude_code_skills: ".claude/skills (56 skills)"
 
-last_updated: "2026-05-31"
+last_updated: "2026-06-01"
