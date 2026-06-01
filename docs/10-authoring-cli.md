@@ -87,6 +87,7 @@ installer
 │   │                                               <id> is kebab-case and must not be a reserved word
 │   │                                               (new|enable|disable|remove|list|template) — those name cross-bundle ops
 │   ├── enable <id>                               add an existing disabled bundle to manifest
+│   │       [--no-advisor]                          skip the auto advisor add (the same flag bundle new takes)
 │   ├── disable <id>                              remove from manifest; the dir stays on disk, invisible to the installer
 │   ├── remove <id>                               full teardown: drop from manifest, delete bundles/<id>/,
 │   │                                               delete its advisor stub, archive its authoring tasks (asks to confirm)
