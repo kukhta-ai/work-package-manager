@@ -20,7 +20,8 @@ epic: cli
 # uniform risk. Lessons carried from the foundation: test the real binary/loop-closure path; cold-E2E-must-build-dist; keep fake<->real parity explicit.
 #
 # CLI EPIC GROUP PLAN (34-84) -- ~6 recurring PATTERNS; establish each once, then the repeats are fast:
-#   A templates reads (35 list, 36 show) -- IN PROGRESS feature/cli-templates. [read pattern]
+#   A templates reads (35 list, 36 show) -- DONE+merged (incl S1: template description through model/schema/resolver). [read pattern established]
+#   E project targets (42,43,44) -- IN PROGRESS feature/cli-targets [LIST-MGMT exemplar]. Key nuances: add's alias falls out of ④ RERENDER (deriver scopePlan), unknown agent -> unknownTargets + warn; REMOVE must EXPLICITLY delete the orphaned alias (the deriver only ADDS); warnings (unknown/missing-alias/last-target) need a channel.
 #   B project reads (37 show, 49 root, 48 validate). [read]
 #   C project meta (38). [meta-set]
 #   D project version (39 show, 40 bump, 41 set). [version pattern -> reused by J]
@@ -129,7 +130,12 @@ specialists:
   architect:    {spawned: true,  id: "af0958eff0e1846e5", role: "architecture conformance vs docs/12-13", status: "P3 done — architecture/epics/readiness=PASS; RESUME if a task reveals a design gap"}
   tea:          {spawned: true,  id: "aa6e3730c6822131e", role: "test design/framework/ci/trace/nfr/gate", status: "P3 done — test-design/framework=vitest/ci=matrix; RESUME in P6 (trace/nfr/final gate)"}
   sm:           {spawned: true,  id: "a58a6182b0009cbb7", role: "sprint setup + create-story per task",  status: "P4 done — sprint-status.yaml; worker owns create-story in the P5 loop"}
-  worker:       {spawned: true,  id: "a7f5ad601fc4cbfee", role: "dev-story implementation (fresh general-purpose worker, invokes bmad-* skills)", last_skill: "create-story + dev-story + qa-generate-e2e-tests + dev-story(fix) @ task-29 (tab-completion)", status: "RELIABLE. Resume via SendMessage to a7f5ad601fc4cbfee for task-33 + the CLI epic 34-84. Implemented tasks 31,32,28,29; tasks 1-27,30 were the old (retired) worker."}
+  worker:       {spawned: true,  id: "a2b7fcc7ac77791f1", role: "dev-story implementation (fresh worker #3, invokes bmad-* skills)", last_skill: "dev-story @ the materialise-root lifecycle fix (in progress)", status: "ACTIVE worker (rotated). a7f5ad601 (worker #2) degraded -> parse errors after ~9 tasks (33, dev-merge, A:35/36+S1, E:42/43/44); a67b0906 (worker #1) degraded after ~30. OPERATING RULE: workers accumulate transcript + eventually parse-error on resume; ROTATE to a fresh Agent every ~5-8 tasks or on the first 0-tool/parse-error return. Worker #2 implemented 31,32,28,29,33,A,E; #1 implemented 1-27,30."}
+  # CROSS-CUTTING FIX in flight (worker #3): the task-25 lifecycle ⑤ MATERIALISE used ctx.root, but the real authoring backlog is
+  # <project>/.authoring-backlog -- so every materialising command (targets add; createBundle/bundle new later) FAILED on a real
+  # project (BacklogCli shells out cwd=root; project root isn't a backlog root). Hidden by FakeBacklog-at-project-root tests; CAUGHT
+  # by the orchestrator's real-binary spot-check. Fix: materialise into join(ctx.root, AUTHORING_BACKLOG_DIR) [shared constant] +
+  # update the FakeBacklog tests to init at .authoring-backlog (parity) + a real-backlog regression test. Rides feature/cli-targets.
   worker_retired: {id: "a67b0906de8ff721d", reason: "broke on continuations -- big authoring runs worked but short follow-ups returned 0 tool_uses + got confused; retired after task-30. Do not re-dispatch."}
   reviewer:     {spawned: true,  id: "a7f5a303c38f8ec6d", role: "separate-lane review",                  last_skill: "bmad-story-automator-review @ task-29 (APPROVE; report-only)", status: "reviewed through task-29; re-verified the omelette protocol fix 3 ways (loop closes for bash/zsh/fish, byte-accurate to omelette 0.4.17)"}
   investigator: {spawned: false,                          role: "systematic debugging at the epic gate", status: "spawn in P6 on cold-E2E failure"}

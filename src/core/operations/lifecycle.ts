@@ -6,6 +6,7 @@ import type {
   OperationResult,
   Project,
 } from "../model/index.js";
+import { AUTHORING_BACKLOG_DIR } from "../model/index.js";
 import type { BacklogMd, FileSystem } from "../ports/index.js";
 import {
   type CurrentState,
@@ -79,6 +80,12 @@ export interface ApplyContext {
 export interface ApplyOutcome {
   /** The paths the structural effect changed (folded into the result alongside ④'s changes). */
   readonly changedPaths?: readonly string[];
+  /**
+   * Non-fatal warnings the structural effect produced (e.g. "the scope-alias did not exist", "the last target
+   * was removed"). The harness folds these into the result's `warnings` alongside the warnings it derives
+   * itself (e.g. the deriver's unknown-target set). Output is not a port — the command prints them.
+   */
+  readonly warnings?: readonly string[];
 }
 
 /**
@@ -261,18 +268,34 @@ export function runMutation<I = void>(
   const desired = deriveArtefacts(postApply);
   const rerenderChanged = applyRerender(fs, root, desired);
 
-  // ⑤ MATERIALISE (automatic, title-idempotent)
+  // ⑤ MATERIALISE (automatic, title-idempotent). The authoring backlog is its OWN Backlog.md root at
+  // `<project>/.authoring-backlog` (doc 10 step 6; `init` initialises it there), NOT the project root — so we
+  // materialise into `join(root, AUTHORING_BACKLOG_DIR)`. Using `root` here runs `backlog task list` at the
+  // project root, which is not a Backlog.md root, and every materialising command fails ("No Backlog.md project
+  // found"). The path is the shared model constant so it can never drift from `init`'s.
   const specs = spec.materialise?.(postApply, input) ?? [];
-  const materialised = materialiseAuthoringTasks(backlog, root, specs);
+  const materialised = materialiseAuthoringTasks(backlog, join(root, AUTHORING_BACKLOG_DIR), specs);
 
   // ⑥ RESULT
   const changedPaths: string[] = [];
   mergePaths(changedPaths, applied?.changedPaths ?? []);
   mergePaths(changedPaths, rerenderChanged);
+
+  // Warnings: the operation's own (③) PLUS the ones the harness derives from ④ — a declared target the deriver
+  // could not map to a scope-alias (`unknownTargets`) is surfaced here, so e.g. `targets add` of an unknown
+  // agent warns without per-operation code. The single warning channel every list-mgmt command shares.
+  const warnings: string[] = [...(applied?.warnings ?? [])];
+  for (const agent of desired.aliasPlan.unknownTargets) {
+    warnings.push(
+      `agent "${agent}" is not a built-in known agent; its scope-alias was skipped — configure it manually`,
+    );
+  }
+
   return {
     summary: resolveSummary(spec.summary, postApply, input),
     changedPaths,
     materialisedTaskTitles: materialised.created.map((task) => task.title),
+    ...(warnings.length > 0 ? { warnings } : {}),
   };
 }
 

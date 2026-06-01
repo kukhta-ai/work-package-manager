@@ -174,6 +174,15 @@ export class MemoryFileSystem implements FileSystem {
         if (dirPath !== "/") this.directories.delete(dirPath);
       }
     }
+    // Also drop any alias whose LINK path is `p` or sits beneath it — faithful to the real adapter, where
+    // `remove` unlinks a symlink (so a later `exists` of the link path returns false). Without this an
+    // alias entry would survive `remove`, masking the deletion a scope-alias teardown (e.g. `targets remove`)
+    // depends on.
+    for (const linkPath of [...this.aliases.keys()]) {
+      if (linkPath === p || linkPath.startsWith(prefix)) {
+        this.aliases.delete(linkPath);
+      }
+    }
   }
 
   /**

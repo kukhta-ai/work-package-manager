@@ -1,6 +1,12 @@
 import { join } from "node:path";
 import { ConflictError, NotFoundError } from "../errors.js";
-import { type OperationResult, type Project, parseSemVer } from "../model/index.js";
+import {
+  AUTHORING_BACKLOG_DIR,
+  AUTHORING_TASK_PREFIX,
+  type OperationResult,
+  type Project,
+  parseSemVer,
+} from "../model/index.js";
 import type { BacklogMd, FileSystem } from "../ports/index.js";
 import { renderTree } from "../services/render.js";
 import { resolveTemplate } from "../services/template-resolver.js";
@@ -30,9 +36,12 @@ import { makeArtefactDeriver } from "./derive-artefacts-capability.js";
 const PROJECT_TEMPLATE = "minimal";
 /** The marker file that makes a directory a project root (doc 13 §7 `PROJECT_MARKER`); its presence = "exists". */
 const PROJECT_MARKER = "manifest.yml";
-/** The hidden authoring-backlog root + its task-prefix (doc 10 step 6; doc 11). */
-const AUTHORING_BACKLOG_DIR = ".authoring-backlog";
-const AUTHORING_TASK_PREFIX = "authoring";
+/**
+ * The hidden authoring-backlog root + its task-prefix (doc 10 step 6; doc 11) come from the shared model
+ * constants ({@link AUTHORING_BACKLOG_DIR}, {@link AUTHORING_TASK_PREFIX}) so `init` (which creates the root)
+ * and the task-25 lifecycle (which materialises into it) can never disagree about where it lives — the
+ * root-mismatch bug that broke every materialising command.
+ */
 /** A nominal version for the in-memory projection the deriver renders against (the deriver reads only name + bundles). */
 const PROJECTION_VERSION = "0.1.0";
 

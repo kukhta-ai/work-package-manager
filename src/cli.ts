@@ -10,11 +10,18 @@ import { SystemClock } from "./adapters/system-clock.js";
 import { type CompletionSpecs, completeArgv } from "./completion/complete.js";
 import { defaultRegistry } from "./completion/registry.js";
 import { NotFoundError, UsageError } from "./core/errors.js";
-import { RESERVED_BUNDLE_VERBS, type Template, type TemplateScope } from "./core/model/index.js";
+import {
+  type AgentName,
+  parseAgentName,
+  RESERVED_BUNDLE_VERBS,
+  type Template,
+  type TemplateScope,
+} from "./core/model/index.js";
 import { createBundleSpec } from "./core/operations/create-bundle.js";
 import { makeArtefactDeriver } from "./core/operations/derive-artefacts-capability.js";
 import { initProject } from "./core/operations/init-project.js";
-import { runMutation } from "./core/operations/lifecycle.js";
+import { type LifecycleDeps, runMutation, runRead } from "./core/operations/lifecycle.js";
+import { addTargetSpec, listTargetsSpec, removeTargetSpec } from "./core/operations/targets.js";
 import type { BacklogMd, Clock, Environment, FileSystem } from "./core/ports/index.js";
 import { resolveContext } from "./core/services/context.js";
 import {
@@ -88,6 +95,52 @@ function formatResult(result: {
     lines.push(`materialised: ${result.materialisedTaskTitles.length} authoring task(s)`);
   }
   return `${lines.join("\n")}\n`;
+}
+
+/** The canonical "no project resolved" message — shared by every project-bound command (doc 13 §7). */
+const NO_PROJECT_MESSAGE =
+  "no manifest.yml found in the working directory or any parent — run `wpm init <project-name>` to create a project, or pass `-C <path>` to target one elsewhere";
+
+/**
+ * Resolve the project root a project-BOUND command operates on, or raise the canonical {@link NotFoundError}
+ * (exit 1) when none resolves. Honours the global `-C/--project` override. The shared entry point every
+ * project-bound leaf (and the 7 list-management families) calls before `runMutation`/`runRead`.
+ *
+ * @param ctx - The command context (ports).
+ * @param parent - The command's parent (for the global `-C` flag).
+ * @returns The absolute project root.
+ * @throws {NotFoundError} When no project is resolved.
+ */
+function requireProject(ctx: CommandContext, parent: Command): string {
+  const projectOverride = parent.opts().project as string | undefined;
+  const context = resolveContext(
+    { fs: ctx.deps.fs, env: ctx.deps.env },
+    projectOverride !== undefined ? { projectOverride } : undefined,
+  );
+  if (!context.found) {
+    throw new NotFoundError(NO_PROJECT_MESSAGE);
+  }
+  return context.root;
+}
+
+/** Build the task-25 {@link LifecycleDeps} for a mutation rooted at `root` (the deriver wired as in `bundle new`). */
+function lifecycleDepsFor(ctx: CommandContext, root: string): LifecycleDeps {
+  return {
+    fs: ctx.deps.fs,
+    backlog: ctx.deps.backlog,
+    deriveArtefacts: makeArtefactDeriver({
+      fs: ctx.deps.fs,
+      builtinTemplatesRoot: ctx.deps.builtinTemplatesRoot,
+      projectTemplatesRoot: join(root, "templates"),
+    }),
+  };
+}
+
+/** Print any non-fatal warnings on an operation result to stderr (each `warning: …`), keeping the exit 0. */
+function writeWarnings(ctx: CommandContext, warnings: readonly string[] | undefined): void {
+  for (const warning of warnings ?? []) {
+    ctx.io.err.write(`warning: ${warning}\n`);
+  }
 }
 
 /**
@@ -406,6 +459,83 @@ const templateModule: CommandModule = {
   },
 };
 
+/** Parse + validate a `<agent>` positional into an {@link AgentName}, raising a UsageError on a malformed name. */
+function requireAgent(raw: string): AgentName {
+  const parsed = parseAgentName(raw);
+  if (!parsed.ok) {
+    throw new UsageError(parsed.problem.message);
+  }
+  return parsed.value;
+}
+
+/**
+ * The `project` group module (doc 10 §`project`) — wiring the `targets` subgroup's `add`/`list`/`remove` leaves
+ * (tasks 42–44), the LIST-MANAGEMENT EXEMPLAR. These are project-BOUND: each resolves the project via
+ * {@link requireProject} (the canonical no-project error) before running. `add`/`remove` ride `runMutation`
+ * (so ④ rerender + ⑤ materialise are automatic); `list` rides `runRead`. Non-fatal warnings on the result are
+ * printed to stderr ({@link writeWarnings}) and do not change the exit code. The other `project` subcommands
+ * (`show`/`meta`/`version`/`installer-skills`/`validate`/`root`) are later tasks.
+ */
+const projectModule: CommandModule = {
+  register(parent, ctx) {
+    const group = parent.command("project").description("the project as a release unit (doc 10)");
+    const targets = group
+      .command("targets")
+      .description("the agents this installer supports (doc 10)");
+
+    // ── project targets add <agent> ─────────────────────────────────────────────────────────────────────
+    const addLeaf = targets
+      .command("add")
+      .description("start supporting an agent: record it + create its scope-alias (doc 10)")
+      .argument("<agent>", "the target agent to start supporting (e.g. claude-code)")
+      .action((agentRaw: string) => {
+        const root = requireProject(ctx, parent);
+        const agent = requireAgent(agentRaw);
+        const result = runMutation(lifecycleDepsFor(ctx, root), { root }, addTargetSpec(), {
+          agent,
+        });
+        ctx.io.out.write(formatResult(result));
+        writeWarnings(ctx, result.warnings);
+      });
+    withExamples(addLeaf, [
+      { command: "wpm project targets add claude-code", note: "start supporting Claude Code" },
+    ]);
+
+    // ── project targets list ────────────────────────────────────────────────────────────────────────────
+    const listLeaf = targets
+      .command("list")
+      .description("list the agents this installer supports (doc 10)")
+      .action(() => {
+        const root = requireProject(ctx, parent);
+        const { value } = runRead(ctx.deps.fs, { root }, listTargetsSpec(), undefined);
+        const body =
+          value.length > 0 ? value.map((t) => `  ${t}`).join("\n") : "  (no targets yet)";
+        ctx.io.out.write(`Targets:\n${body}\n`);
+      });
+    withExamples(listLeaf, [
+      { command: "wpm project targets list", note: "show the supported agents" },
+    ]);
+
+    // ── project targets remove <agent> ──────────────────────────────────────────────────────────────────
+    const removeLeaf = targets
+      .command("remove")
+      .description("stop supporting an agent: remove it + delete its scope-alias (doc 10)")
+      .argument("<agent>", "the target agent to stop supporting")
+      .action((agentRaw: string) => {
+        const root = requireProject(ctx, parent);
+        const agent = requireAgent(agentRaw);
+        const result = runMutation(lifecycleDepsFor(ctx, root), { root }, removeTargetSpec(), {
+          agent,
+        });
+        ctx.io.out.write(formatResult(result));
+        writeWarnings(ctx, result.warnings);
+      });
+    withExamples(removeLeaf, [
+      { command: "wpm project targets remove hermes", note: "stop supporting Hermes" },
+    ]);
+  },
+};
+
 /**
  * The per-command completion declarations (task-29 AC#2/AC#3): which named source completes each option's value
  * or positional. The dispatch ({@link completeArgv}) reads this side-table by command path. A later leaf
@@ -423,6 +553,12 @@ const COMPLETION_SPECS: CompletionSpecs = {
   "template show": {
     options: { "--scope": "template-scopes" },
     args: ["template-names"], // <name> — completes from the available template names
+  },
+  "project targets add": {
+    args: ["target-names"], // <agent> — the built-in well-known agents (for `add`)
+  },
+  "project targets remove": {
+    args: ["installed-target-names"], // <agent> — the project's current targets (for `remove`)
   },
   "bundle new": {
     // `--template` takes a BUNDLE template (a project template can't scaffold a bundle), so it completes from
@@ -572,7 +708,7 @@ function groupOnly(name: string, description: string): CommandModule {
 const TOP_LEVEL_MODULES: readonly CommandModule[] = [
   initModule,
   templateModule,
-  groupOnly("project", "the project as a release unit (doc 10)"),
+  projectModule,
   bundleModule,
   groupOnly("build", "package the project for distribution (doc 10)"),
   completionModule,

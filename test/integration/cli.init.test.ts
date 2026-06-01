@@ -216,5 +216,45 @@ describeIfBacklog(
         expect(created.id).toBe("authoring-1");
       });
     });
+
+    // The CROSS-CUTTING lifecycle regression test (the path the FakeBacklog unit tests could not catch): a
+    // materialising command (`project targets add`) on a REAL init'd project, through the REAL BacklogCli. The
+    // lifecycle's ⑤ MATERIALISE must list/create tasks in the project's `.authoring-backlog` root — NOT the
+    // project root, which is not a Backlog.md root. Before the fix this exited 1 with
+    // "Command failed: backlog task list --plain → No Backlog.md project found", because the harness shelled out
+    // at `ctx.root`. This guards every materialising command (targets add now; bundle new later).
+    it("`project targets add <agent>` on a real init'd project exits 0 (the lifecycle materialises into .authoring-backlog)", async () => {
+      await withTempDir(async (dir) => {
+        // Isolate Backlog.md's per-machine global state inside the tmpdir (so concurrent runs cannot collide).
+        const env = {
+          HOME: dir,
+          XDG_CONFIG_HOME: dir,
+          XDG_DATA_HOME: dir,
+          XDG_STATE_HOME: dir,
+          XDG_CACHE_HOME: dir,
+        };
+        const deps: CliDeps = {
+          fs: new NodeFileSystem(),
+          backlog: new BacklogCli("backlog", env),
+          clock: new FixedClock("2026-01-01T00:00:00.000Z"),
+          env: new ProcessEnvironment(),
+          builtinTemplatesRoot: BUILTIN_TEMPLATES,
+        };
+        const proj = join(dir, "proj");
+
+        // Arrange: a real project with a real .authoring-backlog root (init exercises the real BacklogCli).
+        expect(await run(["init", "demo", "--at", proj], deps, io())).toBe(0);
+
+        // Act + Assert: adding a known target rides the task-25 lifecycle, whose ⑤ MATERIALISE runs
+        // `backlog task list` in the authoring backlog. This is exit 1 before the fix (it ran at the project
+        // root, "No Backlog.md project found") and exit 0 after (it runs in <proj>/.authoring-backlog).
+        const i = io();
+        const code = await run(["project", "targets", "add", "claude-code", "-C", proj], deps, i);
+        expect(i.err.text).not.toContain("No Backlog.md project found");
+        expect(code).toBe(0);
+        // The target landed in the manifest (the operation actually completed, materialise included):
+        expect(readFileSync(join(proj, "manifest.yml"), "utf8")).toContain("claude-code");
+      });
+    });
   },
 );

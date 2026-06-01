@@ -106,7 +106,9 @@ describe("cli `bundle new` over a real filesystem (task-27 proof leaf)", () => {
     await withTempDir(async (dir) => {
       seedOnDisk(dir);
       const backlog = new FakeBacklog();
-      backlog.init(dir, { taskPrefix: "authoring" });
+      // The lifecycle materialises into the project's own `.authoring-backlog` root (doc 10 step 6), not the
+      // project root — init the fake there so the materialiser's `listTasks` finds it (mirrors reality).
+      backlog.init(join(dir, ".authoring-backlog"), { taskPrefix: "authoring" });
 
       const deps: CliDeps = {
         fs: new NodeFileSystem(),

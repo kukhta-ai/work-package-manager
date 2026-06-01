@@ -22,6 +22,13 @@ import type { DesiredArtefacts } from "../../../src/core/services/derived-artefa
  */
 
 const APP = "/app";
+/**
+ * The authoring backlog is its own Backlog.md root at `<project>/.authoring-backlog` (doc 10 step 6), not the
+ * project root — the harness's ⑤ MATERIALISE writes there. The fake is initialised there and the materialise
+ * assertions read there, mirroring reality (initialising at the project root hid the real "No Backlog.md project
+ * found" failure of every materialising command).
+ */
+const AUTHORING = `${APP}/.authoring-backlog`;
 
 /** A realistic project, set up the way a prior `init` would leave it: a manifest on disk + an authoring backlog. */
 function setUpProject(): { fs: MemoryFileSystem; backlog: FakeBacklog } {
@@ -42,7 +49,7 @@ function setUpProject(): { fs: MemoryFileSystem; backlog: FakeBacklog } {
   // The alias target a prior `init` would have created (doc-10 §init makes installer-skills/ BEFORE the
   // scope-alias symlink) — so the alias the harness creates points at a real dir, not a broken link.
   fs.makeDirectories(`${APP}/installer-skills`);
-  backlog.init(APP, { taskPrefix: "app" });
+  backlog.init(AUTHORING, { taskPrefix: "app" });
   return { fs, backlog };
 }
 
@@ -125,7 +132,7 @@ describe("lifecycle harness — acceptance (doc 13 §5/§8)", () => {
       expect(fs.read(`${APP}/settings.yml`)).toBe("telemetry: on\n"); // ③
       expect(fs.read(`${APP}/AGENTS.md`)).toBe("# acme front-door\n"); // ④ front-door re-derived
       expect(fs.aliasTarget(`${APP}/.claude/skills`)).toBe(`${APP}/installer-skills`); // ④ alias created
-      expect(backlog.listTasks(APP).map((t) => t.title)).toContain(
+      expect(backlog.listTasks(AUTHORING).map((t) => t.title)).toContain(
         "Document the telemetry setting",
       ); // ⑤
     });
@@ -151,7 +158,7 @@ describe("lifecycle harness — acceptance (doc 13 §5/§8)", () => {
       expect(fs.read(`${APP}/AGENTS.md`)).toBe("# acme front-door\n");
       expect(result.changedPaths).toContain(`${APP}/AGENTS.md`);
       // ...and materialised the task though the op only returned the plan:
-      expect(backlog.listTasks(APP).map((t) => t.title)).toContain("Note the flag");
+      expect(backlog.listTasks(AUTHORING).map((t) => t.title)).toContain("Note the flag");
       expect(result.materialisedTaskTitles).toEqual(["Note the flag"]);
     });
   });
@@ -161,7 +168,7 @@ describe("lifecycle harness — acceptance (doc 13 §5/§8)", () => {
       const { fs, backlog } = setUpProject();
 
       const before = snapshot(fs, APP);
-      const tasksBefore = backlog.listTasks(APP);
+      const tasksBefore = backlog.listTasks(AUTHORING);
 
       const describeProject: ReadSpec<void, { name: string; bundleCount: number }> = {
         summary: "described the project",
@@ -181,7 +188,7 @@ describe("lifecycle harness — acceptance (doc 13 §5/§8)", () => {
       expect(outcome.result.materialisedTaskTitles).toEqual([]);
       // ...and changed nothing on disk or in the backlog:
       expect(snapshot(fs, APP)).toEqual(before);
-      expect(backlog.listTasks(APP)).toEqual(tasksBefore);
+      expect(backlog.listTasks(AUTHORING)).toEqual(tasksBefore);
     });
   });
 
@@ -200,7 +207,7 @@ describe("lifecycle harness — acceptance (doc 13 §5/§8)", () => {
       expect(first.materialisedTaskTitles).toEqual(["Document the telemetry setting"]);
 
       const afterFirst = snapshot(fs, APP);
-      const tasksAfterFirst = backlog.listTasks(APP).map((t) => t.title);
+      const tasksAfterFirst = backlog.listTasks(AUTHORING).map((t) => t.title);
 
       const second = runMutation(
         lifecycleDeps(fs, backlog),
@@ -215,7 +222,7 @@ describe("lifecycle harness — acceptance (doc 13 §5/§8)", () => {
       expect(second.materialisedTaskTitles).toEqual([]);
       // The on-disk + backlog state is byte-identical to after the first run:
       expect(snapshot(fs, APP)).toEqual(afterFirst);
-      expect(backlog.listTasks(APP).map((t) => t.title)).toEqual(tasksAfterFirst);
+      expect(backlog.listTasks(AUTHORING).map((t) => t.title)).toEqual(tasksAfterFirst);
     });
   });
 });

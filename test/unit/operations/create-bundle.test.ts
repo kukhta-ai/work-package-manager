@@ -13,6 +13,13 @@ import { parseYaml } from "../../../src/util/yaml.js";
 
 const ROOT = "/proj";
 const BUILTIN = "/builtin-templates";
+/**
+ * The authoring backlog is its own Backlog.md root at `<project>/.authoring-backlog` (doc 10 step 6) — NOT the
+ * project root. The lifecycle's ⑤ MATERIALISE writes there, so the fake must be initialised there and the
+ * materialise assertions must read there, mirroring reality (the fake-parity discipline: the fake used to be
+ * initialised at the project root, which hid the real `targets add`/`bundle new` "No Backlog.md project found").
+ */
+const AUTHORING = `${ROOT}/.authoring-backlog`;
 
 /** A YAML comment seeded into the manifest, to prove the bundle-append edit preserves comments. */
 const MANIFEST_COMMENT = "# hand-written note: bundles are appended below";
@@ -39,7 +46,7 @@ function seed(): { fs: MemoryFileSystem; backlog: FakeBacklog } {
       "",
     ].join("\n"),
   );
-  backlog.init(ROOT, { taskPrefix: "authoring" });
+  backlog.init(AUTHORING, { taskPrefix: "authoring" });
   // The ROOT alias target a prior `init` created (doc 06): so bundles' rerender alias is non-broken.
   fs.makeDirectories(`${ROOT}/installer-skills`);
 
@@ -127,8 +134,8 @@ describe("createBundle — end-to-end through the lifecycle (doc 13 §5; doc 10 
     expect(frontDoor).toContain("# demo"); // {{project-name}} substituted
     expect(frontDoor).toContain("- web bundle"); // {{bundles}} menu includes the new bundle
 
-    // (materialise) all 12 doc-11 authoring tasks present in the backlog:
-    const titles = backlog.listTasks(ROOT).map((t) => t.title);
+    // (materialise) all 12 doc-11 authoring tasks present in the authoring backlog:
+    const titles = backlog.listTasks(AUTHORING).map((t) => t.title);
     for (const t of perBundleAuthoringTasks("web", { advisor: true })) {
       expect(titles).toContain(t.title);
     }
@@ -165,7 +172,7 @@ describe("createBundle — end-to-end through the lifecycle (doc 13 §5; doc 10 
     const { fs, backlog } = seed();
     const result = runMutation(lifecycleDeps(fs, backlog), { root: ROOT }, spec(), { id: "web" });
     expect(fs.exists(`${ROOT}/AGENTS.md`)).toBe(true); // ④ ran (harness)
-    expect(backlog.listTasks(ROOT).length).toBeGreaterThan(0); // ⑤ ran (harness)
+    expect(backlog.listTasks(AUTHORING).length).toBeGreaterThan(0); // ⑤ ran (harness)
     expect(result.materialisedTaskTitles.length).toBe(12);
   });
 
@@ -175,7 +182,7 @@ describe("createBundle — end-to-end through the lifecycle (doc 13 §5; doc 10 
       runMutation(lifecycleDeps(fs, backlog), { root: ROOT }, spec(), { id: "list" }),
     ).toThrow(ValidationError);
     expect(fs.exists(`${ROOT}/bundles/list`)).toBe(false);
-    expect(backlog.listTasks(ROOT)).toEqual([]);
+    expect(backlog.listTasks(AUTHORING)).toEqual([]);
   });
 
   it("rejects a non-kebab id with ValidationError", () => {
@@ -199,7 +206,7 @@ describe("createBundle — end-to-end through the lifecycle (doc 13 §5; doc 10 
     // CHECK rejected the version before any effect — ③④⑤ never ran:
     expect(fs.exists(`${ROOT}/bundles/web`)).toBe(false); // no scaffold
     expect(fs.read(`${ROOT}/manifest.yml`)).toBe(manifestBefore); // manifest untouched
-    expect(backlog.listTasks(ROOT)).toEqual([]); // no tasks materialised
+    expect(backlog.listTasks(AUTHORING)).toEqual([]); // no tasks materialised
   });
 
   it("rejects a duplicate id with ConflictError, changing nothing on the second run", () => {
@@ -208,13 +215,13 @@ describe("createBundle — end-to-end through the lifecycle (doc 13 §5; doc 10 
     runMutation(deps, { root: ROOT }, spec(), { id: "web" });
 
     const manifestAfterFirst = fs.read(`${ROOT}/manifest.yml`);
-    const tasksAfterFirst = backlog.listTasks(ROOT).map((t) => t.title);
+    const tasksAfterFirst = backlog.listTasks(AUTHORING).map((t) => t.title);
 
     expect(() => runMutation(deps, { root: ROOT }, spec(), { id: "web" })).toThrow(ConflictError);
 
     // The failed second run changed neither the manifest nor the backlog:
     expect(fs.read(`${ROOT}/manifest.yml`)).toBe(manifestAfterFirst);
-    expect(backlog.listTasks(ROOT).map((t) => t.title)).toEqual(tasksAfterFirst);
+    expect(backlog.listTasks(AUTHORING).map((t) => t.title)).toEqual(tasksAfterFirst);
   });
 
   it("--no-advisor materialises 11 tasks, omitting the advisor task", () => {
