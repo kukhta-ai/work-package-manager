@@ -14,6 +14,7 @@ import { makeArtefactDeriver } from "./core/operations/derive-artefacts-capabili
 import { runMutation } from "./core/operations/lifecycle.js";
 import type { BacklogMd, Clock, Environment, FileSystem } from "./core/ports/index.js";
 import { resolveContext } from "./core/services/context.js";
+import { withExamples } from "./help/examples.js";
 import { type CliIo, runWithExit } from "./util/exit.js";
 import { VERSION } from "./version.js";
 
@@ -91,9 +92,13 @@ const bundleModule: CommandModule = {
       .command("bundle")
       .description("the author's primary working unit (doc 10)");
 
-    group
-      .command("new <id>")
+    const newLeaf = group
+      .command("new")
       .description("create a bundle directory and enable it in the manifest (doc 10)")
+      // Declare the positional via `.argument` (NOT in the command string) so it appears in the usage line AND
+      // carries a help description stating its meaning (doc 10 discoverability: "every positional argument with
+      // its meaning"). Declaring it in both places would register `<id>` twice.
+      .argument("<id>", "the new bundle's id (kebab-case; not a reserved cross-bundle verb)")
       .option("-v, --version <version>", "the bundle's initial version", "0.1.0")
       .option("--disabled", "create the bundle without enabling it in the manifest")
       .option("--no-advisor", "skip the auto-scaffolded advisor")
@@ -139,6 +144,16 @@ const bundleModule: CommandModule = {
           ctx.io.out.write(formatResult(result));
         },
       );
+
+    // A worked example — the one piece of doc-10's contract commander does not auto-render (doc 10: "a worked
+    // usage example where the flag set is non-trivial"). `bundle new` has a non-trivial flag set, so it carries
+    // one; every later leaf (tasks 34–84) with options/args attaches one the same way via `withExamples`.
+    withExamples(newLeaf, [
+      {
+        command: "wpm bundle new web-handoff --version 0.2.0",
+        note: "create web-handoff pinned to 0.2.0",
+      },
+    ]);
   },
 };
 
