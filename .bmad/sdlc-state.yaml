@@ -7,7 +7,7 @@ phase: 5
 phase_name: "Autonomous build (BAUT) — per-story loop over the foundational backlog"
 branch: feature/foundation
 epic: foundation
-active_story: null   # Phase D (23-26) COMPLETE. Phase E next: 27 (commander composition root), 28 (--help), 29 (tab-completion) -- the CLI surface that wires ports/adapters/operations into real commands.
+active_story: null   # task-27 DONE (commander composition root + DI + error handler + reserved-verb; the exemplar for tasks 34-84). Next ready (Sequence 1): task-30 (minimal project template), then 31 (bundle template), 32 (agent skill); Sequence 2: 28 (--help), 29 (completion), 33 (walking skeleton).
 review_cycle: 0
 # task-25 closed at cycle-2 PASS: keystone six-beat mutation lifecycle harness (src/core/operations/). Review caught + fixed
 # (A) biome noConfusingVoidType (void->undefined) and (B) a test+fake fidelity defect (MemoryFileSystem.exists masked broken-symlink
@@ -24,7 +24,7 @@ review_cycle: 0
 # DECISION (task-12, cross-cutting): the core is SYNCHRONOUS
 # (sync ports/adapters/operations; node:fs sync + execaSync for backlog). Rationale: sequential CLI, no concurrency
 # benefit, avoids async coloring across operations/lifecycle/tests; thin-builder does no network/long I/O (doc 13 §0).
-completed_stories: [task-1, task-2, task-3, task-4, task-5, task-6, task-7, task-8, task-9, task-10, task-11, task-12, task-13, task-14, task-15, task-16, task-17, task-18, task-19, task-20, task-21, task-22, task-23, task-24, task-25, task-26]   # merged --no-ff into feature/foundation -- Phases A,B,C,D done
+completed_stories: [task-1, task-2, task-3, task-4, task-5, task-6, task-7, task-8, task-9, task-10, task-11, task-12, task-13, task-14, task-15, task-16, task-17, task-18, task-19, task-20, task-21, task-22, task-23, task-24, task-25, task-26, task-27]   # merged --no-ff into feature/foundation -- Phases A,B,C,D done; E started (27)
 
 # PROCESS CORRECTION (2026-06-01, user-directed; AGENTS.md "Rule 3" committed 869c5b6):
 # Tasks 1-13 ran the SDLC at the ORCHESTRATION level only — the worker/reviewer/personas followed
@@ -64,8 +64,8 @@ specialists:
   architect:    {spawned: true,  id: "af0958eff0e1846e5", role: "architecture conformance vs docs/12-13", status: "P3 done — architecture/epics/readiness=PASS; RESUME if a task reveals a design gap"}
   tea:          {spawned: true,  id: "aa6e3730c6822131e", role: "test design/framework/ci/trace/nfr/gate", status: "P3 done — test-design/framework=vitest/ci=matrix; RESUME in P6 (trace/nfr/final gate)"}
   sm:           {spawned: true,  id: "a58a6182b0009cbb7", role: "sprint setup + create-story per task",  status: "P4 done — sprint-status.yaml; worker owns create-story in the P5 loop"}
-  worker:       {spawned: true,  id: "a67b0906de8ff721d", role: "dev-story implementation (BMAD Amelia)", last_skill: "create-story + dev-story + qa-generate-e2e-tests @ task-26 (+ dev-story re-run for version->CHECK polish)", status: "implemented tasks 1-26 (skill-driven from task-14); task-26 = createBundle, the reference operation"}
-  reviewer:     {spawned: true,  id: "a7f5a303c38f8ec6d", role: "separate-lane review",                  last_skill: "bmad-story-automator-review @ task-26 (APPROVE; report-only)", status: "reviewed through task-26; adversarial probes (deriver/six-beat/fixtures/errors/boundary) + doc-11 catalog + double-write disposition"}
+  worker:       {spawned: true,  id: "a67b0906de8ff721d", role: "dev-story implementation (BMAD Amelia)", last_skill: "create-story + dev-story + qa-generate-e2e-tests @ task-27 (+ dev-story re-run for guard-ordering polish)", status: "implemented tasks 1-27 (skill-driven from task-14); task-27 = the commander composition root"}
+  reviewer:     {spawned: true,  id: "a7f5a303c38f8ec6d", role: "separate-lane review",                  last_skill: "bmad-story-automator-review @ task-27 (APPROVE; report-only)", status: "reviewed through task-27; live commander-15 exit-code-table probe + DI/pattern/boundary checks"}
   investigator: {spawned: false,                          role: "systematic debugging at the epic gate", status: "spawn in P6 on cold-E2E failure"}
   retro:        {spawned: false,                          role: "epic retrospective",                    status: "spawn after task-33 (end of P5)"}
 

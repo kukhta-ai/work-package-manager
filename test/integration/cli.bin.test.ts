@@ -39,6 +39,7 @@ describeIfBuilt("installer/wpm binary via a bin symlink (AC#1)", () => {
 
   it("prints usage through the symlink for --help", () => {
     const out = execFileSync(process.execPath, [link, "--help"], { encoding: "utf8" });
-    expect(out).toMatch(/^usage: installer/);
+    // commander renders a `Usage: wpm …` block (task-27 replaced the bootstrap usage line).
+    expect(out).toMatch(/Usage:/);
   });
 });
