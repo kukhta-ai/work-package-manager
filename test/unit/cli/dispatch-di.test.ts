@@ -10,6 +10,12 @@ import { parseYaml } from "../../../src/util/yaml.js";
 
 const ROOT = "/proj";
 const BUILTIN = "/builtin-templates";
+/**
+ * The authoring backlog is its own Backlog.md root at `<project>/.authoring-backlog` (doc 10 step 6), where the
+ * lifecycle materialises — NOT the project root. The fake is initialised there and materialise assertions read
+ * there (the fake-parity discipline that catches the real "No Backlog.md project found" failure).
+ */
+const AUTHORING = `${ROOT}/.authoring-backlog`;
 
 /** A string-collecting {@link OutputSink}. */
 function collector(): OutputSink & { text: string } {
@@ -46,7 +52,7 @@ function seedDeps(): CliDeps {
       "",
     ].join("\n"),
   );
-  backlog.init(ROOT, { taskPrefix: "authoring" });
+  backlog.init(AUTHORING, { taskPrefix: "authoring" });
   fs.makeDirectories(`${ROOT}/installer-skills`);
 
   fs.write(
@@ -96,8 +102,8 @@ describe("cli dispatch + DI + reserved-verb (task-27)", () => {
     const manifest = parseManifest(parseYaml(deps.fs.read(`${ROOT}/manifest.yml`)));
     expect(manifest.ok).toBe(true);
     if (manifest.ok) expect(manifest.value.bundles).toContain("web");
-    // AC#2: the SAME injected backlog received the materialised tasks:
-    expect(deps.backlog.listTasks(ROOT).length).toBeGreaterThan(0);
+    // AC#2: the SAME injected backlog received the materialised tasks (in the .authoring-backlog root):
+    expect(deps.backlog.listTasks(AUTHORING).length).toBeGreaterThan(0);
     // output was formatted on the out sink (not core):
     expect(i.out.text).toContain("created bundle web");
   });

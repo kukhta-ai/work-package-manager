@@ -23,6 +23,13 @@ import { parseYaml } from "../../../src/util/yaml.js";
 const ROOT = "/hermes-handoff";
 const BUILTIN = "/builtin-templates";
 const MANIFEST_COMMENT = "# author note: handoff bundles are appended below";
+/**
+ * The authoring backlog is its own Backlog.md root at `<project>/.authoring-backlog` (doc 10 step 6), not the
+ * project root — the lifecycle's ⑤ MATERIALISE writes there. The fake is initialised there and the materialise
+ * assertions read there (the fake-parity discipline: initialising at the project root used to hide the real
+ * "No Backlog.md project found" failure of every materialising command).
+ */
+const AUTHORING = `${ROOT}/.authoring-backlog`;
 
 /** Stand up a realistic project the way `init` leaves it, plus the fixture project + bundle templates. */
 function setUpProject(): { fs: MemoryFileSystem; backlog: FakeBacklog } {
@@ -42,7 +49,7 @@ function setUpProject(): { fs: MemoryFileSystem; backlog: FakeBacklog } {
       "",
     ].join("\n"),
   );
-  backlog.init(ROOT, { taskPrefix: "authoring" });
+  backlog.init(AUTHORING, { taskPrefix: "authoring" });
   fs.makeDirectories(`${ROOT}/installer-skills`); // the root alias target (non-broken)
 
   // Fixture project template (front-door + orchestrator snippets).
@@ -123,8 +130,8 @@ describe("createBundle — acceptance (composition proof; doc 13 §5, doc 10 bun
       // (re-derive) the front-door reflects the new bundle in its menu:
       expect(fs.read(`${ROOT}/AGENTS.md`)).toContain("- web-handoff bundle");
 
-      // (materialise) the doc-11 per-bundle authoring tasks are in the backlog:
-      const titles = backlog.listTasks(ROOT).map((t) => t.title);
+      // (materialise) the doc-11 per-bundle authoring tasks are in the authoring backlog:
+      const titles = backlog.listTasks(AUTHORING).map((t) => t.title);
       expect(titles).toContain("Plan bundle web-handoff");
       expect(titles).toContain("Simulate fresh-install executor for web-handoff");
       expect(result.materialisedTaskTitles).toHaveLength(12);
@@ -149,7 +156,7 @@ describe("createBundle — acceptance (composition proof; doc 13 §5, doc 10 bun
       );
 
       // ...and from the in-memory fakes — no commander / cli.ts anywhere:
-      expect(backlog.listTasks(ROOT).length).toBe(12);
+      expect(backlog.listTasks(AUTHORING).length).toBe(12);
       // The per-bundle scope alias was created NON-broken (its target dir exists):
       expect(fs.exists(`${ROOT}/bundles/web-handoff/installer-skills`)).toBe(true);
       expect(fs.exists(`${ROOT}/bundles/web-handoff/.claude/skills`)).toBe(true);

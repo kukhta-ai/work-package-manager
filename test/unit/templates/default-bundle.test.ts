@@ -30,6 +30,12 @@ const REAL_TEMPLATES = fileURLToPath(new URL("../../../templates", import.meta.u
 /** Where the templates are mirrored inside the MemoryFileSystem (the resolver's builtin root). */
 const BUILTIN = "/builtin-templates";
 const ROOT = "/proj";
+/**
+ * The authoring backlog is its own Backlog.md root at `<project>/.authoring-backlog` (doc 10 step 6), where the
+ * lifecycle materialises — NOT the project root. The fake is initialised there and the materialise assertion
+ * reads there (the fake-parity discipline that catches the real "No Backlog.md project found" failure).
+ */
+const AUTHORING = `${ROOT}/.authoring-backlog`;
 /** The sample bundle id used throughout (matches the doc-06/07 worked example). */
 const SAMPLE_ID = "web-handoff";
 
@@ -75,7 +81,7 @@ function seed(): { fs: MemoryFileSystem; backlog: FakeBacklog } {
       "",
     ].join("\n"),
   );
-  backlog.init(ROOT, { taskPrefix: "authoring" });
+  backlog.init(AUTHORING, { taskPrefix: "authoring" });
   // The ROOT alias target a prior `init` created (doc 06): so the root rerender alias is non-broken.
   fs.makeDirectories(`${ROOT}/installer-skills`);
 
@@ -304,7 +310,7 @@ describe("default bundle template — createBundle end-to-end (doc 06/07/08/09)"
       id: SAMPLE_ID,
     });
 
-    const titles = backlog.listTasks(ROOT).map((t) => t.title);
+    const titles = backlog.listTasks(AUTHORING).map((t) => t.title);
     for (const t of perBundleAuthoringTasks(SAMPLE_ID, { advisor: true })) {
       expect(titles).toContain(t.title);
     }
