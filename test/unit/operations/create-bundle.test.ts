@@ -241,6 +241,66 @@ describe("createBundle — end-to-end through the lifecycle (doc 13 §5; doc 10 
   });
 });
 
+describe("createBundle — the project bundle-template default (§4; doc 10:150 step 2)", () => {
+  /** A marker file unique to the project's `bundles/bundle-template/` scaffold (NOT in the registry `default`). */
+  const PROJECT_SCAFFOLD_MARKER = "PROJECT-SCAFFOLD.txt";
+
+  /** Seed a project that ALSO has a `bundles/bundle-template/` scaffold with a distinguishing marker file. */
+  function seedWithProjectScaffold(): { fs: MemoryFileSystem; backlog: FakeBacklog } {
+    const { fs, backlog } = seed();
+    // The project's default bundle scaffold (what `init`/`bundle template set` materialise). It carries a marker
+    // file ABSENT from the registry `default`, plus a bundle.yml-less tree with placeholders kept.
+    fs.write(
+      `${ROOT}/bundles/bundle-template/${PROJECT_SCAFFOLD_MARKER}`,
+      "from project scaffold\n",
+    );
+    fs.write(
+      `${ROOT}/bundles/bundle-template/install-backlog/config.yml`,
+      "task_prefix: {{bundle-id}}\n",
+    );
+    fs.write(`${ROOT}/bundles/bundle-template/installer-skills/.keep`, "");
+    return { fs, backlog };
+  }
+
+  it("when no --template is given AND bundles/bundle-template/ exists, `bundle new` clones THAT scaffold", () => {
+    const { fs, backlog } = seedWithProjectScaffold();
+    // No bundleTemplateName ⇒ default branch ⇒ prefer the project scaffold.
+    const spec = createBundleSpec({ builtinTemplatesRoot: BUILTIN });
+    runMutation(lifecycleDeps(fs, backlog), { root: ROOT }, spec, { id: "web" });
+
+    // The marker from the PROJECT scaffold landed in the new bundle (proving set is now LIVE for bundle new):
+    expect(fs.exists(`${ROOT}/bundles/web/${PROJECT_SCAFFOLD_MARKER}`)).toBe(true);
+    expect(fs.read(`${ROOT}/bundles/web/${PROJECT_SCAFFOLD_MARKER}`)).toBe(
+      "from project scaffold\n",
+    );
+    // And the placeholders were substituted (renderTree ran over the cloned tree):
+    expect(fs.read(`${ROOT}/bundles/web/install-backlog/config.yml`)).toBe("task_prefix: web\n");
+    // bundle.yml is still written by step (b) (the scaffold carries none):
+    expect(fs.exists(`${ROOT}/bundles/web/bundle.yml`)).toBe(true);
+  });
+
+  it("an EXPLICIT --template still resolves from the REGISTRY even when bundles/bundle-template/ exists", () => {
+    const { fs, backlog } = seedWithProjectScaffold();
+    // Explicit bundleTemplateName ⇒ registry path ⇒ the project scaffold is IGNORED.
+    const spec = createBundleSpec({ builtinTemplatesRoot: BUILTIN, bundleTemplateName: "default" });
+    runMutation(lifecycleDeps(fs, backlog), { root: ROOT }, spec, { id: "web" });
+
+    // The registry `default` has NO project-scaffold marker, so the new bundle must NOT contain it:
+    expect(fs.exists(`${ROOT}/bundles/web/${PROJECT_SCAFFOLD_MARKER}`)).toBe(false);
+    // It DOES have the registry default's bundle.yml-derived tree (the fixture default ships bundle.yml):
+    expect(fs.exists(`${ROOT}/bundles/web/bundle.yml`)).toBe(true);
+  });
+
+  it("with NO bundles/bundle-template/ present, `bundle new` falls back to the registry default (no regression)", () => {
+    const { fs, backlog } = seed(); // the standard seed: NO bundles/bundle-template/
+    const spec = createBundleSpec({ builtinTemplatesRoot: BUILTIN });
+    runMutation(lifecycleDeps(fs, backlog), { root: ROOT }, spec, { id: "web" });
+    // Falls back to the registry `default` and still scaffolds correctly:
+    expect(fs.exists(`${ROOT}/bundles/web/bundle.yml`)).toBe(true);
+    expect(fs.exists(`${ROOT}/bundles/web/${PROJECT_SCAFFOLD_MARKER}`)).toBe(false);
+  });
+});
+
 describe("perBundleAuthoringTasks (doc 11 §3)", () => {
   it("returns the 12-task set with the advisor task when advisor is on", () => {
     const tasks = perBundleAuthoringTasks("web", { advisor: true });

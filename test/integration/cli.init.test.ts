@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { existsSync, lstatSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
@@ -15,12 +15,11 @@ import { parseYaml } from "../../src/util/yaml.js";
 import { withTempDir } from "../helpers/tmpdir.js";
 
 /**
- * THE WALKING SKELETON (task-33, AC#1) — one real `wpm init <name>` invocation drives a real change on disk
- * through EVERY layer (commander command surface → the `initProject` operation → the services → the FileSystem
- * port), observed in a REAL working directory. It runs the slice end-to-end against a real `NodeFileSystem` in a
- * real tmpdir, through the production `run()` path (and, when built, through the actual `dist/cli.js` binary).
- * This is the "foundation complete" demonstration that the hexagon composes end-to-end before the per-command
- * leaves (tasks 34–84).
+ * Through-the-edges (integration) test for the FULL `wpm init <name>` command (task-34): one real invocation
+ * drives a real change on disk through EVERY layer (commander command surface → the `initProject` operation → the
+ * services → the FileSystem port), observed in a REAL working directory. It runs against a real `NodeFileSystem`
+ * in a real tmpdir, through the production `run()` path (and, when built, through the actual `dist/cli.js`
+ * binary). It supersedes the task-33 walking-skeleton assertions (which checked the deliberately-minimal slice).
  */
 
 /** The repo's real built-in templates root (the package ships this). */
@@ -53,9 +52,9 @@ function realDeps(): CliDeps {
   };
 }
 
-/** Assert the produced project on REAL DISK (via `node:fs`) under project root `proj`. */
+/** Assert the FULL produced project on REAL DISK (via `node:fs`) under project root `proj`. */
 function assertProjectOnDisk(proj: string, name: string): void {
-  // manifest.yml — parses, name substituted, empty bundles/targets:
+  // manifest.yml — parses, name substituted, empty bundles/targets (minimal declares neither):
   expect(existsSync(join(proj, "manifest.yml"))).toBe(true);
   const manifest = parseManifest(parseYaml(readFileSync(join(proj, "manifest.yml"), "utf8")));
   expect(manifest.ok).toBe(true);
@@ -81,79 +80,141 @@ function assertProjectOnDisk(proj: string, name: string): void {
   expect(existsSync(join(proj, "README.md"))).toBe(true);
   expect(existsSync(join(proj, "RALPH-LOOP.md"))).toBe(true);
 
-  // NO unresolved {{…}} marker in any produced file (recursively):
+  // AC#1 — the default bundle template materialised at bundles/bundle-template/ (placeholders KEPT):
+  expect(existsSync(join(proj, "bundles", "bundle-template", "AGENTS.md.tmpl"))).toBe(true);
+  expect(readFileSync(join(proj, "bundles", "bundle-template", "AGENTS.md.tmpl"), "utf8")).toMatch(
+    /\{\{bundle-id\}\}/,
+  );
+
+  // AC#1 — the empty registries exist as directories:
+  expect(existsSync(join(proj, "installer-skills"))).toBe(true);
+  expect(existsSync(join(proj, "templates"))).toBe(true);
+  expect(existsSync(join(proj, ".authoring-backlog"))).toBe(true);
+
+  // AC#7 — .gitignore records .authoring-backlog/:
+  expect(existsSync(join(proj, ".gitignore"))).toBe(true);
+  expect(readFileSync(join(proj, ".gitignore"), "utf8")).toMatch(/^\.authoring-backlog\/$/m);
+
+  // AC#3 — minimal declares no targets ⇒ NO scope-aliases:
+  expect(existsSync(join(proj, ".claude", "skills"))).toBe(false);
+
+  // NO unresolved {{…}} marker in any produced file EXCEPT the bundle-template scaffold (a template-of-a-template
+  // that deliberately keeps its placeholders for `bundle new` to fill):
+  const scaffold = join(proj, "bundles", "bundle-template");
   const walk = (dir: string): void => {
     for (const entry of readdirSync(dir, { withFileTypes: true })) {
       const child = join(dir, entry.name);
+      if (child === scaffold) continue;
       if (entry.isDirectory()) walk(child);
-      else expect(readFileSync(child, "utf8"), `marker in ${child}`).not.toMatch(/\{\{[^}]*\}\}/);
+      else if (!child.startsWith(`${scaffold}/`))
+        expect(readFileSync(child, "utf8"), `marker in ${child}`).not.toMatch(/\{\{[^}]*\}\}/);
     }
   };
   walk(proj);
 }
 
-describe("walking skeleton — `wpm init` drives a real change through every layer (task-33, AC#1)", () => {
-  it("init <name> --at <dir> produces a working project on real disk via run()", async () => {
+describe("`wpm init` FULL — drives a real change through every layer (task-34)", () => {
+  it("AC#1 — init <name> --at <dir> produces the full project on real disk via run()", async () => {
     await withTempDir(async (dir) => {
+      // --at must point at a path that does NOT yet exist (AC#5 refuses an existing target), so target a fresh
+      // subdir of the tmpdir rather than the tmpdir itself.
+      const proj = join(dir, "proj");
       const i = io();
-      const code = await run(["init", "hermes-handoff", "--at", dir], realDeps(), i);
+      const code = await run(["init", "hermes-handoff", "--at", proj], realDeps(), i);
       expect(code).toBe(0);
       expect(i.out.text).toContain("created project hermes-handoff");
-      // `--at <dir>` ⇒ the project root IS <dir> (doc 10 line 194):
-      assertProjectOnDisk(dir, "hermes-handoff");
+      // AC#7 — the summary names the materialised-task count (8 project-wide tasks):
+      expect(i.out.text).toMatch(/materialised: 8 authoring task/);
+      // `--at <proj>` ⇒ the project root IS <proj> (doc 10 line 194):
+      assertProjectOnDisk(proj, "hermes-handoff");
     });
   });
 
-  it("AC#2 — it is the SMALLEST slice: no bundles/ scaffold (that is the full init command)", async () => {
+  it("AC#5 — re-running init on an existing path exits 1 (ConflictError) and changes nothing", async () => {
     await withTempDir(async (dir) => {
-      expect(await run(["init", "hermes-handoff", "--at", dir], realDeps(), io())).toBe(0);
-      expect(existsSync(join(dir, "bundles"))).toBe(false);
-    });
-  });
+      const proj = join(dir, "proj");
+      expect(await run(["init", "hermes-handoff", "--at", proj], realDeps(), io())).toBe(0);
+      const manifestBefore = readFileSync(join(proj, "manifest.yml"), "utf8");
 
-  it("re-running init on an existing project exits 1 (ConflictError) and changes nothing", async () => {
-    await withTempDir(async (dir) => {
-      expect(await run(["init", "hermes-handoff", "--at", dir], realDeps(), io())).toBe(0);
-      const manifestBefore = readFileSync(join(dir, "manifest.yml"), "utf8");
-
+      // <proj> now exists, so a second init at the SAME path is refused (AC#5) — exit 1, nothing changed:
       const i = io();
-      const code = await run(["init", "other", "--at", dir], realDeps(), i);
+      const code = await run(["init", "other", "--at", proj], realDeps(), i);
       expect(code).toBe(1); // ConflictError → exit 1
       expect(i.err.text).toMatch(/^error: /);
-      expect(readFileSync(join(dir, "manifest.yml"), "utf8")).toBe(manifestBefore); // unchanged
+      expect(readFileSync(join(proj, "manifest.yml"), "utf8")).toBe(manifestBefore); // unchanged
+    });
+  });
+
+  it("AC#6 — --list-templates prints the available project templates and creates NOTHING", async () => {
+    await withTempDir(async (dir) => {
+      const proj = join(dir, "should-not-exist");
+      const i = io();
+      const code = await run(
+        ["init", "should-not-exist", "--at", proj, "--list-templates"],
+        realDeps(),
+        i,
+      );
+      expect(code).toBe(0);
+      expect(i.out.text).toContain("minimal"); // the one built-in project template
+      // It exited WITHOUT creating a project:
+      expect(existsSync(proj)).toBe(false);
+    });
+  });
+
+  it("AC#6 — --param values thread to placeholder substitution (extra params are harmless for minimal)", async () => {
+    await withTempDir(async (dir) => {
+      const proj = join(dir, "proj");
+      const i = io();
+      const code = await run(
+        ["init", "demo", "--at", proj, "--param", "author=me", "--param", "license=MIT"],
+        realDeps(),
+        i,
+      );
+      expect(code).toBe(0);
+      assertProjectOnDisk(proj, "demo");
+    });
+  });
+
+  it("a malformed --param (no =) is a usage error (exit 2)", async () => {
+    await withTempDir(async (dir) => {
+      const proj = join(dir, "proj");
+      const i = io();
+      const code = await run(["init", "demo", "--at", proj, "--param", "bogus"], realDeps(), i);
+      expect(code).toBe(2);
+      expect(i.err.text).toMatch(/--param/);
+      expect(existsSync(join(proj, "manifest.yml"))).toBe(false);
     });
   });
 
   it("without --at, init <name> nests the project under <cwd>/<name> (doc 10/12 default)", async () => {
     await withTempDir(async (dir) => {
-      // ProcessEnvironment reads the real cwd; drive the binary-less path by passing --at to a <dir>/<name>
-      // target equivalent to the default. (The default-cwd path itself is covered by the binary test below,
-      // which runs with cwd = the tmpdir.)
       const proj = join(dir, "hermes-handoff");
       expect(await run(["init", "hermes-handoff", "--at", proj], realDeps(), io())).toBe(0);
       assertProjectOnDisk(proj, "hermes-handoff");
     });
   });
 
-  it("AC#3 — the command surface is reachable: `init --help` shows <name>, --at, and a worked example", async () => {
+  it("AC#8 — `init --help` shows <name>, every flag, and a worked example", async () => {
     const i = io();
     expect(await run(["init", "--help"], realDeps(), i)).toBe(0);
     const help = i.out.text;
     expect(help).toMatch(/Usage:/);
     expect(help).toContain("init");
     expect(help).toContain("<name>"); // the positional (task-28)
-    expect(help).toContain("--at"); // the option
-    expect(help).toContain("Example:"); // the worked example (task-28 contract; init has options/args)
-    expect(help).toContain("wpm init"); // the example invocation
+    expect(help).toContain("--at");
+    expect(help).toContain("--template");
+    expect(help).toContain("--list-templates");
+    expect(help).toContain("--param");
+    expect(help).toContain("Example"); // the worked example (task-28 contract)
+    expect(help).toContain("wpm init");
   });
 });
 
 describeIfBuilt(
-  "walking skeleton — through the built `dist/cli.js` binary (the fullest real path)",
+  "`wpm init` FULL — through the built `dist/cli.js` binary (the fullest real path)",
   () => {
-    it("`init <name>` with default cwd creates <cwd>/<name>/ on disk", () => {
+    it("`init <name>` with default cwd creates the full <cwd>/<name>/ on disk", () => {
       withTempDir((dir) => {
-        // Run the real binary with cwd = the tmpdir; no --at ⇒ project root is <cwd>/<name>.
         execFileSync(process.execPath, [builtCli, "init", "hermes-handoff"], {
           cwd: dir,
           encoding: "utf8",
@@ -164,17 +225,18 @@ describeIfBuilt(
 
     it("`init <name> --at <dir>` creates the project at <dir> on disk", () => {
       withTempDir((dir) => {
-        const out = execFileSync(process.execPath, [builtCli, "init", "demo-proj", "--at", dir], {
+        const proj = join(dir, "proj");
+        const out = execFileSync(process.execPath, [builtCli, "init", "demo-proj", "--at", proj], {
           encoding: "utf8",
         });
         expect(out).toContain("created project demo-proj");
-        assertProjectOnDisk(dir, "demo-proj");
+        assertProjectOnDisk(proj, "demo-proj");
       });
     });
   },
 );
 
-/** Whether the real `backlog` CLI is available; the .authoring-backlog real-root check skips (not fails) if not. */
+/** Whether the real `backlog` CLI is available; the .authoring-backlog real-root checks skip (not fail) if not. */
 function backlogAvailable(): boolean {
   try {
     execFileSync("backlog", ["--version"], { stdio: "pipe" });
@@ -186,18 +248,22 @@ function backlogAvailable(): boolean {
 const describeIfBacklog = backlogAvailable() ? describe : describe.skip;
 
 describeIfBacklog(
-  "walking skeleton — the .authoring-backlog is a real Backlog.md root (BacklogMd port)",
+  "`wpm init` FULL — the .authoring-backlog is a real Backlog.md root with the project-wide tasks (BacklogMd port)",
   () => {
-    it("init produces a valid pre-initialised .authoring-backlog/ via the real BacklogCli", async () => {
+    /** Backlog.md per-machine global state, isolated inside `dir`. */
+    function isolatedEnv(dir: string): Record<string, string> {
+      return {
+        HOME: dir,
+        XDG_CONFIG_HOME: dir,
+        XDG_DATA_HOME: dir,
+        XDG_STATE_HOME: dir,
+        XDG_CACHE_HOME: dir,
+      };
+    }
+
+    it("AC#4 — init materialises the project-wide set into a real .authoring-backlog/ (task_prefix=authoring)", async () => {
       await withTempDir(async (dir) => {
-        // Isolate Backlog.md's per-machine global state inside the tmpdir.
-        const env = {
-          HOME: dir,
-          XDG_CONFIG_HOME: dir,
-          XDG_DATA_HOME: dir,
-          XDG_STATE_HOME: dir,
-          XDG_CACHE_HOME: dir,
-        };
+        const env = isolatedEnv(dir);
         const deps: CliDeps = {
           fs: new NodeFileSystem(),
           backlog: new BacklogCli("backlog", env),
@@ -206,55 +272,47 @@ describeIfBacklog(
           builtinTemplatesRoot: BUILTIN_TEMPLATES,
         };
         const proj = join(dir, "proj");
-        expect(await run(["init", "hermes-handoff", "--at", proj], deps, io())).toBe(0);
-
-        // The real CLI initialised an authoring-backlog root with task_prefix=authoring → a created task is authoring-1:
-        const authoringRoot = join(proj, ".authoring-backlog");
-        const created = new BacklogCli("backlog", env).createTask(authoringRoot, {
-          title: "probe",
-        });
-        expect(created.id).toBe("authoring-1");
-      });
-    });
-
-    // The CROSS-CUTTING lifecycle regression test (the path the FakeBacklog unit tests could not catch): a
-    // materialising command (`project targets add`) on a REAL init'd project, through the REAL BacklogCli. The
-    // lifecycle's ⑤ MATERIALISE must list/create tasks in the project's `.authoring-backlog` root — NOT the
-    // project root, which is not a Backlog.md root. Before the fix this exited 1 with
-    // "Command failed: backlog task list --plain → No Backlog.md project found", because the harness shelled out
-    // at `ctx.root`. This guards every materialising command (targets add now; bundle new later).
-    it("`project targets add <agent>` on a real init'd project exits 0 (the lifecycle materialises into .authoring-backlog)", async () => {
-      await withTempDir(async (dir) => {
-        // Isolate Backlog.md's per-machine global state inside the tmpdir (so concurrent runs cannot collide).
-        const env = {
-          HOME: dir,
-          XDG_CONFIG_HOME: dir,
-          XDG_DATA_HOME: dir,
-          XDG_STATE_HOME: dir,
-          XDG_CACHE_HOME: dir,
-        };
-        const deps: CliDeps = {
-          fs: new NodeFileSystem(),
-          backlog: new BacklogCli("backlog", env),
-          clock: new FixedClock("2026-01-01T00:00:00.000Z"),
-          env: new ProcessEnvironment(),
-          builtinTemplatesRoot: BUILTIN_TEMPLATES,
-        };
-        const proj = join(dir, "proj");
-
-        // Arrange: a real project with a real .authoring-backlog root (init exercises the real BacklogCli).
-        expect(await run(["init", "demo", "--at", proj], deps, io())).toBe(0);
-
-        // Act + Assert: adding a known target rides the task-25 lifecycle, whose ⑤ MATERIALISE runs
-        // `backlog task list` in the authoring backlog. This is exit 1 before the fix (it ran at the project
-        // root, "No Backlog.md project found") and exit 0 after (it runs in <proj>/.authoring-backlog).
         const i = io();
-        const code = await run(["project", "targets", "add", "claude-code", "-C", proj], deps, i);
-        expect(i.err.text).not.toContain("No Backlog.md project found");
-        expect(code).toBe(0);
-        // The target landed in the manifest (the operation actually completed, materialise included):
-        expect(readFileSync(join(proj, "manifest.yml"), "utf8")).toContain("claude-code");
+        expect(await run(["init", "hermes-handoff", "--at", proj], deps, i)).toBe(0);
+        expect(i.out.text).toMatch(/materialised: 8 authoring task/);
+
+        // The real CLI initialised an authoring-backlog root with task_prefix=authoring AND materialised the 8
+        // project-wide tasks (authoring-1..8) → the NEXT created task is authoring-9:
+        const authoringRoot = join(proj, ".authoring-backlog");
+        const real = new BacklogCli("backlog", env);
+        const titles = real.listTasks(authoringRoot).map((t) => t.title);
+        expect(titles).toContain("Set project metadata");
+        expect(titles).toContain("Build dry-run");
+        expect(titles).toHaveLength(8);
+        const created = real.createTask(authoringRoot, { title: "probe" });
+        expect(created.id).toBe("authoring-9");
       });
     });
   },
 );
+
+describeIfBuilt("`wpm init` FULL — scope aliases on real disk (AC#3, through dist/cli.js)", () => {
+  it("init then `project targets add claude-code` creates a real scope-alias symlink at .claude/skills", () => {
+    withTempDir((dir) => {
+      const proj = join(dir, "demo");
+      execFileSync(process.execPath, [builtCli, "init", "demo", "--at", proj], {
+        encoding: "utf8",
+      });
+      // A freshly-init'd minimal project has NO aliases (no targets) — AC#3 negative case on real disk:
+      expect(existsSync(join(proj, ".claude", "skills"))).toBe(false);
+
+      // Adding a target creates the alias (the same alias plan init would have applied for a declared target):
+      execFileSync(
+        process.execPath,
+        [builtCli, "project", "targets", "add", "claude-code", "-C", proj],
+        {
+          encoding: "utf8",
+        },
+      );
+      const alias = join(proj, ".claude", "skills");
+      expect(existsSync(alias)).toBe(true);
+      // It is a symlink pointing at installer-skills/ (POSIX); the real adapter uses a symlink on this platform:
+      expect(lstatSync(alias).isSymbolicLink()).toBe(true);
+    });
+  });
+});
