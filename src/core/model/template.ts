@@ -40,6 +40,8 @@ export interface Template {
   readonly name: string;
   /** Whether it scaffolds a project or a bundle. */
   readonly scope: TemplateScope;
+  /** Optional one-line human description of the template (the `template.yml` `description`; shown by `template show`). */
+  readonly description?: string;
   /** The parameters the template declares. */
   readonly parameters: readonly TemplateParameter[];
   /** The file tree copied wholesale at init time. */
