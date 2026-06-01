@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { realpathSync } from "node:fs";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Command } from "commander";
 import { BacklogCli } from "./adapters/backlog-cli.js";
@@ -13,6 +13,7 @@ import { NotFoundError, UsageError } from "./core/errors.js";
 import { RESERVED_BUNDLE_VERBS } from "./core/model/index.js";
 import { createBundleSpec } from "./core/operations/create-bundle.js";
 import { makeArtefactDeriver } from "./core/operations/derive-artefacts-capability.js";
+import { initProject } from "./core/operations/init-project.js";
 import { runMutation } from "./core/operations/lifecycle.js";
 import type { BacklogMd, Clock, Environment, FileSystem } from "./core/ports/index.js";
 import { resolveContext } from "./core/services/context.js";
@@ -173,6 +174,52 @@ const bundleModule: CommandModule = {
 };
 
 /**
+ * The `init <name>` command — the WALKING SKELETON's command surface (task-33; doc 10 §`init`). init is the
+ * BOOTSTRAP: it CREATES a project, so its action does NOT resolve an existing one (no `resolveContext`) — it
+ * resolves the TARGET DIR (where to write) and calls the {@link initProject} operation. The project root is
+ * `--at <path>` when given, else `<cwd>/<name>` (doc 10 line 194: "init writes to `<path>` if `--at <path>` is
+ * given (default cwd)"; doc 12's worked example `wpm init my-installer` then `cd my-installer` shows the
+ * default-cwd case nests the project under `<name>`).
+ */
+const initModule: CommandModule = {
+  register(parent, ctx) {
+    const leaf = parent
+      .command("init")
+      .description("scaffold a new project root from the minimal template (doc 10)")
+      .argument(
+        "<name>",
+        "the new project's name (kebab-case; becomes the manifest name and the installer-skill name)",
+      )
+      .option(
+        "--at <path>",
+        "create the project at <path> (default: a <name>/ directory in the cwd)",
+      )
+      .action((name: string, opts: { at?: string }) => {
+        // Resolve the target dir: --at <path> (resolved against cwd) when given, else <cwd>/<name>.
+        const cwd = ctx.deps.env.cwd();
+        const targetDir = opts.at !== undefined ? resolve(cwd, opts.at) : join(cwd, name);
+
+        const result = initProject(
+          {
+            fs: ctx.deps.fs,
+            backlog: ctx.deps.backlog,
+            builtinTemplatesRoot: ctx.deps.builtinTemplatesRoot,
+          },
+          { targetDir, name },
+        );
+        ctx.io.out.write(formatResult(result));
+      });
+
+    withExamples(leaf, [
+      {
+        command: "wpm init hermes-handoff --at ./my-installer",
+        note: "scaffold a project at ./my-installer",
+      },
+    ]);
+  },
+};
+
+/**
  * The per-command completion declarations (task-29 AC#2/AC#3): which named source completes each option's value
  * or positional. The dispatch ({@link completeArgv}) reads this side-table by command path. A later leaf
  * (tasks 34–84) adds a completion by adding an entry here referencing a source NAME — no change to the
@@ -180,6 +227,9 @@ const bundleModule: CommandModule = {
  * and `bundle new <id>` declares NO source (a brand-new id yields no suggestions, doc 10).
  */
 const COMPLETION_SPECS: CompletionSpecs = {
+  init: {
+    args: [undefined], // <name> — a brand-new project name, no suggestions (doc 10)
+  },
   "bundle new": {
     // `--template` takes a BUNDLE template (a project template can't scaffold a bundle), so it completes from
     // the scope-filtered `bundle-template-names` source — the worked proof of a state-dependent completion.
@@ -326,7 +376,7 @@ function groupOnly(name: string, description: string): CommandModule {
 
 /** The doc-10 top-level groups, registered through the one pattern (AC#1). */
 const TOP_LEVEL_MODULES: readonly CommandModule[] = [
-  groupOnly("init", "scaffold a new project root (doc 10)"),
+  initModule,
   groupOnly("template", "the templates available to instantiate from (doc 10)"),
   groupOnly("project", "the project as a release unit (doc 10)"),
   bundleModule,

@@ -1,4 +1,4 @@
-import { readdirSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
@@ -70,19 +70,22 @@ function params(name = "hermes-handoff"): Map<string, string> {
 }
 
 describe("minimal project template — instantiation (doc 06/07)", () => {
-  it("AC#1 — produces a working project: manifest, front-door, loop-instructions, README, orchestrator", () => {
+  it("AC#1 — produces a working project: manifest, loop-instructions, README, journaling (copied from files/)", () => {
     const fs = seedTemplates();
     instantiate(fs, params("hermes-handoff"));
 
-    // The five required artefacts exist:
+    // The COPIED `files/` artefacts exist. The front-door + orchestrator SKILL are NO LONGER in `files/` —
+    // they are rendered from `snippets/` (the single source; see the loop-closure case + AC#4). The static
+    // `references/journaling.md` IS still copied via `files/` (under the orchestrator dir).
     expect(fs.exists(`${ROOT}/manifest.yml`)).toBe(true);
-    expect(fs.exists(`${ROOT}/AGENTS.md`)).toBe(true);
     expect(fs.exists(`${ROOT}/RALPH-LOOP.md`)).toBe(true);
     expect(fs.exists(`${ROOT}/README.md`)).toBe(true);
-    expect(fs.exists(`${ROOT}/installer-skills/hermes-handoff-installer/SKILL.md`)).toBe(true);
     expect(
       fs.exists(`${ROOT}/installer-skills/hermes-handoff-installer/references/journaling.md`),
     ).toBe(true);
+    // The derived artefacts are NOT copied from files/ (single-source collapse, task-33):
+    expect(fs.exists(`${ROOT}/AGENTS.md`)).toBe(false);
+    expect(fs.exists(`${ROOT}/installer-skills/hermes-handoff-installer/SKILL.md`)).toBe(false);
 
     // The manifest parses with the substituted name + version + empty lists:
     const manifest = parseManifest(parseYaml(fs.read(`${ROOT}/manifest.yml`)));
@@ -97,8 +100,13 @@ describe("minimal project template — instantiation (doc 06/07)", () => {
 
   it("AC#2 — the front-door carries recognition-and-kickoff, the install shape, and the standing rules", () => {
     const fs = seedTemplates();
-    instantiate(fs, params("hermes-handoff"));
-    const frontDoor = fs.read(`${ROOT}/AGENTS.md`);
+    // The front-door is now rendered from the SNIPPET (single source), not copied from files/ — render it the
+    // way the task-26 deriver / `init` does.
+    const resolution = resolveTemplate("minimal", "project", { fs, builtinTemplatesRoot: BUILTIN });
+    if (!resolution.found) throw new Error("minimal project template not found");
+    const frontDoorSnippet = resolution.template.snippets.find((s) => s.path === "AGENTS.md");
+    if (frontDoorSnippet === undefined) throw new Error("front-door snippet not found");
+    const frontDoor = renderSnippet(frontDoorSnippet, params("hermes-handoff")).content;
 
     // Recognition & kickoff (doc 07): flip stance to "install", name the entry points + RALPH-LOOP.
     expect(frontDoor).toContain("install"); // the reframing
@@ -220,18 +228,30 @@ describe("minimal project template — instantiation (doc 06/07)", () => {
     expect(orchestrator?.content).not.toMatch(/\{\{[^}]*\}\}/);
   });
 
-  it("drift-guard — files/ copies of the derived artefacts stay byte-identical to their snippets/ source", () => {
-    // The front-door + orchestrator are the TWO derived artefacts, and they live in BOTH trees: `files/` is
-    // copied wholesale at `init`, while `snippets/` is what the task-19/26 deriver re-renders on every
-    // mutation (doc 12: "files/ copied wholesale at init; snippets/ rendered on demand"). They MUST stay
-    // byte-identical until task-33 collapses them to a single source (front-door + orchestrator become
-    // snippets-only, with `init` rendering them via the deriver like any mutation) — otherwise a fresh
-    // project's front-door would silently change on its first mutation. This guards that drift.
-    const tmpl = (rel: string): string =>
-      readFileSync(join(REAL_TEMPLATES, "project/minimal", rel), "utf8");
-    expect(tmpl("files/AGENTS.md.tmpl")).toBe(tmpl("snippets/AGENTS.md"));
-    expect(tmpl("files/installer-skills/{{project-name}}-installer/SKILL.md.tmpl")).toBe(
-      tmpl("snippets/installer-skills/{{project-name}}-installer/SKILL.md"),
-    );
+  it("single-source — the derived artefacts live ONLY in snippets/, not files/ (task-33 collapse)", () => {
+    // task-33 resolved the task-30 drift hazard: the front-door + orchestrator are the two DERIVED artefacts
+    // and now have ONE source — `snippets/` (rendered by the deriver at `init` and every mutation). Their old
+    // `files/` copies are removed, so `init`'s copied `files/` can never drift from the rendered snippets.
+    expect(existsSync(join(REAL_TEMPLATES, "project/minimal", "files/AGENTS.md.tmpl"))).toBe(false);
+    expect(
+      existsSync(
+        join(
+          REAL_TEMPLATES,
+          "project/minimal",
+          "files/installer-skills/{{project-name}}-installer/SKILL.md.tmpl",
+        ),
+      ),
+    ).toBe(false);
+    // ...and they DO exist as snippets (the single source):
+    expect(existsSync(join(REAL_TEMPLATES, "project/minimal", "snippets/AGENTS.md"))).toBe(true);
+    expect(
+      existsSync(
+        join(
+          REAL_TEMPLATES,
+          "project/minimal",
+          "snippets/installer-skills/{{project-name}}-installer/SKILL.md",
+        ),
+      ),
+    ).toBe(true);
   });
 });

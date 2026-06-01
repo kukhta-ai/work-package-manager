@@ -54,7 +54,20 @@ export class FakeBacklog implements BacklogMd {
     return r;
   }
 
-  /** @inheritdoc */
+  /**
+   * PARITY TRAP (recorded per the task-33 review): the REAL `BacklogCli.init` shells out to `backlog init`
+   * with the root as the subprocess `cwd`, so it REQUIRES `root` to already exist as a directory — it fails
+   * with a spawn/ENOENT error if it does not. This fake has no FileSystem reference (by design — it models
+   * backlog STATE, not the disk), so it cannot enforce that; it just records the root in-memory and succeeds
+   * even for a non-existent path. CONSEQUENCE: an operation that calls `init(root)` WITHOUT first
+   * `fs.makeDirectories(root)` passes against this fake but fails against the real CLI (exactly the bug the
+   * walking skeleton's real-`backlog` test caught in `initProject`). Operations MUST create the directory
+   * before initialising a backlog in it; rely on a real-`BacklogCli` integration test (not this fake alone)
+   * to guard that ordering. (Same parity-gap class as the task-25 memory-fs and task-27 symlink fixes, but
+   * here the dir-existence is a filesystem fact the backlog fake can't model without over-coupling.)
+   *
+   * @inheritdoc
+   */
   init(root: string, options: InitOptions): void {
     this.roots.set(root, { taskPrefix: options.taskPrefix, counter: 0, tasks: new Map() });
   }
