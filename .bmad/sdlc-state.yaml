@@ -4,9 +4,13 @@
 # (Distinct from _bmad/ — that is BMAD's own install dir; this dot-dir is our tracker.)
 
 phase: 7
-phase_name: "CLI epic-2 — Phase 7 HANDOFF (feature/cli -> dev) — AWAITING USER on the dev merge"
+phase_name: "CLI epic-2 — Phase 7 HANDOFF DONE: PR #1 open (feature/cli -> dev), awaiting HUMAN review+merge"
 branch: feature/cli
 epic: cli
+# *** GOAL COMPLETE: all 84 backlog tasks DONE; foundation epic on dev (e1a0fb2, pushed to origin); CLI epic gate-PASS, handed off as PR #1. ***
+# PHASE 7 (per user choice "Open a PR to dev"): pushed origin dev (fast-forward 3fd60ba->e1a0fb2, publishing the goal-authorized foundation->dev merge) +
+#   pushed feature/cli; opened PR #1 https://github.com/kukhta-ai/work-package-manager/pull/1 (feature/cli -> dev, clean 41-commit CLI-epic diff). The HUMAN reviews + merges
+#   the PR (AGENTS.md: never self-merge to dev). REMAINING HUMAN-OWNED (out of scope): merge PR #1 -> dev; promote dev -> main; any registry/npm publish; the doc-07:67 docs reconciliation.
 # *** CLI EPIC-2 PHASE-6 GATE = PASS (clean). All 84 backlog tasks DONE (foundation 1-33 + CLI 34-84). ***
 #   cold E2E from clean: npm ci 0 / tsc 0 / biome ci 0 (189 files) / build 0 / vitest 1174 passed (93 files).
 #   tea testarch-trace = PASS (250/250 ACs covered, P0/P1/overall 100%, ZERO gaps; double-covered unit+real-binary E2E).
