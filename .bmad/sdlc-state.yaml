@@ -15,21 +15,21 @@ epic: cli
 # NEXT after I: the bundle <id> repeats flow fast -> J(59,60,61 version=reuse D), K-P(62-79 requires/files/templates/scripts/skills/
 # installer-skills = LIST-MGMT reuse E, via PerBundleCommandModule), Q(80,81 advisor=reuse scaffoldAdvisor); plus C(38 meta),
 # F(45,46,47 installer-skills scaffold-or-attach), H(55,56 bundle template), G2(53 remove[destructive],54 list), R(82,83,84 build), 34(init full).
-# WORKERS (rotate ~every 5-8 tasks; they parse-error on resume once the transcript is large): ACTIVE = (spawning #10 for Q+C);
-# retired: a3a2eee1 (#9: P+F installer-skills), ac372bf3 (#8: O), aa98d211 (#7: M+N), a73ce42b (#6: K+L), adcb88d (#5: J), a6599e9 (#4: G1+I), a2b7fcc7 (#3: materialise+D+B), a7f5ad601 (#2: 31,32,28,29,33,merge,A,E), a67b0906 (#1: 1-27,30).
-# REVIEWER a7f5a303c38f8ec6d still reliable (~21 reviews, P+F=APPROVE both; it measures durations + SHA-diffs binaries. Watch for degradation -> spawn fresh reviewer if it 0-tools).
-# CLI 40/51 merged (A,E,D,B,G1,I,J,K,L,M,N,O,P,F = 34+6). ALL SKILL families (O payload, P bundle installer, F project installer) DONE via the skill-refs core; scaffold-or-attach +
-# frontmatter validator + the {name,path} registries (bundle.yml payload.skills + installerSkills, manifest.yml installerSkills) are vetted. list = registry (O) or SCAN (P/F).
-# vitest.config integration testTimeout=60000 (justified, scoped). REMAINING = 11: Q(80,81),C(38),G2(53,54),H(55,56),R(82-84),34.
-# NEXT BATCH = Q+C on feature/cli-advisor-meta -- both LIGHT, heavy reuse. Q = bundle <id> advisor add/remove (80,81): add = call the EXISTING scaffoldAdvisor (advisor.ts, already
-# used by bundle new step6) -- renders installer-skills/<id>-advisor/SKILL.md from the advisor snippet, no-op if exists -- PLUS materialise "Write advisor content for <id>"
-# (idempotent by title; bundle new already does this, so the add-action helper likely exists -- expose it as the command + reuse). remove (81) = delete installer-skills/<id>-advisor/
-# dir + close/archive the "Write advisor content for <id>" task if open; "nothing to remove" if absent. NO <name>, NO list (one advisor per bundle). doc-10:176-177. C = project meta
-# (38): project meta [--name --description --license --repository --author] edits manifest.yml project:(ProjectMeta -- ALL 5 fields ALREADY in the model) from provided flags, omitted
-# untouched, comment+order preserving via editYaml; no-flags => no-change + "nothing updated"; carries the ④ re-render (name feeds AGENTS.md + installer SKILL.md). Reuse the version.ts/
-# installer-skills-project.ts manifest-edit pattern. doc-10:141. After Q+C: G2(53 bundle remove[DESTRUCTIVE: confirm + delete bundles/<id>/ + drop from manifest + archive the bundle's
-# .authoring-backlog tasks + delete advisor stub + re-render],54 bundle list[enabled bundles + install-backlog task counts]), H(55,56 bundle template show/set), R(82,83,84 build
-# dry-run/package/publish -- NOVEL, doc-12 build pipeline -- likely its own batch), 34(init FULL per doc-10:137, deps task-50 done -- supersedes the task-33 skeleton init).
+# WORKERS (rotate ~every 5-8 tasks; they parse-error on resume once the transcript is large): ACTIVE = (spawning #11 for G2+H);
+# retired: a8d85641 (#10: Q+C advisor+meta), a3a2eee1 (#9: P+F), ac372bf3 (#8: O), aa98d211 (#7: M+N), a73ce42b (#6: K+L), adcb88d (#5: J), a6599e9 (#4: G1+I), a2b7fcc7 (#3: materialise+D+B), a7f5ad601 (#2: 31,32,28,29,33,merge,A,E), a67b0906 (#1: 1-27,30).
+# REVIEWER a7f5a303c38f8ec6d still reliable (~22 reviews, Q+C=APPROVE both; it SHA-diffs pre/post binaries to prove no-regression. Watch for degradation -> spawn fresh reviewer if it 0-tools).
+# CLI 43/51 merged (A,E,D,B,G1,I,J,K,L,M,N,O,P,F,Q,C = 40+3). REMAINING = 8: G2(53,54),H(55,56),R(82-84),34. ALL project + bundle metadata/skill/payload families DONE.
+# NEXT BATCH = G2+H on feature/cli-bundle-remove-template -- both top-level `bundle` commands. G2 = bundle remove(53) + bundle list(54). H = bundle template show(55) + set(56).
+# bundle REMOVE (53) is the meatiest remaining leaf: DESTRUCTIVE. The ONE genuinely-new mechanic is AUTHOR CONFIRMATION (no prompt exists in the spine -- the only matches are the bundle's
+# --confirmation-level METADATA, unrelated). Worker designs it: a --yes/--force flag to skip + an interactive stdin prompt when TTY; the DECISION is made in the CLI shell (like the
+# existence-probe-in-CLI pattern), the pure op acts ONLY on confirmation; AC53#4 declining => no change exit 0. Otherwise remove COMPOSES existing pieces: drop id from manifest.bundles
+# (like disable, bundle-lifecycle.ts) + fs.remove bundles/<id>/ + fs.remove the ROOT advisor stub installer-skills/<id>-advisor/ (advisorSkillDir from Q) + archive the bundle's authoring
+# tasks whose titles name <id> (the archive-by-title from Q's advisor remove, generalized to all tasks naming the bundle) + ④ re-render + print. doc-10:153. bundle LIST (54): enumerate
+# manifest.bundles; per bundle read bundle.yml version + COUNT kind:state vs kind:migration tasks in bundles/<id>/install-backlog (kind is a LABEL per doc-08:33/45 -- likely fs-SCAN the
+# install-backlog/tasks/*.md for the label since the install-backlog isn't a discoverable Backlog.md root, the doc-07:67 note); print a table; read-only. H bundle TEMPLATE show(55)=inspect
+# bundles/bundle-template/ metadata+tree (read-only); set(56)=resolveTemplate(name,"bundle") [template-resolver.ts; non-bundle-scope or unresolved => typed error exit!=0 change nothing] then
+# REPLACE bundles/bundle-template/ contents from the template files/ tree. `bundle template` is a FIXED subgroup (template is a reserved bundle verb, doc-10:150). After G2+H: R(82,83,84 build
+# dry-run/package/publish -- NOVEL, doc-12 pipeline, likely its own worker) + 34(init FULL, doc-10:137). Then CLI Phase-6 epic gate + feature/cli->dev handoff (surface to user).
 # CLI PROGRESS (11/51 merged into feature/cli): A(35,36 templates read), E(42,43,44 targets LIST-MGMT exemplar + the cross-cutting
 # materialise-root lifecycle fix), D(39,40,41 version), B(37,48,49 project reads). IN PROGRESS: G1(50,51,52 bundle new/enable/disable
 # -- completes bundle new + FIXES the --version bug + the advisor scaffold) on feature/cli-bundle-lifecycle.
