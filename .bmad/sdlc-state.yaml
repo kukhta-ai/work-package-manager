@@ -15,19 +15,24 @@ epic: cli
 # NEXT after I: the bundle <id> repeats flow fast -> J(59,60,61 version=reuse D), K-P(62-79 requires/files/templates/scripts/skills/
 # installer-skills = LIST-MGMT reuse E, via PerBundleCommandModule), Q(80,81 advisor=reuse scaffoldAdvisor); plus C(38 meta),
 # F(45,46,47 installer-skills scaffold-or-attach), H(55,56 bundle template), G2(53 remove[destructive],54 list), R(82,83,84 build), 34(init full).
-# WORKERS (rotate ~every 5-8 tasks; they parse-error on resume once the transcript is large): ACTIVE = (spawning #7 for M+N);
-# retired: a73ce42b (#6: K+L requires+files), adcb88d (#5: J version), a6599e9 (#4: G1+I), a2b7fcc7 (#3: materialise-fix+D+B), a7f5ad601 (#2: 31,32,28,29,33,merge,A,E), a67b0906 (#1: 1-27,30).
-# REVIEWER a7f5a303c38f8ec6d still reliable (~18 reviews, K+L=APPROVE both; watch for degradation -> spawn fresh reviewer if it 0-tools).
-# CLI 22/51 merged (A,E,D,B,G1,I,J,K,L). bundle <id> registry (I) + payload-ref GENERIC op (L) established. L introduced bundle.yml `payload:` registry
-# (top-level mapping, files string-list, absent=>empty; schema round-trip + model BundlePayload + createBundle empty-init; 7 fixtures neutral payload-init) +
-# threaded optional `bundleId` through the completion framework (additive, one per-bundle call site, no regression). K writes RAW range to disk / displays NORMALIZED.
-# NEXT BATCH = M+N on feature/cli-bundle-tmpl-scripts: PURE L-reuse (doc-10:168-169 say "Same as files"). M(68-70 templates -> payload/templates -> payload.templates),
-# N(71-73 scripts -> installer-scripts -> payload.scripts). Each = ADD a category to BundlePayload + a schema parsePayload BRANCH (reviewer NIT: descriptor generalises
-# the OP not the SCHEMA -- M/N each need a model field AND a schema branch, not just a descriptor) + a new PayloadRefDescriptor (TEMPLATES_/SCRIPTS_) + ONE
-# PerBundleCommandModule + the 2 completion sources (reuse, parameterized by onDiskDir). NUANCE for N: installer-scripts/ is doc-06:77/07:51 NOT-delivered (sibling of
-# payload/, not under it) -- registry key can stay payload.scripts for consistency (record the rationale; delivery distinction lives downstream in R build/package, not here).
-# After M+N: O+P(74-79 skills/installer-skills scaffold-or-attach, reuse F pattern), Q(80,81 advisor reuse scaffoldAdvisor), C(38 meta), G2(53 remove[destructive],54 list),
-# H(55,56 bundle template), R(82,83,84 build), 34(init full). REMAINING after M+N: 26 tasks across O,P,Q,C,G2,H,R,34.
+# WORKERS (rotate ~every 5-8 tasks; they parse-error on resume once the transcript is large): ACTIVE = (spawning #8 for O skills);
+# retired: aa98d211 (#7: M+N templates+scripts), a73ce42b (#6: K+L requires+files), adcb88d (#5: J version), a6599e9 (#4: G1+I), a2b7fcc7 (#3: materialise-fix+D+B), a7f5ad601 (#2: 31,32,28,29,33,merge,A,E), a67b0906 (#1: 1-27,30).
+# REVIEWER a7f5a303c38f8ec6d still reliable (~19 reviews, M+N=APPROVE both; watch for degradation -> spawn fresh reviewer if it 0-tools).
+# CLI 31/51 merged (A,E,D,B,G1,I,J,K,L,M,N = 2+3+3+3+3+2+3+3+3+3+3). bundle.yml `payload:` registry now holds files/templates/scripts (schema parsePayloadCategory
+# shared helper, absent=>empty per category; createBundle inits all 3; completion via payloadOnDiskSource/payloadRegisteredSource factories). The bundle <id> payload-ref
+# families (L,M,N) are DONE. K writes RAW range / displays NORMALIZED. REMAINING after M+N = 20 tasks: O(74-76),P(77-79),F(45-47),Q(80,81),C(38),G2(53,54),H(55,56),R(82-84),34.
+# NEXT BATCH = O (bundle <id> skills 74,75,76) on feature/cli-bundle-skills -- ESTABLISHES the SKILL SCAFFOLD-OR-ATTACH pattern (doc-10:170-172, doc-10:32). add <name>
+# [--path] is 3-WAY: ATTACH (SKILL.md exists at default payload/agent-skills/<name>/SKILL.md or --path -> validate frontmatter name/description + register) | SCAFFOLD
+# (none AND no --path -> render a payload-skill stub from a project-template snippet [generalize advisor.ts scaffoldAdvisor: it already renders a stub from a snippet, no-op
+# if exists, pure over fs] + materialise "Write payload skill <name> for <id>" doc-11:63 + register) | ERROR (--path given but nothing there). list = enumerate REGISTERED
+# payload skills (registry-based: payload skills are inert until install, so the build needs an explicit registry -> ADD a skills registry to bundle.yml, e.g. payload.skills,
+# model+schema like L). remove = deregister + "SKILL.md left at payload/agent-skills/<name>/ -- delete yourself" (leave on disk). Worker should EXTRACT a reusable
+# skill-ref scaffold/attach/validate/register core (like L's payload-refs.ts) so P(77-79 bundle installer-skills) and F(45-47 project installer-skills) reuse it.
+# DESIGN SPLIT to flag for O/P/F create-story: O (payload skills) is REGISTRY-based (list reads the registry); P/F (installer-skills) lean SCAN-based per AC78/46
+# ("enumerates the SKILL.md files UNDER the installer-skills directory", F excludes the main <project>-installer skill) because installer-skills are union-scanned (doc-06).
+# So P/F differ from O in list (scan vs registry) + P adds "ensure the bundle installer-skills scope aliases exist" (doc-10:173 step 5) + F is project-scope (manifest, root
+# installer-skills/). After O: P+F (reuse O core), then Q(80,81 advisor=reuse scaffoldAdvisor, add/remove only, lightest)+C(38 meta), G2(53 remove destructive,54 list),
+# H(55,56 bundle template show/set), R(82,83,84 build dry-run/package/publish -- NOVEL ops, doc-12 build pipeline), 34(init FULL, deps task-50 done).
 # CLI PROGRESS (11/51 merged into feature/cli): A(35,36 templates read), E(42,43,44 targets LIST-MGMT exemplar + the cross-cutting
 # materialise-root lifecycle fix), D(39,40,41 version), B(37,48,49 project reads). IN PROGRESS: G1(50,51,52 bundle new/enable/disable
 # -- completes bundle new + FIXES the --version bug + the advisor scaffold) on feature/cli-bundle-lifecycle.
