@@ -117,6 +117,7 @@ function readTemplate(fs: FileSystem, templateDir: string): Template {
   return {
     name: descriptor.name,
     scope: descriptor.scope,
+    ...(descriptor.description !== undefined ? { description: descriptor.description } : {}),
     parameters: descriptor.parameters,
     files: readTree(fs, join(templateDir, "files")),
     snippets: readTree(fs, join(templateDir, "snippets")),

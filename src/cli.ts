@@ -2,7 +2,7 @@
 import { realpathSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { Command } from "commander";
+import { Command, Option } from "commander";
 import { BacklogCli } from "./adapters/backlog-cli.js";
 import { NodeFileSystem } from "./adapters/node-fs.js";
 import { ProcessEnvironment } from "./adapters/process-env.js";
@@ -10,13 +10,18 @@ import { SystemClock } from "./adapters/system-clock.js";
 import { type CompletionSpecs, completeArgv } from "./completion/complete.js";
 import { defaultRegistry } from "./completion/registry.js";
 import { NotFoundError, UsageError } from "./core/errors.js";
-import { RESERVED_BUNDLE_VERBS } from "./core/model/index.js";
+import { RESERVED_BUNDLE_VERBS, type Template, type TemplateScope } from "./core/model/index.js";
 import { createBundleSpec } from "./core/operations/create-bundle.js";
 import { makeArtefactDeriver } from "./core/operations/derive-artefacts-capability.js";
 import { initProject } from "./core/operations/init-project.js";
 import { runMutation } from "./core/operations/lifecycle.js";
 import type { BacklogMd, Clock, Environment, FileSystem } from "./core/ports/index.js";
 import { resolveContext } from "./core/services/context.js";
+import {
+  listTemplates,
+  resolveTemplate,
+  type TemplateSummary,
+} from "./core/services/template-resolver.js";
 import { withExamples } from "./help/examples.js";
 import { installCompletion, type Shell } from "./util/completion-install.js";
 import { type CliIo, runWithExit } from "./util/exit.js";
@@ -219,6 +224,188 @@ const initModule: CommandModule = {
   },
 };
 
+/** The two template scopes, for the `--scope` choices + validation. */
+const TEMPLATE_SCOPES: readonly TemplateScope[] = ["project", "bundle"];
+
+/**
+ * Resolve the project-local templates root for a project-AWARE command (`template list`/`show`): walk up for a
+ * `manifest.yml` (honouring the global `-C/--project`), and return `<root>/templates` when a project resolves —
+ * or `undefined` when none does. Unlike a project-BOUND command, a missing project is NOT an error here: the
+ * caller falls back to built-ins only (doc 10 §"Project context resolution": "`template list`/`show` fall back
+ * to built-ins only when no project is resolved").
+ */
+function resolveProjectTemplatesRoot(ctx: CommandContext, parent: Command): string | undefined {
+  const projectOverride = parent.opts().project as string | undefined;
+  const context = resolveContext(
+    { fs: ctx.deps.fs, env: ctx.deps.env },
+    projectOverride !== undefined ? { projectOverride } : undefined,
+  );
+  return context.found ? join(context.root, "templates") : undefined;
+}
+
+/** Render the `template list` output: built-in + project-local templates grouped by source, with shadowing. */
+function formatTemplateList(
+  builtins: readonly TemplateSummary[],
+  projectLocals: readonly TemplateSummary[],
+): string {
+  const key = (s: TemplateSummary): string => `${s.scope}/${s.name}`;
+  const projectKeys = new Set(projectLocals.map(key));
+  const builtinKeys = new Set(builtins.map(key));
+  const lines: string[] = [];
+
+  if (projectLocals.length > 0) {
+    lines.push("Project templates (./templates):");
+    for (const s of projectLocals) {
+      const shadows = builtinKeys.has(key(s)) ? "  (shadows built-in)" : "";
+      lines.push(`  ${key(s)}${shadows}`);
+    }
+  }
+  lines.push("Built-in templates:");
+  if (builtins.length === 0) {
+    lines.push("  (none)");
+  }
+  for (const s of builtins) {
+    const shadowed = projectKeys.has(key(s)) ? "  (shadowed by project-local)" : "";
+    lines.push(`  ${key(s)}${shadowed}`);
+  }
+  return `${lines.join("\n")}\n`;
+}
+
+/** Render the `template show` output: the template's metadata + a tree summary of its `files/`. */
+function formatTemplateShow(template: Template, source: "built-in" | "project-local"): string {
+  const lines: string[] = [
+    `Template: ${template.name}  (scope: ${template.scope}, source: ${source})`,
+  ];
+  // The top-level description (doc-10 "print metadata"), only when the template.yml declares one.
+  if (template.description !== undefined) {
+    lines.push(`Description: ${template.description}`);
+  }
+  if (template.parameters.length > 0) {
+    lines.push("Parameters:");
+    for (const p of template.parameters) {
+      const desc = p.description !== undefined ? `  ${p.description}` : "";
+      const def = p.default !== undefined ? ` (default: ${p.default})` : "";
+      lines.push(`  ${p.name}${desc}${def}`);
+    }
+  }
+  lines.push("Files:");
+  if (template.files.length === 0) {
+    lines.push("  (none)");
+  }
+  for (const f of [...template.files].map((f) => f.path).sort()) {
+    lines.push(`  ${f}`);
+  }
+  return `${lines.join("\n")}\n`;
+}
+
+/**
+ * The `template` group module (doc 10 rows `template list` / `template show`) — two READ-only, project-AWARE
+ * leaves that reuse the existing two-tier resolver services (`listTemplates` / `resolveTemplate`) and never
+ * mutate. Output formatting lives here in the shell (output is not a port — doc 13 §3).
+ */
+const templateModule: CommandModule = {
+  register(parent, ctx) {
+    const group = parent
+      .command("template")
+      .description("the templates available to instantiate from (doc 10)");
+
+    // ── template list [--scope project|bundle] ──────────────────────────────────────────────────────────
+    const listLeaf = group
+      .command("list")
+      .description(
+        "list the available templates (built-in + project-local), indicating shadowing (doc 10)",
+      )
+      .addOption(
+        new Option("--scope <scope>", "filter to templates of this scope").choices([
+          ...TEMPLATE_SCOPES,
+        ]),
+      )
+      .action((opts: { scope?: TemplateScope }) => {
+        const projectTemplatesRoot = resolveProjectTemplatesRoot(ctx, parent);
+        const filter = opts.scope !== undefined ? { scope: opts.scope } : undefined;
+        // Per-source listing (reusing `listTemplates`) so shadowing is visible: built-ins, then — when a
+        // project resolved — its templates/ (passing the project root AS the builtin root; `listTemplates`
+        // just enumerates a root's `<scope>/` dirs).
+        const builtins = listTemplates(
+          { fs: ctx.deps.fs, builtinTemplatesRoot: ctx.deps.builtinTemplatesRoot },
+          filter,
+        );
+        const projectLocals =
+          projectTemplatesRoot !== undefined
+            ? listTemplates({ fs: ctx.deps.fs, builtinTemplatesRoot: projectTemplatesRoot }, filter)
+            : [];
+        ctx.io.out.write(formatTemplateList(builtins, projectLocals));
+      });
+    withExamples(listLeaf, [
+      { command: "wpm template list --scope bundle", note: "list only the bundle templates" },
+    ]);
+
+    // ── template show <name> [--scope project|bundle] ───────────────────────────────────────────────────
+    const showLeaf = group
+      .command("show")
+      .description("print a template's metadata and a tree summary of its files (doc 10)")
+      .argument("<name>", "the template name to inspect")
+      .addOption(
+        new Option("--scope <scope>", "disambiguate a project-vs-bundle name clash").choices([
+          ...TEMPLATE_SCOPES,
+        ]),
+      )
+      .action((name: string, opts: { scope?: TemplateScope }) => {
+        const projectTemplatesRoot = resolveProjectTemplatesRoot(ctx, parent);
+        const resolverDeps = {
+          fs: ctx.deps.fs,
+          builtinTemplatesRoot: ctx.deps.builtinTemplatesRoot,
+          ...(projectTemplatesRoot !== undefined ? { projectTemplatesRoot } : {}),
+        };
+
+        // The scopes to try: the one `--scope` names, else both (project then bundle).
+        const scopes: TemplateScope[] =
+          opts.scope !== undefined ? [opts.scope] : [...TEMPLATE_SCOPES];
+        const matches = scopes.filter((s) => resolveTemplate(name, s, resolverDeps).found);
+
+        if (matches.length === 0) {
+          const searched = scopes
+            .map((s) => {
+              const r = resolveTemplate(name, s, resolverDeps);
+              return r.found ? "" : r.searched.join(", ");
+            })
+            .filter((s) => s.length > 0)
+            .join("; ");
+          throw new NotFoundError(`template "${name}" not found (searched: ${searched})`);
+        }
+        if (matches.length > 1) {
+          // The name exists at both scopes and no `--scope` was given — ask the author to disambiguate.
+          throw new UsageError(
+            `template "${name}" exists as both a project and a bundle template — pass --scope project|bundle`,
+          );
+        }
+
+        const scope = matches[0] as TemplateScope;
+        const resolution = resolveTemplate(name, scope, resolverDeps);
+        // (resolution.found is true — `scope` came from `matches`.)
+        if (!resolution.found) {
+          throw new NotFoundError(`template "${name}" not found`);
+        }
+        // The source is project-local iff a project-only resolution finds it (else built-in).
+        const source: "built-in" | "project-local" =
+          projectTemplatesRoot !== undefined &&
+          resolveTemplate(name, scope, {
+            fs: ctx.deps.fs,
+            builtinTemplatesRoot: projectTemplatesRoot,
+          }).found
+            ? "project-local"
+            : "built-in";
+        ctx.io.out.write(formatTemplateShow(resolution.template, source));
+      });
+    withExamples(showLeaf, [
+      {
+        command: "wpm template show minimal --scope project",
+        note: "inspect the minimal project template",
+      },
+    ]);
+  },
+};
+
 /**
  * The per-command completion declarations (task-29 AC#2/AC#3): which named source completes each option's value
  * or positional. The dispatch ({@link completeArgv}) reads this side-table by command path. A later leaf
@@ -229,6 +416,13 @@ const initModule: CommandModule = {
 const COMPLETION_SPECS: CompletionSpecs = {
   init: {
     args: [undefined], // <name> — a brand-new project name, no suggestions (doc 10)
+  },
+  "template list": {
+    options: { "--scope": "template-scopes" },
+  },
+  "template show": {
+    options: { "--scope": "template-scopes" },
+    args: ["template-names"], // <name> — completes from the available template names
   },
   "bundle new": {
     // `--template` takes a BUNDLE template (a project template can't scaffold a bundle), so it completes from
@@ -377,7 +571,7 @@ function groupOnly(name: string, description: string): CommandModule {
 /** The doc-10 top-level groups, registered through the one pattern (AC#1). */
 const TOP_LEVEL_MODULES: readonly CommandModule[] = [
   initModule,
-  groupOnly("template", "the templates available to instantiate from (doc 10)"),
+  templateModule,
   groupOnly("project", "the project as a release unit (doc 10)"),
   bundleModule,
   groupOnly("build", "package the project for distribution (doc 10)"),

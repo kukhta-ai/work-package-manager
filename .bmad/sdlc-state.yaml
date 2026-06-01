@@ -3,10 +3,40 @@
 # Re-read on every resume; update at every phase boundary.
 # (Distinct from _bmad/ — that is BMAD's own install dir; this dot-dir is our tracker.)
 
-phase: 6
-phase_name: "Epic gate — foundation epic-1 (cold E2E + tea trace/nfr + retro)"
-branch: feature/foundation
-epic: foundation
+phase: 5
+phase_name: "CLI epic-2 (BAUT) — per-FAMILY build loop over tasks 34-84"
+branch: feature/cli
+epic: cli
+# *** FOUNDATION EPIC-1 DONE + gate PASS + MERGED TO dev (e1a0fb2). *** Now epic-2 = the CLI command leaves (34-84, 51 tasks).
+# dev = foundation + the CLI epic (tasks 34-84 + doc fixes + task-conventions); local dev == origin/dev + the foundation merge (NOT yet pushed to origin -- deferred, outward-facing).
+# CLI epic branch topology: feature/cli (off dev) -> per-GROUP sub-branches -> merged back; then feature/cli -> dev at the end.
+# DEVIATION (recorded, justified): the CLI leaves are UNIFORM + independent + ride the ESTABLISHED, MECHANICALLY-GUARDED spine
+# (task-27 registration/DI/exit-codes; task-28 the help-completeness guard; task-29 the completion-source registry; task-25/26
+# the operation lifecycle; doc-10 rows are the contract). So instead of 51 one-task-per-story loops, I GROUP tightly-coupled
+# command FAMILIES that share an operation (e.g. project targets add/list/remove; project version/bump/set; the template reads)
+# into one skill-driven build + one focused review per group, closing each task in the group. This keeps the SDLC essence
+# (skill-driven create-story/dev-story/qa, separate-lane story-automator-review, the guards) while cutting per-leaf overhead.
+# Review is LIGHTER per leaf (doc-10 conformance + operation correctness + the guards catch the rest) -- calibrated to the lower,
+# uniform risk. Lessons carried from the foundation: test the real binary/loop-closure path; cold-E2E-must-build-dist; keep fake<->real parity explicit.
+#
+# CLI EPIC GROUP PLAN (34-84) -- ~6 recurring PATTERNS; establish each once, then the repeats are fast:
+#   A templates reads (35 list, 36 show) -- IN PROGRESS feature/cli-templates. [read pattern]
+#   B project reads (37 show, 49 root, 48 validate). [read]
+#   C project meta (38). [meta-set]
+#   D project version (39 show, 40 bump, 41 set). [version pattern -> reused by J]
+#   E project targets (42 add, 43 list, 44 remove). [LIST-MGMT pattern add/list/remove -> reused by F,K,L,M,N,O,P]
+#   F project installer-skills (45 add,46 list,47 remove). [list-mgmt]
+#   G bundle lifecycle (50 new[createBundle EXISTS],51 enable,52 disable,53 remove,54 list). [bundle ops]
+#   H bundle template (55 show,56 set).
+#   I bundle <id> show+meta (57 show,58 meta).
+#   J bundle <id> version (59,60,61). [version]
+#   K bundle <id> requires (62,63,64) [list-mgmt]; L files (65,66,67); M templates (68,69,70); N scripts (71,72,73);
+#   O skills (74,75,76); P installer-skills (77,78,79) -- all list-mgmt.
+#   Q bundle <id> advisor (80 add,81 remove).
+#   R build (82 dry-run,83 package,84 publish).
+#   34 init (FULL) -- AFTER G (deps task-50).
+# Order for max pattern-reuse: A(reads) -> E(list-mgmt) -> D(version) -> then the repeats (B,C,F,G..R,34). The 8 add/list/remove
+# families (E,F,K,L,M,N,O,P = 24 tasks) share ONE pattern; the 2 version families (D,J) share one; establish, then apply.
 active_story: null   # *** 33/33 FOUNDATION COMPLETE + PHASE-6 EPIC GATE = PASS ***
 review_cycle: 0
 # EPIC GATE (Phase 6) RESULT -- PASS:
