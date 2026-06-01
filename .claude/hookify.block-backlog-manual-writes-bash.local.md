@@ -9,7 +9,11 @@ conditions:
     pattern: '(\bsed\s+-i|\btee\b|\bdd\b|\bcp\b|\bmv\b|\brm\b|\btruncate\b|>>?)'
   - field: command
     operator: regex_match
-    pattern: '\b[\w-]*backlog/'
+    # Targets a Backlog.md root path — but NOT one under templates/ (template content, not a live backlog;
+    # see the file-event hook for the rationale). The leading negative lookahead lets a command that writes
+    # the shipped bundle/project template's install-backlog/ scaffold through, while still blocking out-of-band
+    # writes to the dev backlog/ and any real (non-template) backlog.
+    pattern: '^(?!.*templates/).*\b[\w-]*backlog/'
 ---
 
 🚫 **Manual shell write to a Backlog.md file is forbidden — use the `backlog` CLI.**
