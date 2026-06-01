@@ -16,6 +16,7 @@ import {
   type ConfirmationLevel,
   parseAgentName,
   parseSemVer,
+  parseVersionRange,
   RESERVED_BUNDLE_VERBS,
   type SemVer,
   type Template,
@@ -25,6 +26,12 @@ import { disableBundleSpec, enableBundleSpec } from "./core/operations/bundle-li
 import { editBundleMetaSpec } from "./core/operations/bundle-meta.js";
 import { type BundleView, showBundleSpec } from "./core/operations/bundle-reads.js";
 import {
+  addRequiresSpec,
+  listRequiresSpec,
+  type RequiresEntry,
+  removeRequiresSpec,
+} from "./core/operations/bundle-requires.js";
+import {
   bumpBundleVersionSpec,
   readBundleVersionSpec,
   setBundleVersionSpec,
@@ -33,6 +40,12 @@ import { createBundleSpec } from "./core/operations/create-bundle.js";
 import { makeArtefactDeriver } from "./core/operations/derive-artefacts-capability.js";
 import { initProject } from "./core/operations/init-project.js";
 import { type LifecycleDeps, runMutation, runRead } from "./core/operations/lifecycle.js";
+import {
+  addPayloadRefSpec,
+  FILES_DESCRIPTOR,
+  listPayloadRefsSpec,
+  removePayloadRefSpec,
+} from "./core/operations/payload-refs.js";
 import {
   type ProjectOrientation,
   showProjectSpec,
@@ -470,9 +483,216 @@ const bundleVersionModule: PerBundleCommandModule = {
   },
 };
 
+/** Render a bundle's `requires` entries as the `bundle <id> requires list` block — one `dep-id range` per line. */
+function formatRequires(entries: readonly RequiresEntry[]): string {
+  if (entries.length === 0) {
+    return "(no requires)\n";
+  }
+  return `${entries.map((entry) => `${entry.id} ${entry.range}`).join("\n")}\n`;
+}
+
+/**
+ * `bundle <id> requires` (+ `add` / `list` / `remove`) (doc 10 rows 162 / 163 / 164), the per-bundle REQUIRES
+ * family — the bundle-`<id>` analogue of the project `targets` LIST-MGMT group, operating on
+ * `bundles/<id>/bundle.yml`'s `requires` map. `add`/`remove` are mutations (`runMutation`, so ④ RERENDER + ⑤
+ * MATERIALISE run automatically); `list` is a read (`runRead`). The host `<id>` is already resolved +
+ * enabled-guarded by the per-bundle routing and threaded in; no leaf re-resolves it. A bad constraint range is a
+ * USAGE error (exit 2) raised here at the boundary via {@link parseVersionRange}; the validated RAW range string
+ * (or `undefined`, defaulting to a caret on the dependency's current version) is passed to the operation so the
+ * author's chosen syntax (e.g. `^0.3.0`) is written verbatim to the human-readable bundle.yml.
+ */
+const bundleRequiresModule: PerBundleCommandModule = {
+  register(sub, ctx, root, id) {
+    const requires = sub
+      .command("requires")
+      .description("declare or inspect this bundle's dependencies on other bundles (doc 10)");
+
+    // ── requires add <dep-bundle-id> [<constraint>] ──────────────────────────────────────────────────────────
+    // Declares (append/overwrite) an edge in this bundle's `requires` map. A bad range ⇒ USAGE error (exit 2); a
+    // non-enabled dependency ⇒ the operation's NotFound (exit 1, nothing written). A cycle is WARNED (the edge is
+    // still written — doc 10 row 162 says "Warn"); the warning is printed to stderr and the exit stays 0.
+    const addLeaf = requires
+      .command("add")
+      .argument(
+        "<dep-bundle-id>",
+        "the bundle id this bundle depends on (must be an enabled bundle)",
+      )
+      .argument(
+        "[constraint]",
+        "an npm-style version range (default: a caret range on the dependency's current version)",
+      )
+      .description(
+        "declare a dependency on another bundle by id + npm-style version constraint (doc 10)",
+      )
+      .action((dep: string, constraintRaw: string | undefined) => {
+        // Validate the optional constraint at the boundary: a bad range is a USAGE error (exit 2), like
+        // `version set`'s semver check. We pass the RAW (validated) string to the operation — NOT the normalized
+        // `parseVersionRange` value — so the author's chosen syntax (e.g. `^0.3.0`) is written verbatim to the
+        // human-readable bundle.yml rather than the expanded comparator form (doc 10 row 162 stores `^0.3.0`).
+        if (constraintRaw !== undefined) {
+          const parsed = parseVersionRange(constraintRaw);
+          if (!parsed.ok) {
+            throw new UsageError(parsed.problem.message);
+          }
+        }
+        const result = runMutation(lifecycleDepsFor(ctx, root), { root }, addRequiresSpec(), {
+          id,
+          dep,
+          ...(constraintRaw !== undefined ? { constraint: constraintRaw } : {}),
+        });
+        ctx.io.out.write(formatResult(result));
+        writeWarnings(ctx, result.warnings);
+      });
+    withExamples(addLeaf, [
+      {
+        command: "wpm bundle web-handoff requires add core ^0.3.0",
+        note: "depend on core ^0.3.0",
+      },
+      {
+        command: "wpm bundle web-handoff requires add core",
+        note: "depend on core's current version (caret default)",
+      },
+    ]);
+
+    // ── requires list ────────────────────────────────────────────────────────────────────────────────────────
+    const listLeaf = requires
+      .command("list")
+      .description(
+        "print this bundle's requires map (one dependency id + constraint per line) (doc 10)",
+      )
+      .action(() => {
+        const { value } = runRead(ctx.deps.fs, { root }, listRequiresSpec(), { id });
+        ctx.io.out.write(formatRequires(value));
+      });
+    withExamples(listLeaf, [
+      { command: `wpm bundle ${id} requires list`, note: "list this bundle's dependencies" },
+    ]);
+
+    // ── requires remove <dep-bundle-id> ──────────────────────────────────────────────────────────────────────
+    // Removing a dependency not present ⇒ the operation's NotFound (exit 1, nothing written).
+    const removeLeaf = requires
+      .command("remove")
+      .argument("<dep-bundle-id>", "the dependency id to remove from this bundle's requires map")
+      .description("remove a dependency entry from this bundle's requires map (doc 10)")
+      .action((dep: string) => {
+        const result = runMutation(lifecycleDepsFor(ctx, root), { root }, removeRequiresSpec(), {
+          id,
+          dep,
+        });
+        ctx.io.out.write(formatResult(result));
+      });
+    withExamples(removeLeaf, [
+      {
+        command: "wpm bundle web-handoff requires remove core",
+        note: "drop the dependency on core",
+      },
+    ]);
+  },
+};
+
+/** Render a registered-payload-reference list as the `bundle <id> files list` block — one path per line. */
+function formatPathList(paths: readonly string[]): string {
+  return paths.length === 0 ? "(no files)\n" : `${paths.join("\n")}\n`;
+}
+
+/**
+ * `bundle <id> files` (+ `add` / `list` / `remove`) (doc 10 rows 165 / 166 / 167), the per-bundle FILES family —
+ * registers / inspects / deregisters authoritative reference files under `payload/files/`. It rides the GENERIC
+ * descriptor-driven payload-reference operation ({@link FILES_DESCRIPTOR}); the upcoming `templates` (M) and
+ * `scripts` (N) families are each just a new descriptor + a near-identical module. `add`/`remove` are mutations
+ * (`runMutation`, so ④ RERENDER runs); `list` is a read (`runRead`). The host `<id>` is already resolved +
+ * enabled-guarded by the per-bundle routing and threaded in.
+ *
+ * Structure-not-content: `add` only REGISTERS the reference (it never writes file content); `remove`
+ * DEREGISTERS, leaving the file on disk. The on-disk EXISTENCE CHECK for `add` lives HERE (the CLI shell owns
+ * the fs port; the pure operation `check` has none), raising a {@link NotFoundError} BEFORE `runMutation` so a
+ * non-existent path registers nothing (65#2).
+ */
+const bundleFilesModule: PerBundleCommandModule = {
+  register(sub, ctx, root, id) {
+    const files = sub
+      .command("files")
+      .description("register or inspect this bundle's payload/files reference files (doc 10)");
+
+    // ── files add <path> ─────────────────────────────────────────────────────────────────────────────────────
+    const addLeaf = files
+      .command("add")
+      .argument(
+        "<path>",
+        "a path the agent has already placed under payload/files (relative to payload/files)",
+      )
+      .description(
+        "register an authoritative reference file the agent placed under payload/files (doc 10)",
+      )
+      .action((path: string) => {
+        // 65#2: the file MUST exist on disk under payload/files/<path>; else a typed NotFound (exit 1) with
+        // nothing registered. The pure operation `check` has no ports, so the existence probe lives here.
+        const onDisk = join(root, "bundles", id, FILES_DESCRIPTOR.onDiskDir, path);
+        if (!ctx.deps.fs.exists(onDisk)) {
+          throw new NotFoundError(
+            `no file at bundles/${id}/${FILES_DESCRIPTOR.onDiskDir}/${path} — place the file there first, then register it`,
+          );
+        }
+        const result = runMutation(
+          lifecycleDepsFor(ctx, root),
+          { root },
+          addPayloadRefSpec(FILES_DESCRIPTOR),
+          { id, path },
+        );
+        ctx.io.out.write(formatResult(result));
+      });
+    withExamples(addLeaf, [
+      {
+        command: "wpm bundle web-handoff files add agents.md",
+        note: "register payload/files/agents.md the agent placed",
+      },
+    ]);
+
+    // ── files list ───────────────────────────────────────────────────────────────────────────────────────────
+    const listLeaf = files
+      .command("list")
+      .description("list this bundle's registered payload/files references (doc 10)")
+      .action(() => {
+        const { value } = runRead(ctx.deps.fs, { root }, listPayloadRefsSpec(FILES_DESCRIPTOR), {
+          id,
+        });
+        ctx.io.out.write(formatPathList(value));
+      });
+    withExamples(listLeaf, [
+      { command: `wpm bundle ${id} files list`, note: "list registered payload files" },
+    ]);
+
+    // ── files remove <path> ──────────────────────────────────────────────────────────────────────────────────
+    // Deregister-not-delete: the entry leaves bundle.yml but the file stays on disk (doc 10 row 167). A path that
+    // is not registered ⇒ the operation's NotFound (exit 1, nothing changed).
+    const removeLeaf = files
+      .command("remove")
+      .argument(
+        "<path>",
+        "the registered payload/files reference to deregister (the file is left on disk)",
+      )
+      .description("deregister a payload/files reference, leaving the file on disk (doc 10)")
+      .action((path: string) => {
+        const result = runMutation(
+          lifecycleDepsFor(ctx, root),
+          { root },
+          removePayloadRefSpec(FILES_DESCRIPTOR),
+          { id, path },
+        );
+        ctx.io.out.write(formatResult(result));
+      });
+    withExamples(removeLeaf, [
+      {
+        command: "wpm bundle web-handoff files remove agents.md",
+        note: "deregister payload/files/agents.md (the file stays on disk)",
+      },
+    ]);
+  },
+};
+
 /**
  * The per-bundle subcommand modules, registered into the `bundle <id>` sub-program in order. A future per-bundle
- * family (tasks 62–81: requires/files/templates/scripts/skills/installer-skills/advisor) appends its
+ * family (tasks 68–81: templates/scripts/skills/installer-skills/advisor) appends its
  * {@link PerBundleCommandModule} here — the routing and the catch-all need no change. This is the bundle-`<id>`
  * analogue of {@link TOP_LEVEL_MODULES}.
  */
@@ -480,6 +700,8 @@ const PER_BUNDLE_MODULES: readonly PerBundleCommandModule[] = [
   bundleShowModule,
   bundleMetaModule,
   bundleVersionModule,
+  bundleRequiresModule,
+  bundleFilesModule,
 ];
 
 /** The completion specs for the per-bundle subcommands (keyed by the subcommand path WITHIN `bundle <id>`). */
@@ -488,6 +710,15 @@ const PER_BUNDLE_COMPLETION_SPECS: CompletionSpecs = {
   // `bundle <id> version bump <level>` — the fixed major/minor/patch enum (reuses the built-in `bump-levels`
   // source; the project `version bump` uses the same one). The `<id>` already completes on `bundle <tab>`.
   "version bump": { args: ["bump-levels"] },
+  // `bundle <id> requires add <dep>` — the dependency completes from the enabled bundles (the existing
+  // `bundle-ids` source). `remove <dep>` completes from THIS bundle's current requires keys (the `bundle-requires`
+  // source, which reads the host id threaded onto the completion context by the per-bundle recursion).
+  "requires add": { args: ["bundle-ids"] },
+  "requires remove": { args: ["bundle-requires"] },
+  // `bundle <id> files add <path>` completes from files PRESENT on disk under payload/files/; `files remove
+  // <path>` from the REGISTERED references. Both id-aware sources read the host id off the completion context.
+  "files add": { args: ["payload-files-on-disk"] },
+  "files remove": { args: ["payload-files-registered"] },
 };
 
 /**
@@ -1379,7 +1610,14 @@ function computeCompletions(words: readonly string[], deps: CliDeps, io: CliIo):
     // placeholder root is fine (no leaf action runs during completion). Recurse over the post-id tail of the
     // STRIPPED words (the global flags are not part of the per-bundle subcommand line).
     const sub = buildPerBundleProgram(ctx, "", id);
-    return completeArgv(sub, stripped.slice(2), { ...ctxDeps, specs: PER_BUNDLE_COMPLETION_SPECS });
+    // Thread the resolved host id onto the completion context so id-scoped per-bundle sources (e.g. `requires
+    // remove <dep>` → this bundle's current requires keys) can resolve it — the sub-program is built with a
+    // placeholder root and only the post-id tail, so the id is otherwise invisible to a source.
+    return completeArgv(sub, stripped.slice(2), {
+      ...ctxDeps,
+      specs: PER_BUNDLE_COMPLETION_SPECS,
+      bundleId: id,
+    });
   }
 
   // The non-per-bundle fall-through uses the ORIGINAL words (NOT stripped) so completing a global flag or its

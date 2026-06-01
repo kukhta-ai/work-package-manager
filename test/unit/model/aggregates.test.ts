@@ -50,6 +50,7 @@ describe("aggregates compose from parsed (branded) values — AC#1, AC#3", () =>
       summary: "Hand a website project off to another agent.",
       confirmation: "safe",
       requires,
+      payload: { files: [] },
     };
     expect(bundle.id).toBe("web-handoff");
     expect(bundle.requires.get(core)).toBe(range);
@@ -64,6 +65,7 @@ describe("aggregates compose from parsed (branded) values — AC#1, AC#3", () =>
       summary: "Website handoff.",
       confirmation: "dangerous",
       requires: new Map(),
+      payload: { files: [] },
     };
     const project: Project = {
       rootPath: "/tmp/some/project",

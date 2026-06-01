@@ -62,6 +62,83 @@ describe("parseBundleManifest — well-formed (AC#1, AC#2)", () => {
   });
 });
 
+describe("parseBundleManifest — the payload reference registry (Family L)", () => {
+  it("an ABSENT payload key ⇒ payload.files is empty (old-bundle.yml compatibility)", () => {
+    // The well-formed fixture omits `payload` entirely (as every pre-L bundle.yml does).
+    const r = parseBundleManifest(wellFormed());
+    expect(r.ok).toBe(true);
+    if (r.ok) {
+      expect(r.value.payload.files).toEqual([]);
+    }
+  });
+
+  it("a populated payload.files parses to the list, in order", () => {
+    const r = parseBundleManifest({
+      ...wellFormed(),
+      payload: { files: ["agents.md", "sub/x.json"] },
+    });
+    expect(r.ok).toBe(true);
+    if (r.ok) {
+      expect(r.value.payload.files).toEqual(["agents.md", "sub/x.json"]);
+    }
+  });
+
+  it("an empty payload.files parses to []", () => {
+    const r = parseBundleManifest({ ...wellFormed(), payload: { files: [] } });
+    expect(r.ok).toBe(true);
+    if (r.ok) {
+      expect(r.value.payload.files).toEqual([]);
+    }
+  });
+
+  it("a payload mapping with no files key ⇒ empty", () => {
+    const r = parseBundleManifest({ ...wellFormed(), payload: {} });
+    expect(r.ok).toBe(true);
+    if (r.ok) {
+      expect(r.value.payload.files).toEqual([]);
+    }
+  });
+
+  it("round-trips a populated payload: parse(serialize(parse(x))) preserves payload.files", () => {
+    const first = parseBundleManifest({
+      ...wellFormed(),
+      payload: { files: ["a.md", "b.json"] },
+    });
+    expect(first.ok).toBe(true);
+    if (first.ok) {
+      const second = parseBundleManifest(serializeBundleManifest(first.value));
+      expect(second.ok).toBe(true);
+      if (second.ok) {
+        expect(second.value.payload.files).toEqual(["a.md", "b.json"]);
+      }
+    }
+  });
+
+  it("serialize always emits payload.files (empty ⇒ [])", () => {
+    const r = parseBundleManifest(wellFormed());
+    expect(r.ok).toBe(true);
+    if (r.ok) {
+      expect(serializeBundleManifest(r.value).payload).toEqual({ files: [] });
+    }
+  });
+
+  it.each([
+    ["payload not a mapping", { ...wellFormed(), payload: "nope" }, "payload"],
+    ["payload.files not a list", { ...wellFormed(), payload: { files: "a.md" } }, "payload.files"],
+    [
+      "payload.files entry not a string",
+      { ...wellFormed(), payload: { files: ["ok", 5] } },
+      "payload.files",
+    ],
+  ])("rejects %s naming %s", (_label, data, expectedField) => {
+    const r = parseBundleManifest(data);
+    expect(r.ok).toBe(false);
+    if (!r.ok) {
+      expect(`${r.problem.field} ${r.problem.message}`).toContain(expectedField);
+    }
+  });
+});
+
 describe("parseBundleManifest — malformed (AC#3)", () => {
   it.each([
     ["not an object", "string" as unknown, "must be a mapping"],

@@ -48,6 +48,7 @@ function bundle(
     summary: `${name}.`,
     confirmation: "safe",
     requires: req,
+    payload: { files: [] },
   };
 }
 function project(bundles: BundleManifest[], targets: string[]): Project {
