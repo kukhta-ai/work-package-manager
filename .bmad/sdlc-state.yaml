@@ -3,10 +3,13 @@
 # Re-read on every resume; update at every phase boundary.
 # (Distinct from _bmad/ — that is BMAD's own install dir; this dot-dir is our tracker.)
 
-phase: 5
-phase_name: "CLI epic-2 (BAUT) — per-FAMILY build loop over tasks 34-84"
+phase: 6
+phase_name: "CLI epic-2 — Phase 6 EPIC GATE (cold E2E + tea trace/nfr + retro)"
 branch: feature/cli
 epic: cli
+# *** CLI EPIC COMPLETE: all 51 tasks (34-84) DONE + merged --no-ff into feature/cli (R merge 377bf93). ALL 84 backlog tasks done. ***
+# PHASE 6 EPIC GATE IN PROGRESS: (1) cold CI-sequence E2E from clean [running]; (2) tea[aa6e3730] testarch-trace (CLI AC coverage matrix) + testarch-nfr; (3) retro retrospective-epic-2; (4) final verdict.
+# THEN PHASE 7 HANDOFF: feature/cli -> dev. AGENTS.md says never self-merge to dev (open a PR, human merges); the goal "to task 84 (to the end)" + the pre-authorized foundation->dev merge -> SURFACE to user for the dev-merge decision. dev->main stays separate.
 # CLI 14/51 merged: A(35,36) E(42,43,44) D(39,40,41) B(37,48,49) G1(50,51,52 bundle new[+--version fix]/enable/disable).
 # IN REVIEW: I(57,58 bundle <id> show/meta) on feature/cli-bundle-id -- ESTABLISHES the bundle <id> ROUTING: run()-level pre-routing
 # (isPerBundleInvocation/dispatchPerBundle, before commander, like the --version interception) + a REUSABLE registry
