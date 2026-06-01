@@ -1,7 +1,10 @@
 import { installedTargetNames, wellKnownAgentNames } from "./agent-names.js";
 import { bundleIds } from "./bundle-ids.js";
+import { bundleRequires } from "./bundle-requires.js";
 import { disabledBundleIds } from "./disabled-bundle-ids.js";
 import { FIXED_ENUM_SOURCES } from "./enums.js";
+import { payloadFilesOnDisk } from "./payload-files-on-disk.js";
+import { payloadFilesRegistered } from "./payload-files-registered.js";
 import { CompletionRegistry } from "./sources.js";
 import { allTemplateNames, bundleTemplateNames, projectTemplateNames } from "./template-names.js";
 
@@ -30,6 +33,13 @@ export function defaultRegistry(): CompletionRegistry {
 
   // State-dependent sources (resolved from project state through the ports).
   registry.register("bundle-ids", bundleIds);
+  // `bundle-requires`: the host bundle's CURRENT requires keys (for `bundle <id> requires remove <dep>`); it
+  // reads `ctx.bundleId`, threaded in by the per-bundle completion recursion.
+  registry.register("bundle-requires", bundleRequires);
+  // The payload-files sources (Family L) — both id-aware (read `ctx.bundleId`): `files add <path>` completes
+  // from files PRESENT on disk under payload/files/; `files remove <path>` from the REGISTERED refs.
+  registry.register("payload-files-on-disk", payloadFilesOnDisk);
+  registry.register("payload-files-registered", payloadFilesRegistered);
   registry.register("disabled-bundle-ids", disabledBundleIds);
   registry.register("template-names", allTemplateNames);
   registry.register("project-template-names", projectTemplateNames);

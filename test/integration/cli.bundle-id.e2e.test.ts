@@ -1,6 +1,6 @@
-import { execFileSync } from "node:child_process";
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { execFileSync, spawnSync } from "node:child_process";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { withTempDir } from "../helpers/tmpdir.js";
@@ -391,3 +391,324 @@ describeIfBuilt("bundle <id> version / bump / set E2E via dist/cli.js (tasks 59/
     });
   });
 });
+
+/**
+ * Run `dist/cli.js <args> -C <proj>` capturing BOTH stdout and stderr (the plain `cli` helper inherits stderr).
+ * The per-bundle cycle warning (`requires add`) is printed to stderr on an EXIT-0 success, so it is invisible to
+ * `cli()` — this helper surfaces it for the cycle-warning assertion.
+ */
+function wpmFull(
+  proj: string,
+  args: readonly string[],
+): { stdout: string; stderr: string; status: number } {
+  const res = spawnSync(process.execPath, [builtCli, ...args, "-C", proj], { encoding: "utf8" });
+  return {
+    stdout: res.stdout ?? "",
+    stderr: res.stderr ?? "",
+    status: res.status ?? 1,
+  };
+}
+
+/** init a real project at <dir>/demo + bundles `a` and `b`, BOTH with the canonical empty requires (no edges). */
+function projectWithAB(dir: string): string {
+  const proj = join(dir, "demo");
+  execFileSync(process.execPath, [builtCli, "init", "demo", "--at", proj], { encoding: "utf8" });
+  for (const id of ["a", "b"]) {
+    execFileSync(process.execPath, [builtCli, "bundle", "new", id, "-C", proj], {
+      encoding: "utf8",
+    });
+  }
+  return proj;
+}
+
+describeIfBuilt(
+  "bundle <id> requires add / list / remove E2E via dist/cli.js (tasks 62/63/64)",
+  () => {
+    it("62#1 — `requires add b ^0.1.0` writes the LITERAL caret into a's bundle.yml (id untouched); exit 0", async () => {
+      await withTempDir((dir) => {
+        const proj = projectWithAB(dir);
+        const add = wpm(proj, ["bundle", "a", "requires", "add", "b", "^0.1.0"]);
+        expect(add.status).toBe(0);
+
+        const aYml = readFileSync(join(proj, "bundles", "a", "bundle.yml"), "utf8");
+        // the RAW caret survived the real eemeli/yaml round-trip (NOT a normalized comparator like >=0.1.0).
+        // `bundle new` scaffolds `requires: {}` as an INLINE flow map, so the edit lands as `requires: { b:
+        // ^0.1.0 }` — the literal caret is what matters, not flow-vs-block layout.
+        expect(aYml).toMatch(/requires:.*b:\s*\^0\.1\.0/s);
+        expect(aYml).not.toContain(">=0.1.0");
+        expect(aYml).toMatch(/id:\s*a/); // untouched key survives
+      });
+    });
+
+    it("62#1 — `requires add b` (no constraint) defaults to a caret on b's current version (^0.1.0)", async () => {
+      await withTempDir((dir) => {
+        const proj = projectWithAB(dir);
+        expect(wpm(proj, ["bundle", "a", "requires", "add", "b"]).status).toBe(0);
+        const aYml = readFileSync(join(proj, "bundles", "a", "bundle.yml"), "utf8");
+        expect(aYml).toMatch(/b:\s*\^0\.1\.0/);
+      });
+    });
+
+    it("62#3 — `requires add b` materialises 'Adapt a's…use b' into the REAL .authoring-backlog", async () => {
+      await withTempDir((dir) => {
+        const proj = projectWithAB(dir);
+        const add = wpm(proj, ["bundle", "a", "requires", "add", "b"]);
+        expect(add.status).toBe(0);
+        expect(add.stdout).toMatch(/materialised: 1 authoring task\(s\)/);
+        // the task LANDED in the project's own Backlog.md root (catches the materialise-root bug class):
+        expect(authoringTaskTitles(proj)).toContain(
+          "Adapt a's install-backlog and payload to use b",
+        );
+      });
+    });
+
+    it("62#2 — closing a 2-bundle cycle WARNS (stderr) but still writes the edge; exit 0 (warn, not reject)", async () => {
+      await withTempDir((dir) => {
+        const proj = projectWithRequirer(dir); // b already requires a
+        const add = wpmFull(proj, ["bundle", "a", "requires", "add", "b"]); // closes a→b→a
+        expect(add.status).toBe(0); // warn, not reject
+
+        // the cycle warning names both bundles (printed to stderr on the exit-0 success):
+        const combined = `${add.stdout}\n${add.stderr}`;
+        expect(combined).toMatch(/cycle/i);
+        expect(combined).toContain("a");
+        expect(combined).toContain("b");
+
+        // the edge WAS written despite the cycle:
+        const aYml = readFileSync(join(proj, "bundles", "a", "bundle.yml"), "utf8");
+        expect(aYml).toMatch(/b:\s*\^0\.1\.0/);
+      });
+    });
+
+    it("62#4 — `requires add ghost` (not enabled) exits 1; a's bundle.yml unchanged", async () => {
+      await withTempDir((dir) => {
+        const proj = projectWithAB(dir);
+        const path = join(proj, "bundles", "a", "bundle.yml");
+        const before = readFileSync(path, "utf8");
+        expect(wpm(proj, ["bundle", "a", "requires", "add", "ghost"]).status).toBe(1);
+        expect(readFileSync(path, "utf8")).toBe(before); // nothing written
+      });
+    });
+
+    it("63#1 — `requires list` prints the dependency + range, one per line; exit 0", async () => {
+      await withTempDir((dir) => {
+        const proj = projectWithAB(dir);
+        expect(wpm(proj, ["bundle", "a", "requires", "add", "b", "^0.1.0"]).status).toBe(0);
+        const list = wpm(proj, ["bundle", "a", "requires", "list"]);
+        expect(list.status).toBe(0);
+        // one line beginning with the dep id; the printed range is the binary's projection (model-normalized):
+        const lines = list.stdout.split("\n").filter(Boolean);
+        expect(lines).toHaveLength(1);
+        expect(lines[0]?.startsWith("b ")).toBe(true);
+      });
+    });
+
+    it("64#1/64#2 — `requires remove b` drops the key AND materialises 'Verify a no longer references b'", async () => {
+      await withTempDir((dir) => {
+        const proj = projectWithAB(dir);
+        expect(wpm(proj, ["bundle", "a", "requires", "add", "b", "^0.1.0"]).status).toBe(0);
+
+        const remove = wpm(proj, ["bundle", "a", "requires", "remove", "b"]);
+        expect(remove.status).toBe(0);
+        // the b key is gone from bundle.yml:
+        const aYml = readFileSync(join(proj, "bundles", "a", "bundle.yml"), "utf8");
+        expect(aYml).not.toMatch(/^\s*b:/m);
+        // the verify task landed in the real authoring backlog:
+        expect(authoringTaskTitles(proj)).toContain("Verify a no longer references b");
+      });
+    });
+
+    it("64#3 — `requires remove ghost` (not present) exits 1; bundle.yml unchanged", async () => {
+      await withTempDir((dir) => {
+        const proj = projectWithAB(dir);
+        expect(wpm(proj, ["bundle", "a", "requires", "add", "b", "^0.1.0"]).status).toBe(0);
+        const path = join(proj, "bundles", "a", "bundle.yml");
+        const before = readFileSync(path, "utf8");
+        expect(wpm(proj, ["bundle", "a", "requires", "remove", "ghost"]).status).toBe(1);
+        expect(readFileSync(path, "utf8")).toBe(before);
+      });
+    });
+
+    it("completion: `requires add <tab>` offers enabled ids; `requires remove <tab>` offers THIS bundle's requires", async () => {
+      await withTempDir((dir) => {
+        const proj = projectWithAB(dir);
+        expect(wpm(proj, ["bundle", "a", "requires", "add", "b", "^0.1.0"]).status).toBe(0);
+
+        // add → enabled bundle ids (resolved from cwd, no -C on a completion line):
+        const addPos = cli(["__complete", "bundle", "a", "requires", "add", ""], { cwd: proj })
+          .stdout.split("\n")
+          .filter(Boolean);
+        expect(addPos).toContain("b"); // an enabled id
+
+        // remove → THIS bundle's current requires keys (a requires b), proving the id-aware source + threading:
+        const removePos = cli(["__complete", "bundle", "a", "requires", "remove", ""], {
+          cwd: proj,
+        })
+          .stdout.split("\n")
+          .filter(Boolean);
+        expect(removePos).toContain("b");
+      });
+    });
+
+    it("help: `bundle <id> requires add --help` reaches the leaf and documents the positionals + an example", async () => {
+      await withTempDir((dir) => {
+        const proj = projectWithWeb(dir);
+        const help = wpm(proj, ["bundle", "web", "requires", "add", "--help"]);
+        expect(help.status).toBe(0);
+        expect(help.stdout).toContain("bundle web requires add"); // the LEAF usage, not the group's
+        expect(help.stdout).toContain("<dep-bundle-id>");
+        expect(help.stdout).toMatch(/Example/i);
+      });
+    });
+
+    it("a real add → list → remove → list round-trip through the binary", async () => {
+      await withTempDir((dir) => {
+        const proj = projectWithAB(dir);
+        expect(wpm(proj, ["bundle", "a", "requires", "add", "b", "^0.1.0"]).status).toBe(0);
+        expect(wpm(proj, ["bundle", "a", "requires", "list"]).stdout).toContain("b ");
+        expect(wpm(proj, ["bundle", "a", "requires", "remove", "b"]).status).toBe(0);
+        // list now reports the empty marker:
+        expect(wpm(proj, ["bundle", "a", "requires", "list"]).stdout.trim()).toBe("(no requires)");
+      });
+    });
+  },
+);
+
+/** Place a real file at bundles/<bundle>/payload/files/<rel> under <proj> (creating parent dirs). */
+function placePayloadFile(proj: string, bundle: string, rel: string, content: string): string {
+  const abs = join(proj, "bundles", bundle, "payload", "files", rel);
+  mkdirSync(dirname(abs), { recursive: true });
+  writeFileSync(abs, content, "utf8");
+  return abs;
+}
+
+describeIfBuilt(
+  "bundle <id> files add / list / remove E2E via dist/cli.js (tasks 65/66/67)",
+  () => {
+    it("65#1 — `files add` registers a placed file in bundle.yml payload; file content is unchanged (structure-not-content)", () => {
+      withTempDir((dir) => {
+        const proj = projectWithWeb(dir);
+        const filePath = placePayloadFile(proj, "web", "agents.md", "# hi");
+
+        const add = wpm(proj, ["bundle", "web", "files", "add", "agents.md"]);
+        expect(add.status).toBe(0);
+
+        const ymlText = readFileSync(join(proj, "bundles", "web", "bundle.yml"), "utf8");
+        // the real eemeli/yaml round-trip lists `agents.md` under the `payload:` registry (tolerant of layout):
+        expect(ymlText).toContain("payload:");
+        expect(ymlText).toMatch(/payload:[\s\S]*agents\.md/);
+        // structure-not-content: the placed file's bytes are unchanged.
+        expect(readFileSync(filePath, "utf8")).toBe("# hi");
+      });
+    });
+
+    it("65#2 — `files add` for a path NOT on disk exits 1; bundle.yml unchanged", () => {
+      withTempDir((dir) => {
+        const proj = projectWithWeb(dir);
+        const path = join(proj, "bundles", "web", "bundle.yml");
+        const before = readFileSync(path, "utf8");
+        expect(wpm(proj, ["bundle", "web", "files", "add", "ghost.md"]).status).toBe(1);
+        expect(readFileSync(path, "utf8")).toBe(before); // nothing registered
+      });
+    });
+
+    it("66#1 — `files list` shows the registered file; a fresh bundle prints (no files)", () => {
+      withTempDir((dir) => {
+        const proj = projectWithWeb(dir);
+        // fresh bundle (createBundle inits payload.files: []): list prints the empty marker.
+        expect(wpm(proj, ["bundle", "web", "files", "list"]).stdout.trim()).toBe("(no files)");
+
+        placePayloadFile(proj, "web", "agents.md", "# hi");
+        expect(wpm(proj, ["bundle", "web", "files", "add", "agents.md"]).status).toBe(0);
+        const list = wpm(proj, ["bundle", "web", "files", "list"]);
+        expect(list.status).toBe(0);
+        expect(list.stdout).toContain("agents.md");
+      });
+    });
+
+    it("67#1/67#2 — `files remove` deregisters AND leaves the file on disk (deregister, not delete)", () => {
+      withTempDir((dir) => {
+        const proj = projectWithWeb(dir);
+        const filePath = placePayloadFile(proj, "web", "agents.md", "# hi");
+        expect(wpm(proj, ["bundle", "web", "files", "add", "agents.md"]).status).toBe(0);
+
+        const remove = wpm(proj, ["bundle", "web", "files", "remove", "agents.md"]);
+        expect(remove.status).toBe(0);
+        expect(remove.stdout).toContain("left at payload/files/agents.md"); // doc-10:167 message
+
+        // the entry is gone from bundle.yml:
+        const ymlText = readFileSync(join(proj, "bundles", "web", "bundle.yml"), "utf8");
+        expect(ymlText).not.toMatch(/^\s*-\s*agents\.md/m);
+        // BUT the file is left on disk with its content intact:
+        expect(existsSync(filePath)).toBe(true);
+        expect(readFileSync(filePath, "utf8")).toBe("# hi");
+      });
+    });
+
+    it("67#3 — `files remove` for a path NOT registered exits 1; bundle.yml unchanged", () => {
+      withTempDir((dir) => {
+        const proj = projectWithWeb(dir);
+        const path = join(proj, "bundles", "web", "bundle.yml");
+        const before = readFileSync(path, "utf8");
+        expect(wpm(proj, ["bundle", "web", "files", "remove", "nope.md"]).status).toBe(1);
+        expect(readFileSync(path, "utf8")).toBe(before);
+      });
+    });
+
+    it("completion: `files add` lists placed files; `files remove` lists registered files", () => {
+      withTempDir((dir) => {
+        const proj = projectWithWeb(dir);
+        placePayloadFile(proj, "web", "agents.md", "# hi");
+
+        // add → files present on disk under payload/files (resolved from cwd):
+        const addPos = cli(["__complete", "bundle", "web", "files", "add", ""], { cwd: proj })
+          .stdout.split("\n")
+          .filter(Boolean);
+        expect(addPos).toContain("agents.md");
+
+        // register it, then remove → completes from the REGISTERED refs:
+        expect(wpm(proj, ["bundle", "web", "files", "add", "agents.md"]).status).toBe(0);
+        const removePos = cli(["__complete", "bundle", "web", "files", "remove", ""], { cwd: proj })
+          .stdout.split("\n")
+          .filter(Boolean);
+        expect(removePos).toContain("agents.md");
+      });
+    });
+
+    it("help: `bundle <id> files add --help` reaches the leaf and documents the path positional + an example", () => {
+      withTempDir((dir) => {
+        const proj = projectWithWeb(dir);
+        const help = wpm(proj, ["bundle", "web", "files", "add", "--help"]);
+        expect(help.status).toBe(0);
+        expect(help.stdout).toContain("bundle web files add"); // the LEAF usage
+        expect(help.stdout).toContain("<path>");
+        expect(help.stdout).toMatch(/Example/i);
+      });
+    });
+
+    it("OLD bundle.yml WITHOUT a payload key still drives list (no files) AND add (adds the field) — absent ⇒ empty", () => {
+      withTempDir((dir) => {
+        const proj = projectWithWeb(dir);
+        // OVERWRITE web's bundle.yml with a pre-L shape (NO `payload:` key), as an older project would have on disk.
+        const ymlPath = join(proj, "bundles", "web", "bundle.yml");
+        writeFileSync(
+          ymlPath,
+          "id: web\nversion: 0.1.0\nsummary: web bundle\nconfirmation: safe\nrequires: {}\n",
+          "utf8",
+        );
+
+        // list parses the old doc (absent payload ⇒ empty) and prints the empty marker:
+        const list = wpm(proj, ["bundle", "web", "files", "list"]);
+        expect(list.status).toBe(0);
+        expect(list.stdout.trim()).toBe("(no files)");
+
+        // add a placed file → exit 0 and the payload field is introduced:
+        placePayloadFile(proj, "web", "x.md", "x");
+        expect(wpm(proj, ["bundle", "web", "files", "add", "x.md"]).status).toBe(0);
+        const after = readFileSync(ymlPath, "utf8");
+        expect(after).toContain("payload:");
+        expect(after).toMatch(/payload:[\s\S]*x\.md/);
+      });
+    });
+  },
+);

@@ -42,6 +42,12 @@ export interface CompleteDeps {
   readonly registry: CompletionRegistry;
   /** The per-command completion declarations. */
   readonly specs: CompletionSpecs;
+  /**
+   * The resolved bundle id when completing inside the `bundle <id> …` per-bundle space — threaded onto the
+   * {@link CompletionContext} so id-scoped sources (e.g. `requires remove <dep>`) can read the host bundle.
+   * `undefined` for the main program tree.
+   */
+  readonly bundleId?: string;
 }
 
 /** Whether an option's flags string declares a value (`--x <v>` / `--x [v]`), as opposed to a boolean flag. */
@@ -146,6 +152,7 @@ export function completeArgv(
     env: deps.env,
     builtinTemplatesRoot: deps.builtinTemplatesRoot,
     ...(projectOverride !== undefined ? { projectOverride } : {}),
+    ...(deps.bundleId !== undefined ? { bundleId: deps.bundleId } : {}),
     partial,
   };
 

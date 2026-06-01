@@ -1,6 +1,7 @@
 import {
   type BundleId,
   type BundleManifest,
+  type BundlePayload,
   type ConfirmationLevel,
   ok,
   type Parsed,
@@ -25,6 +26,7 @@ export interface BundleManifestData {
   readonly summary: string;
   readonly confirmation: string;
   readonly requires: Readonly<Record<string, string>>;
+  readonly payload: { readonly files: readonly string[] };
 }
 
 /**
@@ -121,13 +123,57 @@ export function parseBundleManifest(data: unknown): Parsed<BundleManifest> {
     requires.set(depId.value, range.value);
   }
 
+  // `payload` is OPTIONAL: absent in an OLD `bundle.yml` ⇒ every category empty (so the field is purely
+  // additive and pre-existing bundles still parse). When present it must be a mapping; `payload.files`, when
+  // present, must be a list of path strings (the registered relative paths under `payload/files/`).
+  const payloadResult = parsePayload(data.payload, ctx);
+  if (!payloadResult.ok) {
+    return payloadResult;
+  }
+
   return ok({
     id: id.value,
     version: version.value,
     summary: summary.value,
     confirmation,
     requires,
+    payload: payloadResult.value,
   });
+}
+
+/**
+ * Parse the optional `payload` mapping into a {@link BundlePayload} (doc 10 `files`/`templates` rows). Absent ⇒
+ * every category empty (old-bundle compatibility). Validates that, when present, `payload` is a mapping and
+ * `payload.files` is a list of strings. Pure and total.
+ *
+ * @param raw - The `payload` value (possibly `undefined`).
+ * @param ctx - The bundle context for error messages.
+ * @returns The parsed {@link BundlePayload}, or a {@link ValidationProblem}.
+ */
+function parsePayload(raw: unknown, ctx: string): Parsed<BundlePayload> {
+  if (raw === undefined) {
+    return ok({ files: [] });
+  }
+  if (!isPlainObject(raw)) {
+    return {
+      ok: false,
+      problem: { message: `${ctx}: "payload" must be a mapping`, field: "payload" },
+    };
+  }
+  const filesRaw = raw.files;
+  if (filesRaw === undefined) {
+    return ok({ files: [] });
+  }
+  if (!Array.isArray(filesRaw) || filesRaw.some((entry) => typeof entry !== "string")) {
+    return {
+      ok: false,
+      problem: {
+        message: `${ctx}: "payload.files" must be a list of path strings`,
+        field: "payload.files",
+      },
+    };
+  }
+  return ok({ files: [...(filesRaw as string[])] });
 }
 
 /**
@@ -149,5 +195,8 @@ export function serializeBundleManifest(bundle: BundleManifest): BundleManifestD
     summary: bundle.summary,
     confirmation: bundle.confirmation,
     requires,
+    // Always emit `payload` (an empty list serialises as `files: []`) so a freshly-created bundle.yml carries
+    // the field. Round-trips with `parseBundleManifest` (absent ⇒ empty; present ⇒ the same list).
+    payload: { files: [...bundle.payload.files] },
   };
 }
