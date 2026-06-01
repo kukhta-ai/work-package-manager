@@ -81,4 +81,18 @@ export interface BundleManifest {
   readonly requires: ReadonlyMap<BundleId, VersionRange>;
   /** The registered payload references (doc 10 `files`). Absent in `bundle.yml` ⇒ every category empty. */
   readonly payload: BundlePayload;
+  /**
+   * Registered bundle-scoped install-time helper skills (doc 10 row 173). Each is a {@link SkillRef} (`{ name,
+   * path }`): the `name` is the registry/deregister key, the `path` locates the `SKILL.md` (conventional
+   * `installer-skills/<name>/SKILL.md`, or a `--path` location). **NOT payload** — installer-skills are
+   * install-time HELPERS the executing agent uses *during* install, never delivered to the user (doc 06 line 77;
+   * doc 07 line 51) — so they live in their OWN top-level registry, a sibling of {@link payload}, not inside it.
+   *
+   * This registry backs `add`/`remove`/completion; the `installer-skills list` command instead SCANS the
+   * `bundles/<id>/installer-skills/` directory (the helpers are union-scanned at install — doc 06 — so an
+   * author-placed `SKILL.md` is a real helper whether or not it was `add`-registered, and a `remove`-deregistered
+   * helper whose file is left still scans). Absent in `bundle.yml` ⇒ empty (purely additive — an old/partial
+   * `bundle.yml` still parses, as for {@link payload}).
+   */
+  readonly installerSkills: readonly SkillRef[];
 }

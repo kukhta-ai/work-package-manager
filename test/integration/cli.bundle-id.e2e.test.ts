@@ -1223,3 +1223,213 @@ describeIfBuilt(
     });
   },
 );
+
+/**
+ * Write a SKILL.md at the conventional bundle-scoped install-time-helper path
+ * `bundles/<bundle>/installer-skills/<name>/SKILL.md`, returning its absolute path. `content` is the full file
+ * (frontmatter + body). Mirrors `placeSkill` but against the bundle's `installer-skills/` (a sibling of `payload/`).
+ */
+function placeInstallerSkill(proj: string, bundle: string, name: string, content: string): string {
+  const abs = join(proj, "bundles", bundle, "installer-skills", name, "SKILL.md");
+  mkdirSync(dirname(abs), { recursive: true });
+  writeFileSync(abs, content, "utf8");
+  return abs;
+}
+
+describeIfBuilt(
+  "bundle <id> installer-skills add / list / remove E2E via dist/cli.js (tasks 77/78/79)",
+  () => {
+    it("77#1 ATTACH — `installer-skills add detect` attaches a placed helper; registers {name,path} in bundle.yml installerSkills; content unchanged; NO materialised line", () => {
+      withTempDir((dir) => {
+        const proj = projectWithWeb(dir);
+        const helperPath = placeInstallerSkill(proj, "web", "detect", validSkillMd("detect"));
+        const before = readFileSync(helperPath, "utf8");
+
+        const add = wpm(proj, ["bundle", "web", "installer-skills", "add", "detect"]);
+        expect(add.status).toBe(0);
+        expect(add.stdout).toContain("attached");
+        expect(add.stdout).not.toContain("materialised"); // attach queues no writing
+
+        const ymlText = readFileSync(join(proj, "bundles", "web", "bundle.yml"), "utf8");
+        // the real eemeli/yaml round-trip records the {name, path} entry under the top-level `installerSkills`
+        // registry (a SIBLING of `payload`, NOT under it — installer-skills are not delivered payload):
+        expect(ymlText).toMatch(/installerSkills:[\s\S]*name:\s*detect/);
+        expect(ymlText).toMatch(
+          /installerSkills:[\s\S]*path:\s*installer-skills\/detect\/SKILL\.md/,
+        );
+        // structure-not-content: the placed file's bytes are unchanged.
+        expect(readFileSync(helperPath, "utf8")).toBe(before);
+      });
+    });
+
+    it("77#2 SCAFFOLD — `installer-skills add fresh` renders a stub (name + placeholder desc, no authored prose), registers it, AND materialises the bundle-named writing task (loop-closure, cold)", () => {
+      withTempDir((dir) => {
+        const proj = projectWithWeb(dir);
+        const add = wpm(proj, ["bundle", "web", "installer-skills", "add", "fresh"]);
+        expect(add.status).toBe(0);
+        expect(add.stdout).toContain("scaffolded");
+        expect(add.stdout).toContain("materialised");
+
+        // the structural stub exists at the conventional path with the substituted name + a placeholder marker:
+        const stubPath = join(proj, "bundles", "web", "installer-skills", "fresh", "SKILL.md");
+        expect(existsSync(stubPath)).toBe(true);
+        const stub = readFileSync(stubPath, "utf8");
+        expect(stub).toContain("name: fresh"); // frontmatter name substituted
+        expect(stub).toContain("TODO"); // a placeholder, NOT invented prose
+
+        // it is registered in the installerSkills registry:
+        const ymlText = readFileSync(join(proj, "bundles", "web", "bundle.yml"), "utf8");
+        expect(ymlText).toMatch(/installerSkills:[\s\S]*name:\s*fresh/);
+
+        // the doc-11 authoring task NAMING THE BUNDLE is materialised in the REAL .authoring-backlog (cold):
+        expect(authoringTaskTitles(proj)).toContain(
+          "Write content for install-time skill fresh in web",
+        );
+      });
+    });
+
+    it("77#3 ERROR — `installer-skills add ghost --path <missing>` exits non-zero; bundle.yml unchanged; no stub written", () => {
+      withTempDir((dir) => {
+        const proj = projectWithWeb(dir);
+        const ymlPath = join(proj, "bundles", "web", "bundle.yml");
+        const before = readFileSync(ymlPath, "utf8");
+        const res = wpm(proj, [
+          "bundle",
+          "web",
+          "installer-skills",
+          "add",
+          "ghost",
+          "--path",
+          "installer-skills/ghost/SKILL.md",
+        ]);
+        expect(res.status).not.toBe(0);
+        expect(readFileSync(ymlPath, "utf8")).toBe(before); // nothing registered
+        expect(
+          existsSync(join(proj, "bundles", "web", "installer-skills", "ghost", "SKILL.md")),
+        ).toBe(false); // no stub written
+      });
+    });
+
+    it("77#4 ALIAS-ENSURE — after `installer-skills add` on a target-bearing project, the bundle's scope alias exists (delivered by ④ RERENDER's scopePlan)", () => {
+      withTempDir((dir) => {
+        const proj = projectWithWeb(dir);
+        // init seeds `targets: []`, so declare a target first; its scope-alias path is `.claude/skills`.
+        expect(wpm(proj, ["project", "targets", "add", "claude-code"]).status).toBe(0);
+
+        expect(wpm(proj, ["bundle", "web", "installer-skills", "add", "fresh"]).status).toBe(0);
+        // scopePlan plans a per-bundle alias bundles/web/.claude/skills → bundles/web/installer-skills; ④ RERENDER
+        // creates it via the FileSystem port's ensureAlias (a real symlink on POSIX).
+        expect(existsSync(join(proj, "bundles", "web", ".claude", "skills"))).toBe(true);
+      });
+    });
+
+    it("78#1 LIST (SCAN) — a manually-placed helper shows WITHOUT `add` (scan, not registry); a fresh bundle prints (no installer skills)", () => {
+      withTempDir((dir) => {
+        const proj = projectWithWeb(dir);
+        // a fresh bundle has no installer-skills dir → the empty marker:
+        expect(wpm(proj, ["bundle", "web", "installer-skills", "list"]).stdout.trim()).toBe(
+          "(no installer skills)",
+        );
+
+        // place a helper folder WITHOUT `add` — the directory SCAN must still show it (doc-10:174):
+        placeInstallerSkill(proj, "web", "manual", validSkillMd("manual"));
+        const list = wpm(proj, ["bundle", "web", "installer-skills", "list"]);
+        expect(list.status).toBe(0);
+        expect(list.stdout).toContain("manual"); // shown despite never being `add`-registered
+      });
+    });
+
+    it("79#1/79#2 REMOVE — deregisters AND leaves the SKILL.md on disk; the SCAN-based list STILL shows it (scan ≠ registry)", () => {
+      withTempDir((dir) => {
+        const proj = projectWithWeb(dir);
+        const helperPath = placeInstallerSkill(proj, "web", "detect", validSkillMd("detect"));
+        expect(wpm(proj, ["bundle", "web", "installer-skills", "add", "detect"]).status).toBe(0);
+
+        const remove = wpm(proj, ["bundle", "web", "installer-skills", "remove", "detect"]);
+        expect(remove.status).toBe(0);
+        expect(remove.stdout).toContain("left at installer-skills/detect/"); // doc-10:175 message
+
+        // the entry is gone from the registry in bundle.yml:
+        const ymlText = readFileSync(join(proj, "bundles", "web", "bundle.yml"), "utf8");
+        expect(ymlText).not.toMatch(/installerSkills:[\s\S]*name:\s*detect/);
+        // BUT the SKILL.md is left on disk (deregister-not-delete) …
+        expect(existsSync(helperPath)).toBe(true);
+        // … so the directory SCAN still lists it (the deliberate scan-vs-registry divergence on the real binary):
+        expect(wpm(proj, ["bundle", "web", "installer-skills", "list"]).stdout).toContain("detect");
+      });
+    });
+
+    it("79#3 — `installer-skills remove` for a name NOT registered exits non-zero; bundle.yml unchanged", () => {
+      withTempDir((dir) => {
+        const proj = projectWithWeb(dir);
+        const ymlPath = join(proj, "bundles", "web", "bundle.yml");
+        const before = readFileSync(ymlPath, "utf8");
+        expect(
+          wpm(proj, ["bundle", "web", "installer-skills", "remove", "not-there"]).status,
+        ).not.toBe(0);
+        expect(readFileSync(ymlPath, "utf8")).toBe(before);
+      });
+    });
+
+    it("completion: `installer-skills add` lists on-disk helper folders; `installer-skills remove` lists registered names", () => {
+      withTempDir((dir) => {
+        const proj = projectWithWeb(dir);
+        placeInstallerSkill(proj, "web", "detect", validSkillMd("detect"));
+
+        // add → helper folders present on disk under installer-skills/ (resolved from cwd):
+        const addPos = cli(["__complete", "bundle", "web", "installer-skills", "add", ""], {
+          cwd: proj,
+        })
+          .stdout.split("\n")
+          .filter(Boolean);
+        expect(addPos).toContain("detect");
+
+        // register it, then remove → completes from the REGISTERED names:
+        expect(wpm(proj, ["bundle", "web", "installer-skills", "add", "detect"]).status).toBe(0);
+        const removePos = cli(["__complete", "bundle", "web", "installer-skills", "remove", ""], {
+          cwd: proj,
+        })
+          .stdout.split("\n")
+          .filter(Boolean);
+        expect(removePos).toContain("detect");
+      });
+    });
+
+    it("help: `bundle <id> installer-skills add --help` reaches the leaf and documents <name>, --path, an example", () => {
+      withTempDir((dir) => {
+        const proj = projectWithWeb(dir);
+        const help = wpm(proj, ["bundle", "web", "installer-skills", "add", "--help"]);
+        expect(help.status).toBe(0);
+        expect(help.stdout).toContain("bundle web installer-skills add"); // the LEAF usage
+        expect(help.stdout).toContain("<name>");
+        expect(help.stdout).toContain("--path");
+        expect(help.stdout).toMatch(/Example/i);
+      });
+    });
+
+    it("OLD bundle.yml WITHOUT an installerSkills key still drives list (no installer skills) AND add (adds the field) — absent ⇒ empty", () => {
+      withTempDir((dir) => {
+        const proj = projectWithWeb(dir);
+        // OVERWRITE web's bundle.yml with a pre-P shape (NO `installerSkills` key), as an older project would have.
+        const ymlPath = join(proj, "bundles", "web", "bundle.yml");
+        writeFileSync(
+          ymlPath,
+          "id: web\nversion: 0.1.0\nsummary: web bundle\nconfirmation: safe\nrequires: {}\n",
+          "utf8",
+        );
+
+        // list parses the old doc (absent installerSkills ⇒ empty) and prints the empty marker:
+        const list = wpm(proj, ["bundle", "web", "installer-skills", "list"]);
+        expect(list.status).toBe(0);
+        expect(list.stdout.trim()).toBe("(no installer skills)");
+
+        // attach a placed helper → exit 0 and the installerSkills field is introduced:
+        placeInstallerSkill(proj, "web", "added", validSkillMd("added"));
+        expect(wpm(proj, ["bundle", "web", "installer-skills", "add", "added"]).status).toBe(0);
+        const after = readFileSync(ymlPath, "utf8");
+        expect(after).toContain("installerSkills:");
+        expect(after).toMatch(/installerSkills:[\s\S]*name:\s*added/);
+      });
+    });
+  },
+);

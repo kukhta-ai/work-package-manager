@@ -44,6 +44,15 @@ export default defineConfig({
           // Serialize the integration files: no parallel file workers, so stateful external resources
           // (the real `backlog` CLI, the shared src/core/ fixture path, the built binary) never collide.
           fileParallelism: false,
+          // Each integration test drives the REAL `backlog` CLI (and the built binary) over multiple
+          // subprocess round-trips (an `init` + several `bundle new` + the command under test), so a single
+          // test legitimately takes several seconds — and, run serially under load, the heaviest ones (e.g.
+          // the `requires`/`installer-skills` families, which scaffold multiple bundles then materialise into
+          // the real `.authoring-backlog`) exceed vitest's 5s default. The robust fix for a stateful-external
+          // serial suite is a realistic time budget, NOT retries: raise the per-test + per-hook timeout so the
+          // cold CI gate (`vitest run`) is reliably green. The unit project keeps the fast default.
+          testTimeout: 60000,
+          hookTimeout: 60000,
         },
       },
     ],

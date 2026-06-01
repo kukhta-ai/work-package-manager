@@ -287,6 +287,98 @@ describe("parseBundleManifest — the payload reference registry (L files + M te
   });
 });
 
+// The TOP-LEVEL `installerSkills` registry (doc 10 row 173) — the bundle-scoped install-time helper-skill
+// registry (Family P). It is a SIBLING of `payload` (not inside it — installer-skills are not delivered payload,
+// doc 06/07) with the SAME `{name, path}` shape as `payload.skills`. Purely additive: absent ⇒ `[]`.
+describe("parseBundleManifest — the installerSkills registry (Family P, doc 10 row 173)", () => {
+  it("absent installerSkills ⇒ [] (old/partial bundle.yml compat), and payload is unaffected", () => {
+    const r = parseBundleManifest(wellFormed()); // wellFormed has neither payload nor installerSkills
+    expect(r.ok).toBe(true);
+    if (r.ok) {
+      expect(r.value.installerSkills).toEqual([]);
+      // the two registries are independent — payload still parses to empty too:
+      expect(r.value.payload.skills).toEqual([]);
+    }
+  });
+
+  it("parses a populated installerSkills list of {name, path}", () => {
+    const r = parseBundleManifest({
+      ...wellFormed(),
+      installerSkills: [
+        { name: "detect-node", path: "installer-skills/detect-node/SKILL.md" },
+        { name: "relocated", path: "custom/relocated.md" },
+      ],
+    });
+    expect(r.ok).toBe(true);
+    if (r.ok) {
+      expect(r.value.installerSkills).toEqual([
+        { name: "detect-node", path: "installer-skills/detect-node/SKILL.md" },
+        { name: "relocated", path: "custom/relocated.md" },
+      ]);
+    }
+  });
+
+  it("round-trips a populated installerSkills: parse(serialize(parse(x))) preserves it (independently of payload)", () => {
+    const first = parseBundleManifest({
+      ...wellFormed(),
+      payload: { skills: [{ name: "pay", path: "payload/agent-skills/pay/SKILL.md" }] },
+      installerSkills: [{ name: "inst", path: "installer-skills/inst/SKILL.md" }],
+    });
+    expect(first.ok).toBe(true);
+    if (first.ok) {
+      const second = parseBundleManifest(serializeBundleManifest(first.value));
+      expect(second.ok).toBe(true);
+      if (second.ok) {
+        // both registries survive the round-trip, independently:
+        expect(second.value.payload.skills).toEqual([
+          { name: "pay", path: "payload/agent-skills/pay/SKILL.md" },
+        ]);
+        expect(second.value.installerSkills).toEqual([
+          { name: "inst", path: "installer-skills/inst/SKILL.md" },
+        ]);
+      }
+    }
+  });
+
+  it("serialize always emits installerSkills (empty ⇒ [])", () => {
+    const r = parseBundleManifest(wellFormed());
+    expect(r.ok).toBe(true);
+    if (r.ok) {
+      expect(serializeBundleManifest(r.value).installerSkills).toEqual([]);
+    }
+  });
+
+  it.each([
+    ["installerSkills not a list", { ...wellFormed(), installerSkills: "nope" }, "installerSkills"],
+    [
+      "installerSkills entry not a mapping",
+      { ...wellFormed(), installerSkills: ["just-a-string"] },
+      "installerSkills",
+    ],
+    [
+      "installerSkills entry missing name",
+      { ...wellFormed(), installerSkills: [{ path: "installer-skills/x/SKILL.md" }] },
+      "installerSkills",
+    ],
+    [
+      "installerSkills entry missing path",
+      { ...wellFormed(), installerSkills: [{ name: "x" }] },
+      "installerSkills",
+    ],
+    [
+      "installerSkills entry name not a string",
+      { ...wellFormed(), installerSkills: [{ name: 5, path: "p" }] },
+      "installerSkills",
+    ],
+  ])("rejects %s naming %s", (_label, data, expectedField) => {
+    const r = parseBundleManifest(data);
+    expect(r.ok).toBe(false);
+    if (!r.ok) {
+      expect(`${r.problem.field} ${r.problem.message}`).toContain(expectedField);
+    }
+  });
+});
+
 describe("parseBundleManifest — malformed (AC#3)", () => {
   it.each([
     ["not an object", "string" as unknown, "must be a mapping"],

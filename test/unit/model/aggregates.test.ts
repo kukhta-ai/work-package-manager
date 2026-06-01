@@ -32,6 +32,7 @@ describe("aggregates compose from parsed (branded) values — AC#1, AC#3", () =>
       meta: { name: "hermes-handoff", version: unwrap(parseSemVer("0.1.0")), license: "MIT" },
       bundles: [unwrap(parseBundleId("core")), unwrap(parseBundleId("web-handoff"))],
       targets: [unwrap(parseAgentName("claude-code")), unwrap(parseAgentName("codex"))],
+      installerSkills: [],
     };
     expect(manifest.meta.name).toBe("hermes-handoff");
     expect(manifest.bundles).toHaveLength(2);
@@ -51,6 +52,7 @@ describe("aggregates compose from parsed (branded) values — AC#1, AC#3", () =>
       confirmation: "safe",
       requires,
       payload: { files: [], templates: [], scripts: [], skills: [] },
+      installerSkills: [],
     };
     expect(bundle.id).toBe("web-handoff");
     expect(bundle.requires.get(core)).toBe(range);
@@ -66,6 +68,7 @@ describe("aggregates compose from parsed (branded) values — AC#1, AC#3", () =>
       confirmation: "dangerous",
       requires: new Map(),
       payload: { files: [], templates: [], scripts: [], skills: [] },
+      installerSkills: [],
     };
     const project: Project = {
       rootPath: "/tmp/some/project",
@@ -73,6 +76,7 @@ describe("aggregates compose from parsed (branded) values — AC#1, AC#3", () =>
         meta: { name: "p", version: unwrap(parseSemVer("1.0.0")) },
         bundles: [webId],
         targets: [unwrap(parseAgentName("hermes"))],
+        installerSkills: [],
       },
       bundles: new Map([[webId, bundle]]),
     };

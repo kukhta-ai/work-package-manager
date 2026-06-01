@@ -243,6 +243,7 @@ export function createBundleSpec(deps: CreateBundleDeps): OperationSpec<CreateBu
         confirmation: "safe",
         requires: new Map(),
         payload: { files: [], templates: [], scripts: [], skills: [] },
+        installerSkills: [],
       };
       const bundleYmlPath = join(root, "bundles", id, "bundle.yml");
       fs.write(bundleYmlPath, stringifyYaml(serializeBundleManifest(manifest)));

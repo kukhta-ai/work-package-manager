@@ -49,6 +49,7 @@ function bundle(
     confirmation: "safe",
     requires: req,
     payload: { files: [], templates: [], scripts: [], skills: [] },
+    installerSkills: [],
   };
 }
 function project(bundles: BundleManifest[], targets: string[]): Project {
@@ -62,6 +63,7 @@ function project(bundles: BundleManifest[], targets: string[]): Project {
         if (!r.ok) throw new Error(r.problem.message);
         return r.value;
       }),
+      installerSkills: [],
     },
     bundles: new Map(bundles.map((b) => [b.id, b])),
   };

@@ -33,6 +33,12 @@ export interface BundleManifestData {
     readonly scripts: readonly string[];
     readonly skills: readonly { readonly name: string; readonly path: string }[];
   };
+  /**
+   * The bundle-scoped install-time helper-skill registry (doc 10 row 173) — a TOP-LEVEL field (sibling of
+   * `payload`, NOT inside it, because installer-skills are not delivered payload — doc 06/07). A list of `{name,
+   * path}` mappings. Absent ⇒ empty.
+   */
+  readonly installerSkills: readonly { readonly name: string; readonly path: string }[];
 }
 
 /**
@@ -138,6 +144,16 @@ export function parseBundleManifest(data: unknown): Parsed<BundleManifest> {
     return payloadResult;
   }
 
+  // `installerSkills` is OPTIONAL and a TOP-LEVEL field (sibling of `payload`, not inside it — installer-skills
+  // are install-time HELPERS, not delivered payload — doc 06 line 77 / doc 07 line 51). Absent ⇒ `[]`, purely
+  // additive (every existing `bundle.yml` still parses). When present it must be a list of `{name, path}`
+  // mappings — the SAME structured shape as `payload.skills`, so it rides the shared `parseSkillRefs` validator
+  // (parameterised by the field label so its errors name `installerSkills[i]…`).
+  const installerSkills = parseSkillRefs(data.installerSkills, ctx, "installerSkills");
+  if (!installerSkills.ok) {
+    return installerSkills;
+  }
+
   return ok({
     id: id.value,
     version: version.value,
@@ -145,6 +161,7 @@ export function parseBundleManifest(data: unknown): Parsed<BundleManifest> {
     confirmation,
     requires,
     payload: payloadResult.value,
+    installerSkills: installerSkills.value,
   });
 }
 
@@ -179,7 +196,7 @@ function parsePayload(raw: unknown, ctx: string): Parsed<BundlePayload> {
   if (!scripts.ok) return scripts;
   // `skills` is a structured registry (a list of `{name, path}` mappings, not bare strings — a skill is keyed by
   // name AND located by a relocatable path), so it has its own parser rather than `parsePayloadCategory`.
-  const skills = parseSkillRefs(raw.skills, ctx);
+  const skills = parseSkillRefs(raw.skills, ctx, "payload.skills");
   if (!skills.ok) return skills;
   return ok({
     files: files.value,
@@ -190,17 +207,25 @@ function parsePayload(raw: unknown, ctx: string): Parsed<BundlePayload> {
 }
 
 /**
- * Parse the optional `payload.skills` registry into a {@link SkillRef} list (doc 10 row 170). Absent ⇒ `[]`
- * (old/partial-bundle compatibility, like the other categories); present ⇒ must be a list of mappings each with
- * a string `name` AND a string `path` (else a field-precise {@link ValidationProblem} naming
- * `payload.skills[i].…`). Unlike `parsePayloadCategory`, an entry is a mapping, not a bare string, because a
- * skill is identified by its name and located by its (relocatable) `SKILL.md` path. Pure and total.
+ * Parse an optional skill-reference registry into a {@link SkillRef} list (doc 10 rows 170 + 173) — shared by the
+ * `payload.skills` payload-skill registry AND the top-level `installerSkills` installer-skill registry, which have
+ * the IDENTICAL `{name, path}` shape (a skill is identified by its name and located by its relocatable `SKILL.md`
+ * path — unlike the bare-string `payload.files`/etc). The `fieldBase` parameter labels the registry in error
+ * messages (`payload.skills` vs `installerSkills`), so the two call sites share one validator without confusing
+ * the author about which list is malformed. Absent ⇒ `[]` (old/partial-bundle compatibility, like the other
+ * registries); present ⇒ must be a list of mappings each with a string `name` AND a string `path` (else a
+ * field-precise {@link ValidationProblem} naming `<fieldBase>[i].…`). Pure and total.
  *
- * @param raw - The `payload.skills` value (possibly `undefined`).
+ * @param raw - The registry value (possibly `undefined`).
  * @param ctx - The bundle context for error messages.
+ * @param fieldBase - The registry's dotted field label (e.g. `payload.skills` or `installerSkills`).
  * @returns The parsed {@link SkillRef} list, or a {@link ValidationProblem}.
  */
-function parseSkillRefs(raw: unknown, ctx: string): Parsed<readonly SkillRef[]> {
+export function parseSkillRefs(
+  raw: unknown,
+  ctx: string,
+  fieldBase: string,
+): Parsed<readonly SkillRef[]> {
   if (raw === undefined) {
     return ok([]);
   }
@@ -208,15 +233,15 @@ function parseSkillRefs(raw: unknown, ctx: string): Parsed<readonly SkillRef[]> 
     return {
       ok: false,
       problem: {
-        message: `${ctx}: "payload.skills" must be a list of { name, path } mappings`,
-        field: "payload.skills",
+        message: `${ctx}: "${fieldBase}" must be a list of { name, path } mappings`,
+        field: fieldBase,
       },
     };
   }
   const skills: SkillRef[] = [];
   for (let i = 0; i < raw.length; i++) {
     const entry = raw[i];
-    const field = `payload.skills[${i}]`;
+    const field = `${fieldBase}[${i}]`;
     if (!isPlainObject(entry)) {
       return {
         ok: false,
@@ -297,5 +322,11 @@ export function serializeBundleManifest(bundle: BundleManifest): BundleManifestD
       scripts: [...bundle.payload.scripts],
       skills: bundle.payload.skills.map((skill) => ({ name: skill.name, path: skill.path })),
     },
+    // Always emit `installerSkills` (empty ⇒ `[]`), a sibling of `payload` — the bundle-scoped install-time
+    // helper-skill registry (doc 10 row 173). Round-trips with `parseBundleManifest` (absent ⇒ empty).
+    installerSkills: bundle.installerSkills.map((skill) => ({
+      name: skill.name,
+      path: skill.path,
+    })),
   };
 }
