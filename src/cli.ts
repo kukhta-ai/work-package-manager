@@ -7,6 +7,8 @@ import { BacklogCli } from "./adapters/backlog-cli.js";
 import { NodeFileSystem } from "./adapters/node-fs.js";
 import { ProcessEnvironment } from "./adapters/process-env.js";
 import { SystemClock } from "./adapters/system-clock.js";
+import { type CompletionSpecs, completeArgv } from "./completion/complete.js";
+import { defaultRegistry } from "./completion/registry.js";
 import { NotFoundError, UsageError } from "./core/errors.js";
 import { RESERVED_BUNDLE_VERBS } from "./core/model/index.js";
 import { createBundleSpec } from "./core/operations/create-bundle.js";
@@ -15,6 +17,7 @@ import { runMutation } from "./core/operations/lifecycle.js";
 import type { BacklogMd, Clock, Environment, FileSystem } from "./core/ports/index.js";
 import { resolveContext } from "./core/services/context.js";
 import { withExamples } from "./help/examples.js";
+import { installCompletion, type Shell } from "./util/completion-install.js";
 import { type CliIo, runWithExit } from "./util/exit.js";
 import { VERSION } from "./version.js";
 
@@ -99,11 +102,20 @@ const bundleModule: CommandModule = {
       // carries a help description stating its meaning (doc 10 discoverability: "every positional argument with
       // its meaning"). Declaring it in both places would register `<id>` twice.
       .argument("<id>", "the new bundle's id (kebab-case; not a reserved cross-bundle verb)")
+      .option("--template <name>", "the bundle template to scaffold from (doc 10)")
       .option("-v, --version <version>", "the bundle's initial version", "0.1.0")
       .option("--disabled", "create the bundle without enabling it in the manifest")
       .option("--no-advisor", "skip the auto-scaffolded advisor")
       .action(
-        async (id: string, opts: { version?: string; disabled?: boolean; advisor?: boolean }) => {
+        async (
+          id: string,
+          opts: {
+            template?: string;
+            version?: string;
+            disabled?: boolean;
+            advisor?: boolean;
+          },
+        ) => {
           // AC#4: a reserved cross-bundle verb as an id would make `bundle <id> …` ambiguous. This is pure CLI
           // grammar — it needs no project — so it fires FIRST, BEFORE context resolution, ensuring a bad
           // argument is a USAGE error (exit 2) regardless of whether a project exists (doc 13 §7). The verb
@@ -138,7 +150,10 @@ const bundleModule: CommandModule = {
               }),
             },
             { root },
-            createBundleSpec({ builtinTemplatesRoot: ctx.deps.builtinTemplatesRoot }),
+            createBundleSpec({
+              builtinTemplatesRoot: ctx.deps.builtinTemplatesRoot,
+              ...(opts.template !== undefined ? { bundleTemplateName: opts.template } : {}),
+            }),
             { id, version: opts.version, disabled: opts.disabled, advisor: opts.advisor },
           );
           ctx.io.out.write(formatResult(result));
@@ -157,6 +172,149 @@ const bundleModule: CommandModule = {
   },
 };
 
+/**
+ * The per-command completion declarations (task-29 AC#2/AC#3): which named source completes each option's value
+ * or positional. The dispatch ({@link completeArgv}) reads this side-table by command path. A later leaf
+ * (tasks 34–84) adds a completion by adding an entry here referencing a source NAME — no change to the
+ * completion plumbing. The one wired today is the worked proof: `bundle new --template` → `"template-names"`,
+ * and `bundle new <id>` declares NO source (a brand-new id yields no suggestions, doc 10).
+ */
+const COMPLETION_SPECS: CompletionSpecs = {
+  "bundle new": {
+    // `--template` takes a BUNDLE template (a project template can't scaffold a bundle), so it completes from
+    // the scope-filtered `bundle-template-names` source — the worked proof of a state-dependent completion.
+    options: { "--template": "bundle-template-names" },
+    args: [undefined], // <id> — a new id, no suggestions
+  },
+  "completion install": {
+    options: { "--shell": "shells" },
+  },
+};
+
+/**
+ * The `completion` group module + its `install` leaf (AC#1; doc 12 line 196: "installed via `wpm completion
+ * install`"). `install` emits the omelette-generated completion script and ensures the shell init file sources
+ * it, through the FileSystem port (`src/util/completion-install.ts`) — no `process.exit`. `--shell` completes
+ * from the `"shells"` fixed-enum source (dogfooding AC#2).
+ */
+const completionModule: CommandModule = {
+  register(parent, ctx) {
+    const group = parent.command("completion").description("shell tab-completion (doc 12)");
+
+    const installLeaf = group
+      .command("install")
+      .description("install shell tab-completion for the current or chosen shell (doc 12)")
+      .option("--shell <shell>", "the shell to install for (bash|zsh|fish); default: $SHELL")
+      .action((opts: { shell?: string }) => {
+        const shell = resolveShell(opts.shell, ctx.deps.env.getEnv("SHELL"));
+        const result = installCompletion({ fs: ctx.deps.fs, env: ctx.deps.env }, shell);
+        const verb = result.added ? "installed" : "already installed";
+        ctx.io.out.write(
+          `completion ${verb} for ${result.shell}: wrote ${result.scriptPath}; sourced from ${result.initFile}\n`,
+        );
+      });
+
+    withExamples(installLeaf, [
+      { command: "wpm completion install --shell bash", note: "install bash completion" },
+    ]);
+  },
+};
+
+/** An internal alias the CLI also accepts for completion (a stable, shell-agnostic entry point for tooling). */
+const COMPLETE_COMMAND = "__complete";
+
+/**
+ * omelette's completion-callback flag set. The completion scripts `completion install` writes
+ * (`generateCompletionCode` / `generateCompletionCodeFish`) invoke the CLI as
+ * `wpm --comp<shell> --compgen <cword> <prev> <line>` — these are omelette's OWN protocol, NOT `__complete`.
+ * Examples straight from omelette 0.4.17's generated scripts:
+ *   bash  (`complete -F`):   `wpm --compbash --compgen "$((COMP_CWORD - …))" "$prev" "${COMP_LINE}"`
+ *   zsh   (`compdef`):       `wpm --compzsh --compgen "${CURRENT}" "${words[CURRENT-1]}" "${BUFFER}"`
+ *   fish:                    `wpm --compfish --compgen (count …) (commandline -pt) (commandline -pb)`
+ * So a real shell never calls `__complete`; it calls one of these. We intercept them and route to the dispatch.
+ */
+const COMP_SHELL_FLAGS = ["--compbash", "--compzsh", "--compfish"] as const;
+/** omelette's "generate completions for this line" marker; the args after it are `<cword> <prev> <line…>`. */
+const COMPGEN_FLAG = "--compgen";
+
+/**
+ * Emit tab-completion suggestions for a list of completion words (the last is the partial being completed), by
+ * running {@link completeArgv} over a freshly-built program tree + the named-source registry and printing one
+ * suggestion per line (the newline-separated format omelette's bash `compgen -W`, zsh `compadd`/`reply`, and
+ * fish `complete -a` all consume). Always succeeds; a failing source is contained inside the registry.
+ *
+ * @param words - The completion words (tokens after the program name; the last is the partial).
+ * @param deps - The assembled dependencies.
+ * @param io - The output sinks.
+ */
+function emitCompletions(words: readonly string[], deps: CliDeps, io: CliIo): void {
+  const program = buildProgram(deps, io);
+  const suggestions = completeArgv(program, words, {
+    fs: deps.fs,
+    env: deps.env,
+    builtinTemplatesRoot: deps.builtinTemplatesRoot,
+    registry: defaultRegistry(),
+    specs: COMPLETION_SPECS,
+  });
+  if (suggestions.length > 0) {
+    io.out.write(`${suggestions.join("\n")}\n`);
+  }
+}
+
+/**
+ * Reconstruct the completion `words` from an omelette `--compgen` invocation. omelette builds the line as
+ * `argv.slice(compgenIndex + 3).join(' ')` — i.e. it skips `<cword> <prev>` and joins the rest as the raw line
+ * buffer (e.g. `"wpm bundle new --template "`). We mirror that exactly, then split the line into tokens AFTER
+ * the leading program name. A line ending in whitespace means the user is completing a FRESH token, so the
+ * reconstructed words end in `""` (the empty partial) — which is what {@link completeArgv}'s prefix + positional
+ * logic expects (the same shape the explicit `__complete` words use).
+ *
+ * @param argv - The full user argv (containing `--compgen <cword> <prev> <line…>`).
+ * @returns The completion words (tokens after the program name; last is the partial), or `[]` if malformed.
+ */
+function wordsFromCompgen(argv: readonly string[]): string[] {
+  const compgenIndex = argv.indexOf(COMPGEN_FLAG);
+  if (compgenIndex < 0) {
+    return [];
+  }
+  // omelette: line = argv.slice(compgenIndex + 3).join(' ')  (skip <cword> and <prev>).
+  const line = argv.slice(compgenIndex + 3).join(" ");
+  const trailingSpace = /\s$/.test(line);
+  // Drop the leading program token (`wpm`/`installer`); keep the rest as the typed tokens.
+  const tokens = line
+    .trim()
+    .split(/\s+/)
+    .filter((t) => t.length > 0);
+  const afterProgram = tokens.slice(1);
+  // A trailing space means a fresh, empty partial is being completed → append "".
+  return trailingSpace ? [...afterProgram, ""] : afterProgram;
+}
+
+/** Whether `argv` is an omelette completion callback (carries `--compgen`, or a `--comp<shell>` flag). */
+function isCompletionCallback(argv: readonly string[]): boolean {
+  return argv.includes(COMPGEN_FLAG) || COMP_SHELL_FLAGS.some((flag) => argv.includes(flag));
+}
+
+/** Resolve the target shell from an explicit `--shell` value or the `$SHELL` env var; a usage error otherwise. */
+function resolveShell(explicit: string | undefined, shellEnv: string | undefined): Shell {
+  const candidate = explicit ?? detectShell(shellEnv);
+  if (candidate === "bash" || candidate === "zsh" || candidate === "fish") {
+    return candidate;
+  }
+  throw new UsageError(
+    `unsupported or undetected shell${candidate !== undefined ? ` '${candidate}'` : ""} — pass --shell bash|zsh|fish`,
+  );
+}
+
+/** Best-effort shell detection from a `$SHELL` path (e.g. `/bin/zsh` → `zsh`). */
+function detectShell(shellEnv: string | undefined): string | undefined {
+  if (shellEnv === undefined) return undefined;
+  if (shellEnv.includes("bash")) return "bash";
+  if (shellEnv.includes("zsh")) return "zsh";
+  if (shellEnv.includes("fish")) return "fish";
+  return undefined;
+}
+
 /** Build a group module that only declares a group + description (its leaves are later tasks). */
 function groupOnly(name: string, description: string): CommandModule {
   return {
@@ -173,6 +331,7 @@ const TOP_LEVEL_MODULES: readonly CommandModule[] = [
   groupOnly("project", "the project as a release unit (doc 10)"),
   bundleModule,
   groupOnly("build", "package the project for distribution (doc 10)"),
+  completionModule,
 ];
 
 /**
@@ -223,6 +382,24 @@ export function buildProgram(deps: CliDeps, io: CliIo): Command {
  * @returns The process exit code.
  */
 export async function run(argv: readonly string[], deps: CliDeps, io: CliIo): Promise<number> {
+  // Completion callbacks are intercepted BEFORE commander, because a completion line carries arbitrary
+  // `--flags`/partials that must reach the dispatch verbatim instead of being parsed as `wpm` options (which
+  // would be a usage error). A completion request arrives in one of two shapes; both route to `emitCompletions`
+  // and always succeed (exit 0):
+  //   1. omelette's REAL protocol — `wpm --comp<shell> --compgen <cword> <prev> <line>` — emitted by the
+  //      scripts `completion install` writes. This is what a real shell invokes on <tab>; the line is
+  //      reconstructed exactly as omelette does (`argv.slice(compgenIndex + 3).join(' ')`).
+  //   2. the internal `__complete <words…>` alias (a stable, shell-agnostic entry point for tooling/tests).
+  if (isCompletionCallback(argv)) {
+    return runWithExit(io, async () => {
+      emitCompletions(wordsFromCompgen(argv), deps, io);
+    });
+  }
+  if (argv.length > 0 && argv[0] === COMPLETE_COMMAND) {
+    return runWithExit(io, async () => {
+      emitCompletions(argv.slice(1), deps, io);
+    });
+  }
   return runWithExit(io, async () => {
     const program = buildProgram(deps, io);
     await program.parseAsync(argv, { from: "user" });
