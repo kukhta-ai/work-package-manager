@@ -12,10 +12,11 @@ review_cycle: 0
 # FORWARD NOTE (task-13 -> tasks 30/31): author the template manifest.yml/bundle.yml with SINGLE-SPACE
 # inline comments (canonical style). eemeli/yaml normalizes multi-space-before-comment document-wide on any
 # edit, so aligned comments would re-flow on a version bump; single-space keeps programmatic edits line-local.
-# Phase A COMPLETE (1-9). Phase B IN PROGRESS (10-15). DECISION (task-12, cross-cutting): the core is SYNCHRONOUS
+# Phases A+B COMPLETE (1-15: toolchain + model + the 4 ports). Phase C next (16-22: services tier; first up task-16 render).
+# DECISION (task-12, cross-cutting): the core is SYNCHRONOUS
 # (sync ports/adapters/operations; node:fs sync + execaSync for backlog). Rationale: sequential CLI, no concurrency
 # benefit, avoids async coloring across operations/lifecycle/tests; thin-builder does no network/long I/O (doc 13 §0).
-completed_stories: [task-1, task-2, task-3, task-4, task-5, task-6, task-7, task-8, task-9, task-10, task-11, task-12, task-13, task-14]   # merged --no-ff into feature/foundation
+completed_stories: [task-1, task-2, task-3, task-4, task-5, task-6, task-7, task-8, task-9, task-10, task-11, task-12, task-13, task-14, task-15]   # merged --no-ff into feature/foundation
 
 # PROCESS CORRECTION (2026-06-01, user-directed; AGENTS.md "Rule 3" committed 869c5b6):
 # Tasks 1-13 ran the SDLC at the ORCHESTRATION level only — the worker/reviewer/personas followed
