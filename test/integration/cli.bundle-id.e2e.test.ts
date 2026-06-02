@@ -2,6 +2,7 @@ import { execFileSync, spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { execaSync } from "execa";
 import { describe, expect, it } from "vitest";
 import { withTempDir } from "../helpers/tmpdir.js";
 
@@ -286,11 +287,14 @@ describeIfBuilt("bundle <id> routing + show/meta E2E via dist/cli.js (tasks 57/5
 /** The titles of the authoring tasks Backlog.md tracks in <proj>/.authoring-backlog (the real materialise root). */
 function authoringTaskTitles(proj: string): string {
   // The version-bump lifecycle materialises into the project's own Backlog.md root at .authoring-backlog (doc 10
-  // step 6; doc 11 §"Materialised by `wpm bundle <id> version bump`").
-  return execFileSync("backlog", ["task", "list", "--plain"], {
-    encoding: "utf8",
+  // step 6; doc 11 §"Materialised by `wpm bundle <id> version bump`"). Spawn via `execaSync` (not `execFileSync`)
+  // so the real `backlog` CLI resolves on Windows too, where the npm global bin is a `.cmd` shim that bare
+  // `execFileSync` cannot find — the same resolution the production adapter (`src/util/shell.ts`) relies on.
+  return execaSync("backlog", ["task", "list", "--plain"], {
     cwd: join(proj, ".authoring-backlog"),
-  });
+    stdout: "pipe",
+    stderr: "pipe",
+  }).stdout as string;
 }
 
 /** init a real project at <dir>/demo + create bundles `a` and `b`, where `b` requires `a`; return the path. */

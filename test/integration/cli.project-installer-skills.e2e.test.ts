@@ -2,6 +2,7 @@ import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { execaSync } from "execa";
 import { describe, expect, it } from "vitest";
 import { withTempDir } from "../helpers/tmpdir.js";
 
@@ -52,10 +53,13 @@ function projectDemo(dir: string): string {
 
 /** The authoring-task titles Backlog.md tracks in <proj>/.authoring-backlog (the real materialise root). */
 function authoringTaskTitles(proj: string): string {
-  return execFileSync("backlog", ["task", "list", "--plain"], {
-    encoding: "utf8",
+  // Spawn via `execaSync` (not `execFileSync`) so the real `backlog` CLI resolves on Windows too, where the npm
+  // global bin is a `.cmd` shim bare `execFileSync` cannot find (same resolution as `src/util/shell.ts`).
+  return execaSync("backlog", ["task", "list", "--plain"], {
     cwd: join(proj, ".authoring-backlog"),
-  });
+    stdout: "pipe",
+    stderr: "pipe",
+  }).stdout as string;
 }
 
 /** Write a SKILL.md at the conventional root path `installer-skills/<name>/SKILL.md`; return its absolute path. */

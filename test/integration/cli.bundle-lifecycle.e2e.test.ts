@@ -2,6 +2,7 @@ import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { execaSync } from "execa";
 import { describe, expect, it } from "vitest";
 import { withTempDir } from "../helpers/tmpdir.js";
 
@@ -53,10 +54,13 @@ function initProjectAt(dir: string): string {
 /** The titles of the authoring tasks Backlog.md tracks in <proj>/.authoring-backlog. */
 function authoringTaskTitles(proj: string): string {
   // `bundle new` materialises into the project's own Backlog.md root at .authoring-backlog (doc 10 step 6).
-  return execFileSync("backlog", ["task", "list", "--plain"], {
-    encoding: "utf8",
+  // Spawn via `execaSync` (not `execFileSync`) so the real `backlog` CLI resolves on Windows too, where the npm
+  // global bin is a `.cmd` shim bare `execFileSync` cannot find (same resolution as `src/util/shell.ts`).
+  return execaSync("backlog", ["task", "list", "--plain"], {
     cwd: join(proj, ".authoring-backlog"),
-  });
+    stdout: "pipe",
+    stderr: "pipe",
+  }).stdout as string;
 }
 
 describeIfBuilt("bundle lifecycle E2E via dist/cli.js (tasks 50/51/52)", () => {

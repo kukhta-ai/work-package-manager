@@ -2,6 +2,7 @@ import { execFileSync } from "node:child_process";
 import { existsSync, lstatSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { execaSync } from "execa";
 import { describe, expect, it } from "vitest";
 import { BacklogCli } from "../../src/adapters/backlog-cli.js";
 import { FakeBacklog } from "../../src/adapters/fake-backlog.js";
@@ -239,7 +240,12 @@ describeIfBuilt(
 /** Whether the real `backlog` CLI is available; the .authoring-backlog real-root checks skip (not fail) if not. */
 function backlogAvailable(): boolean {
   try {
-    execFileSync("backlog", ["--version"], { stdio: "pipe" });
+    // Probe via `execaSync` (not `execFileSync`) so the guard's "is backlog present?" check uses the SAME
+    // resolution the block's body relies on (the real `BacklogCli` adapter shells out via `src/util/shell.ts`'s
+    // execa). On Windows the npm global bin is a `.cmd` shim execa resolves but bare `execFileSync` does not — so
+    // a bare-`execFileSync` guard would FALSE-SKIP a runner that actually HAS backlog. A genuinely-absent backlog
+    // still throws here ⇒ the block skips cleanly (never fails).
+    execaSync("backlog", ["--version"], { stdout: "pipe", stderr: "pipe" });
     return true;
   } catch {
     return false;
