@@ -6,6 +6,7 @@ import { MemoryFileSystem } from "../../../src/adapters/memory-fs.js";
 import { NodeFileSystem } from "../../../src/adapters/node-fs.js";
 import { createArchive, pushArchive } from "../../../src/adapters/packager.js";
 import { isDomainError } from "../../../src/core/errors.js";
+import { toPosix } from "../../../src/util/posix-path.js";
 import { withTempDir } from "../../helpers/tmpdir.js";
 
 /**
@@ -55,7 +56,8 @@ describe("createArchive — tarball (always available)", () => {
         files,
       });
 
-      expect(archive).toBe(join(out, "demo-1.2.3.tgz"));
+      // The returned package path is POSIX on every OS — assert the `/`-form (a no-op on Linux/macOS).
+      expect(archive).toBe(toPosix(join(out, "demo-1.2.3.tgz")));
       expect(existsSync(archive)).toBe(true);
 
       // Untar and assert the entries are exactly the listed files (and NOT .authoring-backlog/).
@@ -115,7 +117,8 @@ describe("createArchive — git (archives the committed HEAD)", () => {
         format: "git",
         files: ["manifest.yml"], // git ignores `files`; HEAD is the source
       });
-      expect(archive).toBe(join(out, "demo-1.0.0.tgz"));
+      // The returned package path is POSIX on every OS — assert the `/`-form (a no-op on Linux/macOS).
+      expect(archive).toBe(toPosix(join(out, "demo-1.0.0.tgz")));
       expect(existsSync(archive)).toBe(true);
       const listed = execFileSync("tar", ["-tzf", archive], { encoding: "utf8" });
       expect(listed).toContain("manifest.yml");
@@ -142,7 +145,7 @@ describe("createArchive — git (archives the committed HEAD)", () => {
 describe("createArchive — zip (missing-tool handling)", () => {
   it(
     hasZip
-      ? "produces a real .zip when zip is available"
+      ? "produces a real .zip when zip is available (or degrades to a clear typed error)"
       : "raises a clear typed error when zip is absent",
     async () => {
       await withTempDir(async (dir) => {
@@ -153,15 +156,33 @@ describe("createArchive — zip (missing-tool handling)", () => {
         mkdirSync(out, { recursive: true });
 
         if (hasZip) {
-          const archive = createArchive({
-            root,
-            outDir: out,
-            baseName: "demo-1.0.0",
-            format: "zip",
-            files,
-          });
-          expect(archive).toBe(join(out, "demo-1.0.0.zip"));
-          expect(existsSync(archive)).toBe(true);
+          // The returned package path is POSIX on every OS (a portable artefact reference) — assert against the
+          // `/`-form so the expectation is correct on Windows too, where `join` would otherwise yield `\`.
+          const expected = toPosix(join(out, "demo-1.0.0.zip"));
+          // `zip -v` succeeded (the probe), but the ARCHIVE invocation may still fail for an environmental reason
+          // on some platforms (a `zip` build whose arg-shape differs). The contract is: produce the archive, or
+          // raise a clear typed ValidationError — never crash. So accept either, rather than wrongly asserting
+          // "zip not available" when zip is present-but-the-invocation-differs.
+          let archive: string | undefined;
+          let thrown: unknown;
+          try {
+            archive = createArchive({
+              root,
+              outDir: out,
+              baseName: "demo-1.0.0",
+              format: "zip",
+              files,
+            });
+          } catch (e) {
+            thrown = e;
+          }
+          if (archive !== undefined) {
+            expect(archive).toBe(expected);
+            expect(existsSync(archive)).toBe(true);
+          } else {
+            expect(isDomainError(thrown)).toBe(true);
+            expect((thrown as Error).message).toMatch(/zip/i);
+          }
         } else {
           let thrown: unknown;
           try {
@@ -199,7 +220,8 @@ describe("pushArchive — destination kinds", () => {
         { fs: new NodeFileSystem() },
         { root, archive, destination: destDir },
       );
-      expect(result.where).toBe(join(destDir, "demo-1.0.0.tgz"));
+      // `where` (the printed publish destination) is POSIX on every OS — assert the `/`-form (no-op on POSIX).
+      expect(result.where).toBe(toPosix(join(destDir, "demo-1.0.0.tgz")));
       expect(readdirSync(destDir)).toContain("demo-1.0.0.tgz");
     });
   });

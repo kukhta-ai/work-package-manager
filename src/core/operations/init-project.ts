@@ -1,4 +1,5 @@
 import { join } from "node:path";
+import { toPosix } from "../../util/posix-path.js";
 import { parseYaml } from "../../util/yaml.js";
 import { ConflictError, NotFoundError } from "../errors.js";
 import {
@@ -319,9 +320,13 @@ export function initProject(deps: InitProjectDeps, input: InitProjectInput): Ope
   }
 
   // 12. Return the structured result; the command layer formats the summary (incl. the `materialised: N` line).
+  // `changedPaths` is a LOGICAL observability list (the command prints its count; tests compare its entries as
+  // portable strings). The real fs writes/aliases above already used the OS-native absolute paths; here we only
+  // RECORD them, so each is POSIX-normalized to read with `/` on every OS (a no-op on Linux/macOS). This matches
+  // how the six-beat lifecycle normalizes its own `changedPaths`.
   return {
     summary: `created project ${name} at ${targetDir}`,
-    changedPaths,
+    changedPaths: changedPaths.map(toPosix),
     materialisedTaskTitles: materialisedTitles,
   };
 }

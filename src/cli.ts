@@ -106,6 +106,7 @@ import { withExamples } from "./help/examples.js";
 import { installCompletion, type Shell } from "./util/completion-install.js";
 import { readConfirmation } from "./util/confirm.js";
 import { type CliIo, runWithExit } from "./util/exit.js";
+import { toPosix } from "./util/posix-path.js";
 import { parseYaml } from "./util/yaml.js";
 import { VERSION } from "./version.js";
 
@@ -1497,7 +1498,10 @@ const bundleAdvisorModule: PerBundleCommandModule = {
         // every run (its target is absent until a bundle installer-skill is added), which is benign lifecycle
         // noise, not evidence the advisor was scaffolded. The scaffold writing the advisor SKILL.md, or a task
         // being materialised, is the real "something happened" signal.
-        const advisorAbs = join(root, advisorSkillPath(id));
+        // `changedPaths` entries are POSIX-normalized by the lifecycle (the reported/portable form), so the probe
+        // path is normalized the same way before the membership test — otherwise on Windows a native `\` probe
+        // would never match the `/` changed-path and the no-op detection would misfire.
+        const advisorAbs = toPosix(join(root, advisorSkillPath(id)));
         const scaffolded = result.changedPaths.includes(advisorAbs);
         if (!scaffolded && result.materialisedTaskTitles.length === 0) {
           ctx.io.out.write(`advisor for ${id} already exists — nothing to do\n`);
@@ -1526,7 +1530,8 @@ const bundleAdvisorModule: PerBundleCommandModule = {
         // ④ RERENDER beat can re-render the front-door / re-ensure scope aliases on a fresh project even when the
         // advisor was absent, which is benign noise. The advisor dir being among the changed paths is the precise
         // "the advisor was actually removed" signal. The spec's warning (if any) goes to stderr.
-        const advisorDirAbs = join(root, advisorSkillDir(id));
+        // Normalized to POSIX to match the lifecycle's POSIX-normalized `changedPaths` (see `advisor add` above).
+        const advisorDirAbs = toPosix(join(root, advisorSkillDir(id)));
         if (!result.changedPaths.includes(advisorDirAbs)) {
           ctx.io.out.write(`no advisor for ${id} — nothing to remove\n`);
         } else {

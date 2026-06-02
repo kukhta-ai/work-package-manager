@@ -1,4 +1,4 @@
-import { join } from "node:path";
+import { posix } from "node:path";
 import type { FileSystem } from "../ports/index.js";
 import { renderSkillStub } from "./scaffold-skill.js";
 
@@ -50,12 +50,15 @@ export interface AdvisorDeps {
  * @returns The project-relative advisor directory.
  */
 export function advisorSkillDir(id: string): string {
-  return join("installer-skills", `${id}-advisor`);
+  // A LOGICAL path: it is shown in the "left at …" message and is the stub's project-relative location, so it
+  // must be POSIX on every OS — built with `posix.join` (never `node:path.join`, which yields `\` on Windows).
+  return posix.join("installer-skills", `${id}-advisor`);
 }
 
 /** The project-relative path of a bundle's advisor stub: `installer-skills/<id>-advisor/SKILL.md` (doc 10). */
 export function advisorSkillPath(id: string): string {
-  return join(advisorSkillDir(id), "SKILL.md");
+  // LOGICAL (the bundle-relative stub path the scaffold renders + the registry/message form) ⇒ POSIX.
+  return posix.join(advisorSkillDir(id), "SKILL.md");
 }
 
 /**

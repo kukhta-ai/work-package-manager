@@ -1,4 +1,5 @@
 import { join } from "node:path";
+import { toPosix } from "../../util/posix-path.js";
 import { parseYaml } from "../../util/yaml.js";
 import type {
   AuthoringTaskSpec,
@@ -281,9 +282,15 @@ export function runMutation<I = void>(
   const materialised = materialiseAuthoringTasks(backlog, join(root, AUTHORING_BACKLOG_DIR), specs);
 
   // ⑥ RESULT
+  // `changedPaths` is a LOGICAL observability list — the command prints its count and tests compare its entries
+  // as portable strings (e.g. `<root>/.claude/skills`). The real fs writes already happened (with OS-native
+  // absolute paths) inside ③ APPLY / ④ RERENDER; here we only RECORD them, so each entry is POSIX-normalized so
+  // the reported/compared form reads with `/` on every OS (on Linux/macOS `toPosix` is a no-op). A consumer that
+  // string-matches against a changed path (e.g. the advisor add/remove no-op probe) normalizes its probe the
+  // same way.
   const changedPaths: string[] = [];
-  mergePaths(changedPaths, applied?.changedPaths ?? []);
-  mergePaths(changedPaths, rerenderChanged);
+  mergePaths(changedPaths, (applied?.changedPaths ?? []).map(toPosix));
+  mergePaths(changedPaths, rerenderChanged.map(toPosix));
 
   // Warnings: the operation's own (③) PLUS the ones the harness derives from ④ — a declared target the deriver
   // could not map to a scope-alias (`unknownTargets`) is surfaced here, so e.g. `targets add` of an unknown

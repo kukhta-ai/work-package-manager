@@ -4,6 +4,7 @@ import { basename, join } from "node:path";
 import { BUILD_FORMATS } from "../completion/enums.js";
 import { ValidationError } from "../core/errors.js";
 import type { FileSystem } from "../core/ports/index.js";
+import { toPosix } from "../util/posix-path.js";
 import { runSync } from "../util/shell.js";
 
 /**
@@ -61,9 +62,15 @@ export interface PushResult {
   readonly where: string;
 }
 
-/** Compute the absolute output path for a request: `<outDir>/<baseName>.<ext>`. */
+/**
+ * Compute the absolute output path for a request: `<outDir>/<baseName>.<ext>`, as a POSIX path. This value is
+ * both RETURNED to the CLI (which prints it in the `packaged …` / `published …` line) and a portable artefact
+ * reference, so it must read with `/` on every OS — hence `toPosix` over the native `join`. The archive is
+ * still WRITTEN through `tar`/`zip`/`git`, all of which accept a `/`-separated output path on Windows, so the
+ * single POSIX form serves both the effect and the printed/returned value (no native variant is needed).
+ */
 function outputPath(req: PackageRequest): string {
-  return join(req.outDir, `${req.baseName}.${FORMAT_EXTENSION[req.format]}`);
+  return toPosix(join(req.outDir, `${req.baseName}.${FORMAT_EXTENSION[req.format]}`));
 }
 
 /**
@@ -204,9 +211,12 @@ function runArchiveTool(
  * @throws {ValidationError} On a git-push failure (exit 1).
  */
 export function pushArchive(deps: { readonly fs: FileSystem }, req: PushRequest): PushResult {
-  // A local directory destination → copy the archive in (the headless happy path).
+  // A local directory destination → copy the archive in (the headless happy path). `target` is RETURNED as the
+  // printed `where`, so it is POSIX-normalized: the publish-destination path a user sees must read with `/` on
+  // every OS (doc 10 row 183). The FileSystem port's `copyTree` accepts the `/`-form on Windows too, so the one
+  // POSIX value serves both the copy and the printed result.
   if (deps.fs.exists(req.destination)) {
-    const target = join(req.destination, basename(req.archive));
+    const target = toPosix(join(req.destination, basename(req.archive)));
     deps.fs.copyTree(req.archive, target);
     return { where: target };
   }
