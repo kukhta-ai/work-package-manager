@@ -36,7 +36,7 @@ const FORMAT_EXTENSION: Readonly<Record<BuildFormat, string>> = {
 export interface PackageRequest {
   /** The project root the shippable paths are relative to. */
   readonly root: string;
-  /** The directory the archive is written into (the CLI passes the cwd). */
+  /** The directory the archive is written into (the CLI passes the workspace's `builds/` output directory). */
   readonly outDir: string;
   /** The archive's base name (no extension) — typically `<project>-<version>`. */
   readonly baseName: string;
