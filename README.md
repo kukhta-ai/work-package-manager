@@ -41,6 +41,61 @@ Node.js **>= 20** is also required (`wpm` is an ESM-only package).
 > If Backlog.md is missing at runtime, the relevant command will tell you it's needed and point you at
 > `npm i -g backlog.md`. (That runtime check ships with the Backlog.md adapter.)
 
+## Getting started — author a work-package
+
+You don't author a work-package by editing files yourself. `wpm` scaffolds an **authoring workspace**
+and your **AI agent** authors the deliverable inside it, driving the CLI through a bundled skill. The
+first run is five steps:
+
+```bash
+# 1. Install wpm and its required peer (see Prerequisites above).
+npm i -g work-package-manager backlog.md
+
+# 2. Install the authoring skill into your agent's user skill scope.
+wpm skill install
+
+# 3. Scaffold a workspace, then enter it.
+wpm init my-handoff
+cd my-handoff
+
+# 4. Author through your agent — point it at the workspace and let it work.
+#    The agent reads the authoring front door (AGENTS.md) and drives `wpm`
+#    against the authoring backlog (.authoring-backlog/) to build out the deliverable under wip/.
+
+# 5. Build the distributable: wpm packages the wip/ deliverable into builds/.
+wpm build dry-run        # validate + preview what would ship, producing nothing
+wpm build package        # write the distributable archive into builds/
+```
+
+**The authoring skill is the authoring-agent's instruction surface.** `wpm skill install` copies the
+bundled `installer-builder` skill into the user (personal) skill scope of every supported agent it
+detects on your machine (`~/.claude/skills/`, `~/.agents/skills/`, …), so your agent catalogues it at
+its next session and knows how to drive the CLI idiomatically rather than guessing from `--help`. It is
+**idempotent** — re-run it any time to install or update the skill, and it reports which scopes it wrote
+to and whether each was a fresh install or an update. (`wpm init` also reminds you to run it when the
+skill isn't present yet.) The workspace's authoring front door points the agent at this skill.
+
+### The authoring workspace layout
+
+`wpm init <name>` creates a workspace that **wraps** the deliverable so the deliverable's own
+executor-facing front door never collides with the authoring agent's surface. It has three regions:
+
+```
+my-handoff/                  ← the authoring workspace ROOT (authoring-only — never ships)
+├── AGENTS.md                ← authoring front door: flips your agent into "author a work-package" mode
+├── CLAUDE.md                ← alias of the authoring front door
+├── .authoring-backlog/      ← the authoring agent's own work tracker (gitignored, builder-time only)
+├── wip/                     ← the DELIVERABLE under construction (manifest, bundles, installer-skills, …)
+│   └── _AGENTS.md           ← the deliverable's executor front door (author-owned, build-stripped prefix)
+└── builds/                  ← BUILD OUTPUT: the archives `wpm build` writes (gitignored)
+```
+
+**Only `wip/` ships.** `wpm build` lifts the `wip/` deliverable, un-nested, to the archive root with its
+content unchanged (stripping the reserved `_AGENTS.md` prefix back to the live `AGENTS.md`), and writes
+the archive into `builds/`. The wrapper around it — the authoring front door, the `.authoring-backlog/`,
+and `builds/` itself — is **never part of any shipped artifact**. So the deliverable is authored under
+`wip/`, not at the workspace root, and everything outside `wip/` is authoring-only scaffolding.
+
 ## What's in here
 
 ```

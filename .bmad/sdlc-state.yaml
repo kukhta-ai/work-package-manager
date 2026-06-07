@@ -7,9 +7,9 @@ phase: 5
 phase_name: "Authoring-workspace epic-3 — Phase 5 BAUT (per-story build of tasks 85-94)"
 branch: feature/authoring-workspace
 epic: authoring-workspace
-active_story: task-91
+active_story: task-94
 review_cycle: 0
-# DONE (merged --no-ff into feature/authoring-workspace): 85, 92, 86, 87.  IN FLIGHT: 91.  REMAINING: 88, 94, 89, 90, 93.
+# DONE (merged --no-ff into feature/authoring-workspace): 85, 92, 86, 87, 91, 88.  IN FLIGHT: 94.  REMAINING: 89, 90, 93.
 # Sub-branch naming: feature/aw-task-<id> (hyphen, not slash — the epic branch occupies the refs/heads/feature/authoring-workspace namespace).
 # ENV (re-establish on resume): Node 20 at $HOME/.local/node20/bin (repo needs >=20; system node is v18 and crashes vitest);
 #   backlog CLI at $HOME/.local/bin; rolldown needs @rolldown/binding-linux-x64-gnu (npm install --no-save it if missing after npm ci).
