@@ -237,6 +237,37 @@ installer/                          the installer-builder project root
     └── archive/
 ```
 
+## The generated authoring workspace (what `wpm init` scaffolds)
+
+The scaffold above is the **builder-project** — the repo that *ships* the `wpm` CLI. It is not what an author works in. When an author runs `wpm init`, the CLI generates a separate, much smaller tree: an **authoring workspace** that wraps the deliverable, distinct from both this builder-project and from the shipped-artifact scaffold of `06`. It has the three regions named consistently across the design set — the **authoring workspace root**, the **deliverable subdirectory `wip/`**, and the **build-output directory `builds/`**:
+
+```
+my-installer/                          the AUTHORING WORKSPACE ROOT (wpm init output; the wrapper, never shipped)
+│
+├── AGENTS.md                          authoring front door: flips the agent into "author a bundle-project" mode;
+│                                      points at the installer-builder skill + the authoring backlog (04, 11)
+├── CLAUDE.md                          → AGENTS.md (symlink alias; GEMINI.md etc. likewise)
+├── .gitignore                         ignores .authoring-backlog/ and builds/ by default
+│
+├── .authoring-backlog/                OUR zone: the authoring agent's work tracker (gitignored, builder-time only; 11)
+│   ├── config.yml                       task_prefix=authoring
+│   └── tasks/
+│
+├── wip/                               the DELIVERABLE under construction — the bundle-project skeleton of 06/07.
+│   │                                  This subtree, un-nested to the archive root, IS the shipped artifact.
+│   ├── manifest.yml                     project release identity + enabled bundles + targets (06)
+│   ├── ⟨executor front door⟩            author-owned content; the build promotes it to the live AGENTS.md at the
+│   │                                    archive root (06). Named during authoring so it does NOT address the
+│   │                                    authoring agent — that naming is part of the build behaviour (CLI side)
+│   ├── installer-skills/  …             install-time skills + scope-alias symlinks (06)
+│   └── bundles/<id>/install-backlog/ …  the per-bundle recipes (06)
+│
+└── builds/                            BUILD OUTPUT: the archives `wpm build` emits (isolated from the workspace)
+    └── <project>-<version>.<ext>        each archive = wip/ un-nested to its root, content unchanged (06)
+```
+
+Everything outside `wip/` is authoring-only and never ships; `wip/` un-nested *is* the shipped artifact. This is the wrapper around `06`'s scaffold, not the scaffold itself — and it is the artifact an author's agent operates on (`04`), driven through the authoring-backlog (`11`). The build's un-nesting and the deliverable executor front door's authoring-time naming are CLI/build behaviour, specified with the rest of the `wpm build`/`init` surface (`10`).
+
 ## Layered architecture
 
 Three layers, each depending only on the ones below:
