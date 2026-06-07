@@ -106,25 +106,57 @@ describeIfBuilt("`wpm build dry-run` E2E (task-82, through dist/cli.js)", () => 
 });
 
 describeIfBuilt("`wpm build package` E2E (task-83, through dist/cli.js)", () => {
-  it("AC83#1/#2 — `--format tarball`: exit 0, prints the path, a real .tgz with the shippable files (no .authoring-backlog)", async () => {
+  it("AC83#1/#2 + AC89#1/#2/#3 — `--format tarball`: exit 0, archive in <workspace>/builds/, un-nested root (manifest at root), no authoring surface", async () => {
     await withTempDir(async (dir) => {
       const proj = initProject(dir);
       expect(cli(["project", "targets", "add", "claude-code", "-C", proj], dir).code).toBe(0);
 
+      // Run with cwd=out (NOT the workspace) to prove the archive lands in <workspace>/builds/, never the cwd.
       const out = join(dir, "out");
       mkdirSync(out, { recursive: true });
-      // Run with cwd=out so the archive lands there (the CLI writes to the cwd).
       const r = cli(["build", "package", "--format", "tarball", "-C", proj], out);
       expect(r.code).toBe(0);
       expect(r.stdout).toMatch(/packaged/);
 
-      const archive = join(out, "demo-0.1.0.tgz");
+      // AC89#1: the archive lands in <workspace>/builds/, NOT the cwd.
+      const archive = join(proj, "builds", "demo-0.1.0.tgz");
       expect(existsSync(archive)).toBe(true);
+      expect(existsSync(join(out, "demo-0.1.0.tgz"))).toBe(false);
+      expect(r.stdout).toContain(join(proj, "builds", "demo-0.1.0.tgz"));
+
       const listed = execFileSync("tar", ["-tzf", archive], { encoding: "utf8" });
-      expect(listed).toContain("manifest.yml");
-      expect(listed).toContain("AGENTS.md");
-      // .authoring-backlog/ must NOT be in the package:
+      // AC89#2: the archive root is the un-nested deliverable — manifest.yml sits at the archive root (no wip/ prefix).
+      expect(listed).toMatch(/^(\.\/)?manifest\.yml$/m);
+      expect(listed).not.toMatch(/(^|\/)wip\//m);
+      // The executor front door ships (currently verbatim `_AGENTS.md`; task-90 will strip it to AGENTS.md).
+      expect(listed).toContain("_AGENTS.md");
+      // AC89#3: the authoring backlog, the authoring front door (workspace-root AGENTS.md), and builds/ are ABSENT.
       expect(listed).not.toContain(".authoring-backlog");
+      expect(listed).not.toMatch(/(^|\/)builds\//m);
+      expect(listed).not.toMatch(/(^|\.\/)AGENTS\.md$/m); // the AUTHORING front door (exact), not the shipped _AGENTS.md
+      expect(listed).not.toContain("demo-0.1.0.tgz"); // the archive never contains itself
+    });
+  });
+
+  // AC89#4 (disabled bundle directories + builder-time dirs excluded) is proven at the pure-plan level in
+  // test/unit/operations/build.test.ts ("EXCLUDES a DISABLED bundle dir …") — the same `plan.shippable` enumeration
+  // that becomes the archive content. It cannot be shown through a produced archive because an orphan/disabled
+  // bundle directory FAILS validation (validate.ts check 4), so `build package` exits before archiving.
+
+  it("AC89#7 — re-packaging unchanged project state reproduces an identical archive layout", async () => {
+    await withTempDir(async (dir) => {
+      const proj = initProject(dir);
+      expect(cli(["project", "targets", "add", "claude-code", "-C", proj], dir).code).toBe(0);
+
+      const archive = join(proj, "builds", "demo-0.1.0.tgz");
+      const layout = (): string[] => {
+        expect(cli(["build", "package", "--format", "tarball", "-C", proj], dir).code).toBe(0);
+        return execFileSync("tar", ["-tzf", archive], { encoding: "utf8" })
+          .split("\n")
+          .filter((l) => l.length > 0)
+          .sort();
+      };
+      expect(layout()).toEqual(layout());
     });
   });
 
@@ -139,25 +171,29 @@ describeIfBuilt("`wpm build package` E2E (task-83, through dist/cli.js)", () => 
   it("AC83#1 — package FAILS before producing when validate fails (fresh project, no targets)", async () => {
     await withTempDir(async (dir) => {
       const proj = initProject(dir);
-      const out = join(dir, "out");
-      mkdirSync(out, { recursive: true });
-      const r = cli(["build", "package", "--format", "tarball", "-C", proj], out);
+      const r = cli(["build", "package", "--format", "tarball", "-C", proj], dir);
       expect(r.code).not.toBe(0);
-      // nothing produced:
-      expect(readdirSync(out).length).toBe(0);
+      // nothing produced: the build-output directory holds no archive (init seeds an empty builds/).
+      expect(readdirSync(join(proj, "builds")).length).toBe(0);
     });
   });
 
-  it("AC83#2 — `--format zip` produces a real .zip when zip is available (skipped otherwise)", async () => {
+  it("AC83#2 — `--format zip` produces a real .zip in <workspace>/builds/ when zip is available (skipped otherwise)", async () => {
     if (!hasZip()) return; // headless CI commonly lacks `zip`; the missing-tool path is covered by the unit test.
     await withTempDir(async (dir) => {
       const proj = initProject(dir);
       expect(cli(["project", "targets", "add", "claude-code", "-C", proj], dir).code).toBe(0);
-      const out = join(dir, "out");
-      mkdirSync(out, { recursive: true });
-      const r = cli(["build", "package", "--format", "zip", "-C", proj], out);
+      const r = cli(["build", "package", "--format", "zip", "-C", proj], dir);
       expect(r.code).toBe(0);
-      expect(existsSync(join(out, "demo-0.1.0.zip"))).toBe(true);
+      expect(existsSync(join(proj, "builds", "demo-0.1.0.zip"))).toBe(true);
+    });
+  });
+
+  it("AC89#6 — package outside any workspace exits non-zero naming the missing workspace", async () => {
+    await withTempDir(async (dir) => {
+      const r = cli(["build", "package"], dir); // no -C, no workspace marker in dir
+      expect(r.code).not.toBe(0);
+      expect(`${r.stdout}${r.stderr}`).toMatch(/workspace/i);
     });
   });
 

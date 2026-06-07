@@ -2990,6 +2990,26 @@ function loadBuildPlan(ctx: CommandContext, root: string): BuildPlan {
   });
 }
 
+/** The build-output directory name under the workspace root, where `build package`/`publish` write archives (doc 12). */
+const BUILD_OUTPUT_DIR = "builds";
+
+/**
+ * Resolve (and ensure) the build-output directory `<workspaceRoot>/builds/` an archive is written into (doc 10
+ * `build package`; doc 12 §"What `wpm build` produces"). It sits at the WORKSPACE root — beside, never inside, the
+ * un-nested deliverable (`<workspace>/wip`) — so the produced archive can never contain itself nor the `builds/`
+ * directory (AC89#1/#3). `init` seeds an empty `builds/`, but it may have been removed, so the directory is created
+ * if missing (via the FileSystem port — the effect lives in the shell, the pure plan stays untouched).
+ *
+ * @param ctx - The command context (ports).
+ * @param workspaceRoot - The resolved authoring-workspace root.
+ * @returns The absolute build-output directory path.
+ */
+function buildOutputDir(ctx: CommandContext, workspaceRoot: string): string {
+  const dir = join(workspaceRoot, BUILD_OUTPUT_DIR);
+  ctx.deps.fs.makeDirectories(dir);
+  return dir;
+}
+
 /**
  * Format a {@link BuildPlan} as the human-readable `build` output (output is not a port — doc 13 §3). On success
  * it prints the would-ship file tree (one root-relative path per line) and, for each vendored artifact, its name +
@@ -3096,7 +3116,10 @@ const buildModule: CommandModule = {
     // command prints the output path (AC83#2). `.choices([...BUILD_FORMATS])` makes an unsupported `--format` VALUE
     // a commander usage error → exit 2 (AC83#3); a missing archiving TOOL for a VALID format is an environment
     // failure the adapter raises as a ValidationError → exit 1 (distinct from the bad-value exit 2). The archive is
-    // written to the cwd (never the project root, so a re-run cannot pollute the ship set).
+    // written into the workspace's `builds/` output directory (AC89#1) — beside, never inside, the un-nested
+    // deliverable (`<workspace>/wip`), so the archive can never contain itself or `builds/`, and a re-run cannot
+    // pollute the ship set. Its ROOT is the deliverable, so an end user unpacking it finds `manifest.yml` at the
+    // archive root (AC89#2).
     const pkg = group
       .command("package")
       .description("produce a distributable archive of the shippable file set (doc 10)")
@@ -3106,7 +3129,7 @@ const buildModule: CommandModule = {
           .default("zip"),
       )
       .action((opts: { format: BuildFormat }) => {
-        const { deliverableRoot: root } = requireProject(ctx, parent); // AC83#4 (canonical no-project NotFound, exit 1)
+        const { deliverableRoot: root, workspaceRoot } = requireProject(ctx, parent); // AC83#4 (canonical no-project NotFound, exit 1)
         const plan = loadBuildPlan(ctx, root);
         if (!plan.ok) {
           // AC83#1: validate + lock must pass BEFORE producing anything. Print the findings, then exit 1.
@@ -3118,7 +3141,7 @@ const buildModule: CommandModule = {
         }
         const out = createArchive({
           root,
-          outDir: ctx.deps.env.cwd(),
+          outDir: buildOutputDir(ctx, workspaceRoot), // AC89#1: write into <workspace>/builds/, not the cwd
           baseName: `${plan.name}-${plan.version}`,
           format: opts.format,
           files: plan.shippable,
@@ -3153,7 +3176,7 @@ const buildModule: CommandModule = {
           .default("zip"),
       )
       .action((destination: string, opts: { format: BuildFormat }) => {
-        const { deliverableRoot: root } = requireProject(ctx, parent); // AC84#3 (canonical no-project NotFound, exit 1)
+        const { deliverableRoot: root, workspaceRoot } = requireProject(ctx, parent); // AC84#3 (canonical no-project NotFound, exit 1)
 
         // AC84#1/#2: BUILD FIRST. A non-ok plan (validate/lock) prints its findings and throws BEFORE any push.
         const plan = loadBuildPlan(ctx, root);
@@ -3166,7 +3189,7 @@ const buildModule: CommandModule = {
         }
         const archive = createArchive({
           root,
-          outDir: ctx.deps.env.cwd(),
+          outDir: buildOutputDir(ctx, workspaceRoot), // AC89#1: build into <workspace>/builds/ before pushing
           baseName: `${plan.name}-${plan.version}`,
           format: opts.format,
           files: plan.shippable,
