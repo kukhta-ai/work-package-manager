@@ -39,7 +39,7 @@ These trip people up — get them right:
 Example (a state task, then a dependent one):
 
 ```
-cd bundles/web-handoff
+cd wip/bundles/web-handoff
 backlog task create "ensure Chromium present" \
   -l "kind:state,step:ensure-chromium" -m 0.1.0 \
   --ac "chromium --version prints" --dod "ownership recorded"
