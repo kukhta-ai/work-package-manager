@@ -59,6 +59,24 @@ backlog task create "place launcher config" \
   install-backlog task and the authoring-backlog with **Backlog.md directly**, inside the relevant backlog
   root. The CLI contributes to the authoring-backlog only by *materialising tasks when scope changes elsewhere*.
 
+## The deliverable executor front door is `_AGENTS.md` (doc `06`, `12`)
+
+The shipped artifact's executor front door — the `AGENTS.md` that, once installed, recognises an *end user's*
+agent and runs the install — is **author-owned content you may edit**, but it lives under a **reserved
+leading-underscore name**: `wip/_AGENTS.md` at the project root, and `wip/bundles/<id>/_AGENTS.md` per bundle.
+This is deliberate, not a stray file: under its canonical name (`AGENTS.md`) your *authoring* agent would
+auto-discover it by exact basename and follow it as a directive (closest-wins), contradicting the authoring
+front door. The leading underscore keeps it `.md` and editable while no agent auto-loads it.
+
+- **Edit the `_AGENTS.md` directly** (your editor / write tools — the same "structure, not content" rule). Do
+  **not** rename it to `AGENTS.md`/`CLAUDE.md`/`GEMINI.md`, and do **not** give it a `.tmpl` suffix — those are
+  reserved (auto-discovered names, and the placeholder-template convention, respectively).
+- **The build strips the prefix for you.** `wpm build` renames each `_AGENTS.md` → `AGENTS.md` in the archive
+  (root and per bundle) and creates the per-target alias front doors beside it (`CLAUDE.md` for `claude-code`,
+  `GEMINI.md` for `gemini`; agents that read `AGENTS.md` natively get none — from `manifest.targets`). Your bytes
+  are copied **verbatim** — the build never regenerates the content. The reserved `_AGENTS.md` never appears in
+  the archive.
+
 ## Recipe vs receipt (doc `00`, `08`)
 
 You author the **recipe** — the shipped, versioned `install-backlog/` task definitions (replaced wholesale on

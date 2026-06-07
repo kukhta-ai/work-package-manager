@@ -83,9 +83,9 @@ describe("initProject — scaffolds an authoring workspace (task-87; docs 06/10/
 
     // AC#1 — the default bundle template is materialised at wip/bundles/bundle-template/:
     expect(fs.exists(`${WIP}/bundles/bundle-template`)).toBe(true);
-    expect(fs.exists(`${WIP}/bundles/bundle-template/AGENTS.md.tmpl`)).toBe(true);
+    expect(fs.exists(`${WIP}/bundles/bundle-template/_AGENTS.md.tmpl`)).toBe(true);
     // The scaffold keeps its placeholders (a template-of-a-template; bundle new fills them):
-    expect(fs.read(`${WIP}/bundles/bundle-template/AGENTS.md.tmpl`)).toMatch(/\{\{bundle-id\}\}/);
+    expect(fs.read(`${WIP}/bundles/bundle-template/_AGENTS.md.tmpl`)).toMatch(/\{\{bundle-id\}\}/);
 
     // AC#1 — the empty registries exist as directories under wip/:
     expect(fs.exists(`${WIP}/installer-skills`)).toBe(true);
@@ -284,7 +284,7 @@ describe("initProject — scaffolds an authoring workspace (task-87; docs 06/10/
       `${WIP}/_AGENTS.md`,
       `${WIP}/installer-skills/hermes-handoff-installer/SKILL.md`,
       `${WIP}/installer-skills/hermes-handoff-installer/references/journaling.md`,
-      `${WIP}/bundles/bundle-template/AGENTS.md.tmpl`,
+      `${WIP}/bundles/bundle-template/_AGENTS.md.tmpl`,
       `${TARGET}/AGENTS.md`,
       `${TARGET}/CLAUDE.md`,
       `${TARGET}/builds`,

@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { MemoryFileSystem } from "../../../src/adapters/memory-fs.js";
-import { computeBuildPlan, shippableFiles } from "../../../src/core/operations/build.js";
+import type { AgentName } from "../../../src/core/model/index.js";
+import { parseAgentName } from "../../../src/core/model/index.js";
+import {
+  computeBuildPlan,
+  computeFrontDoorTransforms,
+  shippableFiles,
+} from "../../../src/core/operations/build.js";
 import { loadProject } from "../../../src/core/operations/lifecycle.js";
 import {
   buildLockfile,
@@ -228,5 +234,79 @@ describe("shippableFiles — the prune-aware ship set (AC82#3)", () => {
     const fs = seedBuildable();
     const files = shippableFiles(fs, PROJ, ["core"]);
     expect([...files]).toEqual([...files].sort());
+  });
+});
+
+/** Build an `AgentName[]` from raw kebab strings (the model's only constructor). */
+function agents(...names: string[]): AgentName[] {
+  return names.map((n) => {
+    const parsed = parseAgentName(n);
+    if (!parsed.ok) throw new Error(`bad test agent name: ${n}`);
+    return parsed.value;
+  });
+}
+
+describe("computeFrontDoorTransforms (pure front-door strip policy — task-90)", () => {
+  it("strips the ROOT `_AGENTS.md` to `AGENTS.md` and adds the CLAUDE.md alias for claude-code", () => {
+    const transforms = computeFrontDoorTransforms(
+      ["_AGENTS.md", "manifest.yml", "README.md"],
+      agents("claude-code"),
+    );
+    expect(transforms).toEqual([{ from: "_AGENTS.md", to: "AGENTS.md", aliases: ["CLAUDE.md"] }]);
+  });
+
+  it("handles the per-bundle front door too (root + each bundle), in shippable order", () => {
+    const transforms = computeFrontDoorTransforms(
+      ["_AGENTS.md", "bundles/core/_AGENTS.md", "bundles/web/_AGENTS.md", "manifest.yml"],
+      agents("claude-code"),
+    );
+    expect(transforms).toEqual([
+      { from: "_AGENTS.md", to: "AGENTS.md", aliases: ["CLAUDE.md"] },
+      {
+        from: "bundles/core/_AGENTS.md",
+        to: "bundles/core/AGENTS.md",
+        aliases: ["bundles/core/CLAUDE.md"],
+      },
+      {
+        from: "bundles/web/_AGENTS.md",
+        to: "bundles/web/AGENTS.md",
+        aliases: ["bundles/web/CLAUDE.md"],
+      },
+    ]);
+  });
+
+  it("maps each target to its front-door filename (claude-code→CLAUDE.md, gemini→GEMINI.md), de-duplicated", () => {
+    const transforms = computeFrontDoorTransforms(
+      ["_AGENTS.md"],
+      agents("claude-code", "gemini", "claude-code"),
+    );
+    expect(transforms).toEqual([
+      { from: "_AGENTS.md", to: "AGENTS.md", aliases: ["CLAUDE.md", "GEMINI.md"] },
+    ]);
+  });
+
+  it("creates NO alias for agents that read AGENTS.md natively (codex/hermes/openclaw)", () => {
+    const transforms = computeFrontDoorTransforms(
+      ["_AGENTS.md"],
+      agents("codex", "hermes", "openclaw"),
+    );
+    expect(transforms).toEqual([{ from: "_AGENTS.md", to: "AGENTS.md", aliases: [] }]);
+  });
+
+  it("matches ONLY the exact `_AGENTS.md` basename — never `_AGENTS.md.tmpl` or a canonical `AGENTS.md`", () => {
+    const transforms = computeFrontDoorTransforms(
+      [
+        "AGENTS.md", // canonical (not reserved) — left alone
+        "bundles/bundle-template/_AGENTS.md.tmpl", // the scaffold template — not a front door
+        "docs/_AGENTS.md.extra", // not the exact basename
+        "manifest.yml",
+      ],
+      agents("claude-code"),
+    );
+    expect(transforms).toEqual([]);
+  });
+
+  it("returns nothing when there are no front doors to transform", () => {
+    expect(computeFrontDoorTransforms(["manifest.yml"], agents("claude-code"))).toEqual([]);
   });
 });

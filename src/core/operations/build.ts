@@ -1,5 +1,5 @@
 import { join } from "node:path";
-import type { Project, ValidationReport } from "../model/index.js";
+import type { AgentName, Project, ValidationReport } from "../model/index.js";
 import type { FileSystem } from "../ports/index.js";
 import {
   type Lockfile,
@@ -44,6 +44,35 @@ const BUNDLES_DIR = "bundles";
 const BUNDLE_TEMPLATE_DIR = "bundle-template";
 
 /**
+ * The deliverable executor front door's **authoring-time reserved name** (doc 06/12). It carries a leading
+ * underscore so no agent's exact-basename front-door discovery (`AGENTS.md`/`CLAUDE.md`/`GEMINI.md`) ever
+ * auto-loads it during authoring — yet it stays `.md` and author-editable. The build strips the prefix to the
+ * canonical name (below), at the project root and inside each shipped bundle (the self-similar surfaces).
+ */
+const RESERVED_FRONT_DOOR = "_AGENTS.md";
+/** The canonical, universally auto-discovered executor front-door name the build restores `_AGENTS.md` to (doc 05). */
+const CANONICAL_FRONT_DOOR = "AGENTS.md";
+
+/**
+ * The per-target executor front-door alias FILENAMES — the build-created aliases a given target agent needs when
+ * it does NOT read the universal `AGENTS.md` natively (doc 05 §"AGENTS.md (and CLAUDE.md / GEMINI.md variants)").
+ * A DATA map so adding an agent later is a one-line change. Grounded in doc 05:
+ *
+ * | AgentName     | front-door filename | doc 05                                              |
+ * |---------------|---------------------|-----------------------------------------------------|
+ * | `claude-code` | `CLAUDE.md`         | "Claude Code using the sibling `CLAUDE.md`"         |
+ * | `gemini`      | `GEMINI.md`         | the `GEMINI.md` variant                             |
+ *
+ * Every other targeted agent (`codex`, `hermes`, `openclaw`, …) reads `AGENTS.md` natively (the broad open
+ * standard), so it needs no alias and is absent here — an alias is created ONLY for a target whose front-door
+ * basename differs from the canonical `AGENTS.md`.
+ */
+const FRONT_DOOR_ALIAS_FILENAMES: Readonly<Record<string, string>> = {
+  "claude-code": "CLAUDE.md",
+  gemini: "GEMINI.md",
+};
+
+/**
  * Top-level directory names that are NEVER part of the shippable set: builder-time working state and VCS/build
  * artifacts. `.authoring-backlog/` is the CLI's hidden authoring Backlog.md root (doc 10 §"The authoring-backlog")
  * — builder-time only, the analogue of the excluded dev backlog, and `init` already lists it in `.gitignore`.
@@ -77,6 +106,69 @@ export interface LockCheck extends VerifyResult {
 }
 
 /**
+ * One executor-front-door transform the build performs while archiving (doc 06/12): rename a reserved-prefix
+ * `_AGENTS.md` to its canonical `AGENTS.md`, and synthesize the per-target alias front doors beside it. Computed
+ * PURELY here (the policy); the packager adapter PERFORMS it (the effect — staging + the verbatim byte copy + the
+ * alias symlinks). All paths are root-relative POSIX, so they line up with {@link BuildPlan.shippable}.
+ */
+export interface FrontDoorTransform {
+  /** The reserved-prefix source path in the shippable set, e.g. `_AGENTS.md` or `bundles/core/_AGENTS.md`. */
+  readonly from: string;
+  /** The canonical stripped destination, in the same directory, e.g. `AGENTS.md` or `bundles/core/AGENTS.md`. */
+  readonly to: string;
+  /**
+   * The build-created per-target alias front doors, in the same directory (e.g. `CLAUDE.md`,
+   * `bundles/core/CLAUDE.md`) — one per targeted agent whose front-door basename is not the universal `AGENTS.md`
+   * (doc 05). Empty when every target reads `AGENTS.md` natively.
+   */
+  readonly aliases: readonly string[];
+}
+
+/**
+ * Compute the executor-front-door transforms for a project (doc 06 §"Self-similar surfaces"; doc 12 §"The
+ * executor front door's reserved-prefix transform"). For every reserved-prefix `_AGENTS.md` in the shippable set
+ * — the project-root one (task-87) and each SHIPPED bundle's `bundles/<id>/_AGENTS.md` (disabled bundles are
+ * already pruned from `shippable`, so they never appear) — emit a strip-to-canonical transform plus the
+ * build-created per-target aliases ({@link FRONT_DOOR_ALIAS_FILENAMES}). Matching is by EXACT basename, so the
+ * bundle-template's un-rendered `_AGENTS.md.tmpl` (a different basename) is never matched. Pure and deterministic
+ * (output order follows `shippable`'s sorted order; aliases follow `targets` order, de-duplicated).
+ *
+ * @param shippable - The sorted, root-relative shippable file paths (POSIX).
+ * @param targets - The project's declared target agents (`manifest.targets`).
+ * @returns The front-door transforms (one per reserved-prefix `_AGENTS.md`), in `shippable` order.
+ */
+export function computeFrontDoorTransforms(
+  shippable: readonly string[],
+  targets: readonly AgentName[],
+): FrontDoorTransform[] {
+  // The per-target alias FILENAMES (de-duplicated, in target order): a target with no entry reads AGENTS.md
+  // natively and contributes nothing. Computed once — it is the same for every front door in the project.
+  const aliasFilenames: string[] = [];
+  for (const target of targets) {
+    const filename = FRONT_DOOR_ALIAS_FILENAMES[target];
+    if (filename !== undefined && !aliasFilenames.includes(filename)) {
+      aliasFilenames.push(filename);
+    }
+  }
+
+  const transforms: FrontDoorTransform[] = [];
+  for (const rel of shippable) {
+    const slash = rel.lastIndexOf("/");
+    const base = slash === -1 ? rel : rel.slice(slash + 1);
+    if (base !== RESERVED_FRONT_DOOR) {
+      continue;
+    }
+    const dir = slash === -1 ? "" : rel.slice(0, slash + 1); // includes the trailing `/`, or "" at the root
+    transforms.push({
+      from: rel,
+      to: `${dir}${CANONICAL_FRONT_DOOR}`,
+      aliases: aliasFilenames.map((filename) => `${dir}${filename}`),
+    });
+  }
+  return transforms;
+}
+
+/**
  * The build plan — the pure, render-agnostic value the dry-run/package/publish commands compute and then act on
  * (doc 13 §2/§3: the core returns data; the shell formats + the adapter performs the effect). `ok` is `true`
  * exactly when validation passed AND the lockfile check passed — i.e. the project is buildable.
@@ -96,6 +188,12 @@ export interface BuildPlan {
   readonly vendored: readonly VendoredArtifactSummary[];
   /** The sorted, root-relative file paths that WOULD ship (AC82#3; the archive content for `build package`). */
   readonly shippable: readonly string[];
+  /**
+   * The executor-front-door transforms the packager applies while archiving (task-90; doc 06/12): each
+   * reserved-prefix `_AGENTS.md` in `shippable` (root + per shipped bundle) is renamed to its canonical
+   * `AGENTS.md` and its per-target aliases are synthesized. Empty when the deliverable carries no `_AGENTS.md`.
+   */
+  readonly frontDoorTransforms: readonly FrontDoorTransform[];
 }
 
 /** The input to {@link computeBuildPlan}: the loaded project plus the inputs the shell pre-reads for it. */
@@ -308,6 +406,10 @@ export function computeBuildPlan(fs: FileSystem, root: string, input: BuildPlanI
   // (3) shippable enumeration — the file tree that would ship (AC82#3 / `build package` archive content).
   const shippable = shippableFiles(fs, root, enabledBundleIds);
 
+  // (4) front-door transforms — the build-time `_AGENTS.md` → `AGENTS.md` (+ per-target aliases) strip the
+  // packager performs while archiving (task-90; doc 06/12). Pure policy here; the adapter performs the effect.
+  const frontDoorTransforms = computeFrontDoorTransforms(shippable, project.manifest.targets);
+
   // The vendored summary for the preview: each pinned artifact's locked version + source (AC82#3).
   const vendored: VendoredArtifactSummary[] =
     lock !== undefined
@@ -326,5 +428,6 @@ export function computeBuildPlan(fs: FileSystem, root: string, input: BuildPlanI
     lock: check,
     vendored,
     shippable,
+    frontDoorTransforms,
   };
 }

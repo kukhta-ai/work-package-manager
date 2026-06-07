@@ -1,8 +1,18 @@
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import {
+  copyFileSync,
+  lstatSync,
+  mkdirSync,
+  mkdtempSync,
+  readlinkSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
-import { basename, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { BUILD_FORMATS } from "../completion/enums.js";
 import { ValidationError } from "../core/errors.js";
+import type { FrontDoorTransform } from "../core/operations/build.js";
 import type { FileSystem } from "../core/ports/index.js";
 import { toPosix } from "../util/posix-path.js";
 import { runSync } from "../util/shell.js";
@@ -44,6 +54,15 @@ export interface PackageRequest {
   readonly format: BuildFormat;
   /** The sorted, root-relative shippable file paths (from the pure build plan). */
   readonly files: readonly string[];
+  /**
+   * The executor-front-door transforms to apply while archiving (task-90; doc 06/12; the pure plan's
+   * `frontDoorTransforms`). When non-empty, the tarball/zip formats STAGE the shippable set into a temp dir and,
+   * per transform, write the canonical `AGENTS.md` from the reserved `_AGENTS.md`'s bytes (verbatim), synthesize
+   * the per-target alias front doors, and drop the `_AGENTS.md` (so the archive carries the canonical name only).
+   * Omitted/empty ⇒ the archive contains exactly `files`, unchanged (the pre-task-90 behaviour). `git` archives
+   * the committed HEAD and does not apply transforms (the same way it ignores `files`).
+   */
+  readonly transforms?: readonly FrontDoorTransform[];
 }
 
 /** A request to push a built archive to a destination (doc 10 `build publish <destination>`). */
@@ -137,16 +156,104 @@ export function createArchive(req: PackageRequest): string {
   }
 }
 
-/** Create a gzip tarball of the shippable files via `tar -C <root> -T <listfile>` (a temp list avoids ARG_MAX). */
+/**
+ * A staged archive source: the directory whose tree is archived plus the sorted, root-relative file list to put
+ * in it. Either the project root + the plain shippable set (no transforms), or a temp staging dir + the
+ * transformed set (the `_AGENTS.md` → `AGENTS.md` strip applied — task-90).
+ */
+interface ArchiveSource {
+  /** The directory the archive is rooted at (`-C <dir>` / the zip cwd). */
+  readonly dir: string;
+  /** The sorted, root-relative paths to archive from {@link dir}. */
+  readonly files: readonly string[];
+  /** A temp staging dir to delete after archiving, or `undefined` when archiving the project root directly. */
+  readonly cleanup: string | undefined;
+}
+
+/**
+ * Stage the shippable set into a temp dir and apply the executor-front-door transforms (task-90; doc 06/12), so
+ * the archive carries the canonical `AGENTS.md` (+ per-target aliases) instead of the reserved `_AGENTS.md`. Each
+ * shippable entry is copied into the staging dir PRESERVING symlinks (the scope aliases must survive as links),
+ * then per transform: the canonical front door is written from the ORIGINAL `_AGENTS.md`'s bytes (verbatim — the
+ * build never regenerates it; AC#6), each alias is created as a relative symlink to that canonical name (matching
+ * doc 06's build-created aliases), and the staged `_AGENTS.md` is dropped (so it appears under the canonical name
+ * only; AC#5). Returns the staging dir + the final sorted file list. The caller deletes the staging dir.
+ *
+ * @param req - The package request (root, shippable files, transforms).
+ * @returns The {@link ArchiveSource} rooted at the staging dir.
+ */
+function stageWithTransforms(req: PackageRequest): ArchiveSource {
+  const dir = mkdtempSync(join(tmpdir(), "wpm-stage-"));
+
+  // (1) Copy the shippable set into the staging dir, preserving symlinks (scope aliases) and any dir leaves.
+  for (const rel of req.files) {
+    const src = join(req.root, rel);
+    const dst = join(dir, rel);
+    mkdirSync(dirname(dst), { recursive: true });
+    const stat = lstatSync(src);
+    if (stat.isSymbolicLink()) {
+      // Re-create the link with its exact target so the archived entry is byte-identical to a non-staged build.
+      symlinkSync(readlinkSync(src), dst);
+    } else if (stat.isDirectory()) {
+      // A directory leaf (rare — the ship set is files + symlink aliases); recreate it so the path exists.
+      mkdirSync(dst, { recursive: true });
+    } else {
+      copyFileSync(src, dst);
+    }
+  }
+
+  // (2) Apply each front-door transform, tracking which paths the archive should list.
+  const dropped = new Set<string>();
+  const added: string[] = [];
+  for (const transform of req.transforms ?? []) {
+    const toDst = join(dir, transform.to);
+    mkdirSync(dirname(toDst), { recursive: true });
+    // Verbatim: copy the ORIGINAL reserved front door's bytes (not the staged copy, which is about to be dropped).
+    copyFileSync(join(req.root, transform.from), toDst);
+    added.push(transform.to);
+    // The aliases are relative symlinks to the canonical name in the same directory (e.g. CLAUDE.md → AGENTS.md).
+    const canonical = basename(transform.to);
+    for (const alias of transform.aliases) {
+      const aliasDst = join(dir, alias);
+      mkdirSync(dirname(aliasDst), { recursive: true });
+      symlinkSync(canonical, aliasDst);
+      added.push(alias);
+    }
+    // Drop the staged reserved front door so the archive never carries both names (AC#5).
+    rmSync(join(dir, transform.from), { force: true });
+    dropped.add(transform.from);
+  }
+
+  const files = [...req.files.filter((f) => !dropped.has(f)), ...added].sort();
+  return { dir, files, cleanup: dir };
+}
+
+/**
+ * Resolve where a tarball/zip archive is rooted and which files it lists. With front-door transforms present, the
+ * shippable set is staged and transformed (task-90); otherwise the archive is rooted at the project root over the
+ * plain shippable set (the pre-task-90 path, byte-identical).
+ */
+function archiveSource(req: PackageRequest): ArchiveSource {
+  if ((req.transforms ?? []).length > 0) {
+    return stageWithTransforms(req);
+  }
+  return { dir: req.root, files: req.files, cleanup: undefined };
+}
+
+/** Create a gzip tarball of the shippable files via `tar -C <dir> -T <listfile>` (a temp list avoids ARG_MAX). */
 function createTarball(req: PackageRequest, out: string): string {
+  const source = archiveSource(req);
   const listDir = mkdtempSync(join(tmpdir(), "wpm-pkg-"));
   const listFile = join(listDir, "files.txt");
   try {
-    // One relative path per line; `tar -T` reads them and archives each, rooted at `-C <root>`.
-    writeFileSync(listFile, `${req.files.join("\n")}\n`, "utf8");
-    runArchiveTool("tar", ["-czf", out, "-C", req.root, "-T", listFile], "tar");
+    // One relative path per line; `tar -T` reads them and archives each, rooted at `-C <dir>`.
+    writeFileSync(listFile, `${source.files.join("\n")}\n`, "utf8");
+    runArchiveTool("tar", ["-czf", out, "-C", source.dir, "-T", listFile], "tar");
   } finally {
     rmSync(listDir, { recursive: true, force: true });
+    if (source.cleanup !== undefined) {
+      rmSync(source.cleanup, { recursive: true, force: true });
+    }
   }
   return out;
 }
@@ -165,15 +272,22 @@ function createGitArchive(req: PackageRequest, out: string): string {
   return out;
 }
 
-/** Create a zip of the shippable files via `zip -r -q` (cwd = root); a missing `zip` is a clear typed error. */
+/** Create a zip of the shippable files via `zip -r -q` (cwd = source dir); a missing `zip` is a clear typed error. */
 function createZip(req: PackageRequest, out: string): string {
   if (!toolAvailable("zip", "-v")) {
     throw new ValidationError(
       "`zip` is not available on this system — install it, or use `--format tarball` (or `--format git`)",
     );
   }
-  // `zip -r -q <out> <relpath…>` run with cwd=root so the entries are stored root-relative.
-  runArchiveTool("zip", ["-r", "-q", out, ...req.files], "zip", { cwd: req.root });
+  const source = archiveSource(req);
+  try {
+    // `zip -r -q <out> <relpath…>` run with cwd=<source dir> so the entries are stored root-relative.
+    runArchiveTool("zip", ["-r", "-q", out, ...source.files], "zip", { cwd: source.dir });
+  } finally {
+    if (source.cleanup !== undefined) {
+      rmSync(source.cleanup, { recursive: true, force: true });
+    }
+  }
   return out;
 }
 

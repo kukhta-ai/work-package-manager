@@ -1,5 +1,13 @@
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, readdirSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  lstatSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { MemoryFileSystem } from "../../../src/adapters/memory-fs.js";
@@ -81,6 +89,78 @@ describe("createArchive — tarball (always available)", () => {
         thrown = e;
       }
       expect(isDomainError(thrown)).toBe(true);
+    });
+  });
+});
+
+describe("createArchive — front-door transforms (task-90, staging)", () => {
+  it("strips `_AGENTS.md` → `AGENTS.md` (verbatim) + the alias, preserves scope-alias symlinks, drops `_AGENTS.md`", async () => {
+    await withTempDir(async (dir) => {
+      const root = join(dir, "proj");
+      mkdirSync(join(root, "bundles", "core"), { recursive: true });
+      mkdirSync(join(root, "installer-skills"), { recursive: true });
+      writeFileSync(join(root, "manifest.yml"), "project:\n  name: demo\n");
+      const ROOT_BYTES = "# root front door\nSENTINEL-VERBATIM-βytes\n";
+      const BUNDLE_BYTES = "# bundle front door\nSENTINEL-BUNDLE\n";
+      writeFileSync(join(root, "_AGENTS.md"), ROOT_BYTES);
+      writeFileSync(join(root, "bundles", "core", "_AGENTS.md"), BUNDLE_BYTES);
+      writeFileSync(join(root, "installer-skills", "demo-installer.txt"), "skill\n");
+      // A scope-alias symlink (the only symlink a generated project carries) — must survive staging as a link.
+      mkdirSync(join(root, ".claude"), { recursive: true });
+      symlinkSync("../installer-skills", join(root, ".claude", "skills"));
+
+      const out = join(dir, "out");
+      mkdirSync(out, { recursive: true });
+      const archive = createArchive({
+        root,
+        outDir: out,
+        baseName: "demo-1.0.0",
+        format: "tarball",
+        files: [
+          ".claude/skills",
+          "_AGENTS.md",
+          "bundles/core/_AGENTS.md",
+          "installer-skills/demo-installer.txt",
+          "manifest.yml",
+        ],
+        transforms: [
+          { from: "_AGENTS.md", to: "AGENTS.md", aliases: ["CLAUDE.md"] },
+          {
+            from: "bundles/core/_AGENTS.md",
+            to: "bundles/core/AGENTS.md",
+            aliases: ["bundles/core/CLAUDE.md"],
+          },
+        ],
+      });
+
+      const listed = execFileSync("tar", ["-tzf", archive], { encoding: "utf8" })
+        .split("\n")
+        .map((l) => l.trim())
+        .filter((l) => l.length > 0 && !l.endsWith("/"));
+      // AC90#5: no `_AGENTS.md` anywhere; AC90#2: canonical + alias at root and per bundle.
+      expect(listed.some((l) => l.includes("_AGENTS.md"))).toBe(false);
+      expect(listed.sort()).toEqual(
+        [
+          ".claude/skills",
+          "AGENTS.md",
+          "CLAUDE.md",
+          "bundles/core/AGENTS.md",
+          "bundles/core/CLAUDE.md",
+          "installer-skills/demo-installer.txt",
+          "manifest.yml",
+        ].sort(),
+      );
+
+      // Extract and prove the bytes are verbatim (AC90#6), the alias resolves (AC90#2), and the scope alias is
+      // still a symlink to installer-skills/ (symlink preservation).
+      const ex = join(dir, "ex");
+      mkdirSync(ex, { recursive: true });
+      execFileSync("tar", ["-xzf", archive, "-C", ex]);
+      expect(readFileSync(join(ex, "AGENTS.md"), "utf8")).toBe(ROOT_BYTES);
+      expect(readFileSync(join(ex, "bundles", "core", "AGENTS.md"), "utf8")).toBe(BUNDLE_BYTES);
+      expect(lstatSync(join(ex, "CLAUDE.md")).isSymbolicLink()).toBe(true);
+      expect(readFileSync(join(ex, "CLAUDE.md"), "utf8")).toBe(ROOT_BYTES);
+      expect(lstatSync(join(ex, ".claude", "skills")).isSymbolicLink()).toBe(true);
     });
   });
 });

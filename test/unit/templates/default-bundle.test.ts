@@ -156,9 +156,12 @@ describe("default bundle template — createBundle end-to-end (doc 06/07/08/09)"
     expect(Array.isArray(config.definition_of_done)).toBe(true);
     expect((config.definition_of_done as unknown[]).length).toBeGreaterThan(0);
 
-    // The per-bundle scope-notes front door exists and reads as bundle-scoped notes (doc 07 §Template layout):
-    expect(fs.exists(`${ROOT}/bundles/${SAMPLE_ID}/AGENTS.md`)).toBe(true);
-    const agents = fs.read(`${ROOT}/bundles/${SAMPLE_ID}/AGENTS.md`);
+    // The per-bundle executor front door is author-owned under the reserved build-stripped prefix `_AGENTS.md`
+    // (task-90; doc 06/12) — NEVER the canonical `AGENTS.md`, which an authoring agent would auto-discover and
+    // follow as a directive. The build strips the prefix to `bundles/<id>/AGENTS.md` in the archive.
+    expect(fs.exists(`${ROOT}/bundles/${SAMPLE_ID}/AGENTS.md`)).toBe(false);
+    expect(fs.exists(`${ROOT}/bundles/${SAMPLE_ID}/_AGENTS.md`)).toBe(true);
+    const agents = fs.read(`${ROOT}/bundles/${SAMPLE_ID}/_AGENTS.md`);
     expect(agents).toContain(SAMPLE_ID); // {{bundle-id}} substituted
     expect(agents).toContain("demo"); // {{project-name}} substituted
     expect(agents.toLowerCase()).toContain("closest"); // closest-wins scope-notes mechanic

@@ -226,7 +226,7 @@ describeIfBuilt(
         // A real authoring workspace; project-bound commands resolve it via -C and operate on wip/ (task-88).
         const proj = initWorkspace(builtCli, dir);
         // init materialised the project default bundle scaffold:
-        expect(existsSync(join(proj, "wip", "bundles", "bundle-template", "AGENTS.md.tmpl"))).toBe(
+        expect(existsSync(join(proj, "wip", "bundles", "bundle-template", "_AGENTS.md.tmpl"))).toBe(
           true,
         );
 

@@ -59,7 +59,7 @@ describeIfBuilt("bundle template show / set E2E via dist/cli.js (tasks 55/56)", 
       const out = wpm(proj, ["bundle", "template", "show"]);
       expect(out.status).toBe(0);
       expect(out.stdout).toContain("Bundle template: bundles/bundle-template/");
-      expect(out.stdout).toContain("AGENTS.md.tmpl");
+      expect(out.stdout).toContain("_AGENTS.md.tmpl");
     });
   });
 
@@ -71,7 +71,7 @@ describeIfBuilt("bundle template show / set E2E via dist/cli.js (tasks 55/56)", 
       expect(out.stdout).toMatch(/set bundle template from "default"/);
 
       // the built-in default's files/ tree landed (AGENTS.md.tmpl + the install-backlog config + payload slots):
-      expect(existsSync(join(proj, "wip", "bundles", "bundle-template", "AGENTS.md.tmpl"))).toBe(
+      expect(existsSync(join(proj, "wip", "bundles", "bundle-template", "_AGENTS.md.tmpl"))).toBe(
         true,
       );
       expect(
@@ -81,7 +81,7 @@ describeIfBuilt("bundle template show / set E2E via dist/cli.js (tasks 55/56)", 
       ).toBe(true);
       // verbatim copy — the {{placeholders}} are NOT substituted (the scaffold keeps them for `bundle new`):
       expect(
-        readFileSync(join(proj, "wip", "bundles", "bundle-template", "AGENTS.md.tmpl"), "utf8"),
+        readFileSync(join(proj, "wip", "bundles", "bundle-template", "_AGENTS.md.tmpl"), "utf8"),
       ).toMatch(/\{\{bundle-id\}\}/);
     });
   });
@@ -95,7 +95,7 @@ describeIfBuilt("bundle template show / set E2E via dist/cli.js (tasks 55/56)", 
       expect(out.status).toBe(0);
       expect(out.stdout).toContain("Bundle template: bundles/bundle-template/");
       expect(out.stdout).toContain("Files:");
-      expect(out.stdout).toContain("AGENTS.md.tmpl");
+      expect(out.stdout).toContain("_AGENTS.md.tmpl");
     });
   });
 
