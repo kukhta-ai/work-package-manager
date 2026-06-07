@@ -8,7 +8,7 @@ description: Author a bundle-project — a wpm agentic-installer that another pe
 You are helping a human author a **bundle-project**: a repository they hand to someone else, whose own AI agent
 then *installs* it. You drive the `wpm` CLI to scaffold and shape the project; you write the content; the
 recipient's agent does the actual install later. This skill is the when-to-use and the workflow shape — the
-depth lives in the four files under `references/`, which you read on demand.
+depth lives in the six files under `references/`, which you read on demand.
 
 > The CLI binary is `wpm` (its `installer` alias is the same program). All examples below use `wpm`.
 
@@ -82,5 +82,9 @@ separate regenerate step.
   Backlog.md flag rules, and the structure-not-content / no-mirror rules, from doc `08`.
 - `references/quality-protocol.md` — the authoring quality discipline: the three author decisions, simulate the
   executor, the leaked-coupling check, and the must-nots, from doc `04`.
+- `references/task-conventions.md` — the acceptance-criteria *what-not-how* contract for every recipe task you
+  write (observable outcomes, the seam-vs-stuffing rule, the fast classifier), from `docs/task-writing-conventions.md`.
+- `references/native-surfaces.md` — the native agent surfaces, the five skill roles (where each lives and what
+  triggers it), scoped skill discovery, and the executor front-door / per-target alias mechanic, from doc `05`.
 
 Keep this page in context; pull a reference in only when you reach for what it covers.
