@@ -3,10 +3,15 @@
 # Re-read on every resume; update at every phase boundary.
 # (Distinct from _bmad/ — that is BMAD's own install dir; this dot-dir is our tracker.)
 
-phase: 7
-phase_name: "Authoring-workspace epic-3 — Phase 7 HANDOFF DONE: PR #2 open (feature/authoring-workspace -> feature/cli), awaiting HUMAN review+merge"
-branch: feature/authoring-workspace
-epic: authoring-workspace
+phase: 5
+phase_name: "Authoring-context epic-4 — Phase 5 BAUT (distil wpm concept+usage into the authoring skill + front door)"
+branch: feature/authoring-context
+epic: authoring-context
+# EPIC-4 (authoring-context) STARTED 2026-06-07: branched off feature/authoring-workspace (depends on epic-3's authoring surfaces; keeps PR #2 clean).
+# GOAL: improve the authoring agent's understanding of wpm concept+usage by distilling the doc set into its ONLY two runtime surfaces (installer-builder skill + workspace authoring front door). Context ledger: _bmad-output/authoring-context-ledger.md (Phase A+B done).
+# Stories: 96 (AC what-not-how contract ref) + 97 (native-surfaces ref) = Story A; 98 (name the bet + executor loop + done-gate + how-to-use close) + 99 (drift/correctness fixes: skill install, no-rerender, wip/ paths, build rows, drop non-existent templates) = Story B; 100 (dogfood-verify) = Story C. 101 = human-gated docs/templates reconcile (build templates vs fix docs/10-11 + doc-05).
+# DECISIONS (proceeding defaults; user said "proceed"): teach current truth in the skill; DEFER building templates + editing human-owned docs (05/10/11) -> TASK-101 human-gated. EPIC-3 below.
+# === EPIC-3 (authoring-workspace) COMPLETE — PR #2 open (feature/authoring-workspace -> feature/cli), awaiting HUMAN merge. Details retained below. ===
 active_story: null
 review_cycle: 0
 # *** ALL 10 EPIC-3 STORIES DONE + merged --no-ff into feature/authoring-workspace: 85, 92, 86, 87, 91, 88, 94, 89, 90, 93. ***
