@@ -26,7 +26,9 @@ authoring backlog, `builds/`) never ships.
   install-backlogs, run the review-phase tasks. List it, pick work, mark it done as you go (`04`, `11`).
 - **Invoke the `installer-builder` authoring skill** for the authoring workflow and the `wpm` command surface
   — it teaches how to scaffold bundles, register payload and skills, declare dependencies and targets, and
-  drive Backlog.md directly for recipe tasks (`04`, `10`).
+  drive Backlog.md directly for recipe tasks (`04`, `10`). If your agent does not list this skill, run `wpm
+  skill install` to copy it into your agent's user skill scope (`~/.claude/skills`, `~/.agents/skills`, …),
+  then restart the session so it is catalogued (`05`, `12`).
 - **Structure through the CLI, content by hand.** Use `wpm` for projects, bundles, manifest/`bundle.yml`
   entries, and registered references; write the sense-dependent prose (task bodies, SKILL.md bodies, payload
   files, the executor front door) yourself via the filesystem. The tool never writes prose; you never

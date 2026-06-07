@@ -7,9 +7,16 @@ phase: 5
 phase_name: "Authoring-workspace epic-3 — Phase 5 BAUT (per-story build of tasks 85-94)"
 branch: feature/authoring-workspace
 epic: authoring-workspace
-active_story: task-85
+active_story: task-91
 review_cycle: 0
-sub_branch: feature/aw-task-85
+# DONE (merged --no-ff into feature/authoring-workspace): 85, 92, 86, 87.  IN FLIGHT: 91.  REMAINING: 88, 94, 89, 90, 93.
+# Sub-branch naming: feature/aw-task-<id> (hyphen, not slash — the epic branch occupies the refs/heads/feature/authoring-workspace namespace).
+# ENV (re-establish on resume): Node 20 at $HOME/.local/node20/bin (repo needs >=20; system node is v18 and crashes vitest);
+#   backlog CLI at $HOME/.local/bin; rolldown needs @rolldown/binding-linux-x64-gnu (npm install --no-save it if missing after npm ci).
+#   Per-task FAST verify = `npm test` with NO dist (8 *.e2e.test.ts self-skip; ~50s, ~1043 tests). FULL cold = `npm run build && npm test` (~21min, 1177; real-binary e2e active) -> reserve for the epic gate.
+# Worker did the doc tasks (85/92/86) as orchestrator-spawned subagents + a SEPARATE reviewer subagent each (story-automator-review falls back to manual: it mutates+needs a live sprint session). Code tasks 87+ same pattern.
+# task-86 absorbed a doc-13 + doc-06 reconciliation (context resolution -> wip/manifest.yml marker, deliverable root=<workspace>/wip) beyond its stated 07/09/10/11/12 scope -- necessary realization fix the code tasks implement against; flag at gate.
+# CARRY-FORWARD for 88/93: delete test/helpers/flat-project.ts (the 87->88 resolution bridge) once workspace resolution lands; deriveArtefacts/lifecycle must stop re-rendering canonical AGENTS.md on mutation (88/90).
 # === EPIC-3 (Authoring Workspace) — STARTED 2026-06-07 ===
 # Branched feature/authoring-workspace off feature/cli (ee2b501 sprint setup) because epic-3 depends on the
 # CLI epic's init/build code, which is NOT yet on dev (dev=foundation only; PR #1 feature/cli->dev still human-gated).
