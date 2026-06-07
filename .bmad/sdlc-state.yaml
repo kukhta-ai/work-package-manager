@@ -3,10 +3,26 @@
 # Re-read on every resume; update at every phase boundary.
 # (Distinct from _bmad/ — that is BMAD's own install dir; this dot-dir is our tracker.)
 
-phase: 7
-phase_name: "CLI epic-2 — Phase 7 HANDOFF DONE: PR #1 open (feature/cli -> dev), awaiting HUMAN review+merge"
-branch: feature/cli
-epic: cli
+phase: 5
+phase_name: "Authoring-workspace epic-3 — Phase 5 BAUT (per-story build of tasks 85-94)"
+branch: feature/authoring-workspace
+epic: authoring-workspace
+active_story: null
+review_cycle: 0
+# === EPIC-3 (Authoring Workspace) — STARTED 2026-06-07 ===
+# Branched feature/authoring-workspace off feature/cli (ee2b501 sprint setup) because epic-3 depends on the
+# CLI epic's init/build code, which is NOT yet on dev (dev=foundation only; PR #1 feature/cli->dev still human-gated).
+# Goal (user /goal): implement epic-3 tasks 85-94 one by one via the full SDLC.
+# 10 stories, dependency-ordered sequences (backlog sequence list):
+#   S1: 85 (docs 01,04,06,11,12 = workspace vocab/nesting), 92 (embed doc-04 protocol in skill)
+#   S2: 86 (docs 10,12,07,09,11 = CLI/build spec; pins _AGENTS.md prefix)
+#   S3: 87 (init scaffold), 91 (deliver authoring skill to agent scope)
+#   S4: 88 (resolve workspace+deliverable root), 94 (README/first-run UX)
+#   S5: 89 (build un-nests wip/ -> builds/)   S6: 90 (executor front door under _AGENTS.md prefix, stripped at build)
+#   S7: 93 (migrate tests/fixtures to workspace layout)
+# Commit identity: Evgenii K <evgeniikuhta@gmail.com> (USER-AUTHORIZED 2026-06-07 via AskUserQuestion, matching repo history).
+# Git author config was blocked by the safety classifier as impersonation until the user explicitly chose "As you (match history)".
+# === PRIOR EPIC (CLI epic-2) HISTORY BELOW — retained for reference ===
 # *** GOAL COMPLETE: all 84 backlog tasks DONE; foundation epic on dev (e1a0fb2, pushed to origin); CLI epic gate-PASS, handed off as PR #1. ***
 # PHASE 7 (per user choice "Open a PR to dev"): pushed origin dev (fast-forward 3fd60ba->e1a0fb2, publishing the goal-authorized foundation->dev merge) +
 #   pushed feature/cli; opened PR #1 https://github.com/kukhta-ai/work-package-manager/pull/1 (feature/cli -> dev, clean 41-commit CLI-epic diff). The HUMAN reviews + merges
