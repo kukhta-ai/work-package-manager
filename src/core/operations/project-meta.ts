@@ -12,9 +12,11 @@ import type { ApplyContext, ApplyOutcome, OperationSpec } from "./lifecycle.js";
  * scope: this edits `manifest.yml`'s `project:` map (project-bound, no `<id>`), where `bundle <id> meta` edits a
  * bundle's `bundle.yml`.
  *
- * It rides the task-25 `runMutation` six-beat lifecycle, so ④ RERENDER re-derives the front-door + orchestrator
- * around it automatically — a changed `--name` flows to `AGENTS.md` and the `<project>-installer/SKILL.md` (the
- * derived artefacts carry `{{project-name}}`, doc 10 line 34). It does NOT materialise authoring tasks (editing
+ * It rides the task-25 `runMutation` six-beat lifecycle, so ④ RERENDER re-derives the auto-managed artefacts
+ * around it automatically — a changed `--name` flows to the `<project>-installer/SKILL.md` orchestrator and the
+ * scope aliases (which carry `{{project-name}}`, doc 10 line 34). The deliverable's executor front door is
+ * author-owned (`_AGENTS.md`, doc 10/12) and is **excluded** from the re-render — the author keeps it current.
+ * It does NOT materialise authoring tasks (editing
  * project metadata queues no work), exactly as `version.ts` set/bump and `bundle-meta.ts` omit it.
  *
  * **No model/schema change**: {@link "../model/manifest.js".ProjectMeta} already declares all five fields and the
@@ -51,8 +53,9 @@ export interface EditProjectMetaInput {
 /**
  * Build the `project meta` {@link OperationSpec} (doc 10 row 141). ③ APPLY updates only the provided `project:`
  * fields in `manifest.yml` comment-and-key-order-preservingly via {@link editYaml} `setIn`; ④ RERENDER (the
- * harness) re-renders the derived front-door + orchestrator, so a changed `--name` reaches `AGENTS.md` and the
- * installer SKILL.md (doc 10 line 34). No `check` (the fields are free strings — no bad value is possible; the
+ * harness) re-renders the auto-managed artefacts, so a changed `--name` reaches the installer SKILL.md and the
+ * scope aliases (the executor front door is author-owned `_AGENTS.md`, excluded from the re-render; doc 10/12).
+ * No `check` (the fields are free strings — no bad value is possible; the
  * leaf already guarded the no-flag case) and no `materialise`.
  *
  * @returns The operation spec.

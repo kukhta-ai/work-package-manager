@@ -12,6 +12,7 @@ import {
   type TemplateFile,
 } from "../model/index.js";
 import type { BacklogMd, FileSystem } from "../ports/index.js";
+import { EXECUTOR_FRONT_DOOR_PATH } from "../services/derived-artefacts.js";
 import { materialiseAuthoringTasks } from "../services/materialisation.js";
 import { renderSnippet, renderTree } from "../services/render.js";
 import { parseBundleManifest, parseManifest } from "../services/schema/index.js";
@@ -75,9 +76,11 @@ const EXECUTOR_FRONT_DOOR = "_AGENTS.md";
 /**
  * The rendered path the artefact deriver gives the executor front door (its snippet lives at `snippets/AGENTS.md`).
  * `init` recognises this file in the derived set and relocates it to {@link EXECUTOR_FRONT_DOOR} under `wip/`,
- * rather than writing a canonical `wip/AGENTS.md` (which an authoring agent would read as a directive).
+ * rather than writing a canonical `wip/AGENTS.md` (which an authoring agent would read as a directive). It is the
+ * shared {@link EXECUTOR_FRONT_DOOR_PATH} constant so `init`'s relocation and the lifecycle's re-render exclusion
+ * can never disagree about which derived file is the author-owned front door.
  */
-const DERIVED_EXECUTOR_FRONT_DOOR_PATH = "AGENTS.md";
+const DERIVED_EXECUTOR_FRONT_DOOR_PATH = EXECUTOR_FRONT_DOOR_PATH;
 /**
  * The canonical name of the workspace-root **authoring front door** (docs 04, 12) and its symlink alias.
  * The authoring front door addresses the *authoring* agent (AC#4); it ships nothing and is distinct from the

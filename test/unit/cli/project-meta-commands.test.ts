@@ -51,8 +51,8 @@ function io(): CliIo & { out: ReturnType<typeof collector>; err: ReturnType<type
 function seed(manifest = MANIFEST_YML): { fs: MemoryFileSystem; backlog: FakeBacklog } {
   const fs = new MemoryFileSystem();
   const backlog = new FakeBacklog();
-  fs.write(`${PROJ}/manifest.yml`, manifest);
-  fs.makeDirectories(`${PROJ}/installer-skills`);
+  fs.write(`${PROJ}/wip/manifest.yml`, manifest);
+  fs.makeDirectories(`${PROJ}/wip/installer-skills`);
   backlog.init(AUTHORING, { taskPrefix: "authoring" });
 
   // The front-door + orchestrator snippets the ④ RERENDER renders (project-name feeds both).
@@ -77,7 +77,7 @@ function deps(fs: MemoryFileSystem, backlog: FakeBacklog, cwd = "/elsewhere"): C
 
 /** The parsed `manifest.yml` on disk (throws if it does not parse). */
 function manifestMeta(fs: MemoryFileSystem) {
-  const parsed = parseManifest(parseYaml(fs.read(`${PROJ}/manifest.yml`)));
+  const parsed = parseManifest(parseYaml(fs.read(`${PROJ}/wip/manifest.yml`)));
   if (!parsed.ok) throw new Error(`manifest did not parse: ${parsed.problem.message}`);
   return parsed.value.meta;
 }
@@ -127,7 +127,7 @@ describe("project meta — AC38#1 (each flag updates its field; omitted untouche
 
   it("omitted fields are byte-untouched — only --description changes (name/version/comment intact)", async () => {
     const { fs, backlog } = seed();
-    const before = fs.read(`${PROJ}/manifest.yml`);
+    const before = fs.read(`${PROJ}/wip/manifest.yml`);
     expect(
       await run(
         ["project", "meta", "--description", "new desc", "-C", PROJ],
@@ -135,7 +135,7 @@ describe("project meta — AC38#1 (each flag updates its field; omitted untouche
         io(),
       ),
     ).toBe(0);
-    const after = fs.read(`${PROJ}/manifest.yml`);
+    const after = fs.read(`${PROJ}/wip/manifest.yml`);
     const meta = manifestMeta(fs);
     expect(meta.description).toBe("new desc");
     expect(meta.name).toBe("demo"); // untouched
@@ -171,7 +171,7 @@ describe("project meta — AC38#1 (each flag updates its field; omitted untouche
     ).toBe(0);
     expect(manifestMeta(fs).author).toBe("Jane");
     // the leading comment + the pre-existing fields survive the introduction:
-    const text = fs.read(`${PROJ}/manifest.yml`);
+    const text = fs.read(`${PROJ}/wip/manifest.yml`);
     expect(text).toContain("# demo project —");
     expect(text).toContain("description: the original description");
   });
@@ -183,7 +183,7 @@ describe("project meta — AC38#1 (each flag updates its field; omitted untouche
 describe("project meta — AC38#2 (comment + key order preserved)", () => {
   it("the leading comment AND the project: key order survive an edit", async () => {
     const { fs, backlog } = seed();
-    const orderBefore = projectKeyOrder(fs.read(`${PROJ}/manifest.yml`));
+    const orderBefore = projectKeyOrder(fs.read(`${PROJ}/wip/manifest.yml`));
     expect(orderBefore).toEqual(["name", "version", "description"]);
 
     expect(
@@ -194,7 +194,7 @@ describe("project meta — AC38#2 (comment + key order preserved)", () => {
       ),
     ).toBe(0);
 
-    const text = fs.read(`${PROJ}/manifest.yml`);
+    const text = fs.read(`${PROJ}/wip/manifest.yml`);
     expect(text).toContain("# demo project — metadata edited via `wpm project meta`");
     expect(projectKeyOrder(text)).toEqual(orderBefore); // key order is stable across the edit
     expect(text).toMatch(/description:\s*edited/);
@@ -207,14 +207,14 @@ describe("project meta — AC38#2 (comment + key order preserved)", () => {
 describe("project meta — AC38#3 (no-flag no-op)", () => {
   it("with NO flags, makes no change, reports nothing updated, exits 0 — and does NOT enter the lifecycle", async () => {
     const { fs, backlog } = seed();
-    const before = fs.read(`${PROJ}/manifest.yml`);
+    const before = fs.read(`${PROJ}/wip/manifest.yml`);
     const i = io();
     expect(await run(["project", "meta", "-C", PROJ], deps(fs, backlog), i)).toBe(0);
     expect(i.out.text).toMatch(/nothing to update/);
     // the manifest is BYTE-IDENTICAL:
-    expect(fs.read(`${PROJ}/manifest.yml`)).toBe(before);
+    expect(fs.read(`${PROJ}/wip/manifest.yml`)).toBe(before);
     // the harness was NEVER entered — so ④ RERENDER did not run and AGENTS.md was NOT written (the seed has none).
-    expect(fs.exists(`${PROJ}/AGENTS.md`)).toBe(false);
+    expect(fs.exists(`${PROJ}/wip/AGENTS.md`)).toBe(false);
   });
 });
 
@@ -268,25 +268,25 @@ describe("project meta — AC38#5 (help)", () => {
 // the ④ RERENDER on --name
 // ───────────────────────────────────────────────────────────────────────────────────────────────────────────
 describe("project meta — the ④ RERENDER on --name (doc-10:34)", () => {
-  it("a --name change re-renders AGENTS.md (with the new name) + the installer skill at the name-derived path", async () => {
+  it("a --name change re-renders the installer skill at the new name-derived path; the front door stays author-owned", async () => {
     const { fs, backlog } = seed();
     expect(
       await run(["project", "meta", "--name", "renamed", "-C", PROJ], deps(fs, backlog), io()),
     ).toBe(0);
-    // the front-door re-rendered with the new name:
-    expect(fs.exists(`${PROJ}/AGENTS.md`)).toBe(true);
-    expect(fs.read(`${PROJ}/AGENTS.md`)).toContain("renamed");
     // the orchestrator snippet path carries {{project-name}} → the installer SKILL.md is at the NEW name's path:
-    expect(fs.exists(`${PROJ}/installer-skills/renamed-installer/SKILL.md`)).toBe(true);
+    expect(fs.exists(`${PROJ}/wip/installer-skills/renamed-installer/SKILL.md`)).toBe(true);
+    // the executor front door is author-owned and is NOT re-rendered on a mutation (task-88):
+    expect(fs.exists(`${PROJ}/wip/AGENTS.md`)).toBe(false);
   });
 
-  it("a --description-only edit still re-renders, but AGENTS.md keeps the ORIGINAL name", async () => {
+  it("a --description-only edit still re-renders the orchestrator (front door stays author-owned)", async () => {
     const { fs, backlog } = seed();
     expect(
       await run(["project", "meta", "--description", "d", "-C", PROJ], deps(fs, backlog), io()),
     ).toBe(0);
-    expect(fs.exists(`${PROJ}/AGENTS.md`)).toBe(true);
-    expect(fs.read(`${PROJ}/AGENTS.md`)).toContain("demo"); // the name was not changed
+    // the name was not changed, so the orchestrator stays at the demo-derived path; the front door is untouched:
+    expect(fs.exists(`${PROJ}/wip/installer-skills/demo-installer/SKILL.md`)).toBe(true);
+    expect(fs.exists(`${PROJ}/wip/AGENTS.md`)).toBe(false);
   });
 });
 
@@ -312,6 +312,6 @@ describe("project meta — end-to-end (meta → project show reflects each edit)
     expect(i.out.text).toContain("description: beta desc"); // and the new description
 
     // the author's hand-written comment survived every write:
-    expect(fs.read(`${PROJ}/manifest.yml`)).toContain("# demo project —");
+    expect(fs.read(`${PROJ}/wip/manifest.yml`)).toContain("# demo project —");
   });
 });

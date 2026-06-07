@@ -112,9 +112,14 @@ describe("createBundle — acceptance (composition proof; doc 13 §5, doc 10 bun
     it("the bundle-new use case validates, scaffolds from a template, records, re-derives, and materialises", () => {
       const { fs, backlog } = setUpProject();
 
-      const result = runMutation(lifecycleDeps(fs, backlog), { root: ROOT }, spec(), {
-        id: "web-handoff",
-      });
+      const result = runMutation(
+        lifecycleDeps(fs, backlog),
+        { deliverableRoot: ROOT, workspaceRoot: ROOT },
+        spec(),
+        {
+          id: "web-handoff",
+        },
+      );
 
       // (validate) the id passed CHECK and the operation proceeded.
       // (template→files) bundles/web-handoff/ produced from the bundle template:
@@ -132,8 +137,12 @@ describe("createBundle — acceptance (composition proof; doc 13 §5, doc 10 bun
       expect(manifest.ok).toBe(true);
       if (manifest.ok) expect(manifest.value.bundles).toContain("web-handoff");
 
-      // (re-derive) the front-door reflects the new bundle in its menu:
-      expect(fs.read(`${ROOT}/AGENTS.md`)).toContain("- web-handoff bundle");
+      // (re-derive) the orchestrator skill was re-rendered; the executor front door is author-owned and is NOT
+      // auto-written on a mutation (task-88), so no canonical `AGENTS.md` appears under the deliverable:
+      expect(fs.read(`${ROOT}/installer-skills/hermes-handoff-installer/SKILL.md`)).toContain(
+        "Install hermes-handoff.",
+      );
+      expect(fs.exists(`${ROOT}/AGENTS.md`)).toBe(false);
 
       // (materialise) the doc-11 per-bundle authoring tasks are in the authoring backlog:
       const titles = backlog.listTasks(AUTHORING).map((t) => t.title);
@@ -147,15 +156,23 @@ describe("createBundle — acceptance (composition proof; doc 13 §5, doc 10 bun
     it("an operation returns data; the CLI is not in the loop", () => {
       const { fs, backlog } = setUpProject();
 
-      const result = runMutation(lifecycleDeps(fs, backlog), { root: ROOT }, spec(), {
-        id: "web-handoff",
-      });
+      const result = runMutation(
+        lifecycleDeps(fs, backlog),
+        { deliverableRoot: ROOT, workspaceRoot: ROOT },
+        spec(),
+        {
+          id: "web-handoff",
+        },
+      );
 
       // Everything about the outcome is readable from the returned OperationResult...
       expect(result.summary).toBe("created bundle web-handoff (advisor scaffolded)");
       expect(result.changedPaths).toContain(`${ROOT}/bundles/web-handoff/bundle.yml`);
       expect(result.changedPaths).toContain(`${ROOT}/manifest.yml`);
-      expect(result.changedPaths).toContain(`${ROOT}/AGENTS.md`);
+      expect(result.changedPaths).toContain(
+        `${ROOT}/installer-skills/hermes-handoff-installer/SKILL.md`,
+      );
+      expect(result.changedPaths).not.toContain(`${ROOT}/AGENTS.md`);
       expect(result.materialisedTaskTitles).toEqual(
         perBundleAuthoringTasks("web-handoff", { advisor: true }).map((t) => t.title),
       );
@@ -178,21 +195,36 @@ describe("createBundle — acceptance (composition proof; doc 13 §5, doc 10 bun
 
       // createBundle only declares check/apply/materialise; the harness composed task-17 (resolve) + task-16
       // (render) + task-13 (comment-preserving yaml edit) + task-19 (derive) + task-21 (materialise) around it.
-      runMutation(deps, { root: ROOT }, spec(), { id: "web-handoff" });
+      runMutation(deps, { deliverableRoot: ROOT, workspaceRoot: ROOT }, spec(), {
+        id: "web-handoff",
+      });
 
       // task-17 + task-16: the template was resolved and rendered (scaffold present, placeholders substituted):
       expect(parseYaml(fs.read(`${ROOT}/bundles/web-handoff/bundle.yml`))).toMatchObject({
         id: "web-handoff",
       });
-      // task-19: the front-door was re-derived via the REAL makeArtefactDeriver:
-      expect(fs.read(`${ROOT}/AGENTS.md`)).toContain("# hermes-handoff");
+      // task-19: the orchestrator skill was re-derived via the REAL makeArtefactDeriver (the author-owned
+      // executor front door is NOT auto-written on mutation — task-88):
+      expect(fs.read(`${ROOT}/installer-skills/hermes-handoff-installer/SKILL.md`)).toContain(
+        "Install hermes-handoff.",
+      );
+      expect(fs.exists(`${ROOT}/AGENTS.md`)).toBe(false);
 
-      // Idempotency at the rerender layer: adding a DIFFERENT bundle leaves the first entry intact and adds
-      // the new one — task-19 planChanges only writes the changed front-door, task-21 skips existing titles.
-      const result2 = runMutation(deps, { root: ROOT }, spec(), { id: "doc-handoff" });
-      const frontDoor = fs.read(`${ROOT}/AGENTS.md`);
-      expect(frontDoor).toContain("- web-handoff bundle"); // the first bundle's entry survived
-      expect(frontDoor).toContain("- doc-handoff bundle"); // the new one was added
+      // Idempotency at the rerender layer: adding a DIFFERENT bundle records both in the manifest, re-writes
+      // nothing already-current (the orchestrator content is unchanged), and task-21 skips existing titles.
+      const result2 = runMutation(deps, { deliverableRoot: ROOT, workspaceRoot: ROOT }, spec(), {
+        id: "doc-handoff",
+      });
+      const manifest2 = parseManifest(parseYaml(fs.read(`${ROOT}/manifest.yml`)));
+      expect(manifest2.ok).toBe(true);
+      if (manifest2.ok) {
+        expect(manifest2.value.bundles).toContain("web-handoff"); // the first bundle survived
+        expect(manifest2.value.bundles).toContain("doc-handoff"); // the new one was added
+      }
+      // The orchestrator content did not change, so the rerender did not re-write it:
+      expect(result2.changedPaths).not.toContain(
+        `${ROOT}/installer-skills/hermes-handoff-installer/SKILL.md`,
+      );
       // The second run materialised only the new bundle's tasks (the first bundle's titles are distinct):
       expect(result2.materialisedTaskTitles).toContain("Plan bundle doc-handoff");
       expect(result2.materialisedTaskTitles).not.toContain("Plan bundle web-handoff");

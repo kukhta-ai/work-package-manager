@@ -47,7 +47,7 @@ interface SeedOptions {
 /** Write one bundle's `bundle.yml` (the full schema `parseBundleManifest` requires). */
 function writeBundleYml(fs: MemoryFileSystem, id: string): void {
   fs.write(
-    `${PROJ}/bundles/${id}/bundle.yml`,
+    `${PROJ}/wip/bundles/${id}/bundle.yml`,
     `id: ${id}\nversion: 0.1.0\nsummary: ${id} bundle\nconfirmation: safe\nrequires: {}\n`,
   );
 }
@@ -63,7 +63,7 @@ function seed(opts: SeedOptions = {}): { fs: MemoryFileSystem; backlog: FakeBack
       ? `bundles:\n${enabled.map((b) => `  - ${b}`).join("\n")}\n`
       : "bundles: []\n";
   fs.write(
-    `${PROJ}/manifest.yml`,
+    `${PROJ}/wip/manifest.yml`,
     `project:\n  name: demo\n  version: 1.0.0\ntargets:\n  - claude-code\n${bundleLines}`,
   );
   for (const id of enabled) {
@@ -72,7 +72,7 @@ function seed(opts: SeedOptions = {}): { fs: MemoryFileSystem; backlog: FakeBack
   for (const id of opts.disabledDirs ?? []) {
     writeBundleYml(fs, id);
   }
-  fs.makeDirectories(`${PROJ}/installer-skills`);
+  fs.makeDirectories(`${PROJ}/wip/installer-skills`);
   backlog.init(AUTHORING, { taskPrefix: "authoring" });
 
   // Built-in minimal project template snippets the deriver + the advisor scaffold resolve.
@@ -116,7 +116,7 @@ function deps(fs: MemoryFileSystem, backlog: FakeBacklog, cwd = "/elsewhere"): C
 
 /** The bundles array parsed from the manifest on disk. */
 function manifestBundles(fs: MemoryFileSystem): readonly string[] {
-  const m = parseManifest(parseYaml(fs.read(`${PROJ}/manifest.yml`)));
+  const m = parseManifest(parseYaml(fs.read(`${PROJ}/wip/manifest.yml`)));
   if (!m.ok) throw new Error("manifest did not parse");
   return m.value.bundles;
 }
@@ -150,37 +150,37 @@ describe("bundle new (task-50)", () => {
     const i = io();
     expect(await run(["bundle", "new", "list", "-C", PROJ], deps(fs, backlog), i)).toBe(2);
     expect(i.err.text).toMatch(/reserved/i);
-    expect(fs.exists(`${PROJ}/bundles/list`)).toBe(false);
+    expect(fs.exists(`${PROJ}/wip/bundles/list`)).toBe(false);
   });
 
   it("AC#1 — a non-kebab id fails non-zero, creating nothing", async () => {
     const { fs, backlog } = seed();
     const i = io();
     expect(await run(["bundle", "new", "Web", "-C", PROJ], deps(fs, backlog), i)).not.toBe(0);
-    expect(fs.exists(`${PROJ}/bundles/Web`)).toBe(false);
+    expect(fs.exists(`${PROJ}/wip/bundles/Web`)).toBe(false);
   });
 
   it("AC#1 — a duplicate id fails (exit 1, ConflictError), manifest unchanged", async () => {
     const { fs, backlog } = seed({ enabled: ["web"] });
-    const before = fs.read(`${PROJ}/manifest.yml`);
+    const before = fs.read(`${PROJ}/wip/manifest.yml`);
     const i = io();
     expect(await run(["bundle", "new", "web", "-C", PROJ], deps(fs, backlog), i)).toBe(1);
     expect(i.err.text).toMatch(/already exists/i);
-    expect(fs.read(`${PROJ}/manifest.yml`)).toBe(before);
+    expect(fs.read(`${PROJ}/wip/manifest.yml`)).toBe(before);
   });
 
   it("AC#2 — scaffolds bundles/<id>/ with bundle.yml + install-backlog/config.yml(task_prefix=<id>)", async () => {
     const { fs, backlog } = seed();
     expect(await run(["bundle", "new", "acme", "-C", PROJ], deps(fs, backlog), io())).toBe(0);
 
-    const b = parseBundleManifest(parseYaml(fs.read(`${PROJ}/bundles/acme/bundle.yml`)));
+    const b = parseBundleManifest(parseYaml(fs.read(`${PROJ}/wip/bundles/acme/bundle.yml`)));
     expect(b.ok).toBe(true);
     if (b.ok) {
       expect(b.value.id).toBe("acme");
       expect(b.value.version).toBe("0.1.0"); // default version
       expect(b.value.requires.size).toBe(0); // empty requires
     }
-    const config = fs.read(`${PROJ}/bundles/acme/install-backlog/config.yml`);
+    const config = fs.read(`${PROJ}/wip/bundles/acme/install-backlog/config.yml`);
     expect(config).toContain("task_prefix");
     expect(config).toContain("acme"); // the rendered task_prefix == the id
   });
@@ -191,7 +191,7 @@ describe("bundle new (task-50)", () => {
     expect(
       await run(["bundle", "new", "acme", "--version", "1.2.3", "-C", PROJ], deps(fs, backlog), i),
     ).toBe(0);
-    const b = parseBundleManifest(parseYaml(fs.read(`${PROJ}/bundles/acme/bundle.yml`)));
+    const b = parseBundleManifest(parseYaml(fs.read(`${PROJ}/wip/bundles/acme/bundle.yml`)));
     expect(b.ok).toBe(true);
     if (b.ok) expect(b.value.version).toBe("1.2.3");
     // stdout is the operation summary, NOT the program version (the bug printed the program version):
@@ -204,14 +204,14 @@ describe("bundle new (task-50)", () => {
     expect(
       await run(["bundle", "new", "draft", "--disabled", "-C", PROJ], deps(fs, backlog), io()),
     ).toBe(0);
-    expect(fs.exists(`${PROJ}/bundles/draft/bundle.yml`)).toBe(true); // dir scaffolded
+    expect(fs.exists(`${PROJ}/wip/bundles/draft/bundle.yml`)).toBe(true); // dir scaffolded
     expect(manifestBundles(fs)).not.toContain("draft"); // not enabled
   });
 
   it("AC#3 — by default the advisor stub is rendered AND its content task is materialised", async () => {
     const { fs, backlog } = seed();
     expect(await run(["bundle", "new", "acme", "-C", PROJ], deps(fs, backlog), io())).toBe(0);
-    const advisor = fs.read(`${PROJ}/installer-skills/acme-advisor/SKILL.md`);
+    const advisor = fs.read(`${PROJ}/wip/installer-skills/acme-advisor/SKILL.md`);
     expect(advisor).toContain("name: acme-advisor"); // rendered frontmatter
     const titles = backlog.listTasks(AUTHORING).map((t) => t.title);
     expect(titles).toContain("Write advisor content for acme");
@@ -223,21 +223,24 @@ describe("bundle new (task-50)", () => {
     expect(
       await run(["bundle", "new", "acme", "--no-advisor", "-C", PROJ], deps(fs, backlog), i),
     ).toBe(0);
-    expect(fs.exists(`${PROJ}/installer-skills/acme-advisor/SKILL.md`)).toBe(false);
+    expect(fs.exists(`${PROJ}/wip/installer-skills/acme-advisor/SKILL.md`)).toBe(false);
     const titles = backlog.listTasks(AUTHORING).map((t) => t.title);
     expect(titles).not.toContain("Write advisor content for acme");
     expect(i.out.text).toContain("materialised: 11 authoring task(s)");
   });
 
-  it("AC#4 — materialises the 12-task set + re-renders the front-door to include the bundle", async () => {
+  it("AC#4 — materialises the 12-task set + re-renders the orchestrator (front door stays author-owned)", async () => {
     const { fs, backlog } = seed();
     const i = io();
     expect(await run(["bundle", "new", "acme", "-C", PROJ], deps(fs, backlog), i)).toBe(0);
     const titles = backlog.listTasks(AUTHORING).map((t) => t.title);
     expect(titles).toContain("Plan bundle acme");
     expect(i.out.text).toContain("materialised: 12 authoring task(s)");
-    // the front-door was re-rendered to list the new bundle:
-    expect(fs.read(`${PROJ}/AGENTS.md`)).toContain("acme");
+    // the new bundle is recorded in the manifest and ④ re-rendered the orchestrator; the executor front door is
+    // author-owned and NOT re-rendered on a mutation (task-88):
+    expect(manifestBundles(fs)).toContain("acme");
+    expect(fs.exists(`${PROJ}/wip/installer-skills/demo-installer/SKILL.md`)).toBe(true);
+    expect(fs.exists(`${PROJ}/wip/AGENTS.md`)).toBe(false);
   });
 
   it("AC#5 — the summary names the bundle, the advisor state, and the task count; exit 0", async () => {
@@ -275,12 +278,14 @@ describe("bundle new (task-50)", () => {
 // bundle enable (task-51)
 // ───────────────────────────────────────────────────────────────────────────────────────────────────────────
 describe("bundle enable (task-51)", () => {
-  it("AC#1 — enabling a disabled-but-present dir appends it + re-renders the menu", async () => {
+  it("AC#1 — enabling a disabled-but-present dir appends it + re-renders the orchestrator", async () => {
     const { fs, backlog } = seed({ disabledDirs: ["web"] });
     const i = io();
     expect(await run(["bundle", "enable", "web", "-C", PROJ], deps(fs, backlog), i)).toBe(0);
     expect(manifestBundles(fs)).toContain("web");
-    expect(fs.read(`${PROJ}/AGENTS.md`)).toContain("web"); // front-door re-rendered to include it
+    // ④ re-rendered the orchestrator; the executor front door is author-owned and NOT re-rendered (task-88):
+    expect(fs.exists(`${PROJ}/wip/installer-skills/demo-installer/SKILL.md`)).toBe(true);
+    expect(fs.exists(`${PROJ}/wip/AGENTS.md`)).toBe(false);
   });
 
   it("AC#3 — re-enabling a previously-authored bundle materialises NO duplicate tasks (no-op)", async () => {
@@ -300,7 +305,7 @@ describe("bundle enable (task-51)", () => {
     {
       const { fs, backlog } = seed({ disabledDirs: ["web"] });
       expect(await run(["bundle", "enable", "web", "-C", PROJ], deps(fs, backlog), io())).toBe(0);
-      expect(fs.exists(`${PROJ}/installer-skills/web-advisor/SKILL.md`)).toBe(true);
+      expect(fs.exists(`${PROJ}/wip/installer-skills/web-advisor/SKILL.md`)).toBe(true);
     }
     // --no-advisor: skips
     {
@@ -308,14 +313,14 @@ describe("bundle enable (task-51)", () => {
       expect(
         await run(["bundle", "enable", "web", "--no-advisor", "-C", PROJ], deps(fs, backlog), io()),
       ).toBe(0);
-      expect(fs.exists(`${PROJ}/installer-skills/web-advisor/SKILL.md`)).toBe(false);
+      expect(fs.exists(`${PROJ}/wip/installer-skills/web-advisor/SKILL.md`)).toBe(false);
     }
     // existing advisor: not overwritten
     {
       const { fs, backlog } = seed({ disabledDirs: ["web"] });
-      fs.write(`${PROJ}/installer-skills/web-advisor/SKILL.md`, "AUTHORED CONTENT — keep me\n");
+      fs.write(`${PROJ}/wip/installer-skills/web-advisor/SKILL.md`, "AUTHORED CONTENT — keep me\n");
       expect(await run(["bundle", "enable", "web", "-C", PROJ], deps(fs, backlog), io())).toBe(0);
-      expect(fs.read(`${PROJ}/installer-skills/web-advisor/SKILL.md`)).toBe(
+      expect(fs.read(`${PROJ}/wip/installer-skills/web-advisor/SKILL.md`)).toBe(
         "AUTHORED CONTENT — keep me\n",
       );
     }
@@ -323,20 +328,20 @@ describe("bundle enable (task-51)", () => {
 
   it("AC#4 — enabling an already-enabled id fails (exit 1), manifest unchanged", async () => {
     const { fs, backlog } = seed({ enabled: ["web"] });
-    const before = fs.read(`${PROJ}/manifest.yml`);
+    const before = fs.read(`${PROJ}/wip/manifest.yml`);
     const i = io();
     expect(await run(["bundle", "enable", "web", "-C", PROJ], deps(fs, backlog), i)).toBe(1);
     expect(i.err.text).toMatch(/already enabled/i);
-    expect(fs.read(`${PROJ}/manifest.yml`)).toBe(before);
+    expect(fs.read(`${PROJ}/wip/manifest.yml`)).toBe(before);
   });
 
   it("AC#4 — enabling a non-existent directory fails (exit 1) naming the dir, manifest unchanged", async () => {
     const { fs, backlog } = seed();
-    const before = fs.read(`${PROJ}/manifest.yml`);
+    const before = fs.read(`${PROJ}/wip/manifest.yml`);
     const i = io();
     expect(await run(["bundle", "enable", "ghost", "-C", PROJ], deps(fs, backlog), i)).toBe(1);
     expect(i.err.text).toMatch(/does not exist/i);
-    expect(fs.read(`${PROJ}/manifest.yml`)).toBe(before);
+    expect(fs.read(`${PROJ}/wip/manifest.yml`)).toBe(before);
   });
 
   it("AC#5 — outside any project it exits 1 naming manifest.yml", async () => {
@@ -349,7 +354,7 @@ describe("bundle enable (task-51)", () => {
   it("AC#5 — the id positional completes from disabled-but-present bundle dirs (not enabled, not bundle-template)", async () => {
     const { fs, backlog } = seed({ enabled: ["web"], disabledDirs: ["doc"] });
     // also stage a bundle-template dir which must be excluded:
-    fs.makeDirectories(`${PROJ}/bundles/bundle-template`);
+    fs.makeDirectories(`${PROJ}/wip/bundles/bundle-template`);
     const out = complete(fs, backlog, ["bundle", "enable", ""]);
     expect(out).toContain("doc"); // disabled-but-present
     expect(out).not.toContain("web"); // enabled
@@ -376,25 +381,26 @@ describe("bundle disable (task-52)", () => {
     const { fs, backlog } = seed({ enabled: ["web"] });
     expect(await run(["bundle", "disable", "web", "-C", PROJ], deps(fs, backlog), io())).toBe(0);
     expect(manifestBundles(fs)).not.toContain("web");
-    expect(fs.exists(`${PROJ}/bundles/web/bundle.yml`)).toBe(true); // dir untouched
+    expect(fs.exists(`${PROJ}/wip/bundles/web/bundle.yml`)).toBe(true); // dir untouched
   });
 
-  it("AC#2 — the front-door is re-rendered so the bundle drops out of the menu", async () => {
+  it("AC#2 — disabling drops the bundle from the manifest; the executor front door is not re-rendered", async () => {
     const { fs, backlog } = seed({ enabled: ["web", "doc"] });
-    // render the front-door first (it lists web + doc) via a no-op-ish disable of doc, then disable web:
     expect(await run(["bundle", "disable", "web", "-C", PROJ], deps(fs, backlog), io())).toBe(0);
-    const frontDoor = fs.read(`${PROJ}/AGENTS.md`);
-    expect(frontDoor).not.toContain("web bundle"); // web's menu entry is gone
-    expect(frontDoor).toContain("doc"); // doc (still enabled) remains
+    // The manifest is the source of truth for the menu (the orchestrator reads it at install time): web is
+    // dropped, doc remains. The executor front door is author-owned and is NOT re-rendered (task-88).
+    expect(manifestBundles(fs)).not.toContain("web");
+    expect(manifestBundles(fs)).toContain("doc");
+    expect(fs.exists(`${PROJ}/wip/AGENTS.md`)).toBe(false);
   });
 
   it("AC#3 — disabling an id not in the manifest fails with a not-found error (exit 1), manifest unchanged", async () => {
     const { fs, backlog } = seed({ enabled: ["web"] });
-    const before = fs.read(`${PROJ}/manifest.yml`);
+    const before = fs.read(`${PROJ}/wip/manifest.yml`);
     const i = io();
     expect(await run(["bundle", "disable", "ghost", "-C", PROJ], deps(fs, backlog), i)).toBe(1);
     expect(i.err.text).toMatch(/not enabled/i);
-    expect(fs.read(`${PROJ}/manifest.yml`)).toBe(before);
+    expect(fs.read(`${PROJ}/wip/manifest.yml`)).toBe(before);
   });
 
   it("AC#4 — outside any project it exits 1 naming manifest.yml", async () => {

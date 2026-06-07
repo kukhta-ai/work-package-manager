@@ -50,7 +50,7 @@ function seed(targets: readonly string[] = ["claude-code"]): {
 
   const targetLines = targets.length > 0 ? targets.map((t) => `  - ${t}`).join("\n") : "  []";
   fs.write(
-    `${PROJ}/manifest.yml`,
+    `${PROJ}/wip/manifest.yml`,
     [
       "project:",
       "  name: demo",
@@ -65,11 +65,11 @@ function seed(targets: readonly string[] = ["claude-code"]): {
   // an enabled bundle so loadProject succeeds + materialise has a bundle (full schema: id/version/summary/
   // confirmation/requires — parseBundleManifest requires them):
   fs.write(
-    `${PROJ}/bundles/web/bundle.yml`,
+    `${PROJ}/wip/bundles/web/bundle.yml`,
     "id: web\nversion: 0.1.0\nsummary: web bundle\nconfirmation: safe\nrequires: {}\n",
   );
   // the root alias TARGET dir exists, so a created scope alias is non-broken:
-  fs.makeDirectories(`${PROJ}/installer-skills`);
+  fs.makeDirectories(`${PROJ}/wip/installer-skills`);
   // the authoring backlog the materialiser writes the per-bundle verify tasks into (init makes it at
   // <project>/.authoring-backlog, its own Backlog.md root — NOT the project root):
   backlog.init(AUTHORING, { taskPrefix: "authoring" });
@@ -98,7 +98,7 @@ function deps(fs: MemoryFileSystem, backlog: FakeBacklog, cwd = "/elsewhere"): C
 
 /** The targets array parsed from the manifest on disk. */
 function manifestTargets(fs: MemoryFileSystem): readonly string[] {
-  const m = parseManifest(parseYaml(fs.read(`${PROJ}/manifest.yml`)));
+  const m = parseManifest(parseYaml(fs.read(`${PROJ}/wip/manifest.yml`)));
   if (!m.ok) throw new Error("manifest did not parse");
   return m.value.targets;
 }
@@ -114,8 +114,8 @@ describe("project targets add (task-42)", () => {
     // recorded in the manifest:
     expect(manifestTargets(fs)).toContain("codex");
     // codex's alias path is `.agents/skills` (ALIAS_PATHS); it exists + points at installer-skills (non-broken):
-    expect(fs.exists(`${PROJ}/.agents/skills`)).toBe(true);
-    expect(fs.aliasTarget(`${PROJ}/.agents/skills`)).toBe(`${PROJ}/installer-skills`);
+    expect(fs.exists(`${PROJ}/wip/.agents/skills`)).toBe(true);
+    expect(fs.aliasTarget(`${PROJ}/wip/.agents/skills`)).toBe(`${PROJ}/wip/installer-skills`);
   });
 
   it("AC#3 — re-renders the front-door AND materialises a per-bundle verify task for the agent", async () => {
@@ -125,7 +125,7 @@ describe("project targets add (task-42)", () => {
     ).toBe(0);
 
     // the front-door was re-rendered (it exists after the rerender):
-    expect(fs.exists(`${PROJ}/AGENTS.md`)).toBe(true);
+    expect(fs.exists(`${PROJ}/wip/installer-skills/demo-installer/SKILL.md`)).toBe(true);
     // a per-bundle "Verify web's install-backlog works on codex" authoring task was materialised:
     const titles = backlog.listTasks(AUTHORING).map((t) => t.title);
     expect(titles).toContain("Verify web's install-backlog works on codex");
@@ -141,14 +141,14 @@ describe("project targets add (task-42)", () => {
     // still recorded:
     expect(manifestTargets(fs)).toContain("my-custom-agent");
     // no alias dir was created for it (it has no built-in path); the known root scopes for it don't appear:
-    expect(fs.exists(`${PROJ}/.my-custom-agent`)).toBe(false);
+    expect(fs.exists(`${PROJ}/wip/.my-custom-agent`)).toBe(false);
     // and a warning surfaced on stderr:
     expect(i.err.text).toMatch(/warning:.*my-custom-agent.*alias/i);
   });
 
   it("AC#4 — adding an agent already present is a no-op conflict (exit 1), changing nothing", async () => {
     const { fs, backlog } = seed(["claude-code"]);
-    const before = fs.read(`${PROJ}/manifest.yml`);
+    const before = fs.read(`${PROJ}/wip/manifest.yml`);
     const i = io();
     const code = await run(
       ["project", "targets", "add", "claude-code", "-C", PROJ],
@@ -157,7 +157,7 @@ describe("project targets add (task-42)", () => {
     );
     expect(code).toBe(1);
     expect(i.err.text).toMatch(/^error: /);
-    expect(fs.read(`${PROJ}/manifest.yml`)).toBe(before); // unchanged
+    expect(fs.read(`${PROJ}/wip/manifest.yml`)).toBe(before); // unchanged
   });
 
   it("AC#5 — outside any project, exits non-zero naming manifest.yml and suggesting init", async () => {
@@ -223,9 +223,9 @@ describe("project targets remove (task-44)", () => {
   it("AC#1 — removes the target AND deletes its scope-alias; exit 0", async () => {
     const { fs, backlog } = seed(["claude-code", "codex"]);
     // create codex's alias (as `add` would have):
-    fs.ensureAlias(`${PROJ}/installer-skills`, `${PROJ}/.agents/skills`);
+    fs.ensureAlias(`${PROJ}/wip/installer-skills`, `${PROJ}/wip/.agents/skills`);
     // and claude-code's alias (a DIFFERENT path) so we can prove only codex's is removed:
-    fs.ensureAlias(`${PROJ}/installer-skills`, `${PROJ}/.claude/skills`);
+    fs.ensureAlias(`${PROJ}/wip/installer-skills`, `${PROJ}/wip/.claude/skills`);
 
     const i = io();
     expect(
@@ -235,8 +235,8 @@ describe("project targets remove (task-44)", () => {
     expect(manifestTargets(fs)).not.toContain("codex");
     expect(manifestTargets(fs)).toContain("claude-code");
     // codex's alias is gone; claude-code's survives (different path):
-    expect(fs.exists(`${PROJ}/.agents/skills`)).toBe(false);
-    expect(fs.exists(`${PROJ}/.claude/skills`)).toBe(true);
+    expect(fs.exists(`${PROJ}/wip/.agents/skills`)).toBe(false);
+    expect(fs.exists(`${PROJ}/wip/.claude/skills`)).toBe(true);
   });
 
   it("AC#1 warn-if-missing — removing a target whose alias does not exist warns (exit 0)", async () => {
@@ -279,7 +279,7 @@ describe("project targets remove (task-44)", () => {
       await run(["project", "targets", "remove", "codex", "-C", PROJ], deps(fs, backlog), i),
     ).toBe(0);
     // the rerender ran (the front-door exists) and the manifest is the source of truth (no codex):
-    expect(fs.exists(`${PROJ}/AGENTS.md`)).toBe(true);
+    expect(fs.exists(`${PROJ}/wip/installer-skills/demo-installer/SKILL.md`)).toBe(true);
     expect(manifestTargets(fs)).not.toContain("codex");
   });
 

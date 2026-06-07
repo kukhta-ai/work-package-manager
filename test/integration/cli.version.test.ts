@@ -1,4 +1,4 @@
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { FakeBacklog } from "../../src/adapters/fake-backlog.js";
@@ -36,10 +36,11 @@ const COMMENT = "# author note: release version is CLI-managed";
 
 /** Write a fixture project + the minimal project-template snippets into `dir` on the real filesystem. */
 function seedOnDisk(dir: string): void {
+  mkdirSync(join(dir, "wip"), { recursive: true });
   const builtin = join(dir, "builtin-templates");
 
   writeFileSync(
-    join(dir, "manifest.yml"),
+    join(dir, "wip", "manifest.yml"),
     [
       "project:",
       "  name: demo",
@@ -51,7 +52,7 @@ function seedOnDisk(dir: string): void {
       "",
     ].join("\n"),
   );
-  mkdirSync(join(dir, "installer-skills"), { recursive: true });
+  mkdirSync(join(dir, "wip", "installer-skills"), { recursive: true });
 
   mkdirSync(
     join(
@@ -101,7 +102,7 @@ function realDeps(dir: string): CliDeps {
 
 /** The `project.version` parsed off the real manifest. */
 function diskVersion(dir: string): string {
-  const m = parseManifest(parseYaml(readFileSync(join(dir, "manifest.yml"), "utf8")));
+  const m = parseManifest(parseYaml(readFileSync(join(dir, "wip", "manifest.yml"), "utf8")));
   if (!m.ok) throw new Error("manifest did not parse");
   return m.value.meta.version;
 }
@@ -123,9 +124,13 @@ describe("cli `project version` over a real filesystem (tasks 39/40/41)", () => 
       ).toBe(0);
       expect(bumpIo.out.text).toContain("1.3.0");
       expect(diskVersion(dir)).toBe("1.3.0");
-      // the hand-written comment survived, and the front-door was re-rendered:
-      expect(readFileSync(join(dir, "manifest.yml"), "utf8")).toContain(COMMENT);
-      expect(readFileSync(join(dir, "AGENTS.md"), "utf8")).toContain("# demo");
+      // the hand-written comment survived, and the orchestrator was re-rendered (the executor front door is
+      // author-owned and is NOT re-rendered on a mutation — task-88):
+      expect(readFileSync(join(dir, "wip", "manifest.yml"), "utf8")).toContain(COMMENT);
+      expect(
+        readFileSync(join(dir, "wip", "installer-skills", "demo-installer", "SKILL.md"), "utf8"),
+      ).toContain("Install demo.");
+      expect(existsSync(join(dir, "wip", "AGENTS.md"))).toBe(false);
     });
   });
 
@@ -140,10 +145,10 @@ describe("cli `project version` over a real filesystem (tasks 39/40/41)", () => 
       expect(diskVersion(dir)).toBe("3.0.0");
 
       // A bad semver → exit 2, manifest unchanged.
-      const before = readFileSync(join(dir, "manifest.yml"), "utf8");
+      const before = readFileSync(join(dir, "wip", "manifest.yml"), "utf8");
       const i = io();
       expect(await run(["project", "version", "set", "nope", "-C", dir], realDeps(dir), i)).toBe(2);
-      expect(readFileSync(join(dir, "manifest.yml"), "utf8")).toBe(before);
+      expect(readFileSync(join(dir, "wip", "manifest.yml"), "utf8")).toBe(before);
     });
   });
 });

@@ -62,16 +62,16 @@ function seed(opts: { bundles?: string[]; requires?: Record<string, string> } = 
   const bundles = opts.bundles ?? ["a", "b", "c"];
 
   fs.write(
-    `${PROJ}/manifest.yml`,
+    `${PROJ}/wip/manifest.yml`,
     `project:\n  name: demo\n  version: 1.0.0\ntargets:\n  - claude-code\nbundles:\n${bundles
       .map((b) => `  - ${b}`)
       .join("\n")}\n`,
   );
   for (const b of bundles) {
     const requiresBlock = opts.requires?.[b];
-    fs.write(`${PROJ}/bundles/${b}/bundle.yml`, bundleYmlFor(b, requiresBlock));
+    fs.write(`${PROJ}/wip/bundles/${b}/bundle.yml`, bundleYmlFor(b, requiresBlock));
   }
-  fs.makeDirectories(`${PROJ}/installer-skills`);
+  fs.makeDirectories(`${PROJ}/wip/installer-skills`);
   backlog.init(AUTHORING, { taskPrefix: "authoring" });
 
   // Project template snippets so ④ RERENDER resolves (same set bundle-version-commands.test.ts seeds).
@@ -105,7 +105,7 @@ function deps(fs: MemoryFileSystem, backlog: FakeBacklog, cwd = "/elsewhere"): C
  * CLI writes to bundle.yml is asserted separately against `fs.read(...)` text.
  */
 function requiresOf(fs: MemoryFileSystem, id: string): Record<string, string> {
-  const parsed = parseBundleManifest(parseYaml(fs.read(`${PROJ}/bundles/${id}/bundle.yml`)));
+  const parsed = parseBundleManifest(parseYaml(fs.read(`${PROJ}/wip/bundles/${id}/bundle.yml`)));
   if (!parsed.ok) throw new Error(`bundle ${id} did not parse`);
   const out: Record<string, string> = {};
   for (const [dep, range] of parsed.value.requires) {
@@ -148,7 +148,7 @@ describe("bundle <id> requires add (task-62)", () => {
       ),
     ).toBe(0);
     expect(requiresOf(fs, "a")).toEqual({ b: normalizedRange("^0.3.0") });
-    const text = fs.read(`${PROJ}/bundles/a/bundle.yml`);
+    const text = fs.read(`${PROJ}/wip/bundles/a/bundle.yml`);
     expect(text).toMatch(/b:\s*\^0\.3\.0/); // the RAW caret is written verbatim to bundle.yml
     expect(text).toContain("# bundle a —"); // leading comment survived
     const keyOrder = text
@@ -164,7 +164,7 @@ describe("bundle <id> requires add (task-62)", () => {
       await run(["bundle", "a", "requires", "add", "b", "-C", PROJ], deps(fs, backlog), io()),
     ).toBe(0);
     // the raw bundle.yml carries the literal caret (NOT `>=0.1.0 <0.2.0`):
-    const raw = fs.read(`${PROJ}/bundles/a/bundle.yml`);
+    const raw = fs.read(`${PROJ}/wip/bundles/a/bundle.yml`);
     expect(raw).toMatch(/b:\s*\^0\.1\.0/);
     expect(raw).not.toContain(">=0.1.0");
     // parsed (the model normalizes the stored caret — the committed convention):
@@ -180,7 +180,7 @@ describe("bundle <id> requires add (task-62)", () => {
     expect(
       await run(["bundle", "a", "requires", "add", "b", "^0.3.0", "-C", PROJ], d(), io()),
     ).toBe(0);
-    expect(fs.read(`${PROJ}/bundles/a/bundle.yml`)).toMatch(/b:\s*\^0\.3\.0/); // latest caret on disk
+    expect(fs.read(`${PROJ}/wip/bundles/a/bundle.yml`)).toMatch(/b:\s*\^0\.3\.0/); // latest caret on disk
     expect(requiresOf(fs, "a")).toEqual({ b: normalizedRange("^0.3.0") }); // one key, overwritten
   });
 
@@ -236,19 +236,19 @@ describe("bundle <id> requires add (task-62)", () => {
 
   it("AC#4 — a dependency that is NOT an enabled bundle fails with NotFound (exit 1), changing nothing", async () => {
     const { fs, backlog } = seed();
-    const before = fs.read(`${PROJ}/bundles/a/bundle.yml`);
+    const before = fs.read(`${PROJ}/wip/bundles/a/bundle.yml`);
     const i = io();
     expect(
       await run(["bundle", "a", "requires", "add", "ghost", "-C", PROJ], deps(fs, backlog), i),
     ).toBe(1);
     expect(i.err.text).toContain("ghost"); // names the missing dependency
-    expect(fs.read(`${PROJ}/bundles/a/bundle.yml`)).toBe(before); // byte-for-byte unchanged
+    expect(fs.read(`${PROJ}/wip/bundles/a/bundle.yml`)).toBe(before); // byte-for-byte unchanged
     expect(authoringTitles(backlog)).toHaveLength(0); // no task materialised
   });
 
   it("AC#1 — a bad constraint RANGE is a usage error (exit 2), changing nothing", async () => {
     const { fs, backlog } = seed();
-    const before = fs.read(`${PROJ}/bundles/a/bundle.yml`);
+    const before = fs.read(`${PROJ}/wip/bundles/a/bundle.yml`);
     expect(
       await run(
         ["bundle", "a", "requires", "add", "b", "not-a-range!", "-C", PROJ],
@@ -256,7 +256,7 @@ describe("bundle <id> requires add (task-62)", () => {
         io(),
       ),
     ).toBe(2);
-    expect(fs.read(`${PROJ}/bundles/a/bundle.yml`)).toBe(before);
+    expect(fs.read(`${PROJ}/wip/bundles/a/bundle.yml`)).toBe(before);
   });
 
   it("AC#5 — outside any project, exits 1 naming manifest.yml and suggesting init", async () => {
@@ -299,8 +299,8 @@ describe("bundle <id> requires add (task-62)", () => {
 describe("bundle <id> requires list (task-63)", () => {
   it("AC#1/#2 — prints each entry as 'dep-id range', one per line, read-only, exit 0", async () => {
     const { fs, backlog } = seed({ requires: { a: "requires:\n  b: ^0.1.0\n  c: ^0.2.0" } });
-    const manifestBefore = fs.read(`${PROJ}/manifest.yml`);
-    const aBefore = fs.read(`${PROJ}/bundles/a/bundle.yml`);
+    const manifestBefore = fs.read(`${PROJ}/wip/manifest.yml`);
+    const aBefore = fs.read(`${PROJ}/wip/bundles/a/bundle.yml`);
     const i = io();
     expect(await run(["bundle", "a", "requires", "list", "-C", PROJ], deps(fs, backlog), i)).toBe(
       0,
@@ -308,8 +308,8 @@ describe("bundle <id> requires list (task-63)", () => {
     // declaration order, one "dep-id range" per line (the range is the model's normalized form):
     expect(i.out.text).toBe(`b ${normalizedRange("^0.1.0")}\nc ${normalizedRange("^0.2.0")}\n`);
     // read-only — nothing on disk changed:
-    expect(fs.read(`${PROJ}/manifest.yml`)).toBe(manifestBefore);
-    expect(fs.read(`${PROJ}/bundles/a/bundle.yml`)).toBe(aBefore);
+    expect(fs.read(`${PROJ}/wip/manifest.yml`)).toBe(manifestBefore);
+    expect(fs.read(`${PROJ}/wip/bundles/a/bundle.yml`)).toBe(aBefore);
   });
 
   it("AC#1 — an empty requires map prints a clear marker, exit 0", async () => {
@@ -365,8 +365,8 @@ describe("bundle <id> requires remove (task-64)", () => {
       await run(["bundle", "a", "requires", "remove", "b", "-C", PROJ], deps(fs, backlog), i),
     ).toBe(0);
     expect(requiresOf(fs, "a")).toEqual({ c: normalizedRange("^0.2.0") }); // b gone, c kept
-    expect(fs.read(`${PROJ}/bundles/a/bundle.yml`)).toMatch(/c:\s*\^0\.2\.0/); // c's caret intact on disk
-    expect(fs.read(`${PROJ}/bundles/a/bundle.yml`)).toContain("# bundle a —"); // comment survived
+    expect(fs.read(`${PROJ}/wip/bundles/a/bundle.yml`)).toMatch(/c:\s*\^0\.2\.0/); // c's caret intact on disk
+    expect(fs.read(`${PROJ}/wip/bundles/a/bundle.yml`)).toContain("# bundle a —"); // comment survived
   });
 
   it("AC#2 — materialises 'Verify a no longer references b' once (idempotent by title)", async () => {
@@ -381,13 +381,13 @@ describe("bundle <id> requires remove (task-64)", () => {
 
   it("AC#3 — removing a dependency NOT present fails with NotFound (exit 1), changing nothing", async () => {
     const { fs, backlog } = seed({ requires: { a: "requires:\n  b: ^0.1.0" } });
-    const before = fs.read(`${PROJ}/bundles/a/bundle.yml`);
+    const before = fs.read(`${PROJ}/wip/bundles/a/bundle.yml`);
     const i = io();
     expect(
       await run(["bundle", "a", "requires", "remove", "ghost", "-C", PROJ], deps(fs, backlog), i),
     ).toBe(1);
     expect(i.err.text).toContain("ghost");
-    expect(fs.read(`${PROJ}/bundles/a/bundle.yml`)).toBe(before); // unchanged
+    expect(fs.read(`${PROJ}/wip/bundles/a/bundle.yml`)).toBe(before); // unchanged
     expect(authoringTitles(backlog)).toHaveLength(0);
   });
 
@@ -449,7 +449,7 @@ describe("bundle <id> requires — end-to-end author workflow", () => {
     expect(i.out.text).toBe("(no requires)\n");
 
     // the author's hand-written comment survived every write:
-    expect(fs.read(`${PROJ}/bundles/a/bundle.yml`)).toContain("# bundle a —");
+    expect(fs.read(`${PROJ}/wip/bundles/a/bundle.yml`)).toContain("# bundle a —");
   });
 
   it("rerender — after add, the front-door is re-rendered (it exists)", async () => {
@@ -457,7 +457,7 @@ describe("bundle <id> requires — end-to-end author workflow", () => {
     expect(
       await run(["bundle", "a", "requires", "add", "b", "-C", PROJ], deps(fs, backlog), io()),
     ).toBe(0);
-    expect(fs.exists(`${PROJ}/AGENTS.md`)).toBe(true);
+    expect(fs.exists(`${PROJ}/wip/installer-skills/demo-installer/SKILL.md`)).toBe(true);
   });
 
   it("the requires group help lists the add/list/remove subcommands", async () => {

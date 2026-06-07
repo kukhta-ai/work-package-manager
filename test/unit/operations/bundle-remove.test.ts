@@ -117,9 +117,14 @@ describe("removeBundleSpec — the teardown (AC53#2/#3)", () => {
     backlog.createTask(AUTHORING, { title: "Plan bundle web" });
     backlog.createTask(AUTHORING, { title: "Write advisor content for web" });
 
-    const result = runMutation(lifecycleDeps(fs, backlog), { root: PROJ }, removeBundleSpec(), {
-      id: "web",
-    });
+    const result = runMutation(
+      lifecycleDeps(fs, backlog),
+      { deliverableRoot: PROJ, workspaceRoot: PROJ },
+      removeBundleSpec(),
+      {
+        id: "web",
+      },
+    );
 
     // manifest no longer lists web:
     expect(fs.read(`${PROJ}/manifest.yml`)).not.toMatch(/-\s*web\b/);
@@ -142,7 +147,12 @@ describe("removeBundleSpec — the teardown (AC53#2/#3)", () => {
     backlog.createTask(AUTHORING, { title: "Plan bundle web-extra" });
     backlog.createTask(AUTHORING, { title: "Author payload for web-extra" });
 
-    runMutation(lifecycleDeps(fs, backlog), { root: PROJ }, removeBundleSpec(), { id: "web" });
+    runMutation(
+      lifecycleDeps(fs, backlog),
+      { deliverableRoot: PROJ, workspaceRoot: PROJ },
+      removeBundleSpec(),
+      { id: "web" },
+    );
 
     const remaining = backlog.listTasks(AUTHORING).map((t) => t.title);
     expect(remaining).toEqual(["Plan bundle web-extra", "Author payload for web-extra"]);
@@ -159,9 +169,14 @@ describe("removeBundleSpec — the teardown (AC53#2/#3)", () => {
       "id: draft\nversion: 0.1.0\nsummary: draft bundle\nconfirmation: safe\nrequires: {}\n",
     );
 
-    const result = runMutation(lifecycleDeps(fs, backlog), { root: PROJ }, removeBundleSpec(), {
-      id: "draft",
-    });
+    const result = runMutation(
+      lifecycleDeps(fs, backlog),
+      { deliverableRoot: PROJ, workspaceRoot: PROJ },
+      removeBundleSpec(),
+      {
+        id: "draft",
+      },
+    );
 
     expect(fs.exists(`${PROJ}/bundles/draft`)).toBe(false);
     expect(result.summary).toContain("removed bundle draft");
@@ -172,7 +187,12 @@ describe("removeBundleSpec — the teardown (AC53#2/#3)", () => {
   it("does not archive a task naming a DIFFERENT bundle", () => {
     const { fs, backlog } = seed(["web"]);
     backlog.createTask(AUTHORING, { title: "Plan bundle other" });
-    runMutation(lifecycleDeps(fs, backlog), { root: PROJ }, removeBundleSpec(), { id: "web" });
+    runMutation(
+      lifecycleDeps(fs, backlog),
+      { deliverableRoot: PROJ, workspaceRoot: PROJ },
+      removeBundleSpec(),
+      { id: "web" },
+    );
     expect(backlog.listTasks(AUTHORING).map((t) => t.title)).toEqual(["Plan bundle other"]);
   });
 });

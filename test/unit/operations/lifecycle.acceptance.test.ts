@@ -13,29 +13,30 @@ import type { DesiredArtefacts } from "../../../src/core/services/derived-artefa
 
 /**
  * Acceptance test for the shared mutation lifecycle harness (doc 13 §5/§8), exercised through its public API
- * as a BLACK BOX the way a command's composition root will drive it: a resolved project root (from task-24)
- * plus the ports + an artefact-derivation capability go in, an `OperationResult` comes out, and the harness
- * threads the six beats (LOAD → CHECK → APPLY → RERENDER → MATERIALISE → RESULT) around the operation. One
- * `describe` per acceptance criterion, each narrating the end-to-end scenario. Pure and deterministic: an
- * in-memory filesystem + an in-memory backlog + a fixture deriver stand in for the real disk, Backlog.md CLI,
- * and template-backed deriver (tasks 30–31) — no real fs / process / git.
+ * as a BLACK BOX the way a command's composition root will drive it: a resolved authoring-workspace context
+ * (from task-24/88 — the deliverable root `<workspace>/wip` plus the workspace root) plus the ports + an
+ * artefact-derivation capability go in, an `OperationResult` comes out, and the harness threads the six beats
+ * (LOAD → CHECK → APPLY → RERENDER → MATERIALISE → RESULT) around the operation. LOAD / APPLY / RERENDER act on
+ * the DELIVERABLE root; ⑤ MATERIALISE writes the `.authoring-backlog/` at the WORKSPACE root. One `describe`
+ * per acceptance criterion. Pure and deterministic: an in-memory filesystem + in-memory backlog + a fixture
+ * deriver stand in for the real disk, Backlog.md CLI, and template-backed deriver — no real fs / process / git.
  */
 
-const APP = "/app";
-/**
- * The authoring backlog is its own Backlog.md root at `<project>/.authoring-backlog` (doc 10 step 6), not the
- * project root — the harness's ⑤ MATERIALISE writes there. The fake is initialised there and the materialise
- * assertions read there, mirroring reality (initialising at the project root hid the real "No Backlog.md project
- * found" failure of every materialising command).
- */
-const AUTHORING = `${APP}/.authoring-backlog`;
+const WS = "/app";
+const DELIV = `${WS}/wip`;
+/** The authoring backlog is its own Backlog.md root at the WORKSPACE root, beside `wip/` (doc 10 step 6; 06/11). */
+const AUTHORING = `${WS}/.authoring-backlog`;
+/** The harness context: the deliverable + workspace roots, kept distinct (task-88). */
+const CTX = { deliverableRoot: DELIV, workspaceRoot: WS } as const;
+/** The orchestrator file the fixture re-renders (a non-front-door derived artefact). */
+const ORCHESTRATOR = "installer-skills/acme-installer/SKILL.md";
 
-/** A realistic project, set up the way a prior `init` would leave it: a manifest on disk + an authoring backlog. */
+/** A realistic workspace, set up the way a prior `init` would leave it: a manifest under `wip/` + an authoring backlog. */
 function setUpProject(): { fs: MemoryFileSystem; backlog: FakeBacklog } {
   const fs = new MemoryFileSystem();
   const backlog = new FakeBacklog();
   fs.write(
-    `${APP}/manifest.yml`,
+    `${DELIV}/manifest.yml`,
     [
       "project:",
       "  name: acme",
@@ -48,18 +49,22 @@ function setUpProject(): { fs: MemoryFileSystem; backlog: FakeBacklog } {
   );
   // The alias target a prior `init` would have created (doc-10 §init makes installer-skills/ BEFORE the
   // scope-alias symlink) — so the alias the harness creates points at a real dir, not a broken link.
-  fs.makeDirectories(`${APP}/installer-skills`);
+  fs.makeDirectories(`${DELIV}/installer-skills`);
   backlog.init(AUTHORING, { taskPrefix: "app" });
   return { fs, backlog };
 }
 
 /**
- * The fixture artefact-derivation capability: a small, fixed {@link DesiredArtefacts} (one front-door file +
- * one root alias). Fixed content ⇒ idempotent re-derivation. Stands in for the real template-backed deriver.
+ * The fixture artefact-derivation capability: a small, fixed {@link DesiredArtefacts} — the author-owned
+ * front-door file (path `AGENTS.md`, excluded from re-render), the auto-derived orchestrator skill, and one
+ * root alias. Fixed content ⇒ idempotent re-derivation. Stands in for the real template-backed deriver.
  */
 function fixtureDeriver(): (project: Project) => DesiredArtefacts {
   return (_project: Project): DesiredArtefacts => ({
-    files: [{ path: "AGENTS.md", content: "# acme front-door\n" }],
+    files: [
+      { path: "AGENTS.md", content: "# acme front-door\n" },
+      { path: ORCHESTRATOR, content: "# acme orchestrator\n" },
+    ],
     aliasPlan: {
       aliases: [
         { target: "claude" as AgentName, linkPath: ".claude/skills", aliasTo: "installer-skills" },
@@ -87,7 +92,7 @@ const enableSetting: OperationSpec = {
 };
 
 /** The alias link paths this scenario's fixture creates, for snapshotting. */
-const ALIAS_LINKS = [`${APP}/.claude/skills`];
+const ALIAS_LINKS = [`${DELIV}/.claude/skills`];
 
 /**
  * Snapshot the observable filesystem under `dir` + the targets of known alias links, from the PUBLIC port
@@ -113,28 +118,44 @@ describe("lifecycle harness — acceptance (doc 13 §5/§8)", () => {
     it("a mutating command rides the shared lifecycle (load, check, apply, re-derive, materialise, report)", () => {
       const { fs, backlog } = setUpProject();
 
-      const result = runMutation(
-        lifecycleDeps(fs, backlog),
-        { root: APP },
-        enableSetting,
-        undefined,
-      );
+      const result = runMutation(lifecycleDeps(fs, backlog), CTX, enableSetting, undefined);
 
       // ⑥ RESULT reflects ① LOAD (the manifest name), ③ APPLY, and ④ RERENDER all at once:
       expect(result.summary).toBe("enabled telemetry for acme");
-      // changedPaths spans BOTH the operation's own file AND the harness's re-derived artefacts:
-      expect(result.changedPaths).toContain(`${APP}/settings.yml`); // ③ APPLY
-      expect(result.changedPaths).toContain(`${APP}/AGENTS.md`); // ④ RERENDER file
-      expect(result.changedPaths).toContain(`${APP}/.claude/skills`); // ④ RERENDER alias
+      // changedPaths spans BOTH the operation's own file AND the harness's re-derived orchestrator + alias —
+      // but NOT the author-owned front door (excluded on mutation, task-88):
+      expect(result.changedPaths).toContain(`${DELIV}/settings.yml`); // ③ APPLY
+      expect(result.changedPaths).toContain(`${DELIV}/${ORCHESTRATOR}`); // ④ RERENDER orchestrator
+      expect(result.changedPaths).not.toContain(`${DELIV}/AGENTS.md`); // front door author-owned
+      expect(result.changedPaths).toContain(`${DELIV}/.claude/skills`); // ④ RERENDER alias
       expect(result.materialisedTaskTitles).toEqual(["Document the telemetry setting"]); // ⑤
 
       // The observable end state proves each beat happened:
-      expect(fs.read(`${APP}/settings.yml`)).toBe("telemetry: on\n"); // ③
-      expect(fs.read(`${APP}/AGENTS.md`)).toBe("# acme front-door\n"); // ④ front-door re-derived
-      expect(fs.aliasTarget(`${APP}/.claude/skills`)).toBe(`${APP}/installer-skills`); // ④ alias created
+      expect(fs.read(`${DELIV}/settings.yml`)).toBe("telemetry: on\n"); // ③
+      expect(fs.read(`${DELIV}/${ORCHESTRATOR}`)).toBe("# acme orchestrator\n"); // ④ orchestrator re-derived
+      expect(fs.exists(`${DELIV}/AGENTS.md`)).toBe(false); // ④ front door NOT re-rendered
+      expect(fs.aliasTarget(`${DELIV}/.claude/skills`)).toBe(`${DELIV}/installer-skills`); // ④ alias created
       expect(backlog.listTasks(AUTHORING).map((t) => t.title)).toContain(
         "Document the telemetry setting",
-      ); // ⑤
+      ); // ⑤ at the WORKSPACE-root backlog
+    });
+  });
+
+  describe("task-88 — operates on the deliverable while materialising into the workspace backlog", () => {
+    it("loads + writes under wip/ but creates authoring tasks at the workspace root", () => {
+      const { fs, backlog } = setUpProject();
+
+      runMutation(lifecycleDeps(fs, backlog), CTX, enableSetting, undefined);
+
+      // The operation's effect + the re-rendered orchestrator landed under the DELIVERABLE root...
+      expect(fs.exists(`${DELIV}/settings.yml`)).toBe(true);
+      expect(fs.exists(`${DELIV}/${ORCHESTRATOR}`)).toBe(true);
+      // ...while the authoring task went to the WORKSPACE-root backlog, NOT a backlog under wip/ (no backlog
+      // was ever initialised under the deliverable, so querying one there throws):
+      expect(backlog.listTasks(AUTHORING).map((t) => t.title)).toContain(
+        "Document the telemetry setting",
+      );
+      expect(() => backlog.listTasks(`${DELIV}/.authoring-backlog`)).toThrow();
     });
   });
 
@@ -152,11 +173,12 @@ describe("lifecycle harness — acceptance (doc 13 §5/§8)", () => {
         materialise: () => [{ title: "Note the flag", acceptanceCriteria: [] }],
       };
 
-      const result = runMutation(lifecycleDeps(fs, backlog), { root: APP }, bareOp, undefined);
+      const result = runMutation(lifecycleDeps(fs, backlog), CTX, bareOp, undefined);
 
-      // The harness re-derived the front-door though the op did not ask:
-      expect(fs.read(`${APP}/AGENTS.md`)).toBe("# acme front-door\n");
-      expect(result.changedPaths).toContain(`${APP}/AGENTS.md`);
+      // The harness re-derived the orchestrator though the op did not ask (and left the front door alone):
+      expect(fs.read(`${DELIV}/${ORCHESTRATOR}`)).toBe("# acme orchestrator\n");
+      expect(fs.exists(`${DELIV}/AGENTS.md`)).toBe(false);
+      expect(result.changedPaths).toContain(`${DELIV}/${ORCHESTRATOR}`);
       // ...and materialised the task though the op only returned the plan:
       expect(backlog.listTasks(AUTHORING).map((t) => t.title)).toContain("Note the flag");
       expect(result.materialisedTaskTitles).toEqual(["Note the flag"]);
@@ -167,7 +189,7 @@ describe("lifecycle harness — acceptance (doc 13 §5/§8)", () => {
     it("show/list/validate observe, they do not mutate", () => {
       const { fs, backlog } = setUpProject();
 
-      const before = snapshot(fs, APP);
+      const before = snapshot(fs, DELIV);
       const tasksBefore = backlog.listTasks(AUTHORING);
 
       const describeProject: ReadSpec<void, { name: string; bundleCount: number }> = {
@@ -178,7 +200,7 @@ describe("lifecycle harness — acceptance (doc 13 §5/§8)", () => {
         }),
       };
 
-      const outcome = runRead(fs, { root: APP }, describeProject, undefined);
+      const outcome = runRead(fs, CTX, describeProject, undefined);
 
       // It projected a value from the loaded project:
       expect(outcome.value).toEqual({ name: "acme", bundleCount: 0 });
@@ -187,7 +209,7 @@ describe("lifecycle harness — acceptance (doc 13 §5/§8)", () => {
       expect(outcome.result.changedPaths).toEqual([]);
       expect(outcome.result.materialisedTaskTitles).toEqual([]);
       // ...and changed nothing on disk or in the backlog:
-      expect(snapshot(fs, APP)).toEqual(before);
+      expect(snapshot(fs, DELIV)).toEqual(before);
       expect(backlog.listTasks(AUTHORING)).toEqual(tasksBefore);
     });
   });
@@ -196,32 +218,22 @@ describe("lifecycle harness — acceptance (doc 13 §5/§8)", () => {
     it("the lifecycle is idempotent: a redundant re-run is a no-op", () => {
       const { fs, backlog } = setUpProject();
 
-      const first = runMutation(
-        lifecycleDeps(fs, backlog),
-        { root: APP },
-        enableSetting,
-        undefined,
-      );
-      expect(first.changedPaths).toContain(`${APP}/AGENTS.md`);
-      expect(first.changedPaths).toContain(`${APP}/.claude/skills`);
+      const first = runMutation(lifecycleDeps(fs, backlog), CTX, enableSetting, undefined);
+      expect(first.changedPaths).toContain(`${DELIV}/${ORCHESTRATOR}`);
+      expect(first.changedPaths).toContain(`${DELIV}/.claude/skills`);
       expect(first.materialisedTaskTitles).toEqual(["Document the telemetry setting"]);
 
-      const afterFirst = snapshot(fs, APP);
+      const afterFirst = snapshot(fs, DELIV);
       const tasksAfterFirst = backlog.listTasks(AUTHORING).map((t) => t.title);
 
-      const second = runMutation(
-        lifecycleDeps(fs, backlog),
-        { root: APP },
-        enableSetting,
-        undefined,
-      );
+      const second = runMutation(lifecycleDeps(fs, backlog), CTX, enableSetting, undefined);
 
-      // ④ planChanges is empty (front-door + alias already match), ⑤ the title already exists (skipped):
-      expect(second.changedPaths).not.toContain(`${APP}/AGENTS.md`);
-      expect(second.changedPaths).not.toContain(`${APP}/.claude/skills`);
+      // ④ planChanges is empty (orchestrator + alias already match), ⑤ the title already exists (skipped):
+      expect(second.changedPaths).not.toContain(`${DELIV}/${ORCHESTRATOR}`);
+      expect(second.changedPaths).not.toContain(`${DELIV}/.claude/skills`);
       expect(second.materialisedTaskTitles).toEqual([]);
       // The on-disk + backlog state is byte-identical to after the first run:
-      expect(snapshot(fs, APP)).toEqual(afterFirst);
+      expect(snapshot(fs, DELIV)).toEqual(afterFirst);
       expect(backlog.listTasks(AUTHORING).map((t) => t.title)).toEqual(tasksAfterFirst);
     });
   });

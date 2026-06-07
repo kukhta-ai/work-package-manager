@@ -65,26 +65,26 @@ function seed(): MemoryFileSystem {
 
   // Project at /proj with a manifest + project-local templates/:
   fs.write(
-    `${PROJ}/manifest.yml`,
+    `${PROJ}/wip/manifest.yml`,
     "project:\n  name: demo\n  version: 1.0.0\ntargets: []\nbundles: []\n",
   );
   // shadows the built-in project/single-bundle, with a distinguishing description:
   fs.write(
-    `${PROJ}/templates/project/single-bundle/template.yml`,
+    `${PROJ}/wip/templates/project/single-bundle/template.yml`,
     "name: single-bundle\nscope: project\ndescription: PROJECT-LOCAL single-bundle.\n",
   );
   fs.write(
-    `${PROJ}/templates/project/single-bundle/files/manifest.yml.tmpl`,
+    `${PROJ}/wip/templates/project/single-bundle/files/manifest.yml.tmpl`,
     "project:\n  name: x\n",
   );
   // a project-only bundle template:
   fs.write(
-    `${PROJ}/templates/bundle/adopts-tool/template.yml`,
+    `${PROJ}/wip/templates/bundle/adopts-tool/template.yml`,
     "name: adopts-tool\nscope: bundle\n",
   );
   // a name that exists at BOTH project + bundle scope (for `show --scope` disambiguation):
-  fs.write(`${PROJ}/templates/project/clash/template.yml`, "name: clash\nscope: project\n");
-  fs.write(`${PROJ}/templates/bundle/clash/template.yml`, "name: clash\nscope: bundle\n");
+  fs.write(`${PROJ}/wip/templates/project/clash/template.yml`, "name: clash\nscope: project\n");
+  fs.write(`${PROJ}/wip/templates/bundle/clash/template.yml`, "name: clash\nscope: bundle\n");
 
   return fs;
 }

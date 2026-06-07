@@ -128,9 +128,14 @@ function bundleFiles(fs: MemoryFileSystem, id: string): string[] {
 describe("default bundle template — createBundle end-to-end (doc 06/07/08/09)", () => {
   it("AC#1 — produces a working bundle: descriptor (bundle.yml), DoD-gated install-backlog, scope notes", () => {
     const { fs, backlog } = seed();
-    const result = runMutation(lifecycleDeps(fs, backlog), { root: ROOT }, spec(), {
-      id: SAMPLE_ID,
-    });
+    const result = runMutation(
+      lifecycleDeps(fs, backlog),
+      { deliverableRoot: ROOT, workspaceRoot: ROOT },
+      spec(),
+      {
+        id: SAMPLE_ID,
+      },
+    );
 
     // The descriptor (bundle.yml) — written CANONICALLY by the operation — exists and parses with id == SAMPLE_ID:
     expect(fs.exists(`${ROOT}/bundles/${SAMPLE_ID}/bundle.yml`)).toBe(true);
@@ -183,16 +188,26 @@ describe("default bundle template — createBundle end-to-end (doc 06/07/08/09)"
 
     // And the operation lists bundle.yml in changedPaths exactly once:
     const { fs: fs2, backlog } = seed();
-    const result = runMutation(lifecycleDeps(fs2, backlog), { root: ROOT }, spec(), {
-      id: SAMPLE_ID,
-    });
+    const result = runMutation(
+      lifecycleDeps(fs2, backlog),
+      { deliverableRoot: ROOT, workspaceRoot: ROOT },
+      spec(),
+      {
+        id: SAMPLE_ID,
+      },
+    );
     const bundleYml = `${ROOT}/bundles/${SAMPLE_ID}/bundle.yml`;
     expect(result.changedPaths.filter((p) => p === bundleYml)).toHaveLength(1);
   });
 
   it("AC#1 — the per-bundle and root scope-alias TARGET dirs exist (non-broken aliases)", () => {
     const { fs, backlog } = seed();
-    runMutation(lifecycleDeps(fs, backlog), { root: ROOT }, spec(), { id: SAMPLE_ID });
+    runMutation(
+      lifecycleDeps(fs, backlog),
+      { deliverableRoot: ROOT, workspaceRoot: ROOT },
+      spec(),
+      { id: SAMPLE_ID },
+    );
 
     // The template ships installer-skills/.keep so the per-bundle alias target exists; the rerender's alias resolves:
     expect(fs.exists(`${ROOT}/bundles/${SAMPLE_ID}/installer-skills`)).toBe(true);
@@ -204,7 +219,12 @@ describe("default bundle template — createBundle end-to-end (doc 06/07/08/09)"
 
   it("AC#1 — the payload delivery slots exist (doc 06/07)", () => {
     const { fs, backlog } = seed();
-    runMutation(lifecycleDeps(fs, backlog), { root: ROOT }, spec(), { id: SAMPLE_ID });
+    runMutation(
+      lifecycleDeps(fs, backlog),
+      { deliverableRoot: ROOT, workspaceRoot: ROOT },
+      spec(),
+      { id: SAMPLE_ID },
+    );
 
     expect(fs.exists(`${ROOT}/bundles/${SAMPLE_ID}/payload/files`)).toBe(true);
     expect(fs.exists(`${ROOT}/bundles/${SAMPLE_ID}/payload/templates`)).toBe(true);
@@ -213,7 +233,12 @@ describe("default bundle template — createBundle end-to-end (doc 06/07/08/09)"
 
   it("AC#2 — the produced bundle carries a detect → setup → verify task scaffold (kind:state + step:<slug>)", () => {
     const { fs, backlog } = seed();
-    runMutation(lifecycleDeps(fs, backlog), { root: ROOT }, spec(), { id: SAMPLE_ID });
+    runMutation(
+      lifecycleDeps(fs, backlog),
+      { deliverableRoot: ROOT, workspaceRoot: ROOT },
+      spec(),
+      { id: SAMPLE_ID },
+    );
 
     const tasksDir = `${ROOT}/bundles/${SAMPLE_ID}/install-backlog/tasks`;
     const taskFiles = fs.list(tasksDir).map((e) => e.name);
@@ -254,7 +279,12 @@ describe("default bundle template — createBundle end-to-end (doc 06/07/08/09)"
 
   it("AC#3 — every placeholder is substituted in the produced bundle (no marker in any content OR path)", () => {
     const { fs, backlog } = seed();
-    runMutation(lifecycleDeps(fs, backlog), { root: ROOT }, spec(), { id: SAMPLE_ID });
+    runMutation(
+      lifecycleDeps(fs, backlog),
+      { deliverableRoot: ROOT, workspaceRoot: ROOT },
+      spec(),
+      { id: SAMPLE_ID },
+    );
 
     for (const path of bundleFiles(fs, SAMPLE_ID)) {
       // The PATH carries no unresolved marker (task-16 substitutes placeholders in paths too):
@@ -287,9 +317,14 @@ describe("default bundle template — createBundle end-to-end (doc 06/07/08/09)"
     }
   });
 
-  it("AC#1 — the new bundle is recorded in the manifest (comment preserved) and the front-door re-derived", () => {
+  it("AC#1 — the new bundle is recorded in the manifest (comment preserved) and the orchestrator re-derived", () => {
     const { fs, backlog } = seed();
-    runMutation(lifecycleDeps(fs, backlog), { root: ROOT }, spec(), { id: SAMPLE_ID });
+    runMutation(
+      lifecycleDeps(fs, backlog),
+      { deliverableRoot: ROOT, workspaceRoot: ROOT },
+      spec(),
+      { id: SAMPLE_ID },
+    );
 
     const manifestText = fs.read(`${ROOT}/manifest.yml`);
     expect(manifestText).toContain(MANIFEST_COMMENT);
@@ -299,16 +334,22 @@ describe("default bundle template — createBundle end-to-end (doc 06/07/08/09)"
       expect(manifest.value.bundles).toContain(SAMPLE_ID);
     }
 
-    // The harness re-derived the front-door, whose menu now lists the new bundle's summary:
-    const frontDoor = fs.read(`${ROOT}/AGENTS.md`);
-    expect(frontDoor).toContain(`- ${SAMPLE_ID} bundle`);
+    // The harness re-derived the orchestrator skill; the executor front door is author-owned and is NOT
+    // auto-written on a mutation (task-88), so no canonical `AGENTS.md` appears at the deliverable root:
+    expect(fs.exists(`${ROOT}/installer-skills/demo-installer/SKILL.md`)).toBe(true);
+    expect(fs.exists(`${ROOT}/AGENTS.md`)).toBe(false);
   });
 
   it("materialise — the 12 doc-11 authoring tasks are created (the operation's MATERIALISE plan)", () => {
     const { fs, backlog } = seed();
-    const result = runMutation(lifecycleDeps(fs, backlog), { root: ROOT }, spec(), {
-      id: SAMPLE_ID,
-    });
+    const result = runMutation(
+      lifecycleDeps(fs, backlog),
+      { deliverableRoot: ROOT, workspaceRoot: ROOT },
+      spec(),
+      {
+        id: SAMPLE_ID,
+      },
+    );
 
     const titles = backlog.listTasks(AUTHORING).map((t) => t.title);
     for (const t of perBundleAuthoringTasks(SAMPLE_ID, { advisor: true })) {
@@ -322,8 +363,18 @@ describe("default bundle template — createBundle end-to-end (doc 06/07/08/09)"
     // (doc 07 §"Template layout": "every real bundle is a copy of this one"). Adding a second, differently-named
     // bundle to the same project must produce a fully id-specialized scaffold with NO leakage of the first id.
     const { fs, backlog } = seed();
-    runMutation(lifecycleDeps(fs, backlog), { root: ROOT }, spec(), { id: SAMPLE_ID });
-    runMutation(lifecycleDeps(fs, backlog), { root: ROOT }, spec(), { id: "doc-handoff" });
+    runMutation(
+      lifecycleDeps(fs, backlog),
+      { deliverableRoot: ROOT, workspaceRoot: ROOT },
+      spec(),
+      { id: SAMPLE_ID },
+    );
+    runMutation(
+      lifecycleDeps(fs, backlog),
+      { deliverableRoot: ROOT, workspaceRoot: ROOT },
+      spec(),
+      { id: "doc-handoff" },
+    );
 
     // The second bundle's own scaffold exists and is specialized to ITS id:
     expect(fs.exists(`${ROOT}/bundles/doc-handoff/bundle.yml`)).toBe(true);
@@ -357,7 +408,12 @@ describe("default bundle template — createBundle end-to-end (doc 06/07/08/09)"
 describe("default bundle template — install-backlog is a valid PRE-INITIALIZED Backlog.md (doc 07)", () => {
   it("the rendered config.yml carries every receipt fact as a DoD item (doc 07 §enforcement)", () => {
     const { fs, backlog } = seed();
-    runMutation(lifecycleDeps(fs, backlog), { root: ROOT }, spec(), { id: SAMPLE_ID });
+    runMutation(
+      lifecycleDeps(fs, backlog),
+      { deliverableRoot: ROOT, workspaceRoot: ROOT },
+      spec(),
+      { id: SAMPLE_ID },
+    );
 
     const config = parseYaml(
       fs.read(`${ROOT}/bundles/${SAMPLE_ID}/install-backlog/config.yml`),

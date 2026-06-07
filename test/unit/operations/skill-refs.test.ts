@@ -112,7 +112,7 @@ describe("attachSkillRefSpec", () => {
 
     const result = runMutation(
       lifecycleDeps(fs, backlog),
-      { root: ROOT },
+      { deliverableRoot: ROOT, workspaceRoot: ROOT },
       attachSkillRefSpec(PAYLOAD_SKILLS_DESCRIPTOR),
       { id: "a", name: "handoff", path },
     );
@@ -130,7 +130,7 @@ describe("attachSkillRefSpec", () => {
 
     runMutation(
       lifecycleDeps(fs, backlog),
-      { root: ROOT },
+      { deliverableRoot: ROOT, workspaceRoot: ROOT },
       attachSkillRefSpec(PAYLOAD_SKILLS_DESCRIPTOR),
       { id: "a", name: "relocated", path },
     );
@@ -148,7 +148,7 @@ describe("attachSkillRefSpec", () => {
     try {
       runMutation(
         lifecycleDeps(fs, backlog),
-        { root: ROOT },
+        { deliverableRoot: ROOT, workspaceRoot: ROOT },
         attachSkillRefSpec(PAYLOAD_SKILLS_DESCRIPTOR),
         { id: "a", name: "bad", path },
       );
@@ -166,16 +166,26 @@ describe("attachSkillRefSpec", () => {
     const path = `${CONVENTIONAL}/dup/SKILL.md`;
     fs.write(`${ROOT}/bundles/a/${path}`, skillMd("dup"));
     const d = lifecycleDeps(fs, backlog);
-    runMutation(d, { root: ROOT }, attachSkillRefSpec(PAYLOAD_SKILLS_DESCRIPTOR), {
-      id: "a",
-      name: "dup",
-      path,
-    });
-    runMutation(d, { root: ROOT }, attachSkillRefSpec(PAYLOAD_SKILLS_DESCRIPTOR), {
-      id: "a",
-      name: "dup",
-      path,
-    });
+    runMutation(
+      d,
+      { deliverableRoot: ROOT, workspaceRoot: ROOT },
+      attachSkillRefSpec(PAYLOAD_SKILLS_DESCRIPTOR),
+      {
+        id: "a",
+        name: "dup",
+        path,
+      },
+    );
+    runMutation(
+      d,
+      { deliverableRoot: ROOT, workspaceRoot: ROOT },
+      attachSkillRefSpec(PAYLOAD_SKILLS_DESCRIPTOR),
+      {
+        id: "a",
+        name: "dup",
+        path,
+      },
+    );
     expect(skillsOf(fs, "a")).toEqual([{ name: "dup", path }]);
   });
 
@@ -185,7 +195,7 @@ describe("attachSkillRefSpec", () => {
     fs.write(`${ROOT}/bundles/a/${path}`, skillMd("k"));
     runMutation(
       lifecycleDeps(fs, backlog),
-      { root: ROOT },
+      { deliverableRoot: ROOT, workspaceRoot: ROOT },
       attachSkillRefSpec(PAYLOAD_SKILLS_DESCRIPTOR),
       { id: "a", name: "k", path },
     );
@@ -207,7 +217,7 @@ describe("scaffoldSkillRefSpec", () => {
     const { fs, backlog } = seed();
     const result = runMutation(
       lifecycleDeps(fs, backlog),
-      { root: ROOT },
+      { deliverableRoot: ROOT, workspaceRoot: ROOT },
       scaffoldSkillRefSpec(PAYLOAD_SKILLS_DESCRIPTOR, { builtinTemplatesRoot: BUILTIN }),
       { id: "a", name: "fresh" },
     );
@@ -238,7 +248,7 @@ describe("scaffoldSkillRefSpec", () => {
 
     runMutation(
       lifecycleDeps(fs, backlog),
-      { root: ROOT },
+      { deliverableRoot: ROOT, workspaceRoot: ROOT },
       scaffoldSkillRefSpec(PAYLOAD_SKILLS_DESCRIPTOR, { builtinTemplatesRoot: BUILTIN }),
       { id: "a", name: "exists" },
     );
@@ -256,9 +266,14 @@ describe("listSkillRefsSpec", () => {
       "id: a\nversion: 0.1.0\nsummary: a\nconfirmation: safe\nrequires: {}\npayload:\n  skills:\n    - name: one\n      path: payload/agent-skills/one/SKILL.md\n    - name: two\n      path: custom/two.md\n";
     const { fs } = seed(aYml);
     const before = fs.read(`${ROOT}/bundles/a/bundle.yml`);
-    const { value } = runRead(fs, { root: ROOT }, listSkillRefsSpec(PAYLOAD_SKILLS_DESCRIPTOR), {
-      id: "a",
-    });
+    const { value } = runRead(
+      fs,
+      { deliverableRoot: ROOT, workspaceRoot: ROOT },
+      listSkillRefsSpec(PAYLOAD_SKILLS_DESCRIPTOR),
+      {
+        id: "a",
+      },
+    );
     expect(value).toEqual([
       { name: "one", path: "payload/agent-skills/one/SKILL.md" },
       { name: "two", path: "custom/two.md" },
@@ -268,9 +283,14 @@ describe("listSkillRefsSpec", () => {
 
   it("returns [] for a bundle with no registered skills", () => {
     const { fs } = seed();
-    const { value } = runRead(fs, { root: ROOT }, listSkillRefsSpec(PAYLOAD_SKILLS_DESCRIPTOR), {
-      id: "a",
-    });
+    const { value } = runRead(
+      fs,
+      { deliverableRoot: ROOT, workspaceRoot: ROOT },
+      listSkillRefsSpec(PAYLOAD_SKILLS_DESCRIPTOR),
+      {
+        id: "a",
+      },
+    );
     expect(value).toEqual([]);
   });
 });
@@ -289,7 +309,7 @@ describe("removeSkillRefSpec", () => {
 
     const result = runMutation(
       lifecycleDeps(fs, backlog),
-      { root: ROOT },
+      { deliverableRoot: ROOT, workspaceRoot: ROOT },
       removeSkillRefSpec(PAYLOAD_SKILLS_DESCRIPTOR),
       { id: "a", name: "one" },
     );
@@ -307,7 +327,7 @@ describe("removeSkillRefSpec", () => {
     const { fs, backlog } = seed(aYml);
     const result = runMutation(
       lifecycleDeps(fs, backlog),
-      { root: ROOT },
+      { deliverableRoot: ROOT, workspaceRoot: ROOT },
       removeSkillRefSpec(PAYLOAD_SKILLS_DESCRIPTOR),
       { id: "a", name: "moved" },
     );
@@ -321,7 +341,7 @@ describe("removeSkillRefSpec", () => {
     try {
       runMutation(
         lifecycleDeps(fs, backlog),
-        { root: ROOT },
+        { deliverableRoot: ROOT, workspaceRoot: ROOT },
         removeSkillRefSpec(PAYLOAD_SKILLS_DESCRIPTOR),
         { id: "a", name: "ghost" },
       );

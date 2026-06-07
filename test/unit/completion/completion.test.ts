@@ -33,7 +33,7 @@ function io(): CliIo {
 function seededDeps(): CliDeps {
   const fs = new MemoryFileSystem();
   fs.write(
-    `${ROOT}/manifest.yml`,
+    `${ROOT}/wip/manifest.yml`,
     [
       "project:",
       "  name: demo",
@@ -56,7 +56,7 @@ function seededDeps(): CliDeps {
   );
   // A project-local template shadows/extends the built-ins.
   fs.write(
-    `${ROOT}/templates/bundle/adopts-tool/template.yml`,
+    `${ROOT}/wip/templates/bundle/adopts-tool/template.yml`,
     "name: adopts-tool\nscope: bundle\n",
   );
 
@@ -285,7 +285,7 @@ describe("AC#3 — state-dependent completions via named sources; a new source s
     // The project lives at /proj, but the cwd is elsewhere; only `-C /proj` points completion at it.
     const fs = new MemoryFileSystem();
     fs.write(
-      `${ROOT}/manifest.yml`,
+      `${ROOT}/wip/manifest.yml`,
       [
         "project:",
         "  name: demo",
@@ -423,7 +423,7 @@ describe("the REAL omelette completion protocol reaches the dispatch (the genera
     // Project at /proj, cwd elsewhere: only the `-C /proj` on the line points completion at it.
     const fs = new MemoryFileSystem();
     fs.write(
-      `${ROOT}/manifest.yml`,
+      `${ROOT}/wip/manifest.yml`,
       [
         "project:",
         "  name: demo",

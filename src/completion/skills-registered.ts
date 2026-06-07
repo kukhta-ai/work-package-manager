@@ -35,7 +35,7 @@ export const skillNamesRegistered: CompletionSource = (ctx: CompletionContext): 
     return [];
   }
   const parsed = parseBundleManifest(
-    parseYaml(ctx.fs.read(`${context.root}/bundles/${ctx.bundleId}/bundle.yml`)),
+    parseYaml(ctx.fs.read(`${context.deliverableRoot}/bundles/${ctx.bundleId}/bundle.yml`)),
   );
   if (!parsed.ok) {
     return [];

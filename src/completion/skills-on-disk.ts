@@ -36,7 +36,7 @@ export const skillNamesOnDisk: CompletionSource = (ctx: CompletionContext): stri
   if (!context.found) {
     return [];
   }
-  const base = `${context.root}/bundles/${ctx.bundleId}/${AGENT_SKILLS_DIR}`;
+  const base = `${context.deliverableRoot}/bundles/${ctx.bundleId}/${AGENT_SKILLS_DIR}`;
   return prefixFilter(subdirNames(ctx.fs, base), ctx.partial);
 };
 

@@ -4,8 +4,8 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { execaSync } from "execa";
 import { describe, expect, it } from "vitest";
-import { initFlatProject } from "../helpers/flat-project.js";
 import { withTempDir } from "../helpers/tmpdir.js";
+import { initWorkspace } from "../helpers/workspace.js";
 
 /**
  * End-to-end (through-the-binary) tests for the bundle-membership lifecycle — `bundle new` / `enable` /
@@ -46,11 +46,11 @@ function wpm(proj: string, args: readonly string[]): { stdout: string; status: n
 }
 
 /**
- * Build a flat project at <dir>/demo from the real `init` output (task-87 nests the deliverable under `wip/`;
- * {@link initFlatProject} flattens it to the pre-87 shape these commands resolve — a task-88 follow-up).
+ * Create a real authoring workspace at <dir>/demo via `wpm init` (deliverable under `wip/`, authoring backlog
+ * at the workspace root) and return the workspace root; project-bound commands resolve it via `-C` (task-88).
  */
 function initProjectAt(dir: string): string {
-  return initFlatProject(builtCli, dir);
+  return initWorkspace(builtCli, dir);
 }
 
 /** The titles of the authoring tasks Backlog.md tracks in <proj>/.authoring-backlog. */
@@ -75,29 +75,28 @@ describeIfBuilt("bundle lifecycle E2E via dist/cli.js (tasks 50/51/52)", () => {
 
       // Both bundle dirs exist with a canonical bundle.yml + the rendered install-backlog config (task_prefix).
       for (const id of ["web-handoff", "doc-handoff"]) {
-        expect(existsSync(join(proj, "bundles", id, "bundle.yml"))).toBe(true);
+        expect(existsSync(join(proj, "wip", "bundles", id, "bundle.yml"))).toBe(true);
         const config = readFileSync(
-          join(proj, "bundles", id, "install-backlog", "config.yml"),
+          join(proj, "wip", "bundles", id, "install-backlog", "config.yml"),
           "utf8",
         );
         expect(config).toContain("task_prefix");
         expect(config).toContain(id); // the rendered task_prefix == the id
         // Each bundle auto-scaffolded its advisor stub (doc 10 step 6).
         const advisor = readFileSync(
-          join(proj, "installer-skills", `${id}-advisor`, "SKILL.md"),
+          join(proj, "wip", "installer-skills", `${id}-advisor`, "SKILL.md"),
           "utf8",
         );
         expect(advisor).toContain(`name: ${id}-advisor`);
       }
 
-      // The front-door menu lists BOTH bundles (re-rendered on each `bundle new`).
-      const agents = readFileSync(join(proj, "AGENTS.md"), "utf8");
-      expect(agents).toContain("web-handoff");
-      expect(agents).toContain("doc-handoff");
-      // The manifest enables both.
-      const manifest = readFileSync(join(proj, "manifest.yml"), "utf8");
+      // The manifest enables both — the source of truth for the install-time menu (the executor front door is
+      // author-owned `wip/_AGENTS.md` and is NOT re-rendered on a mutation; task-88).
+      const manifest = readFileSync(join(proj, "wip", "manifest.yml"), "utf8");
       expect(manifest).toMatch(/web-handoff/);
       expect(manifest).toMatch(/doc-handoff/);
+      expect(existsSync(join(proj, "wip", "_AGENTS.md"))).toBe(true); // author-owned front door present
+      expect(existsSync(join(proj, "wip", "AGENTS.md"))).toBe(false); // never auto-rendered on mutation
 
       // The per-bundle authoring tasks materialised in the real .authoring-backlog (doc 11 §3).
       const titles = authoringTaskTitles(proj);
@@ -112,8 +111,10 @@ describeIfBuilt("bundle lifecycle E2E via dist/cli.js (tasks 50/51/52)", () => {
       const proj = initProjectAt(dir);
       expect(wpm(proj, ["bundle", "new", "core", "--no-advisor"]).status).toBe(0);
 
-      expect(existsSync(join(proj, "bundles", "core", "bundle.yml"))).toBe(true);
-      expect(existsSync(join(proj, "installer-skills", "core-advisor", "SKILL.md"))).toBe(false);
+      expect(existsSync(join(proj, "wip", "bundles", "core", "bundle.yml"))).toBe(true);
+      expect(existsSync(join(proj, "wip", "installer-skills", "core-advisor", "SKILL.md"))).toBe(
+        false,
+      );
       expect(authoringTaskTitles(proj)).not.toContain("Write advisor content for core");
     });
   });
@@ -123,10 +124,9 @@ describeIfBuilt("bundle lifecycle E2E via dist/cli.js (tasks 50/51/52)", () => {
       const proj = initProjectAt(dir);
       expect(wpm(proj, ["bundle", "new", "draft", "--disabled"]).status).toBe(0);
 
-      expect(existsSync(join(proj, "bundles", "draft", "bundle.yml"))).toBe(true); // dir scaffolded
-      const manifest = readFileSync(join(proj, "manifest.yml"), "utf8");
-      expect(manifest).not.toMatch(/draft/); // not enabled
-      expect(readFileSync(join(proj, "AGENTS.md"), "utf8")).not.toContain("draft"); // not in the menu
+      expect(existsSync(join(proj, "wip", "bundles", "draft", "bundle.yml"))).toBe(true); // dir scaffolded
+      const manifest = readFileSync(join(proj, "wip", "manifest.yml"), "utf8");
+      expect(manifest).not.toMatch(/draft/); // not enabled (and so absent from the install-time menu)
     });
   });
 
@@ -135,7 +135,7 @@ describeIfBuilt("bundle lifecycle E2E via dist/cli.js (tasks 50/51/52)", () => {
       const proj = initProjectAt(dir);
       const out = wpm(proj, ["bundle", "new", "list"]);
       expect(out.status).toBe(2); // a USAGE error through the real binary
-      expect(existsSync(join(proj, "bundles", "list"))).toBe(false);
+      expect(existsSync(join(proj, "wip", "bundles", "list"))).toBe(false);
     });
   });
 
@@ -146,12 +146,14 @@ describeIfBuilt("bundle lifecycle E2E via dist/cli.js (tasks 50/51/52)", () => {
       const titlesAfterNew = authoringTaskTitles(proj);
 
       expect(wpm(proj, ["bundle", "disable", "web"]).status).toBe(0);
-      expect(readFileSync(join(proj, "manifest.yml"), "utf8")).not.toMatch(/bundles:.*\bweb\b/s);
-      expect(existsSync(join(proj, "bundles", "web", "bundle.yml"))).toBe(true); // dir stays
+      expect(readFileSync(join(proj, "wip", "manifest.yml"), "utf8")).not.toMatch(
+        /bundles:.*\bweb\b/s,
+      );
+      expect(existsSync(join(proj, "wip", "bundles", "web", "bundle.yml"))).toBe(true); // dir stays
 
       const enabled = wpm(proj, ["bundle", "enable", "web"]);
       expect(enabled.status).toBe(0);
-      expect(readFileSync(join(proj, "manifest.yml"), "utf8")).toMatch(/web/);
+      expect(readFileSync(join(proj, "wip", "manifest.yml"), "utf8")).toMatch(/web/);
       // re-enable did not duplicate the per-bundle tasks (title-idempotent) — the set is unchanged.
       expect(authoringTaskTitles(proj)).toBe(titlesAfterNew);
     });
