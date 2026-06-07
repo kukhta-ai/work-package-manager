@@ -10,6 +10,7 @@ import { NodeFileSystem } from "../../src/adapters/node-fs.js";
 import { ProcessEnvironment } from "../../src/adapters/process-env.js";
 import { type CliDeps, run } from "../../src/cli.js";
 import type { CliIo, OutputSink } from "../../src/util/exit.js";
+import { initFlatProject } from "../helpers/flat-project.js";
 import { withTempDir } from "../helpers/tmpdir.js";
 
 /**
@@ -168,10 +169,9 @@ function wpm(projectDir: string, args: readonly string[]): { stdout: string; sta
 describeIfBuilt("bundle lifecycle via the built dist/cli.js (task-50/51/52 — real binary)", () => {
   it("`bundle new <id> --version 1.2.3` sets the BUNDLE version (not the program version); `wpm --version` still works", async () => {
     await withTempDir((dir) => {
-      const proj = join(dir, "demo");
-      execFileSync(process.execPath, [builtCli, "init", "demo", "--at", proj], {
-        encoding: "utf8",
-      });
+      // task-87 nests the deliverable under wip/; initFlatProject yields the pre-87 flat shape these commands
+      // resolve today (task-88 follow-up: point -C at the workspace root once resolution lands).
+      const proj = initFlatProject(builtCli, dir);
 
       const out = wpm(proj, ["bundle", "new", "web", "--version", "1.2.3"]);
       expect(out.status).toBe(0);
@@ -190,10 +190,9 @@ describeIfBuilt("bundle lifecycle via the built dist/cli.js (task-50/51/52 — r
 
   it("`bundle disable` then `bundle enable` round-trips manifest membership over the real backlog", async () => {
     await withTempDir((dir) => {
-      const proj = join(dir, "demo");
-      execFileSync(process.execPath, [builtCli, "init", "demo", "--at", proj], {
-        encoding: "utf8",
-      });
+      // task-87 nests the deliverable under wip/; initFlatProject yields the pre-87 flat shape these commands
+      // resolve today (task-88 follow-up: point -C at the workspace root once resolution lands).
+      const proj = initFlatProject(builtCli, dir);
       expect(wpm(proj, ["bundle", "new", "web"]).status).toBe(0);
 
       // disable: drops from the manifest, dir stays on disk.
@@ -219,10 +218,9 @@ describeIfBuilt(
   () => {
     it("after init, an edit to bundles/bundle-template/ is reflected in the next `bundle new` scaffold", async () => {
       await withTempDir((dir) => {
-        const proj = join(dir, "demo");
-        execFileSync(process.execPath, [builtCli, "init", "demo", "--at", proj], {
-          encoding: "utf8",
-        });
+        // task-87 nests the deliverable under wip/; initFlatProject yields the pre-87 flat shape these commands
+        // resolve today (task-88 follow-up).
+        const proj = initFlatProject(builtCli, dir);
         // init materialised the project default bundle scaffold:
         expect(existsSync(join(proj, "bundles", "bundle-template", "AGENTS.md.tmpl"))).toBe(true);
 
@@ -243,10 +241,9 @@ describeIfBuilt(
 
     it("after `bundle template set default`, `bundle new` still scaffolds a working bundle", async () => {
       await withTempDir((dir) => {
-        const proj = join(dir, "demo");
-        execFileSync(process.execPath, [builtCli, "init", "demo", "--at", proj], {
-          encoding: "utf8",
-        });
+        // task-87 nests the deliverable under wip/; initFlatProject yields the pre-87 flat shape these commands
+        // resolve today (task-88 follow-up).
+        const proj = initFlatProject(builtCli, dir);
         // Reset the scaffold from the built-in default (the H command), then clone it:
         expect(wpm(proj, ["bundle", "template", "set", "default"]).status).toBe(0);
         expect(wpm(proj, ["bundle", "new", "web"]).status).toBe(0);

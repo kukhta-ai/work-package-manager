@@ -4,6 +4,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { execaSync } from "execa";
 import { describe, expect, it } from "vitest";
+import { initFlatProject } from "../helpers/flat-project.js";
 import { withTempDir } from "../helpers/tmpdir.js";
 
 /**
@@ -39,10 +40,12 @@ function wpm(proj: string, args: readonly string[]): { stdout: string; status: n
   return cli([...args, "-C", proj]);
 }
 
-/** init a real project at <dir>/demo + create the bundle `web`; return the project path. */
+/**
+ * Build a flat project at <dir>/demo (from the real `init`, flattened for the pre-87 shape — task-88 follow-up)
+ * + create the bundle `web`; return the project root.
+ */
 function projectWithWeb(dir: string): string {
-  const proj = join(dir, "demo");
-  execFileSync(process.execPath, [builtCli, "init", "demo", "--at", proj], { encoding: "utf8" });
+  const proj = initFlatProject(builtCli, dir);
   execFileSync(process.execPath, [builtCli, "bundle", "new", "web", "-C", proj], {
     encoding: "utf8",
   });
@@ -297,10 +300,12 @@ function authoringTaskTitles(proj: string): string {
   }).stdout as string;
 }
 
-/** init a real project at <dir>/demo + create bundles `a` and `b`, where `b` requires `a`; return the path. */
+/**
+ * Build a flat project at <dir>/demo (from the real `init`, flattened for the pre-87 shape — task-88 follow-up)
+ * + create bundles `a` and `b`, where `b` requires `a`; return the path.
+ */
 function projectWithRequirer(dir: string): string {
-  const proj = join(dir, "demo");
-  execFileSync(process.execPath, [builtCli, "init", "demo", "--at", proj], { encoding: "utf8" });
+  const proj = initFlatProject(builtCli, dir);
   for (const id of ["a", "b"]) {
     execFileSync(process.execPath, [builtCli, "bundle", "new", id, "-C", proj], {
       encoding: "utf8",
@@ -413,10 +418,12 @@ function wpmFull(
   };
 }
 
-/** init a real project at <dir>/demo + bundles `a` and `b`, BOTH with the canonical empty requires (no edges). */
+/**
+ * Build a flat project at <dir>/demo (from the real `init`, flattened for the pre-87 shape — task-88 follow-up)
+ * + bundles `a` and `b`, BOTH with the canonical empty requires (no edges).
+ */
 function projectWithAB(dir: string): string {
-  const proj = join(dir, "demo");
-  execFileSync(process.execPath, [builtCli, "init", "demo", "--at", proj], { encoding: "utf8" });
+  const proj = initFlatProject(builtCli, dir);
   for (const id of ["a", "b"]) {
     execFileSync(process.execPath, [builtCli, "bundle", "new", id, "-C", proj], {
       encoding: "utf8",

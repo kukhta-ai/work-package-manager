@@ -15,18 +15,20 @@ import { parseManifest } from "../../../src/core/services/schema/index.js";
 import { parseYaml } from "../../../src/util/yaml.js";
 
 /**
- * Unit test for the FULL `initProject` operation (task-34) over the IN-MEMORY ports — the pure-core half of the
+ * Unit test for the `initProject` operation (task-87) over the IN-MEMORY ports — the pure-core half of the
  * `wpm init` command. It mirrors the REAL `templates/` tree into a `MemoryFileSystem` (so it runs against the
  * genuine authored `minimal` project template + `default` bundle template) and a `FakeBacklog`, then drives
  * `initProject` directly (no commander, no real fs). The real-disk end-to-end is `test/integration/cli.init.test.ts`.
  *
- * This supersedes the task-33 walking-skeleton unit test: the skeleton deliberately did the smallest slice (no
- * `bundles/`, no aliases, no materialise, no `.gitignore`); the full command does all 12 doc-10:137 steps.
+ * Task-87 reshapes `init` to scaffold an **authoring workspace** (docs 06/10/11/12): `targetDir` is the
+ * WORKSPACE ROOT (authoring front door + `.authoring-backlog/`), the deliverable skeleton nests under `wip/`,
+ * and the empty build-output dir is `builds/`.
  */
 
 const REAL_TEMPLATES = fileURLToPath(new URL("../../../templates", import.meta.url));
 const BUILTIN = "/builtin-templates";
-const TARGET = "/proj";
+const TARGET = "/proj"; // the WORKSPACE ROOT
+const WIP = `${TARGET}/wip`; // the deliverable subdir
 
 /** Mirror the real `templates/` tree into a fresh MemoryFileSystem at {@link BUILTIN}. */
 function seedTemplates(): MemoryFileSystem {
@@ -61,38 +63,36 @@ function filesUnder(fs: MemoryFileSystem, dir: string): string[] {
   return out;
 }
 
-describe("initProject — the FULL bootstrap operation (task-34; doc 10 init steps 1–12)", () => {
-  it("AC#1 — produces the project root: manifest, bundles/bundle-template/, empty dirs, derived artefacts", () => {
+describe("initProject — scaffolds an authoring workspace (task-87; docs 06/10/11/12)", () => {
+  it("AC#1 — workspace root holds the authoring front door + authoring backlog; deliverable lives under wip/", () => {
     const fs = seedTemplates();
     const backlog = new FakeBacklog();
     const result = initProject(deps(fs, backlog), { targetDir: TARGET, name: "hermes-handoff" });
 
-    // The copied files/ artefacts:
-    expect(fs.exists(`${TARGET}/manifest.yml`)).toBe(true);
-    expect(fs.exists(`${TARGET}/README.md`)).toBe(true);
-    expect(fs.exists(`${TARGET}/RALPH-LOOP.md`)).toBe(true);
+    // The WORKSPACE ROOT keeps only the authoring surface:
+    expect(fs.exists(`${TARGET}/AGENTS.md`)).toBe(true); // authoring front door
+    expect(fs.exists(`${TARGET}/.authoring-backlog`)).toBe(true); // authoring backlog
+
+    // The DELIVERABLE skeleton nests under wip/ — the copied files/ artefacts:
+    expect(fs.exists(`${WIP}/manifest.yml`)).toBe(true);
+    expect(fs.exists(`${WIP}/README.md`)).toBe(true);
+    expect(fs.exists(`${WIP}/RALPH-LOOP.md`)).toBe(true);
     expect(
-      fs.exists(`${TARGET}/installer-skills/hermes-handoff-installer/references/journaling.md`),
+      fs.exists(`${WIP}/installer-skills/hermes-handoff-installer/references/journaling.md`),
     ).toBe(true);
-    // The DERIVED artefacts, rendered from snippets/ (the single source) and written by step 8:
-    expect(fs.exists(`${TARGET}/AGENTS.md`)).toBe(true);
-    expect(fs.exists(`${TARGET}/installer-skills/hermes-handoff-installer/SKILL.md`)).toBe(true);
 
-    // AC#1 — the default bundle template is materialised at bundles/bundle-template/ (step 5):
-    expect(fs.exists(`${TARGET}/bundles/bundle-template`)).toBe(true);
-    expect(fs.exists(`${TARGET}/bundles/bundle-template/AGENTS.md.tmpl`)).toBe(true);
+    // AC#1 — the default bundle template is materialised at wip/bundles/bundle-template/:
+    expect(fs.exists(`${WIP}/bundles/bundle-template`)).toBe(true);
+    expect(fs.exists(`${WIP}/bundles/bundle-template/AGENTS.md.tmpl`)).toBe(true);
     // The scaffold keeps its placeholders (a template-of-a-template; bundle new fills them):
-    expect(fs.read(`${TARGET}/bundles/bundle-template/AGENTS.md.tmpl`)).toMatch(
-      /\{\{bundle-id\}\}/,
-    );
+    expect(fs.read(`${WIP}/bundles/bundle-template/AGENTS.md.tmpl`)).toMatch(/\{\{bundle-id\}\}/);
 
-    // AC#1 — the empty registries exist as directories (installer-skills/, templates/, .authoring-backlog/):
-    expect(fs.exists(`${TARGET}/installer-skills`)).toBe(true);
-    expect(fs.exists(`${TARGET}/templates`)).toBe(true);
-    expect(fs.exists(`${TARGET}/.authoring-backlog`)).toBe(true);
+    // AC#1 — the empty registries exist as directories under wip/:
+    expect(fs.exists(`${WIP}/installer-skills`)).toBe(true);
+    expect(fs.exists(`${WIP}/templates`)).toBe(true);
 
     // The manifest parses with the substituted name + empty lists (minimal declares neither targets nor bundles):
-    const manifest = parseManifest(parseYaml(fs.read(`${TARGET}/manifest.yml`)));
+    const manifest = parseManifest(parseYaml(fs.read(`${WIP}/manifest.yml`)));
     expect(manifest.ok).toBe(true);
     if (manifest.ok) {
       expect(manifest.value.meta.name).toBe("hermes-handoff");
@@ -100,27 +100,74 @@ describe("initProject — the FULL bootstrap operation (task-34; doc 10 init ste
       expect(manifest.value.targets).toEqual([]);
     }
 
-    // The result is observable: summary + changed paths + the materialised project-wide set (AC#4):
-    expect(result.summary).toBe(`created project hermes-handoff at ${TARGET}`);
+    // The result is observable: summary + changed paths + the materialised project-wide set:
+    expect(result.summary).toBe(
+      `created authoring workspace hermes-handoff at ${TARGET} (deliverable under wip/)`,
+    );
     expect(result.changedPaths).toContain(`${TARGET}/AGENTS.md`);
     expect(result.changedPaths).toContain(`${TARGET}/.authoring-backlog`);
     expect(result.materialisedTaskTitles).toHaveLength(8);
   });
 
-  it("AC#2 — the front-door + orchestrator are fully substituted; the scaffold keeps its placeholders", () => {
+  it("AC#2 — an EMPTY build-output directory (builds/) exists at the workspace root", () => {
+    const fs = seedTemplates();
+    initProject(deps(fs, new FakeBacklog()), { targetDir: TARGET, name: "hermes-handoff" });
+    expect(fs.exists(`${TARGET}/builds`)).toBe(true);
+    expect(fs.list(`${TARGET}/builds`)).toEqual([]); // empty
+  });
+
+  it("AC#3 — the workspace .gitignore excludes BOTH the authoring backlog AND builds/", () => {
+    const fs = seedTemplates();
+    const result = initProject(deps(fs, new FakeBacklog()), {
+      targetDir: TARGET,
+      name: "hermes-handoff",
+    });
+    expect(fs.exists(`${TARGET}/.gitignore`)).toBe(true);
+    const gitignore = fs.read(`${TARGET}/.gitignore`);
+    expect(gitignore).toMatch(/^\.authoring-backlog\/$/m);
+    expect(gitignore).toMatch(/^builds\/$/m);
+    expect(result.changedPaths).toContain(`${TARGET}/.gitignore`);
+  });
+
+  it("AC#4 — the authoring front door addresses the AUTHORING agent (author wip/, not install)", () => {
     const fs = seedTemplates();
     initProject(deps(fs, new FakeBacklog()), { targetDir: TARGET, name: "hermes-handoff" });
 
-    const frontDoor = fs.read(`${TARGET}/AGENTS.md`);
-    expect(frontDoor).toContain("hermes-handoff"); // {{project-name}} substituted
-    expect(frontDoor.toLowerCase()).toContain("install"); // the doc-07 recognition reframing
-    const orchestrator = fs.read(`${TARGET}/installer-skills/hermes-handoff-installer/SKILL.md`);
+    const authoring = fs.read(`${TARGET}/AGENTS.md`);
+    expect(authoring).toContain("hermes-handoff"); // {{project-name}} substituted
+    expect(authoring.toLowerCase()).toContain("authoring agent"); // its stance
+    expect(authoring).toContain("wip/"); // points at the deliverable subdir
+    expect(authoring).toContain(".authoring-backlog"); // points at the authoring backlog
+    // It must NOT adopt the executor's stance (that is the wip/_AGENTS.md front door's job):
+    expect(authoring.toLowerCase()).not.toContain("executing agent");
+
+    // A CLAUDE.md alias points at the authoring front door:
+    expect(fs.aliasTarget(`${TARGET}/CLAUDE.md`)).toBe(`${TARGET}/AGENTS.md`);
+  });
+
+  it("AC#8 — wip/ has the rendered installer skill + the executor front door under the reserved prefix", () => {
+    const fs = seedTemplates();
+    initProject(deps(fs, new FakeBacklog()), { targetDir: TARGET, name: "hermes-handoff" });
+
+    // The rendered per-project installer skill (substituted):
+    const orchestrator = fs.read(`${WIP}/installer-skills/hermes-handoff-installer/SKILL.md`);
     expect(orchestrator).toContain("hermes-handoff-installer");
 
+    // The executor front door is author-owned, under the reserved build-stripped prefix (NOT the canonical name):
+    expect(fs.exists(`${WIP}/_AGENTS.md`)).toBe(true);
+    expect(fs.exists(`${WIP}/AGENTS.md`)).toBe(false);
+    const executor = fs.read(`${WIP}/_AGENTS.md`);
+    expect(executor).toContain("hermes-handoff"); // {{project-name}} substituted
+    expect(executor.toLowerCase()).toContain("install"); // it addresses the EXECUTOR
+  });
+
+  it("the produced files are fully substituted; only the bundle-template scaffold keeps its placeholders", () => {
+    const fs = seedTemplates();
+    initProject(deps(fs, new FakeBacklog()), { targetDir: TARGET, name: "hermes-handoff" });
+
     // No file OUTSIDE the bundle-template scaffold has an unresolved {{…}} marker. The scaffold at
-    // bundles/bundle-template/ is a template-of-a-template and DELIBERATELY keeps its placeholders, so it is
-    // excluded from the no-markers check (bundle new fills them).
-    const scaffold = `${TARGET}/bundles/bundle-template`;
+    // wip/bundles/bundle-template/ is a template-of-a-template and DELIBERATELY keeps its placeholders.
+    const scaffold = `${WIP}/bundles/bundle-template`;
     for (const path of filesUnder(fs, TARGET)) {
       if (path.startsWith(`${scaffold}/`)) continue;
       expect(path, `marker in produced path ${path}`).not.toMatch(/\{\{[^}]*\}\}/);
@@ -128,16 +175,16 @@ describe("initProject — the FULL bootstrap operation (task-34; doc 10 init ste
     }
   });
 
-  it("AC#3 — no scope-aliases are created when the template declares no targets (minimal)", () => {
+  it("AC#1 — no scope-aliases are created when the template declares no targets (minimal)", () => {
     const fs = seedTemplates();
     initProject(deps(fs, new FakeBacklog()), { targetDir: TARGET, name: "hermes-handoff" });
-    // minimal declares `targets: []`, so the alias plan is empty — no .claude/skills etc.
-    expect(fs.exists(`${TARGET}/.claude/skills`)).toBe(false);
-    expect(fs.exists(`${TARGET}/.agents/skills`)).toBe(false);
-    expect(fs.aliasTarget(`${TARGET}/.claude/skills`)).toBeUndefined();
+    // minimal declares `targets: []`, so the alias plan is empty — no .claude/skills etc. under wip/.
+    expect(fs.exists(`${WIP}/.claude/skills`)).toBe(false);
+    expect(fs.exists(`${WIP}/.agents/skills`)).toBe(false);
+    expect(fs.aliasTarget(`${WIP}/.claude/skills`)).toBeUndefined();
   });
 
-  it("AC#4 — the project-wide authoring task set (8) is materialised into .authoring-backlog", () => {
+  it("AC#7 — the project-wide authoring task set (8) is materialised into the workspace-root .authoring-backlog", () => {
     const fs = seedTemplates();
     const backlog = new FakeBacklog();
     const result = initProject(deps(fs, backlog), { targetDir: TARGET, name: "hermes-handoff" });
@@ -152,7 +199,7 @@ describe("initProject — the FULL bootstrap operation (task-34; doc 10 init ste
     expect(titles).not.toContain("Plan bundle ");
   });
 
-  it("AC#1 — exercises the BacklogMd port: .authoring-backlog has task_prefix=authoring (project-wide tasks → authoring-1..8)", () => {
+  it("AC#7 — exercises the BacklogMd port: .authoring-backlog has task_prefix=authoring (project-wide tasks → authoring-1..8)", () => {
     const fs = seedTemplates();
     const backlog = new FakeBacklog();
     initProject(deps(fs, backlog), { targetDir: TARGET, name: "hermes-handoff" });
@@ -161,18 +208,6 @@ describe("initProject — the FULL bootstrap operation (task-34; doc 10 init ste
     // task_prefix is `authoring` and the materialise really ran against this root).
     const created = backlog.createTask(`${TARGET}/.authoring-backlog`, { title: "probe" });
     expect(created.id).toBe("authoring-9");
-  });
-
-  it("AC#7 — .gitignore records .authoring-backlog/ and a summary is returned", () => {
-    const fs = seedTemplates();
-    const result = initProject(deps(fs, new FakeBacklog()), {
-      targetDir: TARGET,
-      name: "hermes-handoff",
-    });
-    expect(fs.exists(`${TARGET}/.gitignore`)).toBe(true);
-    expect(fs.read(`${TARGET}/.gitignore`)).toMatch(/^\.authoring-backlog\/$/m);
-    expect(result.changedPaths).toContain(`${TARGET}/.gitignore`);
-    expect(result.summary).toContain("created project hermes-handoff");
   });
 
   it("AC#6 — --param values are available to placeholder substitution (extra params are harmless for minimal)", () => {
@@ -186,7 +221,7 @@ describe("initProject — the FULL bootstrap operation (task-34; doc 10 init ste
         params: new Map([["author", "me"]]),
       }),
     ).not.toThrow();
-    expect(fs.exists(`${TARGET}/manifest.yml`)).toBe(true);
+    expect(fs.exists(`${WIP}/manifest.yml`)).toBe(true);
   });
 
   it("AC#5 — refuses when the target PATH already exists (ConflictError), creating nothing", () => {
@@ -199,20 +234,21 @@ describe("initProject — the FULL bootstrap operation (task-34; doc 10 init ste
       initProject(deps(fs, backlog), { targetDir: TARGET, name: "hermes-handoff" }),
     ).toThrow(ConflictError);
     // Nothing was scaffolded over the existing path:
-    expect(fs.exists(`${TARGET}/manifest.yml`)).toBe(false);
-    expect(fs.exists(`${TARGET}/bundles`)).toBe(false);
+    expect(fs.exists(`${WIP}/manifest.yml`)).toBe(false);
+    expect(fs.exists(`${WIP}`)).toBe(false);
+    expect(fs.exists(`${TARGET}/builds`)).toBe(false);
   });
 
-  it("AC#5 — re-running init on an existing project refuses and does not change the manifest", () => {
+  it("AC#5 — re-running init on an existing workspace refuses and does not change the manifest", () => {
     const fs = seedTemplates();
     const backlog = new FakeBacklog();
     initProject(deps(fs, backlog), { targetDir: TARGET, name: "hermes-handoff" });
-    const manifestBefore = fs.read(`${TARGET}/manifest.yml`);
+    const manifestBefore = fs.read(`${WIP}/manifest.yml`);
 
     expect(() => initProject(deps(fs, backlog), { targetDir: TARGET, name: "other" })).toThrow(
       ConflictError,
     );
-    expect(fs.read(`${TARGET}/manifest.yml`)).toBe(manifestBefore); // unchanged
+    expect(fs.read(`${WIP}/manifest.yml`)).toBe(manifestBefore); // unchanged
   });
 
   it("raises NotFoundError when the chosen project template is missing", () => {
@@ -232,7 +268,7 @@ describe("initProject — the FULL bootstrap operation (task-34; doc 10 init ste
       }),
     ).toThrow(NotFoundError);
     // nothing created:
-    expect(fs.exists(`${TARGET}/manifest.yml`)).toBe(false);
+    expect(fs.exists(`${WIP}/manifest.yml`)).toBe(false);
   });
 
   it("changedPaths lists every produced path (the observability contract the command's formatResult uses)", () => {
@@ -242,13 +278,16 @@ describe("initProject — the FULL bootstrap operation (task-34; doc 10 init ste
       name: "hermes-handoff",
     });
     const expected = [
-      `${TARGET}/manifest.yml`,
-      `${TARGET}/README.md`,
-      `${TARGET}/RALPH-LOOP.md`,
+      `${WIP}/manifest.yml`,
+      `${WIP}/README.md`,
+      `${WIP}/RALPH-LOOP.md`,
+      `${WIP}/_AGENTS.md`,
+      `${WIP}/installer-skills/hermes-handoff-installer/SKILL.md`,
+      `${WIP}/installer-skills/hermes-handoff-installer/references/journaling.md`,
+      `${WIP}/bundles/bundle-template/AGENTS.md.tmpl`,
       `${TARGET}/AGENTS.md`,
-      `${TARGET}/installer-skills/hermes-handoff-installer/SKILL.md`,
-      `${TARGET}/installer-skills/hermes-handoff-installer/references/journaling.md`,
-      `${TARGET}/bundles/bundle-template/AGENTS.md.tmpl`,
+      `${TARGET}/CLAUDE.md`,
+      `${TARGET}/builds`,
       `${TARGET}/.authoring-backlog`,
       `${TARGET}/.gitignore`,
     ];
@@ -259,20 +298,21 @@ describe("initProject — the FULL bootstrap operation (task-34; doc 10 init ste
     expect(new Set(result.changedPaths).size).toBe(result.changedPaths.length);
   });
 
-  it("single-source: the front-door `init` writes is byte-identical to the deriver's output", () => {
-    // `init` and every later mutation render the front-door + orchestrator from the SAME snippets/ source via
-    // the deriver. So what `init` writes must equal what `makeArtefactDeriver` yields.
+  it("single-source: the executor front door `init` writes is byte-identical to the deriver's output", () => {
+    // `init` and every later mutation render the executor front-door + orchestrator from the SAME snippets/
+    // source via the deriver. So what `init` writes to wip/_AGENTS.md must equal what the deriver yields for
+    // AGENTS.md, and the orchestrator under wip/ must equal the deriver's.
     const fs = seedTemplates();
     initProject(deps(fs, new FakeBacklog()), { targetDir: TARGET, name: "hermes-handoff" });
 
     const deriver = makeArtefactDeriver({
       fs,
       builtinTemplatesRoot: BUILTIN,
-      projectTemplatesRoot: `${TARGET}/templates`,
+      projectTemplatesRoot: `${WIP}/templates`,
       projectTemplateName: "minimal",
     });
     const desired = deriver({
-      rootPath: TARGET,
+      rootPath: WIP,
       manifest: {
         meta: { name: "hermes-handoff", version: "0.1.0" as never },
         targets: [],
@@ -285,20 +325,20 @@ describe("initProject — the FULL bootstrap operation (task-34; doc 10 init ste
     const derivedOrch = desired.files.find((f) => f.path.endsWith("-installer/SKILL.md"));
     expect(derivedFrontDoor).toBeDefined();
     expect(derivedOrch).toBeDefined();
-    expect(fs.read(`${TARGET}/AGENTS.md`)).toBe(derivedFrontDoor?.content);
-    expect(fs.read(`${TARGET}/installer-skills/hermes-handoff-installer/SKILL.md`)).toBe(
+    expect(fs.read(`${WIP}/_AGENTS.md`)).toBe(derivedFrontDoor?.content);
+    expect(fs.read(`${WIP}/installer-skills/hermes-handoff-installer/SKILL.md`)).toBe(
       derivedOrch?.content,
     );
   });
 });
 
-describe("initProject — honors a template that DECLARES targets / pre-includes bundles (AC#3 +, AC#4 +)", () => {
+describe("initProject — honors a template that DECLARES targets / pre-includes bundles (AC#1 +, AC#7 +)", () => {
   /**
    * Turn the seeded built-in `minimal` template into one that DECLARES a target (`claude-code`) and pre-includes
    * a bundle (`core`) in its rendered manifest, plus ships that bundle's `bundle.yml` under the template's
-   * `files/bundles/core/`. This exercises the AC#3 POSITIVE case (an alias per declared target) and the AC#4
-   * per-bundle case (the per-bundle authoring set for each pre-included bundle) — which `minimal` cannot, since
-   * it declares neither. (No such built-in template ships today; this fixture proves the code path generically.)
+   * `files/bundles/core/`. This exercises the POSITIVE alias case (an alias per declared target, under wip/) and
+   * the per-bundle authoring case (the per-bundle set for each pre-included bundle) — which `minimal` cannot,
+   * since it declares neither. (No such built-in template ships today; this fixture proves the code path.)
    */
   function seedTemplateWithTargetAndBundle(): MemoryFileSystem {
     const fs = seedTemplates();
@@ -326,19 +366,19 @@ describe("initProject — honors a template that DECLARES targets / pre-includes
     return fs;
   }
 
-  it("AC#3 + — creates one scope-alias per declared target (root + per pre-included bundle)", () => {
+  it("AC#1 + — creates one scope-alias per declared target under wip/ (root + per pre-included bundle)", () => {
     const fs = seedTemplateWithTargetAndBundle();
     initProject(deps(fs, new FakeBacklog()), { targetDir: TARGET, name: "demo" });
 
-    // The root scope-alias for claude-code (.claude/skills → installer-skills/):
-    expect(fs.aliasTarget(`${TARGET}/.claude/skills`)).toBe(`${TARGET}/installer-skills`);
+    // The root scope-alias for claude-code under wip/ (.claude/skills → installer-skills/):
+    expect(fs.aliasTarget(`${WIP}/.claude/skills`)).toBe(`${WIP}/installer-skills`);
     // The per-bundle scope-alias (self-similar surface) for the pre-included bundle:
-    expect(fs.aliasTarget(`${TARGET}/bundles/core/.claude/skills`)).toBe(
-      `${TARGET}/bundles/core/installer-skills`,
+    expect(fs.aliasTarget(`${WIP}/bundles/core/.claude/skills`)).toBe(
+      `${WIP}/bundles/core/installer-skills`,
     );
   });
 
-  it("AC#4 + — materialises the project-wide set AND the per-bundle set for each pre-included bundle", () => {
+  it("AC#7 + — materialises the project-wide set AND the per-bundle set for each pre-included bundle", () => {
     const fs = seedTemplateWithTargetAndBundle();
     const backlog = new FakeBacklog();
     const result = initProject(deps(fs, backlog), { targetDir: TARGET, name: "demo" });
@@ -348,7 +388,7 @@ describe("initProject — honors a template that DECLARES targets / pre-includes
     for (const spec of projectWideAuthoringTasks()) {
       expect(titles).toContain(spec.title);
     }
-    // AND the per-bundle set for `core` (12 with the advisor) is present:
+    // AND the per-bundle set for `core` (12 with the advisor) is present — identities UNCHANGED:
     for (const spec of perBundleAuthoringTasks("core", { advisor: true })) {
       expect(titles).toContain(spec.title);
     }

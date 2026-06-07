@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { execaSync } from "execa";
 import { describe, expect, it } from "vitest";
+import { initFlatProject } from "../helpers/flat-project.js";
 import { withTempDir } from "../helpers/tmpdir.js";
 
 /**
@@ -60,11 +61,12 @@ function wpmWithStdin(
   return { stdout: res.stdout ?? "", status: res.status ?? 1 };
 }
 
-/** init a real project at <dir>/demo and return its path. */
+/**
+ * Build a flat project at <dir>/demo from the real `init` output (task-87 nests the deliverable under `wip/`;
+ * {@link initFlatProject} flattens it to the pre-87 shape these commands resolve — a task-88 follow-up).
+ */
 function initProjectAt(dir: string): string {
-  const proj = join(dir, "demo");
-  execFileSync(process.execPath, [builtCli, "init", "demo", "--at", proj], { encoding: "utf8" });
-  return proj;
+  return initFlatProject(builtCli, dir);
 }
 
 /** Create the bundle `<id>` in an already-init'd project. */

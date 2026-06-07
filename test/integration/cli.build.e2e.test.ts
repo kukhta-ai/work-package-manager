@@ -3,6 +3,7 @@ import { existsSync, mkdirSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
+import { initFlatProject } from "../helpers/flat-project.js";
 import { withTempDir } from "../helpers/tmpdir.js";
 
 /**
@@ -45,12 +46,14 @@ function hasZip(): boolean {
   }
 }
 
-/** Create a fresh project at <dir>/proj via the real `init` and return its path. */
+/**
+ * Create a fresh project from the real `init` output and return its root. task-87 nests the deliverable under
+ * `wip/`; {@link initFlatProject} flattens it to the pre-87 shape `build`/`project` resolve today (a task-88
+ * follow-up) — the authoring backlog co-located beside the manifest, the workspace wrapper dropped, so `build`'s
+ * "no `.authoring-backlog` in the shipped tree" assertions still exercise the real exclusion.
+ */
 function initProject(dir: string): string {
-  const proj = join(dir, "proj");
-  const r = cli(["init", "demo", "--at", proj], dir);
-  expect(r.code).toBe(0);
-  return proj;
+  return initFlatProject(builtCli, dir);
 }
 
 describeIfBuilt("`wpm build dry-run` E2E (task-82, through dist/cli.js)", () => {
