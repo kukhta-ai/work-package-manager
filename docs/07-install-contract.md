@@ -16,6 +16,8 @@ mechanism        MCP (preferred) / CLI --plain   how the agent writes it
 
 The fillable counterpart to `06`'s skeleton: the same slots, but as starter files an author adapts, with the contract-bearing files in focus and the rest elided. `⟨…⟩` marks a placeholder; `←` marks a copy. Note the split by actor: execution-time skills under `installer-skills/` hold what the executing agent reads at install, while `bundles/bundle-template/` is the authoring-time scaffold the author copies to create a bundle.
 
+This contract is the contract of the **un-nested built archive whose root is the deliverable** — the artifact a user receives and an agent installs. During authoring that deliverable lives one level down in the authoring workspace's `wip/` (`11`, `12`), and the workspace wrapper — the *authoring* front door, the authoring backlog (`.authoring-backlog/`), and the build-output directory (`builds/`) — is **not part of the shipped artifact**. The front door named below (`AGENTS.md`) arrives at the archive root under its canonical name because the build strips the reserved authoring-time prefix the author edits it under (`_AGENTS.md` → `AGENTS.md`, with the `CLAUDE.md`/`GEMINI.md` aliases created per targets; `12`). So everything in this document describes the archive root, equivalently the contents of `wip/` after the build's prefix-strip — nothing here is the workspace wrapper.
+
 ```
 LEGEND  TEMPLATE = ships fill-in content (⟨placeholders⟩)   ← stamped from   … = as in 06
 

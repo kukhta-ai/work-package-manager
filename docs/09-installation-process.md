@@ -20,6 +20,8 @@ The project template a generated install is built from carries this machinery as
 
 The install behaviour rides in files the project template already supplies, copied into the project by `wpm init`. None is a new entity; the orchestrator skill and `AGENTS.md` are where the per-task workflow is *stated*, and the only genuinely new option is that the author may *vendor* an existing third-party discipline skill to have that workflow *enforced* rather than merely instructed.
 
+This process applies to the **un-nested built archive whose root is the deliverable**. During authoring those files live in the authoring workspace's `wip/` (`11`, `12`); `wpm build` un-nests `wip/` to the archive root with content unchanged, and the authoring workspace wrapper — the *authoring* front door, the authoring backlog, and the build-output directory — is not part of the shipped artifact. The executor `AGENTS.md` named below arrives at the archive root under its canonical name because the build strips the reserved prefix the author edits it under during authoring (`_AGENTS.md` → `AGENTS.md`, with `CLAUDE.md`/`GEMINI.md` aliases per targets; `10`, `12`); the end user only ever sees the canonical front door.
+
 ```
    FILE (in the project, from its template)        WHAT ITS CONTENT DOES
    ─────────────────────────────────────────────────────────────────────────────────────────

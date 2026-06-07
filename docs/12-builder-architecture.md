@@ -256,17 +256,28 @@ my-installer/                          the AUTHORING WORKSPACE ROOT (wpm init ou
 ├── wip/                               the DELIVERABLE under construction — the bundle-project skeleton of 06/07.
 │   │                                  This subtree, un-nested to the archive root, IS the shipped artifact.
 │   ├── manifest.yml                     project release identity + enabled bundles + targets (06)
-│   ├── ⟨executor front door⟩            author-owned content; the build promotes it to the live AGENTS.md at the
-│   │                                    archive root (06). Named during authoring so it does NOT address the
-│   │                                    authoring agent — that naming is part of the build behaviour (CLI side)
+│   ├── _AGENTS.md                       the executor front door, author-owned, under a reserved leading-underscore
+│   │                                    prefix so it stays .md-editable but is NOT auto-discovered by any agent
+│   │                                    during authoring; the build strips the prefix → AGENTS.md at the archive
+│   │                                    root + CLAUDE.md/GEMINI.md aliases per targets (see below)
 │   ├── installer-skills/  …             install-time skills + scope-alias symlinks (06)
-│   └── bundles/<id>/install-backlog/ …  the per-bundle recipes (06)
+│   └── bundles/<id>/                    each bundle: its own _AGENTS.md (same prefix rule) + install-backlog/ … (06)
 │
 └── builds/                            BUILD OUTPUT: the archives `wpm build` emits (isolated from the workspace)
     └── <project>-<version>.<ext>        each archive = wip/ un-nested to its root, content unchanged (06)
 ```
 
-Everything outside `wip/` is authoring-only and never ships; `wip/` un-nested *is* the shipped artifact. This is the wrapper around `06`'s scaffold, not the scaffold itself — and it is the artifact an author's agent operates on (`04`), driven through the authoring-backlog (`11`). The build's un-nesting and the deliverable executor front door's authoring-time naming are CLI/build behaviour, specified with the rest of the `wpm build`/`init` surface (`10`).
+Everything outside `wip/` is authoring-only and never ships; `wip/` un-nested *is* the shipped artifact. This is the wrapper around `06`'s scaffold, not the scaffold itself — and it is the artifact an author's agent operates on (`04`), driven through the authoring-backlog (`11`). The build's un-nesting and the deliverable executor front door's authoring-time naming are CLI/build behaviour, specified here and with the rest of the `wpm build`/`init` surface (`10`).
+
+## What `wpm build` produces (un-nesting, exclusions, and the front-door prefix-strip)
+
+`wpm build` (`10`) turns the workspace into a shipped artifact by reading the `wip/` deliverable and writing an archive into `builds/`, named `<project>-<version>.<ext>` from `manifest.yml.project`. Three behaviours define the transform; all three follow from the workspace separation above.
+
+**Un-nesting.** The archive root *is* the `wip/` deliverable, lifted to the top level — every file under `wip/` appears at the archive root with its content unchanged. The shipped-artifact contract of `06`/`07` is therefore exactly the contents of `wip/`, viewed from the archive root.
+
+**Exclusions.** The workspace wrapper is **never part of any build artifact**: the authoring backlog (`.authoring-backlog/`), the authoring front door (the workspace-root `AGENTS.md` and its `CLAUDE.md`/`GEMINI.md` aliases), and the build-output directory (`builds/`) are all excluded from every archive. Only `wip/`, un-nested, ships.
+
+**The executor front door's reserved-prefix transform.** The deliverable's executor front door — the file that, once installed, recognises an *end user's* agent and runs the install (`06`, `07`) — must be **editable by the author during authoring yet invisible to the *authoring* agent**, which would otherwise read it as a directive (agent instruction-file discovery is by **exact basename**, with no globs, and every target agent does on-demand subdirectory loading, so nesting under `wip/` alone does not shield it). It is therefore authored under a **reserved leading-underscore prefix** — `wip/_AGENTS.md`, and per bundle `wip/bundles/<id>/_AGENTS.md` — kept `.md` so it stays author-editable, but never matched by any agent's front-door basename (`AGENTS.md`/`CLAUDE.md`/`GEMINI.md`). The build **strips the leading underscore** to restore the canonical names — `_AGENTS.md` → `AGENTS.md` at the archive root, `bundles/<id>/_AGENTS.md` → `bundles/<id>/AGENTS.md` — and creates the `CLAUDE.md`/`GEMINI.md` aliases (build-created symlinks) for each agent in `manifest.targets` — and the same prefix-strip-plus-alias treatment applies per bundle, so each `bundles/<id>/_AGENTS.md` likewise yields `bundles/<id>/AGENTS.md` with its own build-created per-target `bundles/<id>/CLAUDE.md`/`GEMINI.md` aliases. Only the front door carries the prefix; the aliases are build-created. Authored content must therefore **avoid** the reserved source names `AGENTS.md`, `CLAUDE.md`, `GEMINI.md`, `AGENTS.override.md`, and `CONTEXT.md` (all auto-discovered), and must not use the `.tmpl` suffix (the repo's placeholder-template convention — these are author-owned content, not rendered templates). The **per-project installer skill and the advisors are not prefixed and not transformed**: they remain ordinary authored deliverable content under `wip/` and ship as-is, because they are `SKILL.md` files that activate only when a scanned scope points at them — during authoring the workspace's scope aliases do not, so they need no shielding. (Caveat: a user could *non-default*-configure an agent to also read `_AGENTS.md`; the design protects against defaults and documents the residual case rather than claiming an absolute guarantee.)
 
 ## Layered architecture
 
