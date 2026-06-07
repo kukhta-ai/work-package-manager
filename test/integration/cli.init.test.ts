@@ -235,8 +235,8 @@ describe("`wpm init` FULL — drives a real change through every layer (task-34)
 describeIfBuilt(
   "`wpm init` FULL — through the built `dist/cli.js` binary (the fullest real path)",
   () => {
-    it("`init <name>` with default cwd creates the full <cwd>/<name>/ on disk", () => {
-      withTempDir((dir) => {
+    it("`init <name>` with default cwd creates the full <cwd>/<name>/ on disk", async () => {
+      await withTempDir((dir) => {
         execFileSync(process.execPath, [builtCli, "init", "hermes-handoff"], {
           cwd: dir,
           encoding: "utf8",
@@ -245,8 +245,8 @@ describeIfBuilt(
       });
     });
 
-    it("`init <name> --at <dir>` creates the project at <dir> on disk", () => {
-      withTempDir((dir) => {
+    it("`init <name> --at <dir>` creates the project at <dir> on disk", async () => {
+      await withTempDir((dir) => {
         const proj = join(dir, "proj");
         const out = execFileSync(process.execPath, [builtCli, "init", "demo-proj", "--at", proj], {
           encoding: "utf8",
@@ -319,8 +319,8 @@ describeIfBacklog(
 );
 
 describeIfBuilt("`wpm init` FULL — scope aliases on real disk (AC#1, through dist/cli.js)", () => {
-  it("init then `project targets add claude-code` creates a real scope-alias symlink under wip/", () => {
-    withTempDir((dir) => {
+  it("init then `project targets add claude-code` creates a real scope-alias symlink under wip/", async () => {
+    await withTempDir((dir) => {
       // `project targets add` is project-bound: it resolves the authoring WORKSPACE (task-88) and operates on
       // the deliverable under `wip/`, with the authoring backlog at the workspace root. So we init a real
       // workspace and target it via `-C <workspace>`; the alias lands under the deliverable `wip/`.

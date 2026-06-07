@@ -596,8 +596,8 @@ function placePayloadFile(proj: string, bundle: string, rel: string, content: st
 describeIfBuilt(
   "bundle <id> files add / list / remove E2E via dist/cli.js (tasks 65/66/67)",
   () => {
-    it("65#1 — `files add` registers a placed file in bundle.yml payload; file content is unchanged (structure-not-content)", () => {
-      withTempDir((dir) => {
+    it("65#1 — `files add` registers a placed file in bundle.yml payload; file content is unchanged (structure-not-content)", async () => {
+      await withTempDir((dir) => {
         const proj = projectWithWeb(dir);
         const filePath = placePayloadFile(proj, "web", "agents.md", "# hi");
 
@@ -613,8 +613,8 @@ describeIfBuilt(
       });
     });
 
-    it("65#2 — `files add` for a path NOT on disk exits 1; bundle.yml unchanged", () => {
-      withTempDir((dir) => {
+    it("65#2 — `files add` for a path NOT on disk exits 1; bundle.yml unchanged", async () => {
+      await withTempDir((dir) => {
         const proj = projectWithWeb(dir);
         const path = join(proj, "wip", "bundles", "web", "bundle.yml");
         const before = readFileSync(path, "utf8");
@@ -623,8 +623,8 @@ describeIfBuilt(
       });
     });
 
-    it("66#1 — `files list` shows the registered file; a fresh bundle prints (no files)", () => {
-      withTempDir((dir) => {
+    it("66#1 — `files list` shows the registered file; a fresh bundle prints (no files)", async () => {
+      await withTempDir((dir) => {
         const proj = projectWithWeb(dir);
         // fresh bundle (createBundle inits payload.files: []): list prints the empty marker.
         expect(wpm(proj, ["bundle", "web", "files", "list"]).stdout.trim()).toBe("(no files)");
@@ -637,8 +637,8 @@ describeIfBuilt(
       });
     });
 
-    it("67#1/67#2 — `files remove` deregisters AND leaves the file on disk (deregister, not delete)", () => {
-      withTempDir((dir) => {
+    it("67#1/67#2 — `files remove` deregisters AND leaves the file on disk (deregister, not delete)", async () => {
+      await withTempDir((dir) => {
         const proj = projectWithWeb(dir);
         const filePath = placePayloadFile(proj, "web", "agents.md", "# hi");
         expect(wpm(proj, ["bundle", "web", "files", "add", "agents.md"]).status).toBe(0);
@@ -656,8 +656,8 @@ describeIfBuilt(
       });
     });
 
-    it("67#3 — `files remove` for a path NOT registered exits 1; bundle.yml unchanged", () => {
-      withTempDir((dir) => {
+    it("67#3 — `files remove` for a path NOT registered exits 1; bundle.yml unchanged", async () => {
+      await withTempDir((dir) => {
         const proj = projectWithWeb(dir);
         const path = join(proj, "wip", "bundles", "web", "bundle.yml");
         const before = readFileSync(path, "utf8");
@@ -666,8 +666,8 @@ describeIfBuilt(
       });
     });
 
-    it("completion: `files add` lists placed files; `files remove` lists registered files", () => {
-      withTempDir((dir) => {
+    it("completion: `files add` lists placed files; `files remove` lists registered files", async () => {
+      await withTempDir((dir) => {
         const proj = projectWithWeb(dir);
         placePayloadFile(proj, "web", "agents.md", "# hi");
 
@@ -686,8 +686,8 @@ describeIfBuilt(
       });
     });
 
-    it("help: `bundle <id> files add --help` reaches the leaf and documents the path positional + an example", () => {
-      withTempDir((dir) => {
+    it("help: `bundle <id> files add --help` reaches the leaf and documents the path positional + an example", async () => {
+      await withTempDir((dir) => {
         const proj = projectWithWeb(dir);
         const help = wpm(proj, ["bundle", "web", "files", "add", "--help"]);
         expect(help.status).toBe(0);
@@ -697,8 +697,8 @@ describeIfBuilt(
       });
     });
 
-    it("OLD bundle.yml WITHOUT a payload key still drives list (no files) AND add (adds the field) — absent ⇒ empty", () => {
-      withTempDir((dir) => {
+    it("OLD bundle.yml WITHOUT a payload key still drives list (no files) AND add (adds the field) — absent ⇒ empty", async () => {
+      await withTempDir((dir) => {
         const proj = projectWithWeb(dir);
         // OVERWRITE web's bundle.yml with a pre-L shape (NO `payload:` key), as an older project would have on disk.
         const ymlPath = join(proj, "wip", "bundles", "web", "bundle.yml");
@@ -735,8 +735,8 @@ function placePayloadTemplate(proj: string, bundle: string, rel: string, content
 describeIfBuilt(
   "bundle <id> templates add / list / remove E2E via dist/cli.js (tasks 68/69/70)",
   () => {
-    it("68#1 — `templates add` registers a placed template in bundle.yml payload; content unchanged (structure-not-content)", () => {
-      withTempDir((dir) => {
+    it("68#1 — `templates add` registers a placed template in bundle.yml payload; content unchanged (structure-not-content)", async () => {
+      await withTempDir((dir) => {
         const proj = projectWithWeb(dir);
         const filePath = placePayloadTemplate(proj, "web", "agents.md.tmpl", "# {{x}}");
 
@@ -752,8 +752,8 @@ describeIfBuilt(
       });
     });
 
-    it("68#2 — `templates add` for a path NOT on disk exits 1; bundle.yml unchanged", () => {
-      withTempDir((dir) => {
+    it("68#2 — `templates add` for a path NOT on disk exits 1; bundle.yml unchanged", async () => {
+      await withTempDir((dir) => {
         const proj = projectWithWeb(dir);
         const path = join(proj, "wip", "bundles", "web", "bundle.yml");
         const before = readFileSync(path, "utf8");
@@ -762,8 +762,8 @@ describeIfBuilt(
       });
     });
 
-    it("69#1 — `templates list` shows the registered template; a fresh bundle prints (no templates)", () => {
-      withTempDir((dir) => {
+    it("69#1 — `templates list` shows the registered template; a fresh bundle prints (no templates)", async () => {
+      await withTempDir((dir) => {
         const proj = projectWithWeb(dir);
         // fresh bundle (createBundle inits payload.templates: []): list prints the empty marker.
         expect(wpm(proj, ["bundle", "web", "templates", "list"]).stdout.trim()).toBe(
@@ -778,8 +778,8 @@ describeIfBuilt(
       });
     });
 
-    it("70#1/70#2 — `templates remove` deregisters AND leaves the file on disk (deregister, not delete)", () => {
-      withTempDir((dir) => {
+    it("70#1/70#2 — `templates remove` deregisters AND leaves the file on disk (deregister, not delete)", async () => {
+      await withTempDir((dir) => {
         const proj = projectWithWeb(dir);
         const filePath = placePayloadTemplate(proj, "web", "agents.md.tmpl", "# t");
         expect(wpm(proj, ["bundle", "web", "templates", "add", "agents.md.tmpl"]).status).toBe(0);
@@ -797,8 +797,8 @@ describeIfBuilt(
       });
     });
 
-    it("70#3 — `templates remove` for a path NOT registered exits 1; bundle.yml unchanged", () => {
-      withTempDir((dir) => {
+    it("70#3 — `templates remove` for a path NOT registered exits 1; bundle.yml unchanged", async () => {
+      await withTempDir((dir) => {
         const proj = projectWithWeb(dir);
         const path = join(proj, "wip", "bundles", "web", "bundle.yml");
         const before = readFileSync(path, "utf8");
@@ -807,8 +807,8 @@ describeIfBuilt(
       });
     });
 
-    it("completion: `templates add` lists placed templates; `templates remove` lists registered templates", () => {
-      withTempDir((dir) => {
+    it("completion: `templates add` lists placed templates; `templates remove` lists registered templates", async () => {
+      await withTempDir((dir) => {
         const proj = projectWithWeb(dir);
         placePayloadTemplate(proj, "web", "agents.md.tmpl", "# t");
 
@@ -829,8 +829,8 @@ describeIfBuilt(
       });
     });
 
-    it("help: `bundle <id> templates add --help` reaches the leaf and documents the path positional + an example", () => {
-      withTempDir((dir) => {
+    it("help: `bundle <id> templates add --help` reaches the leaf and documents the path positional + an example", async () => {
+      await withTempDir((dir) => {
         const proj = projectWithWeb(dir);
         const help = wpm(proj, ["bundle", "web", "templates", "add", "--help"]);
         expect(help.status).toBe(0);
@@ -840,8 +840,8 @@ describeIfBuilt(
       });
     });
 
-    it("OLD bundle.yml WITHOUT a payload key still drives list (no templates) AND add (adds the field) — absent ⇒ empty", () => {
-      withTempDir((dir) => {
+    it("OLD bundle.yml WITHOUT a payload key still drives list (no templates) AND add (adds the field) — absent ⇒ empty", async () => {
+      await withTempDir((dir) => {
         const proj = projectWithWeb(dir);
         // OVERWRITE web's bundle.yml with a pre-L shape (NO `payload:` key), as an older project would have on disk.
         const ymlPath = join(proj, "wip", "bundles", "web", "bundle.yml");
@@ -881,8 +881,8 @@ function placeInstallerScript(proj: string, bundle: string, rel: string, content
 describeIfBuilt(
   "bundle <id> scripts add / list / remove E2E via dist/cli.js (tasks 71/72/73)",
   () => {
-    it("71#1 — `scripts add` registers a placed installer-script in bundle.yml payload; content unchanged (structure-not-content)", () => {
-      withTempDir((dir) => {
+    it("71#1 — `scripts add` registers a placed installer-script in bundle.yml payload; content unchanged (structure-not-content)", async () => {
+      await withTempDir((dir) => {
         const proj = projectWithWeb(dir);
         const filePath = placeInstallerScript(proj, "web", "probe.sh", "#!/bin/sh\necho hi\n");
         // the script lives under installer-scripts/, a SIBLING of payload/ (NOT under payload/):
@@ -905,8 +905,8 @@ describeIfBuilt(
       });
     });
 
-    it("71#2 — `scripts add` for a path NOT on disk exits 1; bundle.yml unchanged", () => {
-      withTempDir((dir) => {
+    it("71#2 — `scripts add` for a path NOT on disk exits 1; bundle.yml unchanged", async () => {
+      await withTempDir((dir) => {
         const proj = projectWithWeb(dir);
         const path = join(proj, "wip", "bundles", "web", "bundle.yml");
         const before = readFileSync(path, "utf8");
@@ -915,8 +915,8 @@ describeIfBuilt(
       });
     });
 
-    it("72#1 — `scripts list` shows the registered installer-script; a fresh bundle prints (no scripts)", () => {
-      withTempDir((dir) => {
+    it("72#1 — `scripts list` shows the registered installer-script; a fresh bundle prints (no scripts)", async () => {
+      await withTempDir((dir) => {
         const proj = projectWithWeb(dir);
         // fresh bundle (createBundle inits payload.scripts: []): list prints the empty marker.
         expect(wpm(proj, ["bundle", "web", "scripts", "list"]).stdout.trim()).toBe("(no scripts)");
@@ -929,8 +929,8 @@ describeIfBuilt(
       });
     });
 
-    it("73#1/73#2 — `scripts remove` deregisters AND leaves the file on disk (deregister, not delete)", () => {
-      withTempDir((dir) => {
+    it("73#1/73#2 — `scripts remove` deregisters AND leaves the file on disk (deregister, not delete)", async () => {
+      await withTempDir((dir) => {
         const proj = projectWithWeb(dir);
         const filePath = placeInstallerScript(proj, "web", "probe.sh", "#!/bin/sh\n");
         expect(wpm(proj, ["bundle", "web", "scripts", "add", "probe.sh"]).status).toBe(0);
@@ -948,8 +948,8 @@ describeIfBuilt(
       });
     });
 
-    it("73#3 — `scripts remove` for a path NOT registered exits 1; bundle.yml unchanged", () => {
-      withTempDir((dir) => {
+    it("73#3 — `scripts remove` for a path NOT registered exits 1; bundle.yml unchanged", async () => {
+      await withTempDir((dir) => {
         const proj = projectWithWeb(dir);
         const path = join(proj, "wip", "bundles", "web", "bundle.yml");
         const before = readFileSync(path, "utf8");
@@ -958,8 +958,8 @@ describeIfBuilt(
       });
     });
 
-    it("completion: `scripts add` lists placed installer-scripts; `scripts remove` lists registered scripts", () => {
-      withTempDir((dir) => {
+    it("completion: `scripts add` lists placed installer-scripts; `scripts remove` lists registered scripts", async () => {
+      await withTempDir((dir) => {
         const proj = projectWithWeb(dir);
         placeInstallerScript(proj, "web", "probe.sh", "#!/bin/sh\n");
 
@@ -980,8 +980,8 @@ describeIfBuilt(
       });
     });
 
-    it("help: `bundle <id> scripts add --help` reaches the leaf and documents the path positional + an example", () => {
-      withTempDir((dir) => {
+    it("help: `bundle <id> scripts add --help` reaches the leaf and documents the path positional + an example", async () => {
+      await withTempDir((dir) => {
         const proj = projectWithWeb(dir);
         const help = wpm(proj, ["bundle", "web", "scripts", "add", "--help"]);
         expect(help.status).toBe(0);
@@ -991,8 +991,8 @@ describeIfBuilt(
       });
     });
 
-    it("OLD bundle.yml WITHOUT a payload key still drives list (no scripts) AND add (adds the field) — absent ⇒ empty", () => {
-      withTempDir((dir) => {
+    it("OLD bundle.yml WITHOUT a payload key still drives list (no scripts) AND add (adds the field) — absent ⇒ empty", async () => {
+      await withTempDir((dir) => {
         const proj = projectWithWeb(dir);
         // OVERWRITE web's bundle.yml with a pre-L shape (NO `payload:` key), as an older project would have on disk.
         const ymlPath = join(proj, "wip", "bundles", "web", "bundle.yml");
@@ -1037,8 +1037,8 @@ function validSkillMd(name: string): string {
 describeIfBuilt(
   "bundle <id> skills add / list / remove E2E via dist/cli.js (tasks 74/75/76)",
   () => {
-    it("74#1 ATTACH — `skills add <id>-skill` attaches the shipped sample; registers {name,path}; content unchanged; NO materialised line", () => {
-      withTempDir((dir) => {
+    it("74#1 ATTACH — `skills add <id>-skill` attaches the shipped sample; registers {name,path}; content unchanged; NO materialised line", async () => {
+      await withTempDir((dir) => {
         const proj = projectWithWeb(dir);
         // A fresh `bundle new web` ships payload/agent-skills/web-skill/SKILL.md (the default template's sample).
         const samplePath = join(
@@ -1070,8 +1070,8 @@ describeIfBuilt(
       });
     });
 
-    it("74#2 SCAFFOLD — `skills add <new>` renders a stub (name + placeholder runtime-trigger desc, no authored prose), registers it, AND materialises the writing task (loop-closure, cold)", () => {
-      withTempDir((dir) => {
+    it("74#2 SCAFFOLD — `skills add <new>` renders a stub (name + placeholder runtime-trigger desc, no authored prose), registers it, AND materialises the writing task (loop-closure, cold)", async () => {
+      await withTempDir((dir) => {
         const proj = projectWithWeb(dir);
         const add = wpm(proj, ["bundle", "web", "skills", "add", "fresh-skill"]);
         expect(add.status).toBe(0);
@@ -1103,8 +1103,8 @@ describeIfBuilt(
       });
     });
 
-    it("74#3 ERROR — `skills add <name> --path <missing>` exits non-zero; bundle.yml unchanged; no stub written", () => {
-      withTempDir((dir) => {
+    it("74#3 ERROR — `skills add <name> --path <missing>` exits non-zero; bundle.yml unchanged; no stub written", async () => {
+      await withTempDir((dir) => {
         const proj = projectWithWeb(dir);
         const ymlPath = join(proj, "wip", "bundles", "web", "bundle.yml");
         const before = readFileSync(ymlPath, "utf8");
@@ -1127,8 +1127,8 @@ describeIfBuilt(
       });
     });
 
-    it("75#1 LIST — after attach + scaffold, `skills list` shows both names; a fresh bundle prints (no payload skills)", () => {
-      withTempDir((dir) => {
+    it("75#1 LIST — after attach + scaffold, `skills list` shows both names; a fresh bundle prints (no payload skills)", async () => {
+      await withTempDir((dir) => {
         const proj = projectWithWeb(dir);
         // a fresh bundle (createBundle inits payload.skills: []) prints the empty marker:
         expect(wpm(proj, ["bundle", "web", "skills", "list"]).stdout.trim()).toBe(
@@ -1144,8 +1144,8 @@ describeIfBuilt(
       });
     });
 
-    it("76#1/76#2 REMOVE — `skills remove` deregisters AND leaves the SKILL.md on disk (deregister, not delete)", () => {
-      withTempDir((dir) => {
+    it("76#1/76#2 REMOVE — `skills remove` deregisters AND leaves the SKILL.md on disk (deregister, not delete)", async () => {
+      await withTempDir((dir) => {
         const proj = projectWithWeb(dir);
         const samplePath = join(
           proj,
@@ -1171,8 +1171,8 @@ describeIfBuilt(
       });
     });
 
-    it("76#3 — `skills remove` for a name NOT registered exits non-zero; bundle.yml unchanged", () => {
-      withTempDir((dir) => {
+    it("76#3 — `skills remove` for a name NOT registered exits non-zero; bundle.yml unchanged", async () => {
+      await withTempDir((dir) => {
         const proj = projectWithWeb(dir);
         const ymlPath = join(proj, "wip", "bundles", "web", "bundle.yml");
         const before = readFileSync(ymlPath, "utf8");
@@ -1181,8 +1181,8 @@ describeIfBuilt(
       });
     });
 
-    it("completion: `skills add` lists on-disk skill folders; `skills remove` lists registered names", () => {
-      withTempDir((dir) => {
+    it("completion: `skills add` lists on-disk skill folders; `skills remove` lists registered names", async () => {
+      await withTempDir((dir) => {
         const proj = projectWithWeb(dir);
         // a fresh bundle ships the web-skill folder on disk → add completes from the folder names:
         const addPos = cli(["__complete", "bundle", "web", "skills", "add", ""], { cwd: proj })
@@ -1201,8 +1201,8 @@ describeIfBuilt(
       });
     });
 
-    it("help: `bundle <id> skills add --help` reaches the leaf and documents <name>, --path, an example", () => {
-      withTempDir((dir) => {
+    it("help: `bundle <id> skills add --help` reaches the leaf and documents <name>, --path, an example", async () => {
+      await withTempDir((dir) => {
         const proj = projectWithWeb(dir);
         const help = wpm(proj, ["bundle", "web", "skills", "add", "--help"]);
         expect(help.status).toBe(0);
@@ -1213,8 +1213,8 @@ describeIfBuilt(
       });
     });
 
-    it("OLD bundle.yml WITHOUT a payload key still drives list (no payload skills) AND add (adds the field) — absent ⇒ empty", () => {
-      withTempDir((dir) => {
+    it("OLD bundle.yml WITHOUT a payload key still drives list (no payload skills) AND add (adds the field) — absent ⇒ empty", async () => {
+      await withTempDir((dir) => {
         const proj = projectWithWeb(dir);
         // OVERWRITE web's bundle.yml with a pre-payload shape (NO `payload:` key), as an older project would have.
         const ymlPath = join(proj, "wip", "bundles", "web", "bundle.yml");
@@ -1255,8 +1255,8 @@ function placeInstallerSkill(proj: string, bundle: string, name: string, content
 describeIfBuilt(
   "bundle <id> installer-skills add / list / remove E2E via dist/cli.js (tasks 77/78/79)",
   () => {
-    it("77#1 ATTACH — `installer-skills add detect` attaches a placed helper; registers {name,path} in bundle.yml installerSkills; content unchanged; NO materialised line", () => {
-      withTempDir((dir) => {
+    it("77#1 ATTACH — `installer-skills add detect` attaches a placed helper; registers {name,path} in bundle.yml installerSkills; content unchanged; NO materialised line", async () => {
+      await withTempDir((dir) => {
         const proj = projectWithWeb(dir);
         const helperPath = placeInstallerSkill(proj, "web", "detect", validSkillMd("detect"));
         const before = readFileSync(helperPath, "utf8");
@@ -1278,8 +1278,8 @@ describeIfBuilt(
       });
     });
 
-    it("77#2 SCAFFOLD — `installer-skills add fresh` renders a stub (name + placeholder desc, no authored prose), registers it, AND materialises the bundle-named writing task (loop-closure, cold)", () => {
-      withTempDir((dir) => {
+    it("77#2 SCAFFOLD — `installer-skills add fresh` renders a stub (name + placeholder desc, no authored prose), registers it, AND materialises the bundle-named writing task (loop-closure, cold)", async () => {
+      await withTempDir((dir) => {
         const proj = projectWithWeb(dir);
         const add = wpm(proj, ["bundle", "web", "installer-skills", "add", "fresh"]);
         expect(add.status).toBe(0);
@@ -1312,8 +1312,8 @@ describeIfBuilt(
       });
     });
 
-    it("77#3 ERROR — `installer-skills add ghost --path <missing>` exits non-zero; bundle.yml unchanged; no stub written", () => {
-      withTempDir((dir) => {
+    it("77#3 ERROR — `installer-skills add ghost --path <missing>` exits non-zero; bundle.yml unchanged; no stub written", async () => {
+      await withTempDir((dir) => {
         const proj = projectWithWeb(dir);
         const ymlPath = join(proj, "wip", "bundles", "web", "bundle.yml");
         const before = readFileSync(ymlPath, "utf8");
@@ -1334,8 +1334,8 @@ describeIfBuilt(
       });
     });
 
-    it("77#4 ALIAS-ENSURE — after `installer-skills add` on a target-bearing project, the bundle's scope alias exists (delivered by ④ RERENDER's scopePlan)", () => {
-      withTempDir((dir) => {
+    it("77#4 ALIAS-ENSURE — after `installer-skills add` on a target-bearing project, the bundle's scope alias exists (delivered by ④ RERENDER's scopePlan)", async () => {
+      await withTempDir((dir) => {
         const proj = projectWithWeb(dir);
         // init seeds `targets: []`, so declare a target first; its scope-alias path is `.claude/skills`.
         expect(wpm(proj, ["project", "targets", "add", "claude-code"]).status).toBe(0);
@@ -1347,8 +1347,8 @@ describeIfBuilt(
       });
     });
 
-    it("78#1 LIST (SCAN) — a manually-placed helper shows WITHOUT `add` (scan, not registry); a fresh bundle prints (no installer skills)", () => {
-      withTempDir((dir) => {
+    it("78#1 LIST (SCAN) — a manually-placed helper shows WITHOUT `add` (scan, not registry); a fresh bundle prints (no installer skills)", async () => {
+      await withTempDir((dir) => {
         const proj = projectWithWeb(dir);
         // a fresh bundle has no installer-skills dir → the empty marker:
         expect(wpm(proj, ["bundle", "web", "installer-skills", "list"]).stdout.trim()).toBe(
@@ -1363,8 +1363,8 @@ describeIfBuilt(
       });
     });
 
-    it("79#1/79#2 REMOVE — deregisters AND leaves the SKILL.md on disk; the SCAN-based list STILL shows it (scan ≠ registry)", () => {
-      withTempDir((dir) => {
+    it("79#1/79#2 REMOVE — deregisters AND leaves the SKILL.md on disk; the SCAN-based list STILL shows it (scan ≠ registry)", async () => {
+      await withTempDir((dir) => {
         const proj = projectWithWeb(dir);
         const helperPath = placeInstallerSkill(proj, "web", "detect", validSkillMd("detect"));
         expect(wpm(proj, ["bundle", "web", "installer-skills", "add", "detect"]).status).toBe(0);
@@ -1383,8 +1383,8 @@ describeIfBuilt(
       });
     });
 
-    it("79#3 — `installer-skills remove` for a name NOT registered exits non-zero; bundle.yml unchanged", () => {
-      withTempDir((dir) => {
+    it("79#3 — `installer-skills remove` for a name NOT registered exits non-zero; bundle.yml unchanged", async () => {
+      await withTempDir((dir) => {
         const proj = projectWithWeb(dir);
         const ymlPath = join(proj, "wip", "bundles", "web", "bundle.yml");
         const before = readFileSync(ymlPath, "utf8");
@@ -1395,8 +1395,8 @@ describeIfBuilt(
       });
     });
 
-    it("completion: `installer-skills add` lists on-disk helper folders; `installer-skills remove` lists registered names", () => {
-      withTempDir((dir) => {
+    it("completion: `installer-skills add` lists on-disk helper folders; `installer-skills remove` lists registered names", async () => {
+      await withTempDir((dir) => {
         const proj = projectWithWeb(dir);
         placeInstallerSkill(proj, "web", "detect", validSkillMd("detect"));
 
@@ -1419,8 +1419,8 @@ describeIfBuilt(
       });
     });
 
-    it("help: `bundle <id> installer-skills add --help` reaches the leaf and documents <name>, --path, an example", () => {
-      withTempDir((dir) => {
+    it("help: `bundle <id> installer-skills add --help` reaches the leaf and documents <name>, --path, an example", async () => {
+      await withTempDir((dir) => {
         const proj = projectWithWeb(dir);
         const help = wpm(proj, ["bundle", "web", "installer-skills", "add", "--help"]);
         expect(help.status).toBe(0);
@@ -1431,8 +1431,8 @@ describeIfBuilt(
       });
     });
 
-    it("OLD bundle.yml WITHOUT an installerSkills key still drives list (no installer skills) AND add (adds the field) — absent ⇒ empty", () => {
-      withTempDir((dir) => {
+    it("OLD bundle.yml WITHOUT an installerSkills key still drives list (no installer skills) AND add (adds the field) — absent ⇒ empty", async () => {
+      await withTempDir((dir) => {
         const proj = projectWithWeb(dir);
         // OVERWRITE web's bundle.yml with a pre-P shape (NO `installerSkills` key), as an older project would have.
         const ymlPath = join(proj, "wip", "bundles", "web", "bundle.yml");
