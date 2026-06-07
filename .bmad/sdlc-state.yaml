@@ -3,8 +3,8 @@
 # Re-read on every resume; update at every phase boundary.
 # (Distinct from _bmad/ — that is BMAD's own install dir; this dot-dir is our tracker.)
 
-phase: 5
-phase_name: "Authoring-workspace epic-3 — Phase 5 BAUT (per-story build of tasks 85-94)"
+phase: 7
+phase_name: "Authoring-workspace epic-3 — Phase 7 HANDOFF DONE: PR #2 open (feature/authoring-workspace -> feature/cli), awaiting HUMAN review+merge"
 branch: feature/authoring-workspace
 epic: authoring-workspace
 active_story: null
@@ -12,7 +12,7 @@ review_cycle: 0
 # *** ALL 10 EPIC-3 STORIES DONE + merged --no-ff into feature/authoring-workspace: 85, 92, 86, 87, 91, 88, 94, 89, 90, 93. ***
 # Follow-up TASK-95 created (deferred --format git reconciliation; pre-existing, outside task-90 scope). PHASE 6 epic gate IN PROGRESS.
 # *** PHASE 6 EPIC GATE = PASS. *** Cold E2E green (tsc0/biome0/build0/vitest 1217 passed, 96 files). testarch-trace 61/61 ACs (100%, 0 gaps, P0 100%). testarch-nfr PASS (Maintainability/Reliability/Security/Fake-Real-Parity; Perf=CONCERNS note-only, pre-existing ~22min real-binary e2e). retro=GREEN w/ tracked AMBER carry-forwards. Gate artifacts committed 165a144.
-# PHASE 7 HANDOFF = HUMAN GATE (AGENTS.md: never self-merge to dev/main; push+PR is outward-facing) -> SURFACED to the user. Epic-3 complete on feature/authoring-workspace (branched off feature/cli, which is itself PR #1 -> dev, not yet merged). Awaiting user decision on push + PR base (feature/cli vs dev).
+# PHASE 7 HANDOFF DONE (user chose "Push + PR -> feature/cli" via AskUserQuestion 2026-06-07): pushed origin feature/authoring-workspace; opened PR #2 https://github.com/kukhta-ai/work-package-manager/pull/2 (feature/authoring-workspace -> feature/cli, clean epic-3-only diff). The HUMAN reviews + merges (AGENTS.md: never self-merge). Chain to dev: PR #2 -> feature/cli, then PR #1 (feature/cli -> dev). dev->main + npm publish stay separate human decisions.
 # CARRY-FORWARDS for the human to dispose at the gate: TASK-95 (--format git un-nest/strip/exclude, deferred); ~22min cold suite cost; scope-alias symlinks ship ABSOLUTE targets (portability); whether bundles/bundle-template ships; task-90 failure-path temp-dir leak; process deviations (story-automator-review fell back to manual every story; task-88 worker wrote no story file; doc-13/doc-06 edits absorbed into task-86 beyond its stated scope).
 # Sub-branch naming: feature/aw-task-<id> (hyphen, not slash — the epic branch occupies the refs/heads/feature/authoring-workspace namespace).
 # ENV (re-establish on resume): Node 20 at $HOME/.local/node20/bin (repo needs >=20; system node is v18 and crashes vitest);
