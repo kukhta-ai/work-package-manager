@@ -18,7 +18,14 @@ const SKILL_DIR = fileURLToPath(
   new URL("../../../agent-skills/installer-builder", import.meta.url),
 );
 const SKILL_MD = join(SKILL_DIR, "SKILL.md");
-const REFERENCES = ["command-reference.md", "authoring-workflow.md", "conventions.md"] as const;
+const REFERENCES = [
+  "command-reference.md",
+  "authoring-workflow.md",
+  "conventions.md",
+  "quality-protocol.md",
+  "task-conventions.md",
+  "native-surfaces.md",
+] as const;
 
 /** Read a shipped skill file as UTF-8 text. */
 function read(rel: string): string {
@@ -96,7 +103,7 @@ describe("installer-builder skill — self-sufficient to drive the CLI (AC#1, do
 });
 
 describe("installer-builder skill — progressive disclosure (AC#3, doc 05/12)", () => {
-  it("all three references exist and are non-trivial", () => {
+  it("all references exist and are non-trivial", () => {
     for (const ref of REFERENCES) {
       const path = join(SKILL_DIR, "references", ref);
       expect(existsSync(path), `${ref} must exist`).toBe(true);
@@ -114,7 +121,7 @@ describe("installer-builder skill — progressive disclosure (AC#3, doc 05/12)",
     }
   });
 
-  it("the SKILL.md body is lean — smaller than the three references combined (depth lives in references/)", () => {
+  it("the SKILL.md body is lean — smaller than the references combined (depth lives in references/)", () => {
     const skillBytes = Buffer.byteLength(read("SKILL.md"), "utf8");
     const referencesBytes = REFERENCES.reduce(
       (sum, ref) => sum + Buffer.byteLength(read(join("references", ref)), "utf8"),
