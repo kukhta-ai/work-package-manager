@@ -80,8 +80,8 @@ function validSkillMd(name: string): string {
 describeIfBuilt(
   "project installer-skills add / list / remove E2E via dist/cli.js (tasks 45/46/47)",
   () => {
-    it("45#1 ATTACH — `add detect` attaches a placed helper; registers {name,path} in manifest.yml installerSkills; content unchanged; NO materialised line", () => {
-      withTempDir((dir) => {
+    it("45#1 ATTACH — `add detect` attaches a placed helper; registers {name,path} in manifest.yml installerSkills; content unchanged; NO materialised line", async () => {
+      await withTempDir((dir) => {
         const proj = projectDemo(dir);
         const helperPath = placeProjectInstallerSkill(proj, "detect", validSkillMd("detect"));
         const before = readFileSync(helperPath, "utf8");
@@ -102,8 +102,8 @@ describeIfBuilt(
       });
     });
 
-    it("45#2 SCAFFOLD — `add fresh` renders a stub (name + placeholder, no prose), registers it, AND materialises the writing task with NO bundle id (loop-closure, cold)", () => {
-      withTempDir((dir) => {
+    it("45#2 SCAFFOLD — `add fresh` renders a stub (name + placeholder, no prose), registers it, AND materialises the writing task with NO bundle id (loop-closure, cold)", async () => {
+      await withTempDir((dir) => {
         const proj = projectDemo(dir);
         const add = wpm(proj, ["project", "installer-skills", "add", "fresh"]);
         expect(add.status).toBe(0);
@@ -124,8 +124,8 @@ describeIfBuilt(
       });
     });
 
-    it("45#3 ERROR — `add ghost --path <missing>` exits non-zero; manifest unchanged; no stub written", () => {
-      withTempDir((dir) => {
+    it("45#3 ERROR — `add ghost --path <missing>` exits non-zero; manifest unchanged; no stub written", async () => {
+      await withTempDir((dir) => {
         const proj = projectDemo(dir);
         const manifestPath = join(proj, "wip", "manifest.yml");
         const before = readFileSync(manifestPath, "utf8");
@@ -143,8 +143,8 @@ describeIfBuilt(
       });
     });
 
-    it("45#4 REFUSAL — a -advisor name AND the <project>-installer name are refused as reserved (exit 2); manifest unchanged", () => {
-      withTempDir((dir) => {
+    it("45#4 REFUSAL — a -advisor name AND the <project>-installer name are refused as reserved (exit 2); manifest unchanged", async () => {
+      await withTempDir((dir) => {
         const proj = projectDemo(dir);
         const manifestPath = join(proj, "wip", "manifest.yml");
         const before = readFileSync(manifestPath, "utf8");
@@ -163,8 +163,8 @@ describeIfBuilt(
       });
     });
 
-    it("46#1 LIST (SCAN + EXCLUSION) — shows author-placed helpers but NOT the main demo-installer or *-advisor", () => {
-      withTempDir((dir) => {
+    it("46#1 LIST (SCAN + EXCLUSION) — shows author-placed helpers but NOT the main demo-installer or *-advisor", async () => {
+      await withTempDir((dir) => {
         const proj = projectDemo(dir);
         // init already created installer-skills/demo-installer/SKILL.md (the main installer). Add a real helper
         // (without `add`) and an advisor folder — both at the root installer-skills/.
@@ -180,8 +180,8 @@ describeIfBuilt(
       });
     });
 
-    it("47#1/47#2 REMOVE — deregisters AND leaves the SKILL.md on disk; the SCAN-based list STILL shows it", () => {
-      withTempDir((dir) => {
+    it("47#1/47#2 REMOVE — deregisters AND leaves the SKILL.md on disk; the SCAN-based list STILL shows it", async () => {
+      await withTempDir((dir) => {
         const proj = projectDemo(dir);
         const helperPath = placeProjectInstallerSkill(proj, "detect", validSkillMd("detect"));
         expect(wpm(proj, ["project", "installer-skills", "add", "detect"]).status).toBe(0);
@@ -200,8 +200,8 @@ describeIfBuilt(
       });
     });
 
-    it("47#3 — `remove` for a name NOT registered exits non-zero; manifest unchanged", () => {
-      withTempDir((dir) => {
+    it("47#3 — `remove` for a name NOT registered exits non-zero; manifest unchanged", async () => {
+      await withTempDir((dir) => {
         const proj = projectDemo(dir);
         const manifestPath = join(proj, "wip", "manifest.yml");
         const before = readFileSync(manifestPath, "utf8");
@@ -212,8 +212,8 @@ describeIfBuilt(
       });
     });
 
-    it("completion: `add` lists on-disk helper folders (minus reserved); `remove` lists registered names", () => {
-      withTempDir((dir) => {
+    it("completion: `add` lists on-disk helper folders (minus reserved); `remove` lists registered names", async () => {
+      await withTempDir((dir) => {
         const proj = projectDemo(dir);
         placeProjectInstallerSkill(proj, "detect", validSkillMd("detect"));
         placeProjectInstallerSkill(proj, "bar-advisor", validSkillMd("bar-advisor"));
@@ -237,8 +237,8 @@ describeIfBuilt(
       });
     });
 
-    it("help: `project installer-skills add --help` reaches the leaf and documents <name>, --path, an example", () => {
-      withTempDir((dir) => {
+    it("help: `project installer-skills add --help` reaches the leaf and documents <name>, --path, an example", async () => {
+      await withTempDir((dir) => {
         const proj = projectDemo(dir);
         const help = wpm(proj, ["project", "installer-skills", "add", "--help"]);
         expect(help.status).toBe(0);
@@ -249,8 +249,8 @@ describeIfBuilt(
       });
     });
 
-    it("OLD manifest.yml WITHOUT an installerSkills key still drives list AND add (introduces the field) — absent ⇒ empty", () => {
-      withTempDir((dir) => {
+    it("OLD manifest.yml WITHOUT an installerSkills key still drives list AND add (introduces the field) — absent ⇒ empty", async () => {
+      await withTempDir((dir) => {
         const proj = projectDemo(dir);
         // init's manifest.yml already has NO `installerSkills` key — the OLD shape. list works (only the main
         // installer is present, and it is excluded → empty marker):

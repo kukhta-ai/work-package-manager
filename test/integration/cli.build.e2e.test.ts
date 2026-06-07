@@ -54,6 +54,29 @@ function hasZip(): boolean {
 }
 
 /**
+ * Concatenate the UTF-8 content of every regular file beneath `root` (recursively) into one blob, so a leak
+ * regression can assert a sentinel is absent from the WHOLE extracted archive — content, not just file names.
+ * `isDirectory()` is lstat-based, so symlinks (the scope-alias / `CLAUDE.md` aliases) are read as files rather
+ * than recursed, which both reads the linked bytes and avoids symlink cycles; non-UTF-8 reads are ignored.
+ */
+function concatAllFiles(root: string): string {
+  let blob = "";
+  for (const entry of readdirSync(root, { withFileTypes: true })) {
+    const child = join(root, entry.name);
+    if (entry.isDirectory()) {
+      blob += concatAllFiles(child);
+    } else {
+      try {
+        blob += readFileSync(child, "utf8");
+      } catch {
+        // a non-UTF-8 or dangling entry contributes nothing to the text-sentinel search
+      }
+    }
+  }
+  return blob;
+}
+
+/**
  * Create a real authoring workspace via `wpm init` and return the workspace root. The deliverable nests under
  * `wip/` and `build` resolves it via `-C` and packages the `wip/` tree (task-88); the `.authoring-backlog/`
  * lives at the workspace root, OUTSIDE `wip/`, so `build`'s "no `.authoring-backlog` in the shipped tree"
@@ -218,6 +241,37 @@ describeIfBuilt("`wpm build package` E2E (task-83, through dist/cli.js)", () => 
     });
   });
 
+  it("AC93#4 — REGRESSION GUARD: NO canonical executor front door (`AGENTS.md`/`CLAUDE.md`/`GEMINI.md`) appears ANYWHERE in the authoring deliverable tree — root or any bundle — only the reserved `_AGENTS.md` prefix", async () => {
+    await withTempDir(async (dir) => {
+      const proj = initProject(dir);
+      expect(cli(["project", "targets", "add", "claude-code", "-C", proj], dir).code).toBe(0);
+      // Two bundles ⇒ the guard covers MULTIPLE bundle subtrees, not just one.
+      expect(cli(["bundle", "new", "web", "-C", proj], dir).code).toBe(0);
+      expect(cli(["bundle", "new", "doc", "-C", proj], dir).code).toBe(0);
+
+      // Walk the WHOLE deliverable (`wip/`) and assert no file's BASENAME is a canonical auto-discovered front
+      // door. During authoring the executor front door lives ONLY under the reserved `_AGENTS.md` (and the
+      // bundle-template ships `_AGENTS.md.tmpl`); a canonical `AGENTS.md`/`CLAUDE.md`/`GEMINI.md` would be read as
+      // a directive by an authoring agent, so its presence under `wip/` is a regression. (The WORKSPACE-ROOT
+      // `AGENTS.md`/`CLAUDE.md` authoring front door is legitimate and lives OUTSIDE `wip/`, so it is not walked.)
+      const canonical = new Set(["AGENTS.md", "CLAUDE.md", "GEMINI.md"]);
+      const offenders: string[] = [];
+      const walk = (abs: string): void => {
+        for (const entry of readdirSync(abs, { withFileTypes: true })) {
+          const child = join(abs, entry.name);
+          if (entry.isDirectory()) walk(child);
+          else if (canonical.has(entry.name)) offenders.push(child);
+        }
+      };
+      walk(join(proj, "wip"));
+      expect(offenders).toEqual([]);
+      // And the reserved-prefix front door IS present at the root and in each bundle (the positive counterpart).
+      expect(existsSync(join(proj, "wip", "_AGENTS.md"))).toBe(true);
+      expect(existsSync(join(proj, "wip", "bundles", "web", "_AGENTS.md"))).toBe(true);
+      expect(existsSync(join(proj, "wip", "bundles", "doc", "_AGENTS.md"))).toBe(true);
+    });
+  });
+
   // AC89#4 (disabled bundle directories + builder-time dirs excluded) is proven at the pure-plan level in
   // test/unit/operations/build.test.ts ("EXCLUDES a DISABLED bundle dir …") — the same `plan.shippable` enumeration
   // that becomes the archive content. It cannot be shown through a produced archive because an orphan/disabled
@@ -237,6 +291,50 @@ describeIfBuilt("`wpm build package` E2E (task-83, through dist/cli.js)", () => 
           .sort();
       };
       expect(layout()).toEqual(layout());
+    });
+  });
+
+  it("AC93#3 — REGRESSION GUARD: no builder-time region (authoring backlog, authoring front door, builds/) leaks into the archive — by PATH and by CONTENT", async () => {
+    await withTempDir(async (dir) => {
+      const proj = initProject(dir);
+      expect(cli(["project", "targets", "add", "claude-code", "-C", proj], dir).code).toBe(0);
+
+      // Plant a UNIQUE sentinel in EACH of the three builder-time regions (all OUTSIDE the deliverable `wip/`).
+      // A leak of ANY one into the archive must FAIL this test — at the content level, not merely by path. The
+      // authoring front door is the WORKSPACE-ROOT `AGENTS.md`/`CLAUDE.md` (it addresses the authoring agent); it
+      // is distinct from the deliverable's executor front door, which legitimately ships AS `AGENTS.md` from
+      // `wip/_AGENTS.md` — so its sentinel must be absent EVEN THOUGH an `AGENTS.md` is in the archive.
+      const BACKLOG_SENTINEL = "AUTHORING-BACKLOG-LEAK-SENTINEL-3b7d";
+      const FRONTDOOR_SENTINEL = "AUTHORING-FRONT-DOOR-LEAK-SENTINEL-9a2e";
+      const BUILDS_SENTINEL = "BUILD-OUTPUT-LEAK-SENTINEL-c4f1";
+      writeFileSync(join(proj, ".authoring-backlog", "leak-probe.md"), BACKLOG_SENTINEL);
+      writeFileSync(join(proj, "AGENTS.md"), `# authoring front door\n${FRONTDOOR_SENTINEL}\n`);
+      writeFileSync(join(proj, "CLAUDE.md"), `# authoring front door\n${FRONTDOOR_SENTINEL}\n`);
+      writeFileSync(join(proj, "builds", "stray-probe.txt"), BUILDS_SENTINEL);
+
+      const r = cli(["build", "package", "--format", "tarball", "-C", proj], dir);
+      expect(r.code).toBe(0);
+      const archive = join(proj, "builds", "demo-0.1.0.tgz");
+      expect(existsSync(archive)).toBe(true);
+
+      // PATH-level: none of the three region paths (nor the planted probe files) appear in the archive listing.
+      const listed = execFileSync("tar", ["-tzf", archive], { encoding: "utf8" });
+      expect(listed).not.toContain(".authoring-backlog");
+      expect(listed).not.toMatch(/(^|\/)builds\//m);
+      expect(listed).not.toContain("leak-probe.md");
+      expect(listed).not.toContain("stray-probe.txt");
+
+      // CONTENT-level: extract and prove NONE of the sentinels appear in ANY archived file's bytes.
+      const ex = join(dir, "extracted");
+      mkdirSync(ex, { recursive: true });
+      execFileSync("tar", ["-xzf", archive, "-C", ex]);
+      const blob = concatAllFiles(ex);
+      expect(blob).not.toContain(BACKLOG_SENTINEL);
+      expect(blob).not.toContain(FRONTDOOR_SENTINEL); // the authoring front door's bytes never reach the archive
+      expect(blob).not.toContain(BUILDS_SENTINEL);
+      // Sanity: the archive DID ship a deliverable executor front door (so the front-door check is meaningful).
+      expect(existsSync(join(ex, "AGENTS.md"))).toBe(true);
+      expect(readFileSync(join(ex, "AGENTS.md"), "utf8")).not.toContain(FRONTDOOR_SENTINEL);
     });
   });
 
@@ -338,6 +436,57 @@ describeIfBuilt("`wpm build publish` E2E (task-84, through dist/cli.js)", () => 
       expect(r.stdout).toMatch(/Usage:/);
       expect(r.stdout).toContain("<destination>");
       expect(r.stdout).toMatch(/Example/i);
+    });
+  });
+});
+
+describeIfBuilt("FULL workspace lifecycle E2E (AC93#2, through dist/cli.js)", () => {
+  it("init → bundle new → project meta → build: the workspace layout holds throughout and the archive is un-nested in builds/", async () => {
+    await withTempDir(async (dir) => {
+      // 1. init creates a WORKSPACE: deliverable nested under wip/, authoring backlog + front door at the root,
+      //    builds/ created empty. The deliverable manifest is NOT at the workspace root.
+      const proj = initProject(dir);
+      expect(existsSync(join(proj, "wip", "manifest.yml"))).toBe(true);
+      expect(existsSync(join(proj, "manifest.yml"))).toBe(false);
+      expect(existsSync(join(proj, ".authoring-backlog"))).toBe(true);
+      expect(existsSync(join(proj, "AGENTS.md"))).toBe(true); // workspace-root authoring front door
+      expect(readdirSync(join(proj, "builds"))).toEqual([]); // builds/ starts empty
+
+      // 2. project-bound commands resolve the NESTED deliverable via -C <workspace> (task-88). `project root`
+      //    prints the resolved deliverable path = <workspace>/wip.
+      const root = cli(["project", "root", "-C", proj], dir);
+      expect(root.code).toBe(0);
+      expect(root.stdout.trim()).toBe(join(proj, "wip"));
+
+      // 3. bundle new scaffolds INTO the deliverable (wip/bundles/web/), under the reserved front-door prefix.
+      expect(cli(["bundle", "new", "web", "-C", proj], dir).code).toBe(0);
+      expect(existsSync(join(proj, "wip", "bundles", "web", "bundle.yml"))).toBe(true);
+      expect(existsSync(join(proj, "wip", "bundles", "web", "_AGENTS.md"))).toBe(true);
+      expect(existsSync(join(proj, "wip", "bundles", "web", "AGENTS.md"))).toBe(false);
+
+      // 4. project meta + targets add mutate the nested manifest; a target is required for a valid build.
+      expect(
+        cli(["project", "meta", "--description", "lifecycle demo", "-C", proj], dir).code,
+      ).toBe(0);
+      expect(cli(["project", "targets", "add", "claude-code", "-C", proj], dir).code).toBe(0);
+      const show = cli(["project", "show", "-C", proj], dir);
+      expect(show.code).toBe(0);
+      expect(show.stdout).toContain("lifecycle demo"); // the edit is read back through resolution
+
+      // 5. build produces an UN-NESTED archive in <workspace>/builds/: manifest at the archive root (no wip/
+      //    prefix), the executor front door stripped to AGENTS.md, and no builder-time region shipped.
+      const r = cli(["build", "package", "--format", "tarball", "-C", proj], dir);
+      expect(r.code).toBe(0);
+      const archive = join(proj, "builds", "demo-0.1.0.tgz");
+      expect(existsSync(archive)).toBe(true);
+      const listed = execFileSync("tar", ["-tzf", archive], { encoding: "utf8" });
+      expect(listed).toMatch(/^(\.\/)?manifest\.yml$/m);
+      expect(listed).not.toMatch(/(^|\/)wip\//m); // un-nested: no wip/ prefix in the archive
+      expect(listed).toMatch(/^(\.\/)?AGENTS\.md$/m); // executor front door, prefix-stripped
+      expect(listed).toMatch(/^(\.\/)?bundles\/web\/bundle\.yml$/m); // the bundle authored in step 3
+      expect(listed).not.toMatch(/(^|\/)_AGENTS\.md$/m);
+      expect(listed).not.toContain(".authoring-backlog");
+      expect(listed).not.toMatch(/(^|\/)builds\//m);
     });
   });
 });
