@@ -1,0 +1,19 @@
+---
+id: TASK-101
+title: Reconcile the docs worked examples with the templates the CLI provides
+status: To Do
+assignee: []
+created_date: '2026-06-07 22:51'
+labels:
+  - authoring-context
+  - docs
+  - human-gated
+dependencies: []
+ordinal: 101000
+---
+
+## Acceptance Criteria
+<!-- AC:BEGIN -->
+- [ ] #1 No shipped doc presents a worked example using a project or bundle template the CLI cannot resolve
+- [ ] #2 Every project and bundle template named in the docs is resolvable by the CLI, or the doc no longer names it
+<!-- AC:END -->
