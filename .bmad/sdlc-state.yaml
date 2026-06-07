@@ -7,8 +7,9 @@ phase: 5
 phase_name: "Authoring-workspace epic-3 — Phase 5 BAUT (per-story build of tasks 85-94)"
 branch: feature/authoring-workspace
 epic: authoring-workspace
-active_story: null
+active_story: task-85
 review_cycle: 0
+sub_branch: feature/aw-task-85
 # === EPIC-3 (Authoring Workspace) — STARTED 2026-06-07 ===
 # Branched feature/authoring-workspace off feature/cli (ee2b501 sprint setup) because epic-3 depends on the
 # CLI epic's init/build code, which is NOT yet on dev (dev=foundation only; PR #1 feature/cli->dev still human-gated).

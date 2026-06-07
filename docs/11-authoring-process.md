@@ -6,19 +6,24 @@ Read with `04` (the authoring agent's behavioural protocol — the rules), `10` 
 
 ## 1 — Where the authoring work lives
 
-Each installer-project the author builds gets its own authoring-backlog at the project root, hidden so it doesn't pollute the visible structure:
+Each installer-project the author builds is generated inside an **authoring workspace** that wraps the deliverable (`06`). The authoring backlog lives at the **workspace root** alongside the authoring front door — hidden, so it doesn't pollute the deliverable — while the bundle-project the author is building sits one level down in the deliverable subdirectory `wip/`, and build output is isolated in `builds/`:
 
 ```
-<project-root>/
-├── manifest.yml                          ← the shipped project's index
-├── bundles/
-│   └── <bundle-id>/install-backlog/      ← runtime recipe (ships to users)
-└── .authoring-backlog/                   ← OUR zone: agent's work tracker
-    ├── config.yml                          task_prefix=authoring
-    └── tasks/
+<authoring-workspace-root>/               ← the AUTHORING surface (never shipped)
+├── AGENTS.md                             ← authoring front door: flips an agent into "author this bundle-project" mode (04, 12)
+├── .authoring-backlog/                   ← OUR zone: the agent's work tracker (gitignored, builder-time only)
+│   ├── config.yml                          task_prefix=authoring
+│   └── tasks/
+├── wip/                                  ← the DELIVERABLE being authored = the shipped artifact (06/07)
+│   ├── manifest.yml                          the shipped project's index
+│   └── bundles/
+│       └── <bundle-id>/install-backlog/      runtime recipe (ships to users)
+└── builds/                               ← build output: the archives `wpm build` emits (isolated)
 ```
 
-Three properties make it the right place:
+Paths to **deliverable** contents named throughout this doc (`manifest.yml`, `bundles/<id>/…`, `installer-skills/`, the scope-alias symlinks, the deliverable's executor front door) are relative to the deliverable subdirectory `wip/`; paths to the **authoring backlog** are relative to the workspace root. The built archive is exactly the `wip/` deliverable un-nested to the archive root (`06`); none of the workspace wrapper — authoring front door, `.authoring-backlog/`, `builds/` — is ever part of a shipped artifact.
+
+Three properties make the workspace root the right home for the authoring backlog:
 
 **Hidden, gitignored by default.** It's per-author working state, not part of what the installer ships. A second author picking up the project may want to reconstruct their own backlog from current state rather than inherit a stale work-tracker. Sharing the authoring-backlog via git is an explicit decision, not the default.
 
@@ -45,7 +50,7 @@ Project-wide tasks the project has at minimum:
 - **"Set project metadata"** — AC: `manifest.yml.project` has `description`, `license` (and ideally `repository`, `author`) set via `wpm project meta`. Agent satisfies by running the meta command with the right flags.
 - **"Confirm target agents"** — AC: `manifest.yml.targets` has at least one entry. Agent satisfies via `wpm project targets add`.
 - **"Verify manifest coherence"** — AC: `wpm project validate` exits clean (deps resolve, targets non-empty, valid semver, no orphan bundle dirs).
-- **"Verify scope-alias symlinks"** — AC: each scope-alias under the project root corresponds to a target agent in `manifest.yml.targets` and points at `installer-skills/`; no bare `skills/` aliases exist (the safety guard against scope-name confusion from `05`). Catches drift where the author manually created or deleted an alias.
+- **"Verify scope-alias symlinks"** — AC: each scope-alias under the deliverable subdirectory `wip/` corresponds to a target agent in `manifest.yml.targets` and points at `installer-skills/`; no bare `skills/` aliases exist (the safety guard against scope-name confusion from `05`). Catches drift where the author manually created or deleted an alias.
 - **"Verify AGENTS.md and main installer skill are current"** — AC: `AGENTS.md` and `<project>-installer/SKILL.md` reflect the current `manifest.yml` + each enabled `bundle.yml`. Re-rendering is automatic on every mutating CLI command, so this task primarily catches sidestepping (manual edits to `manifest.yml` or `bundle.yml` that bypassed the CLI). Agent confirms by mtime comparison or by spot-checking that the derived files reference the current bundle list / agents list.
 - **"Verify helpers and advisors registered"** — AC: every SKILL.md under `installer-skills/` at root scope corresponds to a registered helper or advisor (catches drift in either direction).
 - **"Bump project release version"** — AC: `manifest.yml.project.version` has been advanced since the previous release tag (or set explicitly for the first release).
@@ -182,7 +187,7 @@ wpm project meta --description "..." --license MIT --repository "..."
 # inside the bundle. Labels are ONE comma-separated -l; --dep is by task id.
 # The core bundle has task_prefix=core, so ITS task ids are core-N.
 (cd .authoring-backlog && backlog task edit authoring-10 -s "In Progress")
-(cd bundles/core && \
+(cd wip/bundles/core && \
    backlog task create "stand up handoff channel" \
      -l "kind:state,step:standup-channel" \
      -m 0.1.0 \
