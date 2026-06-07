@@ -1,5 +1,12 @@
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, readdirSync } from "node:fs";
+import {
+  existsSync,
+  lstatSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  writeFileSync,
+} from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
@@ -128,13 +135,86 @@ describeIfBuilt("`wpm build package` E2E (task-83, through dist/cli.js)", () => 
       // AC89#2: the archive root is the un-nested deliverable — manifest.yml sits at the archive root (no wip/ prefix).
       expect(listed).toMatch(/^(\.\/)?manifest\.yml$/m);
       expect(listed).not.toMatch(/(^|\/)wip\//m);
-      // The executor front door ships (currently verbatim `_AGENTS.md`; task-90 will strip it to AGENTS.md).
-      expect(listed).toContain("_AGENTS.md");
+      // AC90#2/#5: the executor front door ships under its CANONICAL stripped name `AGENTS.md`, and the reserved
+      // `_AGENTS.md` is GONE from the archive (never both names).
+      expect(listed).toMatch(/^(\.\/)?AGENTS\.md$/m);
+      // No reserved-prefix front door ships under the `_AGENTS.md` BASENAME (the bundle-template's
+      // `_AGENTS.md.tmpl` scaffold is a `.tmpl`, not a front door, so it is intentionally not matched).
+      expect(listed).not.toMatch(/(^|\/)_AGENTS\.md$/m);
       // AC89#3: the authoring backlog, the authoring front door (workspace-root AGENTS.md), and builds/ are ABSENT.
       expect(listed).not.toContain(".authoring-backlog");
       expect(listed).not.toMatch(/(^|\/)builds\//m);
-      expect(listed).not.toMatch(/(^|\.\/)AGENTS\.md$/m); // the AUTHORING front door (exact), not the shipped _AGENTS.md
       expect(listed).not.toContain("demo-0.1.0.tgz"); // the archive never contains itself
+    });
+  });
+
+  it("AC90#2/#5/#6 — `_AGENTS.md` (root + per bundle) ships as canonical `AGENTS.md` VERBATIM, with the `CLAUDE.md` alias, never `_AGENTS.md`", async () => {
+    await withTempDir(async (dir) => {
+      const proj = initProject(dir);
+      // claude-code is a target ⇒ the build creates the CLAUDE.md alias front door beside each AGENTS.md (doc 05).
+      expect(cli(["project", "targets", "add", "claude-code", "-C", proj], dir).code).toBe(0);
+      // A real enabled bundle ⇒ exercises the PER-BUNDLE front door + the scope-alias symlink-preservation path.
+      expect(cli(["bundle", "new", "web", "-C", proj], dir).code).toBe(0);
+
+      // The author EDITS the reserved-prefix front doors (AC90#1). Unique sentinels prove byte-for-byte fidelity.
+      const ROOT_SENTINEL = "ROOT-FRONT-DOOR-SENTINEL-зважив-7f3a";
+      const BUNDLE_SENTINEL = "BUNDLE-FRONT-DOOR-SENTINEL-9c1d";
+      writeFileSync(join(proj, "wip", "_AGENTS.md"), `# root\n${ROOT_SENTINEL}\n`);
+      writeFileSync(
+        join(proj, "wip", "bundles", "web", "_AGENTS.md"),
+        `# web\n${BUNDLE_SENTINEL}\n`,
+      );
+
+      const r = cli(["build", "package", "--format", "tarball", "-C", proj], dir);
+      expect(r.code).toBe(0);
+      const archive = join(proj, "builds", "demo-0.1.0.tgz");
+      expect(existsSync(archive)).toBe(true);
+
+      // AC90#5: no reserved-prefix front door (the `_AGENTS.md` basename) anywhere in the archive — never both
+      // names. (The bundle-template's `_AGENTS.md.tmpl` is a `.tmpl` scaffold, not a front door, so it is exempt.)
+      const listed = execFileSync("tar", ["-tzf", archive], { encoding: "utf8" });
+      expect(listed).not.toMatch(/(^|\/)_AGENTS\.md$/m);
+      // AC90#2: the canonical front door + the CLAUDE.md alias are present at the root AND in the bundle.
+      expect(listed).toMatch(/^(\.\/)?AGENTS\.md$/m);
+      expect(listed).toMatch(/^(\.\/)?CLAUDE\.md$/m);
+      expect(listed).toMatch(/^(\.\/)?bundles\/web\/AGENTS\.md$/m);
+      expect(listed).toMatch(/^(\.\/)?bundles\/web\/CLAUDE\.md$/m);
+
+      // AC90#6: extract and assert the canonical front door carries the AUTHOR'S bytes verbatim (no regeneration).
+      const ex = join(dir, "extracted");
+      mkdirSync(ex, { recursive: true });
+      execFileSync("tar", ["-xzf", archive, "-C", ex]);
+      expect(readFileSync(join(ex, "AGENTS.md"), "utf8")).toBe(`# root\n${ROOT_SENTINEL}\n`);
+      expect(readFileSync(join(ex, "bundles", "web", "AGENTS.md"), "utf8")).toBe(
+        `# web\n${BUNDLE_SENTINEL}\n`,
+      );
+      // The alias is a symlink to the canonical name, so resolving it yields the same author bytes (AC90#2).
+      expect(lstatSync(join(ex, "CLAUDE.md")).isSymbolicLink()).toBe(true);
+      expect(readFileSync(join(ex, "CLAUDE.md"), "utf8")).toBe(`# root\n${ROOT_SENTINEL}\n`);
+      expect(lstatSync(join(ex, "bundles", "web", "CLAUDE.md")).isSymbolicLink()).toBe(true);
+    });
+  });
+
+  it("AC90#3 — during authoring (after init + bundle new) ONLY `_AGENTS.md` exists on disk; no canonical front door", async () => {
+    await withTempDir((dir) => {
+      const proj = initProject(dir);
+      expect(cli(["project", "targets", "add", "claude-code", "-C", proj], dir).code).toBe(0);
+      expect(cli(["bundle", "new", "web", "-C", proj], dir).code).toBe(0);
+
+      // The reserved-prefix front doors exist (author-owned), at the project root and in the bundle.
+      expect(existsSync(join(proj, "wip", "_AGENTS.md"))).toBe(true);
+      expect(existsSync(join(proj, "wip", "bundles", "web", "_AGENTS.md"))).toBe(true);
+      // NO canonical agent-surface front door is auto-discoverable in the deliverable during authoring.
+      for (const rel of [
+        ["wip", "AGENTS.md"],
+        ["wip", "CLAUDE.md"],
+        ["wip", "GEMINI.md"],
+        ["wip", "bundles", "web", "AGENTS.md"],
+        ["wip", "bundles", "web", "CLAUDE.md"],
+        ["wip", "bundles", "web", "GEMINI.md"],
+      ]) {
+        expect(existsSync(join(proj, ...rel))).toBe(false);
+      }
     });
   });
 

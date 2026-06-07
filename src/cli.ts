@@ -3145,6 +3145,7 @@ const buildModule: CommandModule = {
           baseName: `${plan.name}-${plan.version}`,
           format: opts.format,
           files: plan.shippable,
+          transforms: plan.frontDoorTransforms, // task-90: strip `_AGENTS.md` → `AGENTS.md` (+ per-target aliases)
         });
         ctx.io.out.write(`packaged ${plan.name} ${plan.version} → ${out}\n`); // AC83#2
       });
@@ -3193,6 +3194,7 @@ const buildModule: CommandModule = {
           baseName: `${plan.name}-${plan.version}`,
           format: opts.format,
           files: plan.shippable,
+          transforms: plan.frontDoorTransforms, // task-90: strip `_AGENTS.md` → `AGENTS.md` (+ per-target aliases)
         });
 
         // Only now — with a successfully built archive — push it (AC84#1).

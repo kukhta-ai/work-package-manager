@@ -97,8 +97,8 @@ function assertProjectOnDisk(proj: string, name: string): void {
   expect(existsSync(join(wip, "RALPH-LOOP.md"))).toBe(true);
 
   // AC#1 — the default bundle template materialised at wip/bundles/bundle-template/ (placeholders KEPT):
-  expect(existsSync(join(wip, "bundles", "bundle-template", "AGENTS.md.tmpl"))).toBe(true);
-  expect(readFileSync(join(wip, "bundles", "bundle-template", "AGENTS.md.tmpl"), "utf8")).toMatch(
+  expect(existsSync(join(wip, "bundles", "bundle-template", "_AGENTS.md.tmpl"))).toBe(true);
+  expect(readFileSync(join(wip, "bundles", "bundle-template", "_AGENTS.md.tmpl"), "utf8")).toMatch(
     /\{\{bundle-id\}\}/,
   );
 
