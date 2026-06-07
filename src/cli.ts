@@ -56,6 +56,12 @@ import { createBundleSpec } from "./core/operations/create-bundle.js";
 import { makeArtefactDeriver } from "./core/operations/derive-artefacts-capability.js";
 import { initProject } from "./core/operations/init-project.js";
 import {
+  AUTHORING_SKILL_NAME,
+  authoringSkillPresent,
+  type InstallAuthoringSkillResult,
+  installAuthoringSkill,
+} from "./core/operations/install-authoring-skill.js";
+import {
   attachProjectInstallerSkillSpec,
   conventionalProjectSkillPath,
   isReservedInstallerSkillName,
@@ -137,6 +143,13 @@ export interface CliDeps {
   readonly env: Environment;
   /** The built-in templates root shipped with the package (project-local templates shadow these). */
   readonly builtinTemplatesRoot: string;
+  /**
+   * The bundled `agent-skills/` root shipped with the package — the source `wpm skill install` copies the
+   * `installer-builder/` authoring skill from (doc 12). Threaded exactly like {@link builtinTemplatesRoot} and
+   * always populated by {@link makeRealDeps}; OPTIONAL only so the many existing test deps-literals that never
+   * exercise `skill install` need not all supply it (the command raises a clear internal error if it is absent).
+   */
+  readonly bundledSkillsRoot?: string;
 }
 
 /** The context handed to each command module's `register`: the injected deps + the I/O bundle. */
@@ -2157,6 +2170,18 @@ const initModule: CommandModule = {
             },
           );
           ctx.io.out.write(formatResult(result));
+
+          // AC#4 (task-91): point the author at how to install the authoring skill when it is absent. The
+          // workspace's authoring front door already tells the agent to *invoke* the installer-builder skill;
+          // here we surface, in init's own summary, the command that makes it available — but only when it is
+          // not already present in the detected user agent scope(s) (so a set-up machine stays quiet). Detection
+          // reads HOME via the env port; with no HOME we cannot probe, so we skip (the front door still covers it).
+          const home = ctx.deps.env.getEnv("HOME");
+          if (home !== undefined && home !== "" && !authoringSkillPresent(ctx.deps.fs, home)) {
+            ctx.io.out.write(
+              `tip: run \`wpm skill install\` to make the ${AUTHORING_SKILL_NAME} authoring skill available to your agent\n`,
+            );
+          }
         },
       );
 
@@ -3087,6 +3112,60 @@ export const COMPLETION_SPECS: CompletionSpecs = {
  * it, through the FileSystem port (`src/util/completion-install.ts`) — no `process.exit`. `--shell` completes
  * from the `"shells"` fixed-enum source (dogfooding AC#2).
  */
+/**
+ * Render the `skill install` result (output lives in the shell, not the core — doc 13 §3). Names every scope
+ * written and whether each was a fresh install or an update (AC#2, AC#5), e.g.:
+ *
+ *   installed installer-builder into 2 agent scope(s):
+ *     installed  /home/me/.claude/skills/installer-builder  (claude-code)
+ *     updated    /home/me/.agents/skills/installer-builder  (codex)
+ */
+function formatInstallAuthoringSkill(result: InstallAuthoringSkillResult): string {
+  const lines = [`installed ${result.skillName} into ${result.installed.length} agent scope(s):`];
+  for (const record of result.installed) {
+    lines.push(`  ${record.status.padEnd(9)} ${record.destination}  (${record.agent})`);
+  }
+  return `${lines.join("\n")}\n`;
+}
+
+/**
+ * The `skill` group (doc 12 line 349: `installer skill install`) — manage the bundled `installer-builder`
+ * authoring skill. Project-independent (like {@link completionModule}): it writes to the machine-wide user
+ * agent scope under HOME, so it needs no project context and never touches a workspace deliverable (AC#6).
+ */
+const skillModule: CommandModule = {
+  register(parent, ctx) {
+    const group = parent
+      .command("skill")
+      .description("manage the bundled installer-builder authoring skill (doc 12)");
+
+    const installLeaf = group
+      .command("install")
+      .description(
+        "copy the bundled installer-builder authoring skill into the detected agents' user skill scope (doc 12)",
+      )
+      .action(() => {
+        const bundledSkillsRoot = ctx.deps.bundledSkillsRoot;
+        if (bundledSkillsRoot === undefined) {
+          // The composition root always sets this; only a mis-wired deps object reaches here.
+          throw new Error("internal: bundledSkillsRoot was not assembled");
+        }
+        const result = installAuthoringSkill(
+          { fs: ctx.deps.fs, env: ctx.deps.env },
+          { bundledSkillsRoot },
+        );
+        ctx.io.out.write(formatInstallAuthoringSkill(result));
+      });
+
+    withExamples(installLeaf, [
+      {
+        command: "wpm skill install",
+        note: "copy the installer-builder skill into your agent's user skill scope (~/.claude/skills, ~/.agents/skills, …)",
+      },
+    ]);
+  },
+};
+
 const completionModule: CommandModule = {
   register(parent, ctx) {
     const group = parent.command("completion").description("shell tab-completion (doc 12)");
@@ -3274,6 +3353,7 @@ const TOP_LEVEL_MODULES: readonly CommandModule[] = [
   projectModule,
   bundleModule,
   buildModule,
+  skillModule,
   completionModule,
 ];
 
@@ -3378,12 +3458,14 @@ export async function run(argv: readonly string[], deps: CliDeps, io: CliIo): Pr
 /** Assemble the REAL ports exactly once (doc 12 §"Layered architecture": DI at the entry point). */
 function makeRealDeps(): CliDeps {
   const builtinTemplatesRoot = fileURLToPath(new URL("../templates", import.meta.url));
+  const bundledSkillsRoot = fileURLToPath(new URL("../agent-skills", import.meta.url));
   return {
     fs: new NodeFileSystem(),
     backlog: new BacklogCli(),
     clock: new SystemClock(),
     env: new ProcessEnvironment(),
     builtinTemplatesRoot,
+    bundledSkillsRoot,
   };
 }
 

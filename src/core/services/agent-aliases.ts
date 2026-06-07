@@ -42,3 +42,38 @@ export const ALIAS_PATHS: Readonly<Record<string, string>> = {
 export function aliasPathFor(agent: AgentName): string | undefined {
   return ALIAS_PATHS[agent];
 }
+
+/**
+ * The built-in agent → **user (personal) scope** path map, keyed by the agent-name string. This is the
+ * HOME-relative scope each agent scans for *personal* (machine-wide, project-independent) skills — distinct
+ * from {@link ALIAS_PATHS}, which is the *project-relative* scope alias. The paths come straight from **doc
+ * 05's canonical scope table** (lines 114-117, the "Personal scope" column):
+ *
+ * | AgentName     | user scope path (HOME-relative) | doc 05                              |
+ * |---------------|---------------------------------|-------------------------------------|
+ * | `claude-code` | `.claude/skills`                | line 116 (`~/.claude/skills/`)      |
+ * | `codex`       | `.agents/skills`                | line 114 (`~/.agents/skills/`)      |
+ * | `hermes`      | `.hermes/skills`                | line 115 (`~/.hermes/skills/`)      |
+ * | `openclaw`    | `.openclaw/skills`              | line 117 (`~/.openclaw/skills/`)    |
+ *
+ * Note this differs from {@link ALIAS_PATHS} for Hermes: a *project* alias points Hermes at the consolidating
+ * `.agents/skills/` (line 119), but Hermes's own *personal* scope is `~/.hermes/skills/` (line 115) — so the
+ * two maps are deliberately not the same lookup. As with `ALIAS_PATHS`, a bare `skills/` is never used.
+ */
+export const USER_SCOPE_PATHS: Readonly<Record<string, string>> = {
+  "claude-code": ".claude/skills",
+  codex: ".agents/skills",
+  hermes: ".hermes/skills",
+  openclaw: ".openclaw/skills",
+};
+
+/**
+ * The HOME-relative user (personal) scope path for an agent, or `undefined` if the agent is not in the
+ * built-in {@link USER_SCOPE_PATHS} map (the caller surfaces unknown agents rather than guessing a path).
+ *
+ * @param agent - The target agent name.
+ * @returns The HOME-relative user scope path, or `undefined` when the agent is unknown.
+ */
+export function userScopePathFor(agent: AgentName): string | undefined {
+  return USER_SCOPE_PATHS[agent];
+}
