@@ -3,6 +3,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
+import { initFlatProject } from "../helpers/flat-project.js";
 import { withTempDir } from "../helpers/tmpdir.js";
 
 /**
@@ -43,11 +44,13 @@ function wpm(proj: string, args: readonly string[]): { stdout: string; status: n
   return cli([...args, "-C", proj]);
 }
 
-/** init a real project at <dir>/demo; return the project path (with a real manifest + rendered derived artefacts). */
+/**
+ * Build a flat project at <dir>/demo from the real `init` output (task-87 nests the deliverable under `wip/`;
+ * {@link initFlatProject} flattens it to the pre-87 shape these project-bound commands resolve — a task-88
+ * follow-up). Yields a real manifest + rendered derived artefacts + a co-located authoring backlog.
+ */
 function initProject(dir: string): string {
-  const proj = join(dir, "demo");
-  execFileSync(process.execPath, [builtCli, "init", "demo", "--at", proj], { encoding: "utf8" });
-  return proj;
+  return initFlatProject(builtCli, dir);
 }
 
 /** The `project:` sub-key order of a manifest text (for key-order preservation assertions). */

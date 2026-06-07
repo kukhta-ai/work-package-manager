@@ -2097,7 +2097,7 @@ const initModule: CommandModule = {
     const leaf = parent
       .command("init")
       .description(
-        "scaffold a new project root from a project template (default: minimal) (doc 10)",
+        "scaffold a new authoring workspace from a project template (default: minimal) (doc 10)",
       )
       .argument(
         "<name>",
@@ -2105,7 +2105,7 @@ const initModule: CommandModule = {
       )
       .option(
         "--at <path>",
-        "create the project at <path> (default: a <name>/ directory in the cwd)",
+        "create the workspace at <path> (default: a <name>/ directory in the cwd)",
       )
       .option("--template <name>", "the project template to scaffold from", "minimal")
       .option(
