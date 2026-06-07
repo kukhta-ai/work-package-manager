@@ -111,7 +111,12 @@ describe("createBundle — end-to-end through the lifecycle (doc 13 §5; doc 10 
   it("AC#1 — validates input, scaffolds from template, records in the manifest, re-derives, materialises", () => {
     const { fs, backlog } = seed();
 
-    const result = runMutation(lifecycleDeps(fs, backlog), { root: ROOT }, spec(), { id: "web" });
+    const result = runMutation(
+      lifecycleDeps(fs, backlog),
+      { deliverableRoot: ROOT, workspaceRoot: ROOT },
+      spec(),
+      { id: "web" },
+    );
 
     // (validate-input) a good id proceeded; (template→files) bundles/web/ scaffolded from the template:
     expect(fs.exists(`${ROOT}/bundles/web/bundle.yml`)).toBe(true);
@@ -134,10 +139,11 @@ describe("createBundle — end-to-end through the lifecycle (doc 13 §5; doc 10 
       expect(manifest.value.bundles).toContain("web");
     }
 
-    // (re-derive) the front-door AGENTS.md was re-rendered and lists the new bundle's summary:
-    const frontDoor = fs.read(`${ROOT}/AGENTS.md`);
-    expect(frontDoor).toContain("# demo"); // {{project-name}} substituted
-    expect(frontDoor).toContain("- web bundle"); // {{bundles}} menu includes the new bundle
+    // (re-derive) the orchestrator skill was re-rendered; the executor front door is author-owned and is NOT
+    // auto-written on a mutation (task-88), so no canonical `AGENTS.md` appears under the deliverable:
+    const orchestrator = fs.read(`${ROOT}/installer-skills/demo-installer/SKILL.md`);
+    expect(orchestrator).toContain("Install demo."); // {{project-name}} substituted
+    expect(fs.exists(`${ROOT}/AGENTS.md`)).toBe(false); // front door not re-rendered on mutation
 
     // (materialise) all 12 doc-11 authoring tasks present in the authoring backlog:
     const titles = backlog.listTasks(AUTHORING).map((t) => t.title);
@@ -150,13 +156,19 @@ describe("createBundle — end-to-end through the lifecycle (doc 13 §5; doc 10 
     expect(result.summary).toBe("created bundle web (advisor scaffolded)");
     expect(result.changedPaths).toContain(`${ROOT}/bundles/web/bundle.yml`);
     expect(result.changedPaths).toContain(`${ROOT}/manifest.yml`);
-    expect(result.changedPaths).toContain(`${ROOT}/AGENTS.md`);
+    expect(result.changedPaths).toContain(`${ROOT}/installer-skills/demo-installer/SKILL.md`);
+    expect(result.changedPaths).not.toContain(`${ROOT}/AGENTS.md`);
     expect(result.materialisedTaskTitles).toHaveLength(12);
   });
 
   it("AC#1 — the per-bundle and root scope aliases are created NON-broken (targets exist)", () => {
     const { fs, backlog } = seed();
-    runMutation(lifecycleDeps(fs, backlog), { root: ROOT }, spec(), { id: "web" });
+    runMutation(
+      lifecycleDeps(fs, backlog),
+      { deliverableRoot: ROOT, workspaceRoot: ROOT },
+      spec(),
+      { id: "web" },
+    );
 
     // The per-bundle alias resolves because its target bundles/web/installer-skills/ exists:
     expect(fs.exists(`${ROOT}/bundles/web/installer-skills`)).toBe(true);
@@ -171,12 +183,17 @@ describe("createBundle — end-to-end through the lifecycle (doc 13 §5; doc 10 
 
   it("AC#3 — the operation composes services; the harness drove ④ rerender and ⑤ materialise, not the spec", () => {
     // The createBundleSpec's `apply` performs only structural writes; it does not import/call the derivation
-    // or the materialiser — yet both happened (front-door re-derived, tasks created). This is verified by the
+    // or the materialiser — yet both happened (orchestrator re-derived, tasks created). This is verified by the
     // observable effects above plus: a spec built here has no deriveArtefacts/materialise machinery of its own
     // beyond returning a plan, so the harness must have arranged ④/⑤.
     const { fs, backlog } = seed();
-    const result = runMutation(lifecycleDeps(fs, backlog), { root: ROOT }, spec(), { id: "web" });
-    expect(fs.exists(`${ROOT}/AGENTS.md`)).toBe(true); // ④ ran (harness)
+    const result = runMutation(
+      lifecycleDeps(fs, backlog),
+      { deliverableRoot: ROOT, workspaceRoot: ROOT },
+      spec(),
+      { id: "web" },
+    );
+    expect(fs.exists(`${ROOT}/installer-skills/demo-installer/SKILL.md`)).toBe(true); // ④ ran (harness)
     expect(backlog.listTasks(AUTHORING).length).toBeGreaterThan(0); // ⑤ ran (harness)
     expect(result.materialisedTaskTitles.length).toBe(12);
   });
@@ -184,7 +201,12 @@ describe("createBundle — end-to-end through the lifecycle (doc 13 §5; doc 10 
   it("rejects a reserved-verb id with ValidationError, changing nothing", () => {
     const { fs, backlog } = seed();
     expect(() =>
-      runMutation(lifecycleDeps(fs, backlog), { root: ROOT }, spec(), { id: "list" }),
+      runMutation(
+        lifecycleDeps(fs, backlog),
+        { deliverableRoot: ROOT, workspaceRoot: ROOT },
+        spec(),
+        { id: "list" },
+      ),
     ).toThrow(ValidationError);
     expect(fs.exists(`${ROOT}/bundles/list`)).toBe(false);
     expect(backlog.listTasks(AUTHORING)).toEqual([]);
@@ -193,7 +215,12 @@ describe("createBundle — end-to-end through the lifecycle (doc 13 §5; doc 10 
   it("rejects a non-kebab id with ValidationError", () => {
     const { fs, backlog } = seed();
     expect(() =>
-      runMutation(lifecycleDeps(fs, backlog), { root: ROOT }, spec(), { id: "a--b" }),
+      runMutation(
+        lifecycleDeps(fs, backlog),
+        { deliverableRoot: ROOT, workspaceRoot: ROOT },
+        spec(),
+        { id: "a--b" },
+      ),
     ).toThrow(ValidationError);
   });
 
@@ -202,10 +229,15 @@ describe("createBundle — end-to-end through the lifecycle (doc 13 §5; doc 10 
     const manifestBefore = fs.read(`${ROOT}/manifest.yml`);
 
     expect(() =>
-      runMutation(lifecycleDeps(fs, backlog), { root: ROOT }, spec(), {
-        id: "web",
-        version: "not-a-version",
-      }),
+      runMutation(
+        lifecycleDeps(fs, backlog),
+        { deliverableRoot: ROOT, workspaceRoot: ROOT },
+        spec(),
+        {
+          id: "web",
+          version: "not-a-version",
+        },
+      ),
     ).toThrow(ValidationError);
 
     // CHECK rejected the version before any effect — ③④⑤ never ran:
@@ -217,12 +249,14 @@ describe("createBundle — end-to-end through the lifecycle (doc 13 §5; doc 10 
   it("rejects a duplicate id with ConflictError, changing nothing on the second run", () => {
     const { fs, backlog } = seed();
     const deps = lifecycleDeps(fs, backlog);
-    runMutation(deps, { root: ROOT }, spec(), { id: "web" });
+    runMutation(deps, { deliverableRoot: ROOT, workspaceRoot: ROOT }, spec(), { id: "web" });
 
     const manifestAfterFirst = fs.read(`${ROOT}/manifest.yml`);
     const tasksAfterFirst = backlog.listTasks(AUTHORING).map((t) => t.title);
 
-    expect(() => runMutation(deps, { root: ROOT }, spec(), { id: "web" })).toThrow(ConflictError);
+    expect(() =>
+      runMutation(deps, { deliverableRoot: ROOT, workspaceRoot: ROOT }, spec(), { id: "web" }),
+    ).toThrow(ConflictError);
 
     // The failed second run changed neither the manifest nor the backlog:
     expect(fs.read(`${ROOT}/manifest.yml`)).toBe(manifestAfterFirst);
@@ -231,10 +265,15 @@ describe("createBundle — end-to-end through the lifecycle (doc 13 §5; doc 10 
 
   it("--no-advisor materialises 11 tasks, omitting the advisor task", () => {
     const { fs, backlog } = seed();
-    const result = runMutation(lifecycleDeps(fs, backlog), { root: ROOT }, spec(), {
-      id: "core",
-      advisor: false,
-    });
+    const result = runMutation(
+      lifecycleDeps(fs, backlog),
+      { deliverableRoot: ROOT, workspaceRoot: ROOT },
+      spec(),
+      {
+        id: "core",
+        advisor: false,
+      },
+    );
     expect(result.materialisedTaskTitles).toHaveLength(11);
     expect(result.materialisedTaskTitles).not.toContain("Write advisor content for core");
     expect(result.materialisedTaskTitles).toContain("Plan bundle core");
@@ -266,7 +305,9 @@ describe("createBundle — the project bundle-template default (§4; doc 10:150 
     const { fs, backlog } = seedWithProjectScaffold();
     // No bundleTemplateName ⇒ default branch ⇒ prefer the project scaffold.
     const spec = createBundleSpec({ builtinTemplatesRoot: BUILTIN });
-    runMutation(lifecycleDeps(fs, backlog), { root: ROOT }, spec, { id: "web" });
+    runMutation(lifecycleDeps(fs, backlog), { deliverableRoot: ROOT, workspaceRoot: ROOT }, spec, {
+      id: "web",
+    });
 
     // The marker from the PROJECT scaffold landed in the new bundle (proving set is now LIVE for bundle new):
     expect(fs.exists(`${ROOT}/bundles/web/${PROJECT_SCAFFOLD_MARKER}`)).toBe(true);
@@ -283,7 +324,9 @@ describe("createBundle — the project bundle-template default (§4; doc 10:150 
     const { fs, backlog } = seedWithProjectScaffold();
     // Explicit bundleTemplateName ⇒ registry path ⇒ the project scaffold is IGNORED.
     const spec = createBundleSpec({ builtinTemplatesRoot: BUILTIN, bundleTemplateName: "default" });
-    runMutation(lifecycleDeps(fs, backlog), { root: ROOT }, spec, { id: "web" });
+    runMutation(lifecycleDeps(fs, backlog), { deliverableRoot: ROOT, workspaceRoot: ROOT }, spec, {
+      id: "web",
+    });
 
     // The registry `default` has NO project-scaffold marker, so the new bundle must NOT contain it:
     expect(fs.exists(`${ROOT}/bundles/web/${PROJECT_SCAFFOLD_MARKER}`)).toBe(false);
@@ -294,7 +337,9 @@ describe("createBundle — the project bundle-template default (§4; doc 10:150 
   it("with NO bundles/bundle-template/ present, `bundle new` falls back to the registry default (no regression)", () => {
     const { fs, backlog } = seed(); // the standard seed: NO bundles/bundle-template/
     const spec = createBundleSpec({ builtinTemplatesRoot: BUILTIN });
-    runMutation(lifecycleDeps(fs, backlog), { root: ROOT }, spec, { id: "web" });
+    runMutation(lifecycleDeps(fs, backlog), { deliverableRoot: ROOT, workspaceRoot: ROOT }, spec, {
+      id: "web",
+    });
     // Falls back to the registry `default` and still scaffolds correctly:
     expect(fs.exists(`${ROOT}/bundles/web/bundle.yml`)).toBe(true);
     expect(fs.exists(`${ROOT}/bundles/web/${PROJECT_SCAFFOLD_MARKER}`)).toBe(false);

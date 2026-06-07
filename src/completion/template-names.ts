@@ -26,7 +26,7 @@ export function templateNames(ctx: CompletionContext, filter?: ListFilter): stri
     {
       fs: ctx.fs,
       builtinTemplatesRoot: ctx.builtinTemplatesRoot,
-      ...(context.found ? { projectTemplatesRoot: `${context.root}/templates` } : {}),
+      ...(context.found ? { projectTemplatesRoot: `${context.deliverableRoot}/templates` } : {}),
     },
     filter,
   );

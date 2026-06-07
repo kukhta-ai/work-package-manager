@@ -66,17 +66,17 @@ function seed(bundles: readonly BundleSpec[]): { fs: MemoryFileSystem; backlog: 
   const bundleLines =
     ids.length > 0 ? `bundles:\n${ids.map((b) => `  - ${b}`).join("\n")}\n` : "bundles: []\n";
   fs.write(
-    `${PROJ}/manifest.yml`,
+    `${PROJ}/wip/manifest.yml`,
     `project:\n  name: demo\n  version: 1.0.0\ntargets:\n  - claude-code\n${bundleLines}`,
   );
   for (const b of bundles) {
     fs.write(
-      `${PROJ}/bundles/${b.id}/bundle.yml`,
+      `${PROJ}/wip/bundles/${b.id}/bundle.yml`,
       `id: ${b.id}\nversion: ${b.version ?? "0.1.0"}\nsummary: ${b.id} bundle\nconfirmation: safe\nrequires: {}\n`,
     );
     for (const [i, [kind, step]] of (b.tasks ?? []).entries()) {
       fs.write(
-        `${PROJ}/bundles/${b.id}/install-backlog/tasks/${b.id}-${i + 1} - ${step}.md`,
+        `${PROJ}/wip/bundles/${b.id}/install-backlog/tasks/${b.id}-${i + 1} - ${step}.md`,
         taskFile(`Task ${step}`, kind, step),
       );
     }
@@ -133,7 +133,7 @@ describe("bundle list (task-54)", () => {
     // a task whose only labels are step:* (no kind:) must count as neither state nor migration.
     const { fs, backlog } = seed([{ id: "web", version: "0.1.0" }]);
     fs.write(
-      `${PROJ}/bundles/web/install-backlog/tasks/web-1 - misc.md`,
+      `${PROJ}/wip/bundles/web/install-backlog/tasks/web-1 - misc.md`,
       [
         "---",
         "id: WEB-1",
@@ -161,11 +161,11 @@ describe("bundle list (task-54)", () => {
 
   it("AC#2 — read-only: nothing on disk changes; exits 0", async () => {
     const { fs, backlog } = seed([{ id: "web", tasks: [["state", "detect"]] }]);
-    const manifestBefore = fs.read(`${PROJ}/manifest.yml`);
-    const bundleBefore = fs.read(`${PROJ}/bundles/web/bundle.yml`);
+    const manifestBefore = fs.read(`${PROJ}/wip/manifest.yml`);
+    const bundleBefore = fs.read(`${PROJ}/wip/bundles/web/bundle.yml`);
     expect(await run(["bundle", "list", "-C", PROJ], deps(fs, backlog), io())).toBe(0);
-    expect(fs.read(`${PROJ}/manifest.yml`)).toBe(manifestBefore);
-    expect(fs.read(`${PROJ}/bundles/web/bundle.yml`)).toBe(bundleBefore);
+    expect(fs.read(`${PROJ}/wip/manifest.yml`)).toBe(manifestBefore);
+    expect(fs.read(`${PROJ}/wip/bundles/web/bundle.yml`)).toBe(bundleBefore);
   });
 
   it("AC#3 — outside any project it exits 1 naming manifest.yml + init", async () => {

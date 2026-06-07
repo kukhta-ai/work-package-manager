@@ -48,15 +48,15 @@ function deps(fs: MemoryFileSystem, cwd = "/work"): CliDeps {
 function seedBuildable(): MemoryFileSystem {
   const fs = new MemoryFileSystem();
   fs.write(
-    `${PROJ}/manifest.yml`,
+    `${PROJ}/wip/manifest.yml`,
     "project:\n  name: demo\n  version: 1.2.3\ntargets:\n  - claude-code\nbundles:\n  - core\n",
   );
   fs.write(
-    `${PROJ}/bundles/core/bundle.yml`,
+    `${PROJ}/wip/bundles/core/bundle.yml`,
     "id: core\nversion: 0.1.0\nsummary: the core bundle\nconfirmation: safe\nrequires: {}\n",
   );
-  fs.write(`${PROJ}/AGENTS.md`, "# demo front door\n");
-  fs.write(`${PROJ}/installer-skills/demo-installer/SKILL.md`, "# installer\n");
+  fs.write(`${PROJ}/wip/AGENTS.md`, "# demo front door\n");
+  fs.write(`${PROJ}/wip/installer-skills/demo-installer/SKILL.md`, "# installer\n");
   fs.write(`${PROJ}/.authoring-backlog/config.yml`, "task_prefix: authoring\n");
   return fs;
 }
@@ -110,7 +110,7 @@ describe("build dry-run (task-82)", () => {
     const fs = seedBuildable();
     // No targets ⇒ validateProject reports "no target agents declared".
     fs.write(
-      `${PROJ}/manifest.yml`,
+      `${PROJ}/wip/manifest.yml`,
       "project:\n  name: demo\n  version: 1.2.3\ntargets: []\nbundles:\n  - core\n",
     );
     const before = allFiles(fs);
@@ -126,16 +126,16 @@ describe("build dry-run (task-82)", () => {
 
   it("AC82#2 — wpm.lock DRIFT fails the dry-run (exit 1) and names the drifted artifact", async () => {
     const fs = seedBuildable();
-    fs.write(`${PROJ}/installer-skills/tdd/SKILL.md`, "# tdd\noriginal\n");
+    fs.write(`${PROJ}/wip/installer-skills/tdd/SKILL.md`, "# tdd\noriginal\n");
     const artifact: VendoredArtifact = {
       name: "tdd",
       source: "obra/superpowers@v1",
       version: "1.0.0",
       files: [{ path: "SKILL.md", content: "# tdd\noriginal\n" }],
     };
-    fs.write(`${PROJ}/wpm.lock`, serializeLockfile(buildLockfile([artifact])));
+    fs.write(`${PROJ}/wip/wpm.lock`, serializeLockfile(buildLockfile([artifact])));
     // Tamper after pinning:
-    fs.write(`${PROJ}/installer-skills/tdd/SKILL.md`, "# tdd\nTAMPERED\n");
+    fs.write(`${PROJ}/wip/installer-skills/tdd/SKILL.md`, "# tdd\nTAMPERED\n");
 
     const i = io();
     const code = await run(["build", "dry-run", "-C", PROJ], deps(fs), i);
@@ -146,14 +146,14 @@ describe("build dry-run (task-82)", () => {
 
   it("AC82#2/#3 — a matching wpm.lock: exit 0, and the vendored artifact's version + source are printed", async () => {
     const fs = seedBuildable();
-    fs.write(`${PROJ}/installer-skills/tdd/SKILL.md`, "# tdd\n");
+    fs.write(`${PROJ}/wip/installer-skills/tdd/SKILL.md`, "# tdd\n");
     const artifact: VendoredArtifact = {
       name: "tdd",
       source: "obra/superpowers@v1.2",
       version: "1.2.0",
       files: [{ path: "SKILL.md", content: "# tdd\n" }],
     };
-    fs.write(`${PROJ}/wpm.lock`, serializeLockfile(buildLockfile([artifact])));
+    fs.write(`${PROJ}/wip/wpm.lock`, serializeLockfile(buildLockfile([artifact])));
 
     const i = io();
     const code = await run(["build", "dry-run", "-C", PROJ], deps(fs), i);
@@ -189,7 +189,7 @@ describe("build package (task-83)", () => {
     const fs = seedBuildable();
     // No targets ⇒ validate fails; the package must not be produced.
     fs.write(
-      `${PROJ}/manifest.yml`,
+      `${PROJ}/wip/manifest.yml`,
       "project:\n  name: demo\n  version: 1.2.3\ntargets: []\nbundles:\n  - core\n",
     );
     const before = allFiles(fs);
@@ -243,7 +243,7 @@ describe("build publish (task-84)", () => {
     const fs = seedBuildable();
     // No targets ⇒ the build step (validate) fails BEFORE any push.
     fs.write(
-      `${PROJ}/manifest.yml`,
+      `${PROJ}/wip/manifest.yml`,
       "project:\n  name: demo\n  version: 1.2.3\ntargets: []\nbundles:\n  - core\n",
     );
     // A local-dir destination that must stay EMPTY (no push happened).
@@ -263,15 +263,15 @@ describe("build publish (task-84)", () => {
 
   it("AC84#2 — a publish whose lockfile DRIFTS does not push and exits non-zero", async () => {
     const fs = seedBuildable();
-    fs.write(`${PROJ}/installer-skills/tdd/SKILL.md`, "# tdd\noriginal\n");
+    fs.write(`${PROJ}/wip/installer-skills/tdd/SKILL.md`, "# tdd\noriginal\n");
     const artifact: VendoredArtifact = {
       name: "tdd",
       source: "x@1",
       version: "1.0.0",
       files: [{ path: "SKILL.md", content: "# tdd\noriginal\n" }],
     };
-    fs.write(`${PROJ}/wpm.lock`, serializeLockfile(buildLockfile([artifact])));
-    fs.write(`${PROJ}/installer-skills/tdd/SKILL.md`, "# tdd\nTAMPERED\n");
+    fs.write(`${PROJ}/wip/wpm.lock`, serializeLockfile(buildLockfile([artifact])));
+    fs.write(`${PROJ}/wip/installer-skills/tdd/SKILL.md`, "# tdd\nTAMPERED\n");
     fs.makeDirectories("/dest");
 
     const i = io();

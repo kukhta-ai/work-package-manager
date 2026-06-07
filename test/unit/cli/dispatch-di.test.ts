@@ -41,7 +41,7 @@ function seedDeps(): CliDeps {
   const backlog = new FakeBacklog();
 
   fs.write(
-    `${ROOT}/manifest.yml`,
+    `${ROOT}/wip/manifest.yml`,
     [
       "project:",
       "  name: demo",
@@ -53,7 +53,7 @@ function seedDeps(): CliDeps {
     ].join("\n"),
   );
   backlog.init(AUTHORING, { taskPrefix: "authoring" });
-  fs.makeDirectories(`${ROOT}/installer-skills`);
+  fs.makeDirectories(`${ROOT}/wip/installer-skills`);
 
   fs.write(
     `${BUILTIN}/project/minimal/template.yml`,
@@ -102,9 +102,9 @@ describe("cli dispatch + DI + reserved-verb (task-27)", () => {
 
     expect(code).toBe(0);
     // AC#2: the SAME injected fs instance received the operation's writes (the scaffold appears in it):
-    expect(deps.fs.exists(`${ROOT}/bundles/web/bundle.yml`)).toBe(true);
+    expect(deps.fs.exists(`${ROOT}/wip/bundles/web/bundle.yml`)).toBe(true);
     // AC#1: dispatch reached the real operation — the manifest now lists the new bundle:
-    const manifest = parseManifest(parseYaml(deps.fs.read(`${ROOT}/manifest.yml`)));
+    const manifest = parseManifest(parseYaml(deps.fs.read(`${ROOT}/wip/manifest.yml`)));
     expect(manifest.ok).toBe(true);
     if (manifest.ok) expect(manifest.value.bundles).toContain("web");
     // AC#2: the SAME injected backlog received the materialised tasks (in the .authoring-backlog root):
@@ -130,7 +130,7 @@ describe("cli dispatch + DI + reserved-verb (task-27)", () => {
     expect(i.err.text).toContain(verb);
     expect(i.err.text).toContain("reserved command verb");
     // nothing was scaffolded:
-    expect(deps.fs.exists(`${ROOT}/bundles/${verb}`)).toBe(false);
+    expect(deps.fs.exists(`${ROOT}/wip/bundles/${verb}`)).toBe(false);
   });
 
   it("AC#4 — refuses a reserved verb with exit 2 even with NO project (grammar before context)", async () => {
@@ -152,7 +152,7 @@ describe("cli dispatch + DI + reserved-verb (task-27)", () => {
     const i = io();
     const code = await run(["bundle", "new", "web-handoff", "-C", ROOT], deps, i);
     expect(code).toBe(0);
-    expect(deps.fs.exists(`${ROOT}/bundles/web-handoff/bundle.yml`)).toBe(true);
+    expect(deps.fs.exists(`${ROOT}/wip/bundles/web-handoff/bundle.yml`)).toBe(true);
   });
 
   it("AC#3 — a project-bound command outside any project maps {found:false} to a NotFoundError (exit 1)", async () => {
@@ -163,6 +163,9 @@ describe("cli dispatch + DI + reserved-verb (task-27)", () => {
 
     const code = await run(["bundle", "new", "web"], deps, i); // no -C
     expect(code).toBe(1); // NotFoundError → general error
-    expect(i.err.text).toContain("no manifest.yml found");
+    // The message names the workspace marker (a wip/ deliverable with a manifest.yml) and suggests init / -C.
+    expect(i.err.text).toContain("authoring workspace");
+    expect(i.err.text).toContain("manifest.yml");
+    expect(i.err.text).toContain("init");
   });
 });

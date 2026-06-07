@@ -35,7 +35,7 @@ export function payloadOnDiskSource(onDiskDir: string): CompletionSource {
     if (!context.found) {
       return [];
     }
-    const base = `${context.root}/bundles/${ctx.bundleId}/${onDiskDir}`;
+    const base = `${context.deliverableRoot}/bundles/${ctx.bundleId}/${onDiskDir}`;
     return prefixFilter(listRelativeFiles(ctx.fs, base), ctx.partial);
   };
 }

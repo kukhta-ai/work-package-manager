@@ -3,8 +3,8 @@ import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { initFlatProject } from "../helpers/flat-project.js";
 import { withTempDir } from "../helpers/tmpdir.js";
+import { initWorkspace } from "../helpers/workspace.js";
 
 /**
  * End-to-end (through-the-binary) tests for the `bundle template` fixed subgroup — `bundle template show`
@@ -42,11 +42,11 @@ function wpm(proj: string, args: readonly string[]): { stdout: string; status: n
 }
 
 /**
- * Build a flat project at <dir>/demo from the real `init` output (task-87 nests the deliverable under `wip/`;
- * {@link initFlatProject} flattens it to the pre-87 shape these commands resolve — a task-88 follow-up).
+ * Create a real authoring workspace at <dir>/demo via `wpm init` (deliverable under `wip/`, authoring backlog
+ * at the workspace root) and return the workspace root; project-bound commands resolve it via `-C` (task-88).
  */
 function initProjectAt(dir: string): string {
-  return initFlatProject(builtCli, dir);
+  return initWorkspace(builtCli, dir);
 }
 
 describeIfBuilt("bundle template show / set E2E via dist/cli.js (tasks 55/56)", () => {
@@ -55,7 +55,7 @@ describeIfBuilt("bundle template show / set E2E via dist/cli.js (tasks 55/56)", 
       const proj = initProjectAt(dir);
       // task-34: the FULL `init` materialises the default bundle template at bundles/bundle-template/, so it is
       // PRESENT in a freshly-init'd project (this supersedes the skeleton-era "init ships no bundles/" assertion).
-      expect(existsSync(join(proj, "bundles", "bundle-template"))).toBe(true);
+      expect(existsSync(join(proj, "wip", "bundles", "bundle-template"))).toBe(true);
       const out = wpm(proj, ["bundle", "template", "show"]);
       expect(out.status).toBe(0);
       expect(out.stdout).toContain("Bundle template: bundles/bundle-template/");
@@ -71,13 +71,17 @@ describeIfBuilt("bundle template show / set E2E via dist/cli.js (tasks 55/56)", 
       expect(out.stdout).toMatch(/set bundle template from "default"/);
 
       // the built-in default's files/ tree landed (AGENTS.md.tmpl + the install-backlog config + payload slots):
-      expect(existsSync(join(proj, "bundles", "bundle-template", "AGENTS.md.tmpl"))).toBe(true);
+      expect(existsSync(join(proj, "wip", "bundles", "bundle-template", "AGENTS.md.tmpl"))).toBe(
+        true,
+      );
       expect(
-        existsSync(join(proj, "bundles", "bundle-template", "install-backlog", "config.yml.tmpl")),
+        existsSync(
+          join(proj, "wip", "bundles", "bundle-template", "install-backlog", "config.yml.tmpl"),
+        ),
       ).toBe(true);
       // verbatim copy — the {{placeholders}} are NOT substituted (the scaffold keeps them for `bundle new`):
       expect(
-        readFileSync(join(proj, "bundles", "bundle-template", "AGENTS.md.tmpl"), "utf8"),
+        readFileSync(join(proj, "wip", "bundles", "bundle-template", "AGENTS.md.tmpl"), "utf8"),
       ).toMatch(/\{\{bundle-id\}\}/);
     });
   });
@@ -100,7 +104,7 @@ describeIfBuilt("bundle template show / set E2E via dist/cli.js (tasks 55/56)", 
       const proj = initProjectAt(dir);
       // task-34: init now materialises bundles/bundle-template/, so "changing nothing" is asserted by snapshotting
       // the scaffold tree BEFORE the failed `set` and confirming it is byte-identical AFTER (not by its absence).
-      const scaffold = join(proj, "bundles", "bundle-template");
+      const scaffold = join(proj, "wip", "bundles", "bundle-template");
       const snapshot = (): Record<string, string> => {
         const out: Record<string, string> = {};
         const walk = (d: string): void => {

@@ -10,8 +10,8 @@ import { NodeFileSystem } from "../../src/adapters/node-fs.js";
 import { ProcessEnvironment } from "../../src/adapters/process-env.js";
 import { type CliDeps, run } from "../../src/cli.js";
 import type { CliIo, OutputSink } from "../../src/util/exit.js";
-import { initFlatProject } from "../helpers/flat-project.js";
 import { withTempDir } from "../helpers/tmpdir.js";
+import { initWorkspace } from "../helpers/workspace.js";
 
 /**
  * Through-the-edges (integration) test for task-27's proof leaf: drives `run(["bundle","new",…])` against a
@@ -36,10 +36,11 @@ function io(): CliIo & { out: ReturnType<typeof collector>; err: ReturnType<type
 
 /** Write a fixture project + project/bundle templates into `dir` on the real filesystem. */
 function seedOnDisk(dir: string): void {
+  mkdirSync(join(dir, "wip"), { recursive: true });
   const builtin = join(dir, "builtin-templates");
 
   writeFileSync(
-    join(dir, "manifest.yml"),
+    join(dir, "wip", "manifest.yml"),
     [
       "project:",
       "  name: demo",
@@ -50,7 +51,7 @@ function seedOnDisk(dir: string): void {
       "",
     ].join("\n"),
   );
-  mkdirSync(join(dir, "installer-skills"), { recursive: true });
+  mkdirSync(join(dir, "wip", "installer-skills"), { recursive: true });
 
   // Project template.
   mkdirSync(
@@ -132,12 +133,16 @@ describe("cli `bundle new` over a real filesystem (task-27 proof leaf)", () => {
 
       expect(code).toBe(0);
       // The scaffold landed on the real disk:
-      const bundleYml = readFileSync(join(dir, "bundles", "web", "bundle.yml"), "utf8");
+      const bundleYml = readFileSync(join(dir, "wip", "bundles", "web", "bundle.yml"), "utf8");
       expect(bundleYml).toContain("id: web");
       // The manifest on disk now lists the bundle:
-      expect(readFileSync(join(dir, "manifest.yml"), "utf8")).toContain("web");
-      // The front-door was re-derived on disk:
-      expect(readFileSync(join(dir, "AGENTS.md"), "utf8")).toContain("# demo");
+      expect(readFileSync(join(dir, "wip", "manifest.yml"), "utf8")).toContain("web");
+      // The orchestrator was re-derived on disk; the executor front door is author-owned and is NOT
+      // re-rendered on a mutation (task-88):
+      expect(
+        readFileSync(join(dir, "wip", "installer-skills", "demo-installer", "SKILL.md"), "utf8"),
+      ).toContain("Install demo.");
+      expect(existsSync(join(dir, "wip", "AGENTS.md"))).toBe(false);
       expect(i.out.text).toContain("created bundle web");
     });
   });
@@ -169,18 +174,19 @@ function wpm(projectDir: string, args: readonly string[]): { stdout: string; sta
 describeIfBuilt("bundle lifecycle via the built dist/cli.js (task-50/51/52 — real binary)", () => {
   it("`bundle new <id> --version 1.2.3` sets the BUNDLE version (not the program version); `wpm --version` still works", async () => {
     await withTempDir((dir) => {
-      // task-87 nests the deliverable under wip/; initFlatProject yields the pre-87 flat shape these commands
-      // resolve today (task-88 follow-up: point -C at the workspace root once resolution lands).
-      const proj = initFlatProject(builtCli, dir);
+      // A real authoring workspace; project-bound commands resolve it via -C and operate on wip/ (task-88).
+      const proj = initWorkspace(builtCli, dir);
 
       const out = wpm(proj, ["bundle", "new", "web", "--version", "1.2.3"]);
       expect(out.status).toBe(0);
       // The bug printed the PROGRAM version and created nothing; the fix creates the bundle at 1.2.3:
       expect(out.stdout).toContain("created bundle web");
-      const bundleYml = readFileSync(join(proj, "bundles", "web", "bundle.yml"), "utf8");
+      const bundleYml = readFileSync(join(proj, "wip", "bundles", "web", "bundle.yml"), "utf8");
       expect(bundleYml).toMatch(/version:\s*1\.2\.3/);
       // The advisor stub rendered to the conventional path:
-      expect(existsSync(join(proj, "installer-skills", "web-advisor", "SKILL.md"))).toBe(true);
+      expect(existsSync(join(proj, "wip", "installer-skills", "web-advisor", "SKILL.md"))).toBe(
+        true,
+      );
 
       // The program's OWN --version still prints the program version (kept working by the fix):
       const ver = execFileSync(process.execPath, [builtCli, "--version"], { encoding: "utf8" });
@@ -190,20 +196,19 @@ describeIfBuilt("bundle lifecycle via the built dist/cli.js (task-50/51/52 — r
 
   it("`bundle disable` then `bundle enable` round-trips manifest membership over the real backlog", async () => {
     await withTempDir((dir) => {
-      // task-87 nests the deliverable under wip/; initFlatProject yields the pre-87 flat shape these commands
-      // resolve today (task-88 follow-up: point -C at the workspace root once resolution lands).
-      const proj = initFlatProject(builtCli, dir);
+      // A real authoring workspace; project-bound commands resolve it via -C and operate on wip/ (task-88).
+      const proj = initWorkspace(builtCli, dir);
       expect(wpm(proj, ["bundle", "new", "web"]).status).toBe(0);
 
       // disable: drops from the manifest, dir stays on disk.
       expect(wpm(proj, ["bundle", "disable", "web"]).status).toBe(0);
-      expect(readFileSync(join(proj, "manifest.yml"), "utf8")).not.toMatch(/bundles:.*web/s);
-      expect(existsSync(join(proj, "bundles", "web", "bundle.yml"))).toBe(true);
+      expect(readFileSync(join(proj, "wip", "manifest.yml"), "utf8")).not.toMatch(/bundles:.*web/s);
+      expect(existsSync(join(proj, "wip", "bundles", "web", "bundle.yml"))).toBe(true);
 
       // enable: re-appends idempotently (the per-bundle tasks already exist → a no-op materialise).
       const enabled = wpm(proj, ["bundle", "enable", "web"]);
       expect(enabled.status).toBe(0);
-      expect(readFileSync(join(proj, "manifest.yml"), "utf8")).toMatch(/web/);
+      expect(readFileSync(join(proj, "wip", "manifest.yml"), "utf8")).toMatch(/web/);
     });
   });
 });
@@ -218,22 +223,31 @@ describeIfBuilt(
   () => {
     it("after init, an edit to bundles/bundle-template/ is reflected in the next `bundle new` scaffold", async () => {
       await withTempDir((dir) => {
-        // task-87 nests the deliverable under wip/; initFlatProject yields the pre-87 flat shape these commands
-        // resolve today (task-88 follow-up).
-        const proj = initFlatProject(builtCli, dir);
+        // A real authoring workspace; project-bound commands resolve it via -C and operate on wip/ (task-88).
+        const proj = initWorkspace(builtCli, dir);
         // init materialised the project default bundle scaffold:
-        expect(existsSync(join(proj, "bundles", "bundle-template", "AGENTS.md.tmpl"))).toBe(true);
+        expect(existsSync(join(proj, "wip", "bundles", "bundle-template", "AGENTS.md.tmpl"))).toBe(
+          true,
+        );
 
         // Edit the scaffold: drop a NEW marker file in it (an author refining their default bundle shape). The
         // file name carries a placeholder so we also prove substitution runs over the cloned tree.
         writeFileSync(
-          join(proj, "bundles", "bundle-template", "payload", "files", "MARKER-{{bundle-id}}.txt"),
+          join(
+            proj,
+            "wip",
+            "bundles",
+            "bundle-template",
+            "payload",
+            "files",
+            "MARKER-{{bundle-id}}.txt",
+          ),
           "default for {{bundle-id}}\n",
         );
 
         // `bundle new web` (no --template) now clones the EDITED bundles/bundle-template/:
         expect(wpm(proj, ["bundle", "new", "web"]).status).toBe(0);
-        const marker = join(proj, "bundles", "web", "payload", "files", "MARKER-web.txt");
+        const marker = join(proj, "wip", "bundles", "web", "payload", "files", "MARKER-web.txt");
         expect(existsSync(marker)).toBe(true); // the edit is reflected (set is LIVE), with the id substituted
         expect(readFileSync(marker, "utf8")).toBe("default for web\n");
       });
@@ -241,14 +255,13 @@ describeIfBuilt(
 
     it("after `bundle template set default`, `bundle new` still scaffolds a working bundle", async () => {
       await withTempDir((dir) => {
-        // task-87 nests the deliverable under wip/; initFlatProject yields the pre-87 flat shape these commands
-        // resolve today (task-88 follow-up).
-        const proj = initFlatProject(builtCli, dir);
+        // A real authoring workspace; project-bound commands resolve it via -C and operate on wip/ (task-88).
+        const proj = initWorkspace(builtCli, dir);
         // Reset the scaffold from the built-in default (the H command), then clone it:
         expect(wpm(proj, ["bundle", "template", "set", "default"]).status).toBe(0);
         expect(wpm(proj, ["bundle", "new", "web"]).status).toBe(0);
-        expect(existsSync(join(proj, "bundles", "web", "bundle.yml"))).toBe(true);
-        expect(readFileSync(join(proj, "bundles", "web", "bundle.yml"), "utf8")).toMatch(
+        expect(existsSync(join(proj, "wip", "bundles", "web", "bundle.yml"))).toBe(true);
+        expect(readFileSync(join(proj, "wip", "bundles", "web", "bundle.yml"), "utf8")).toMatch(
           /id:\s*web/,
         );
       });

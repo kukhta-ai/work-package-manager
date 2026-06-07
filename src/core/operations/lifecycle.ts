@@ -12,6 +12,7 @@ import type { BacklogMd, FileSystem } from "../ports/index.js";
 import {
   type CurrentState,
   type DesiredArtefacts,
+  EXECUTOR_FRONT_DOOR_PATH,
   planChanges,
 } from "../services/derived-artefacts.js";
 import { materialiseAuthoringTasks } from "../services/materialisation.js";
@@ -61,10 +62,18 @@ export interface LifecycleDeps {
   readonly deriveArtefacts: (project: Project) => DesiredArtefacts;
 }
 
-/** The resolved context the harness operates in: the project root (already resolved by task-24, not re-resolved here). */
+/**
+ * The resolved context the harness operates in (already resolved by task-24's `resolveContext`, not re-resolved
+ * here). An authoring workspace has TWO roots (doc 10 "Project context resolution"): the **deliverable root**
+ * `<workspace>/wip` — where the manifest, bundles, installer-skills, and templates live, so every LOAD / APPLY /
+ * RERENDER reads and writes there — and the **workspace root**, which holds the `.authoring-backlog/` the ⑤
+ * MATERIALISE beat writes into. They are distinct directories, so the harness carries both.
+ */
 export interface OperationContext {
-  /** The absolute project root. */
-  readonly root: string;
+  /** The absolute deliverable root (`<workspace>/wip`) — the target of LOAD, APPLY, and RERENDER. */
+  readonly deliverableRoot: string;
+  /** The absolute authoring workspace root — the parent of `wip/`, holding the `.authoring-backlog/`. */
+  readonly workspaceRoot: string;
 }
 
 /** The port surface an operation's `apply` may use to perform its structural effect in beat ③. */
@@ -73,8 +82,14 @@ export interface ApplyContext {
   readonly fs: FileSystem;
   /** The BacklogMd port. */
   readonly backlog: BacklogMd;
-  /** The project root the effect is applied within. */
+  /** The deliverable root (`<workspace>/wip`) the structural effect reads and writes within. */
   readonly root: string;
+  /**
+   * The authoring workspace root (the parent of `wip/`). An `apply` that touches the `.authoring-backlog/`
+   * (e.g. archiving a removed bundle's authoring tasks) must root it here — `join(workspaceRoot,
+   * AUTHORING_BACKLOG_DIR)` — not under the deliverable, mirroring where ⑤ MATERIALISE writes.
+   */
+  readonly workspaceRoot: string;
 }
 
 /** What an operation's `apply` may report back: the paths it created or modified in beat ③. */
@@ -190,14 +205,20 @@ function resolveSummary<I>(
  * idempotency), then writes only the changed files and creates only the missing aliases. Returns the absolute
  * paths it changed (written files + created alias link paths), in deterministic order.
  *
+ * The deliverable's **executor front door** (the derived {@link EXECUTOR_FRONT_DOOR_PATH}) is **excluded** from
+ * the re-render (doc 10/12): it is author-owned, scaffolded once by `init` as `wip/_AGENTS.md`, and must never be
+ * regenerated as a canonical `wip/AGENTS.md` on a later mutation. Only the orchestrator skill + the scope aliases
+ * stay auto-derived here.
+ *
  * @param fs - The FileSystem port.
- * @param root - The project root.
+ * @param root - The deliverable root (`<workspace>/wip`).
  * @param desired - The desired artefacts from the injected deriver.
  * @returns The absolute paths changed by the re-derivation.
  */
 function applyRerender(fs: FileSystem, root: string, desired: DesiredArtefacts): string[] {
+  const renderableFiles = desired.files.filter((file) => file.path !== EXECUTOR_FRONT_DOOR_PATH);
   const files = new Map<string, string>();
-  for (const file of desired.files) {
+  for (const file of renderableFiles) {
     const abs = join(root, file.path);
     if (fs.exists(abs)) {
       files.set(file.path, fs.read(abs));
@@ -210,7 +231,9 @@ function applyRerender(fs: FileSystem, root: string, desired: DesiredArtefacts):
     }
   }
   const current: CurrentState = { files, aliases };
-  const change = planChanges(desired, current);
+  // Diff against the front-door-excluded file set so the author-owned executor front door is neither probed nor
+  // written — only the orchestrator + aliases are re-derived (doc 10/12).
+  const change = planChanges({ files: renderableFiles, aliasPlan: desired.aliasPlan }, current);
 
   const changed: string[] = [];
   for (const file of change.filesToWrite) {
@@ -243,7 +266,7 @@ function mergePaths(into: string[], paths: readonly string[]): void {
  * by title, and ⑥ return the {@link OperationResult}. The harness arranges ①④⑤⑥ so no operation does (AC#2).
  *
  * @param deps - The ports + the artefact-derivation capability.
- * @param ctx - The resolved project context (root). Not re-resolved here.
+ * @param ctx - The resolved workspace context (deliverable + workspace roots). Not re-resolved here.
  * @param spec - The operation to run.
  * @param input - The operation's input payload.
  * @returns The structured operation result (summary, changed paths, materialised task titles).
@@ -255,31 +278,38 @@ export function runMutation<I = void>(
   input: I,
 ): OperationResult {
   const { fs, backlog, deriveArtefacts } = deps;
-  const { root } = ctx;
+  const { deliverableRoot, workspaceRoot } = ctx;
 
-  // ① LOAD
-  const project = loadProject(fs, root);
+  // ① LOAD — from the deliverable root (`<workspace>/wip`), where the manifest + bundles live.
+  const project = loadProject(fs, deliverableRoot);
 
   // ② CHECK (raises a DomainError on failure, aborting before any effect)
   spec.check?.(project, input);
 
-  // ③ APPLY
-  const applied = spec.apply({ fs, backlog, root }, project, input);
+  // ③ APPLY — the structural effect operates within the deliverable root (and may reach the authoring backlog
+  // at the workspace root for task archival).
+  const applied = spec.apply({ fs, backlog, root: deliverableRoot, workspaceRoot }, project, input);
 
   // Reload so ④/⑤ see the post-apply project (the write trace re-derives from the changed project, doc 13 §8).
-  const postApply = loadProject(fs, root);
+  const postApply = loadProject(fs, deliverableRoot);
 
-  // ④ RERENDER (automatic)
+  // ④ RERENDER (automatic) — re-derive the orchestrator + scope aliases under the deliverable root (the
+  // author-owned executor front door is excluded; see {@link applyRerender}).
   const desired = deriveArtefacts(postApply);
-  const rerenderChanged = applyRerender(fs, root, desired);
+  const rerenderChanged = applyRerender(fs, deliverableRoot, desired);
 
   // ⑤ MATERIALISE (automatic, title-idempotent). The authoring backlog is its OWN Backlog.md root at
-  // `<project>/.authoring-backlog` (doc 10 step 6; `init` initialises it there), NOT the project root — so we
-  // materialise into `join(root, AUTHORING_BACKLOG_DIR)`. Using `root` here runs `backlog task list` at the
-  // project root, which is not a Backlog.md root, and every materialising command fails ("No Backlog.md project
-  // found"). The path is the shared model constant so it can never drift from `init`'s.
+  // `<workspace>/.authoring-backlog` — at the WORKSPACE root, beside `wip/`, NOT inside the deliverable (doc 10
+  // step 6; doc 06/11; `init` initialises it there). So we materialise into
+  // `join(workspaceRoot, AUTHORING_BACKLOG_DIR)`; using the deliverable root here would run `backlog task list`
+  // where no Backlog.md root exists and every materialising command would fail. The path is the shared model
+  // constant so it can never drift from `init`'s.
   const specs = spec.materialise?.(postApply, input) ?? [];
-  const materialised = materialiseAuthoringTasks(backlog, join(root, AUTHORING_BACKLOG_DIR), specs);
+  const materialised = materialiseAuthoringTasks(
+    backlog,
+    join(workspaceRoot, AUTHORING_BACKLOG_DIR),
+    specs,
+  );
 
   // ⑥ RESULT
   // `changedPaths` is a LOGICAL observability list — the command prints its count and tests compare its entries
@@ -316,7 +346,7 @@ export function runMutation<I = void>(
  * and touches no task — `changedPaths` and `materialisedTaskTitles` are always empty (AC#3).
  *
  * @param fs - The FileSystem port (a read needs no backlog or deriver).
- * @param ctx - The resolved project context (root).
+ * @param ctx - The resolved workspace context (deliverable + workspace roots).
  * @param spec - The read operation.
  * @param input - The operation's input payload.
  * @returns The projected value plus an empty-effect result.
@@ -327,8 +357,8 @@ export function runRead<I, T>(
   spec: ReadSpec<I, T>,
   input: I,
 ): ReadOutcome<T> {
-  // ① LOAD
-  const project = loadProject(fs, ctx.root);
+  // ① LOAD — from the deliverable root (`<workspace>/wip`); a read touches no authoring backlog.
+  const project = loadProject(fs, ctx.deliverableRoot);
   // Projection (pure; no effect)
   const value = spec.project(project, input);
   // ⑥ RESULT — empty effect

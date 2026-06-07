@@ -4,8 +4,8 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { execaSync } from "execa";
 import { describe, expect, it } from "vitest";
-import { initFlatProject } from "../helpers/flat-project.js";
 import { withTempDir } from "../helpers/tmpdir.js";
+import { initWorkspace } from "../helpers/workspace.js";
 
 /**
  * End-to-end (through-the-binary) tests for the two remaining top-level `bundle` verbs — `bundle remove` (task-53,
@@ -62,11 +62,11 @@ function wpmWithStdin(
 }
 
 /**
- * Build a flat project at <dir>/demo from the real `init` output (task-87 nests the deliverable under `wip/`;
- * {@link initFlatProject} flattens it to the pre-87 shape these commands resolve — a task-88 follow-up).
+ * Create a real authoring workspace at <dir>/demo via `wpm init` (deliverable under `wip/`, authoring backlog
+ * at the workspace root) and return the workspace root; project-bound commands resolve it via `-C` (task-88).
  */
 function initProjectAt(dir: string): string {
-  return initFlatProject(builtCli, dir);
+  return initWorkspace(builtCli, dir);
 }
 
 /** Create the bundle `<id>` in an already-init'd project. */
@@ -91,25 +91,27 @@ describeIfBuilt("bundle remove E2E via dist/cli.js (task-53)", () => {
       const proj = initProjectAt(dir);
       newBundle(proj, "web");
 
-      // preconditions: the bundle, its advisor, its authoring tasks, and its menu entry all exist.
-      expect(existsSync(join(proj, "bundles", "web", "bundle.yml"))).toBe(true);
-      expect(existsSync(join(proj, "installer-skills", "web-advisor", "SKILL.md"))).toBe(true);
+      // preconditions: the bundle, its advisor, its authoring tasks, and its manifest entry all exist.
+      expect(existsSync(join(proj, "wip", "bundles", "web", "bundle.yml"))).toBe(true);
+      expect(existsSync(join(proj, "wip", "installer-skills", "web-advisor", "SKILL.md"))).toBe(
+        true,
+      );
       expect(authoringTaskTitles(proj)).toContain("Plan bundle web");
-      expect(readFileSync(join(proj, "AGENTS.md"), "utf8")).toContain("web");
+      expect(readFileSync(join(proj, "wip", "manifest.yml"), "utf8")).toContain("web");
 
       const out = wpm(proj, ["bundle", "remove", "web", "--yes"]);
       expect(out.status).toBe(0);
       expect(out.stdout).toContain("removed bundle web"); // a summary of what was removed (AC#3)
 
       // full teardown (AC#2):
-      expect(readFileSync(join(proj, "manifest.yml"), "utf8")).not.toMatch(/-\s*web\b/); // manifest entry gone
-      expect(existsSync(join(proj, "bundles", "web"))).toBe(false); // dir gone
-      expect(existsSync(join(proj, "installer-skills", "web-advisor"))).toBe(false); // advisor gone
+      expect(readFileSync(join(proj, "wip", "manifest.yml"), "utf8")).not.toMatch(/-\s*web\b/); // manifest entry gone
+      expect(existsSync(join(proj, "wip", "bundles", "web"))).toBe(false); // dir gone
+      expect(existsSync(join(proj, "wip", "installer-skills", "web-advisor"))).toBe(false); // advisor gone
       // the bundle's authoring tasks are archived (gone from the active list):
       expect(authoringTaskTitles(proj)).not.toContain("Plan bundle web");
       expect(authoringTaskTitles(proj)).not.toContain("Write advisor content for web");
-      // re-rendered out of the front-door menu (AC#3):
-      expect(readFileSync(join(proj, "AGENTS.md"), "utf8")).not.toContain("web");
+      // the executor front door is author-owned and is NOT re-rendered on a mutation (task-88):
+      expect(existsSync(join(proj, "wip", "AGENTS.md"))).toBe(false);
     });
   });
 
@@ -117,15 +119,17 @@ describeIfBuilt("bundle remove E2E via dist/cli.js (task-53)", () => {
     await withTempDir((dir) => {
       const proj = initProjectAt(dir);
       newBundle(proj, "web");
-      const manifestBefore = readFileSync(join(proj, "manifest.yml"), "utf8");
+      const manifestBefore = readFileSync(join(proj, "wip", "manifest.yml"), "utf8");
 
       const out = wpmWithStdin(proj, ["bundle", "remove", "web"], "n\n");
       expect(out.status).toBe(0); // exit 0, NOT an error (AC#4)
 
       // nothing changed:
-      expect(readFileSync(join(proj, "manifest.yml"), "utf8")).toBe(manifestBefore);
-      expect(existsSync(join(proj, "bundles", "web", "bundle.yml"))).toBe(true);
-      expect(existsSync(join(proj, "installer-skills", "web-advisor", "SKILL.md"))).toBe(true);
+      expect(readFileSync(join(proj, "wip", "manifest.yml"), "utf8")).toBe(manifestBefore);
+      expect(existsSync(join(proj, "wip", "bundles", "web", "bundle.yml"))).toBe(true);
+      expect(existsSync(join(proj, "wip", "installer-skills", "web-advisor", "SKILL.md"))).toBe(
+        true,
+      );
       expect(authoringTaskTitles(proj)).toContain("Plan bundle web"); // tasks untouched
     });
   });
@@ -150,8 +154,8 @@ describeIfBuilt("bundle remove E2E via dist/cli.js (task-53)", () => {
       expect(after).toContain("Plan bundle web-extra");
       expect(after).toContain("Write advisor content for web-extra");
       // and web-extra itself is intact on disk + in the manifest:
-      expect(existsSync(join(proj, "bundles", "web-extra", "bundle.yml"))).toBe(true);
-      expect(readFileSync(join(proj, "manifest.yml"), "utf8")).toMatch(/web-extra/);
+      expect(existsSync(join(proj, "wip", "bundles", "web-extra", "bundle.yml"))).toBe(true);
+      expect(readFileSync(join(proj, "wip", "manifest.yml"), "utf8")).toMatch(/web-extra/);
     });
   });
 
@@ -206,12 +210,20 @@ describeIfBuilt("bundle list E2E via dist/cli.js (task-54)", () => {
       // kind:migration task to web's install-backlog (as an author would via `backlog` inside the bundle) so the
       // migration column is exercised too.
       writeFileSync(
-        join(proj, "bundles", "web", "install-backlog", "tasks", "web-9 - Upgrade old layout.md"),
+        join(
+          proj,
+          "wip",
+          "bundles",
+          "web",
+          "install-backlog",
+          "tasks",
+          "web-9 - Upgrade old layout.md",
+        ),
         migrationTaskFile("Upgrade old layout"),
         "utf8",
       );
 
-      const manifestBefore = readFileSync(join(proj, "manifest.yml"), "utf8");
+      const manifestBefore = readFileSync(join(proj, "wip", "manifest.yml"), "utf8");
       const out = wpm(proj, ["bundle", "list"]);
       expect(out.status).toBe(0); // read-only, exit 0 (AC#2)
 
@@ -223,7 +235,7 @@ describeIfBuilt("bundle list E2E via dist/cli.js (task-54)", () => {
       expect(out.stdout).toMatch(/doc\s+0\.1\.0\s+3\s+0/);
 
       // read-only: the manifest is untouched (AC#2):
-      expect(readFileSync(join(proj, "manifest.yml"), "utf8")).toBe(manifestBefore);
+      expect(readFileSync(join(proj, "wip", "manifest.yml"), "utf8")).toBe(manifestBefore);
     });
   });
 

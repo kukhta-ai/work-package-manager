@@ -3,8 +3,8 @@ import { existsSync, mkdirSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { initFlatProject } from "../helpers/flat-project.js";
 import { withTempDir } from "../helpers/tmpdir.js";
+import { initWorkspace } from "../helpers/workspace.js";
 
 /**
  * Through-the-edges (integration) E2E for the `build` command family (tasks 82 dry-run / 83 package / 84
@@ -47,13 +47,13 @@ function hasZip(): boolean {
 }
 
 /**
- * Create a fresh project from the real `init` output and return its root. task-87 nests the deliverable under
- * `wip/`; {@link initFlatProject} flattens it to the pre-87 shape `build`/`project` resolve today (a task-88
- * follow-up) — the authoring backlog co-located beside the manifest, the workspace wrapper dropped, so `build`'s
- * "no `.authoring-backlog` in the shipped tree" assertions still exercise the real exclusion.
+ * Create a real authoring workspace via `wpm init` and return the workspace root. The deliverable nests under
+ * `wip/` and `build` resolves it via `-C` and packages the `wip/` tree (task-88); the `.authoring-backlog/`
+ * lives at the workspace root, OUTSIDE `wip/`, so `build`'s "no `.authoring-backlog` in the shipped tree"
+ * assertions hold structurally.
  */
 function initProject(dir: string): string {
-  return initFlatProject(builtCli, dir);
+  return initWorkspace(builtCli, dir);
 }
 
 describeIfBuilt("`wpm build dry-run` E2E (task-82, through dist/cli.js)", () => {

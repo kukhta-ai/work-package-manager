@@ -78,19 +78,19 @@ function seed(
   const backlog = new FakeBacklog();
 
   fs.write(
-    `${PROJ}/manifest.yml`,
+    `${PROJ}/wip/manifest.yml`,
     opts.noTarget === true
       ? "project:\n  name: demo\n  version: 1.0.0\ntargets: []\nbundles:\n  - a\n"
       : "project:\n  name: demo\n  version: 1.0.0\ntargets:\n  - claude-code\nbundles:\n  - a\n",
   );
-  fs.write(`${PROJ}/bundles/a/bundle.yml`, opts.aYml ?? bundleYmlFor("a"));
+  fs.write(`${PROJ}/wip/bundles/a/bundle.yml`, opts.aYml ?? bundleYmlFor("a"));
   for (const name of opts.placedHelpers ?? []) {
-    fs.write(`${PROJ}/bundles/a/${INSTALLER_SKILLS}/${name}/SKILL.md`, skillMd(name));
+    fs.write(`${PROJ}/wip/bundles/a/${INSTALLER_SKILLS}/${name}/SKILL.md`, skillMd(name));
   }
   for (const [rel, content] of Object.entries(opts.placedAt ?? {})) {
-    fs.write(`${PROJ}/bundles/a/${rel}`, content);
+    fs.write(`${PROJ}/wip/bundles/a/${rel}`, content);
   }
-  fs.makeDirectories(`${PROJ}/installer-skills`);
+  fs.makeDirectories(`${PROJ}/wip/installer-skills`);
   backlog.init(AUTHORING, { taskPrefix: "authoring" });
 
   // Project template snippets so ④ RERENDER resolves AND the SCAFFOLD branch finds the installer-skill snippet.
@@ -121,7 +121,7 @@ function deps(fs: MemoryFileSystem, backlog: FakeBacklog, cwd = "/elsewhere"): C
 
 /** The parsed `installerSkills` registry of `<id>`'s bundle.yml on disk. */
 function installerSkillsOf(fs: MemoryFileSystem, id: string): readonly SkillRef[] {
-  const parsed = parseBundleManifest(parseYaml(fs.read(`${PROJ}/bundles/${id}/bundle.yml`)));
+  const parsed = parseBundleManifest(parseYaml(fs.read(`${PROJ}/wip/bundles/${id}/bundle.yml`)));
   if (!parsed.ok) throw new Error(`bundle ${id} did not parse: ${parsed.problem.message}`);
   return parsed.value.installerSkills;
 }
@@ -132,7 +132,7 @@ function installerSkillsOf(fs: MemoryFileSystem, id: string): readonly SkillRef[
 describe("bundle <id> installer-skills add — ATTACH branch (task-77 #1)", () => {
   it("attaches a SKILL.md present at the conventional path: validates frontmatter, registers {name, path}, leaves the file, NO task", async () => {
     const { fs, backlog } = seed({ placedHelpers: ["detect"] });
-    const before = fs.read(`${PROJ}/bundles/a/${INSTALLER_SKILLS}/detect/SKILL.md`);
+    const before = fs.read(`${PROJ}/wip/bundles/a/${INSTALLER_SKILLS}/detect/SKILL.md`);
     const i = io();
     expect(
       await run(
@@ -144,14 +144,14 @@ describe("bundle <id> installer-skills add — ATTACH branch (task-77 #1)", () =
     expect(installerSkillsOf(fs, "a")).toEqual([
       { name: "detect", path: `${INSTALLER_SKILLS}/detect/SKILL.md` },
     ]);
-    expect(fs.read(`${PROJ}/bundles/a/${INSTALLER_SKILLS}/detect/SKILL.md`)).toBe(before); // structure-not-content
+    expect(fs.read(`${PROJ}/wip/bundles/a/${INSTALLER_SKILLS}/detect/SKILL.md`)).toBe(before); // structure-not-content
     expect(i.out.text).toContain("attached"); // 77#6: prints what it did
     expect(i.out.text).not.toContain("materialised"); // attach queues no writing
     // comment + key order preserved. The old bundle.yml had NO payload key; attaching an installer-skill writes
     // ONLY the new top-level `installerSkills` registry (the two registries are independent — registering an
     // installer-skill does NOT fabricate an empty `payload` block). So `installerSkills` is appended after the
     // existing keys, and `payload` is absent (nothing wrote it).
-    const text = fs.read(`${PROJ}/bundles/a/bundle.yml`);
+    const text = fs.read(`${PROJ}/wip/bundles/a/bundle.yml`);
     expect(text).toContain("# bundle a —");
     const keyOrder = text
       .split("\n")
@@ -194,7 +194,7 @@ describe("bundle <id> installer-skills add — ATTACH branch (task-77 #1)", () =
     const { fs, backlog } = seed({
       placedAt: { [`${INSTALLER_SKILLS}/bad/SKILL.md`]: "---\nname: bad\n---\nno description\n" },
     });
-    const before = fs.read(`${PROJ}/bundles/a/bundle.yml`);
+    const before = fs.read(`${PROJ}/wip/bundles/a/bundle.yml`);
     const i = io();
     expect(
       await run(
@@ -204,7 +204,7 @@ describe("bundle <id> installer-skills add — ATTACH branch (task-77 #1)", () =
       ),
     ).toBe(1);
     expect(i.err.text).toContain("description"); // names the offending field
-    expect(fs.read(`${PROJ}/bundles/a/bundle.yml`)).toBe(before); // byte-identical
+    expect(fs.read(`${PROJ}/wip/bundles/a/bundle.yml`)).toBe(before); // byte-identical
   });
 });
 
@@ -220,7 +220,7 @@ describe("bundle <id> installer-skills add — SCAFFOLD branch (task-77 #2)", ()
       ),
     ).toBe(0);
 
-    const stubPath = `${PROJ}/bundles/a/${INSTALLER_SKILLS}/fresh/SKILL.md`;
+    const stubPath = `${PROJ}/wip/bundles/a/${INSTALLER_SKILLS}/fresh/SKILL.md`;
     expect(fs.exists(stubPath)).toBe(true);
     const stub = fs.read(stubPath);
     expect(stub).toContain("name: fresh"); // frontmatter name substituted
@@ -242,7 +242,7 @@ describe("bundle <id> installer-skills add — SCAFFOLD branch (task-77 #2)", ()
 describe("bundle <id> installer-skills add — ERROR branch + alias-ensure + standard reqs (task-77 #3/#4/#5/#6)", () => {
   it("AC#3 — --path given but nothing there: typed error (exit 1), nothing registered, no stub written", async () => {
     const { fs, backlog } = seed();
-    const before = fs.read(`${PROJ}/bundles/a/bundle.yml`);
+    const before = fs.read(`${PROJ}/wip/bundles/a/bundle.yml`);
     const i = io();
     expect(
       await run(
@@ -263,8 +263,8 @@ describe("bundle <id> installer-skills add — ERROR branch + alias-ensure + sta
     ).toBe(1);
     expect(i.err.text).toContain(`${INSTALLER_SKILLS}/ghost/SKILL.md`); // names the missing path
     expect(i.err.text).toContain("omit --path"); // directs the author to scaffold (AC77#3)
-    expect(fs.read(`${PROJ}/bundles/a/bundle.yml`)).toBe(before); // nothing registered
-    expect(fs.exists(`${PROJ}/bundles/a/${INSTALLER_SKILLS}/ghost/SKILL.md`)).toBe(false); // no stub
+    expect(fs.read(`${PROJ}/wip/bundles/a/bundle.yml`)).toBe(before); // nothing registered
+    expect(fs.exists(`${PROJ}/wip/bundles/a/${INSTALLER_SKILLS}/ghost/SKILL.md`)).toBe(false); // no stub
   });
 
   it("AC#4 — after add, the bundle's installer-skills scope alias exists (ensured by ④ RERENDER's scopePlan)", async () => {
@@ -278,7 +278,7 @@ describe("bundle <id> installer-skills add — ERROR branch + alias-ensure + sta
     ).toBe(0);
     // scopePlan plans a per-bundle alias bundles/a/.claude/skills → bundles/a/installer-skills; ④ RERENDER
     // created it via fs.ensureAlias (the memory fs records the link as existing).
-    expect(fs.exists(`${PROJ}/bundles/a/.claude/skills`)).toBe(true);
+    expect(fs.exists(`${PROJ}/wip/bundles/a/.claude/skills`)).toBe(true);
   });
 
   it("AC#4 edge — on a NO-target project, add still succeeds (registers); no alias to create", async () => {
@@ -295,7 +295,7 @@ describe("bundle <id> installer-skills add — ERROR branch + alias-ensure + sta
       { name: "fresh", path: `${INSTALLER_SKILLS}/fresh/SKILL.md` },
     ]);
     // no target ⇒ scopePlan yields no aliases ⇒ none created (correct, not a violation):
-    expect(fs.exists(`${PROJ}/bundles/a/.claude/skills`)).toBe(false);
+    expect(fs.exists(`${PROJ}/wip/bundles/a/.claude/skills`)).toBe(false);
   });
 
   it("AC#5 — outside any project, exits 1 naming manifest.yml and suggesting init", async () => {
@@ -361,22 +361,22 @@ describe("bundle <id> installer-skills list (task-78 — SCAN)", () => {
   it("AC#1/#2 — SCANS the directory: enumerates author-placed helper folders one per line, read-only, exit 0", async () => {
     // Place TWO helper folders WITHOUT `add` — proving the SCAN sees author-placed helpers (not just registered).
     const { fs, backlog } = seed({ placedHelpers: ["one", "two"] });
-    const manifestBefore = fs.read(`${PROJ}/manifest.yml`);
-    const aBefore = fs.read(`${PROJ}/bundles/a/bundle.yml`);
+    const manifestBefore = fs.read(`${PROJ}/wip/manifest.yml`);
+    const aBefore = fs.read(`${PROJ}/wip/bundles/a/bundle.yml`);
     const i = io();
     expect(
       await run(["bundle", "a", "installer-skills", "list", "-C", PROJ], deps(fs, backlog), i),
     ).toBe(0);
     expect(i.out.text).toBe("one\ntwo\n"); // sorted, both shown despite never being `add`-registered
     // read-only — nothing on disk changed:
-    expect(fs.read(`${PROJ}/manifest.yml`)).toBe(manifestBefore);
-    expect(fs.read(`${PROJ}/bundles/a/bundle.yml`)).toBe(aBefore);
+    expect(fs.read(`${PROJ}/wip/manifest.yml`)).toBe(manifestBefore);
+    expect(fs.read(`${PROJ}/wip/bundles/a/bundle.yml`)).toBe(aBefore);
   });
 
   it("AC#1 — a directory with a non-helper entry (no SKILL.md) is ignored", async () => {
     const { fs, backlog } = seed({ placedHelpers: ["real"] });
     // a stray folder with no SKILL.md is NOT a helper:
-    fs.write(`${PROJ}/bundles/a/${INSTALLER_SKILLS}/not-a-helper/notes.md`, "stray");
+    fs.write(`${PROJ}/wip/bundles/a/${INSTALLER_SKILLS}/not-a-helper/notes.md`, "stray");
     const i = io();
     expect(
       await run(["bundle", "a", "installer-skills", "list", "-C", PROJ], deps(fs, backlog), i),
@@ -444,7 +444,7 @@ describe("bundle <id> installer-skills remove (task-79)", () => {
       aYml: A_WITH_REFS,
       placedAt: { [`${INSTALLER_SKILLS}/one/SKILL.md`]: skillMd("one") },
     });
-    const contentBefore = fs.read(`${PROJ}/bundles/a/${INSTALLER_SKILLS}/one/SKILL.md`);
+    const contentBefore = fs.read(`${PROJ}/wip/bundles/a/${INSTALLER_SKILLS}/one/SKILL.md`);
     expect(
       await run(
         ["bundle", "a", "installer-skills", "remove", "one", "-C", PROJ],
@@ -452,13 +452,13 @@ describe("bundle <id> installer-skills remove (task-79)", () => {
         io(),
       ),
     ).toBe(0);
-    expect(fs.exists(`${PROJ}/bundles/a/${INSTALLER_SKILLS}/one/SKILL.md`)).toBe(true);
-    expect(fs.read(`${PROJ}/bundles/a/${INSTALLER_SKILLS}/one/SKILL.md`)).toBe(contentBefore);
+    expect(fs.exists(`${PROJ}/wip/bundles/a/${INSTALLER_SKILLS}/one/SKILL.md`)).toBe(true);
+    expect(fs.read(`${PROJ}/wip/bundles/a/${INSTALLER_SKILLS}/one/SKILL.md`)).toBe(contentBefore);
   });
 
   it("AC#3 — deregistering a name NOT registered fails with NotFound (exit 1), nothing changed", async () => {
     const { fs, backlog } = seed({ aYml: A_WITH_REFS });
-    const before = fs.read(`${PROJ}/bundles/a/bundle.yml`);
+    const before = fs.read(`${PROJ}/wip/bundles/a/bundle.yml`);
     const i = io();
     expect(
       await run(
@@ -468,7 +468,7 @@ describe("bundle <id> installer-skills remove (task-79)", () => {
       ),
     ).toBe(1);
     expect(i.err.text).toContain("not-there");
-    expect(fs.read(`${PROJ}/bundles/a/bundle.yml`)).toBe(before); // unchanged
+    expect(fs.read(`${PROJ}/wip/bundles/a/bundle.yml`)).toBe(before); // unchanged
   });
 
   it("AC#4 — outside any project, exits 1 naming manifest.yml", async () => {
@@ -537,13 +537,13 @@ describe("bundle <id> installer-skills — end-to-end author workflow (scan-vs-r
     i = io();
     expect(await run(["bundle", "a", "installer-skills", "list", "-C", PROJ], d(), i)).toBe(0);
     expect(i.out.text).toBe("fresh\n"); // STILL shown — the SKILL.md is on disk
-    expect(fs.exists(`${PROJ}/bundles/a/${INSTALLER_SKILLS}/fresh/SKILL.md`)).toBe(true);
+    expect(fs.exists(`${PROJ}/wip/bundles/a/${INSTALLER_SKILLS}/fresh/SKILL.md`)).toBe(true);
 
     // the task is materialised, the comment survived:
     expect(backlog.listTasks(AUTHORING).map((t) => t.title)).toContain(
       "Write content for install-time skill fresh in a",
     );
-    expect(fs.read(`${PROJ}/bundles/a/bundle.yml`)).toContain("# bundle a —");
+    expect(fs.read(`${PROJ}/wip/bundles/a/bundle.yml`)).toContain("# bundle a —");
   });
 
   it("rerender — after add, the front-door is re-rendered (it exists)", async () => {
@@ -555,7 +555,7 @@ describe("bundle <id> installer-skills — end-to-end author workflow (scan-vs-r
         io(),
       ),
     ).toBe(0);
-    expect(fs.exists(`${PROJ}/AGENTS.md`)).toBe(true);
+    expect(fs.exists(`${PROJ}/wip/installer-skills/demo-installer/SKILL.md`)).toBe(true);
   });
 
   it("the installer-skills group help lists the add/list/remove subcommands", async () => {

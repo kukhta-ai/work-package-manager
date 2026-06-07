@@ -13,8 +13,8 @@ import { type CliDeps, run } from "../../src/cli.js";
 import { parseManifest } from "../../src/core/services/schema/index.js";
 import type { CliIo, OutputSink } from "../../src/util/exit.js";
 import { parseYaml } from "../../src/util/yaml.js";
-import { initFlatProject } from "../helpers/flat-project.js";
 import { withTempDir } from "../helpers/tmpdir.js";
+import { initWorkspace } from "../helpers/workspace.js";
 
 /**
  * Through-the-edges (integration) test for the FULL `wpm init <name>` command (task-34): one real invocation
@@ -319,17 +319,14 @@ describeIfBacklog(
 );
 
 describeIfBuilt("`wpm init` FULL — scope aliases on real disk (AC#1, through dist/cli.js)", () => {
-  it("init then `project targets add claude-code` creates a real scope-alias symlink", () => {
+  it("init then `project targets add claude-code` creates a real scope-alias symlink under wip/", () => {
     withTempDir((dir) => {
-      // NOTE (task-88/task-93 follow-up): `project targets add` is project-bound and resolves a flat project
-      // root (`resolveContext`/`PROJECT_MARKER` key on a root-level `manifest.yml`, and the lifecycle
-      // materialises into `<root>/.authoring-backlog`). task-87 nests the deliverable under `wip/` with the
-      // authoring backlog at the workspace root, which `targets add` cannot resolve until task-88. So this
-      // symlink-on-disk check runs against the flattened init output (`initFlatProject`); the
-      // alias-under-`wip/` placement at init time is covered by the in-memory unit tests above.
-      const proj = initFlatProject(builtCli, dir);
+      // `project targets add` is project-bound: it resolves the authoring WORKSPACE (task-88) and operates on
+      // the deliverable under `wip/`, with the authoring backlog at the workspace root. So we init a real
+      // workspace and target it via `-C <workspace>`; the alias lands under the deliverable `wip/`.
+      const proj = initWorkspace(builtCli, dir);
       // A freshly-init'd minimal project has NO aliases (no targets) — negative case on real disk:
-      expect(existsSync(join(proj, ".claude", "skills"))).toBe(false);
+      expect(existsSync(join(proj, "wip", ".claude", "skills"))).toBe(false);
 
       // Adding a target creates the alias (the same alias plan init would have applied for a declared target):
       execFileSync(
@@ -339,7 +336,7 @@ describeIfBuilt("`wpm init` FULL — scope aliases on real disk (AC#1, through d
           encoding: "utf8",
         },
       );
-      const alias = join(proj, ".claude", "skills");
+      const alias = join(proj, "wip", ".claude", "skills");
       expect(existsSync(alias)).toBe(true);
       // It is a symlink pointing at installer-skills/ (POSIX); the real adapter uses a symlink on this platform:
       expect(lstatSync(alias).isSymbolicLink()).toBe(true);
