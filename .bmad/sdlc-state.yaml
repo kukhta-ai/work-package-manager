@@ -11,7 +11,9 @@ active_story: null
 review_cycle: 0
 # *** ALL 10 EPIC-3 STORIES DONE + merged --no-ff into feature/authoring-workspace: 85, 92, 86, 87, 91, 88, 94, 89, 90, 93. ***
 # Follow-up TASK-95 created (deferred --format git reconciliation; pre-existing, outside task-90 scope). PHASE 6 epic gate IN PROGRESS.
-# COLD E2E from clean = GREEN: tsc 0 / biome 0 (195 files) / build 0 / vitest 1217 passed (96 files). Remaining gate: tea testarch-trace + testarch-nfr, retro, final verdict. THEN Phase 7 handoff (HUMAN gate — PR to dev, never self-merge).
+# *** PHASE 6 EPIC GATE = PASS. *** Cold E2E green (tsc0/biome0/build0/vitest 1217 passed, 96 files). testarch-trace 61/61 ACs (100%, 0 gaps, P0 100%). testarch-nfr PASS (Maintainability/Reliability/Security/Fake-Real-Parity; Perf=CONCERNS note-only, pre-existing ~22min real-binary e2e). retro=GREEN w/ tracked AMBER carry-forwards. Gate artifacts committed 165a144.
+# PHASE 7 HANDOFF = HUMAN GATE (AGENTS.md: never self-merge to dev/main; push+PR is outward-facing) -> SURFACED to the user. Epic-3 complete on feature/authoring-workspace (branched off feature/cli, which is itself PR #1 -> dev, not yet merged). Awaiting user decision on push + PR base (feature/cli vs dev).
+# CARRY-FORWARDS for the human to dispose at the gate: TASK-95 (--format git un-nest/strip/exclude, deferred); ~22min cold suite cost; scope-alias symlinks ship ABSOLUTE targets (portability); whether bundles/bundle-template ships; task-90 failure-path temp-dir leak; process deviations (story-automator-review fell back to manual every story; task-88 worker wrote no story file; doc-13/doc-06 edits absorbed into task-86 beyond its stated scope).
 # Sub-branch naming: feature/aw-task-<id> (hyphen, not slash — the epic branch occupies the refs/heads/feature/authoring-workspace namespace).
 # ENV (re-establish on resume): Node 20 at $HOME/.local/node20/bin (repo needs >=20; system node is v18 and crashes vitest);
 #   backlog CLI at $HOME/.local/bin; rolldown needs @rolldown/binding-linux-x64-gnu (npm install --no-save it if missing after npm ci).
