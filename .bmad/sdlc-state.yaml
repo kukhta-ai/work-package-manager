@@ -3,10 +3,14 @@
 # Re-read on every resume; update at every phase boundary.
 # (Distinct from _bmad/ — that is BMAD's own install dir; this dot-dir is our tracker.)
 
-phase: 5
-phase_name: "Authoring-context epic-4 — Phase 5 BAUT (distil wpm concept+usage into the authoring skill + front door)"
+phase: 7
+phase_name: "Authoring-context epic-4 — gate PASS; Phase 7 handoff (awaiting user decision on push/PR)"
 branch: feature/authoring-context
 epic: authoring-context
+# *** EPIC-4 COMPLETE (stories 96-100 done + merged --no-ff into feature/authoring-context). GATE = PASS (content-only: agent-skills/*.md + 1 strengthened test + backlog/ledger; NO src/ changes -> fast suite is the right gate; tsc0/biome0/vitest 1076 passed). ***
+# Added 2 skill references (task-conventions.md = AC what-not-how contract; native-surfaces.md = 5 roles + scope table + front-door mechanic); named the core bet in the spine + executor loop/done-gate/how-to-use in quality-protocol; fixed 9 drift spots + the files-add example. DOGFOOD (task-100): a cold agent authored a valid bundle from only the 2 surfaces -> surfaces self-sufficient; gaps resolved-in-skill or DEFERRED.
+# DEFERRED PRODUCT DEFECTS found by the dogfood (tracked, human/product): TASK-102 (BLOCKER: a bundle's install-backlog is NOT Backlog.md-CLI-resolvable -> the documented `cd wip/bundles/<id> && backlog ...` recipe-authoring cmd FAILS; also hits the executor at install time; skill ships a self-cleaning symlink workaround meanwhile), TASK-103 (payload-skill stub limbo), TASK-104 (bundle-template ships into archive + dangling menu). Plus TASK-101 (docs/templates reconcile: missing single-bundle/multi-bundle/with-payload-skill/adopts-system-tool templates + the files-add doc bug). TASK-95 (epic-3: --format git transform).
+# PHASE 7 = outward-facing push/PR -> awaiting user (epic-4 branched off feature/authoring-workspace; natural PR base = feature/authoring-workspace, stacking under PR #2). === EPIC-3 below; EPIC-2(CLI) PR #1; all human-gated. ===
 # EPIC-4 (authoring-context) STARTED 2026-06-07: branched off feature/authoring-workspace (depends on epic-3's authoring surfaces; keeps PR #2 clean).
 # GOAL: improve the authoring agent's understanding of wpm concept+usage by distilling the doc set into its ONLY two runtime surfaces (installer-builder skill + workspace authoring front door). Context ledger: _bmad-output/authoring-context-ledger.md (Phase A+B done).
 # Stories: 96 (AC what-not-how contract ref) + 97 (native-surfaces ref) = Story A; 98 (name the bet + executor loop + done-gate + how-to-use close) + 99 (drift/correctness fixes: skill install, no-rerender, wip/ paths, build rows, drop non-existent templates) = Story B; 100 (dogfood-verify) = Story C. 101 = human-gated docs/templates reconcile (build templates vs fix docs/10-11 + doc-05).
