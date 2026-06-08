@@ -39,16 +39,15 @@ These trip people up — get them right:
 Example (a state task, then a dependent one):
 
 ```
-# Backlog.md resolves a `backlog/` dir, so point it at the install-backlog with a temp symlink, then
-# remove it so it never ships (known CLI gap — TASK-102). Self-cleaning subshell:
-(cd wip/bundles/web-handoff && ln -sfn install-backlog backlog && \
+# Each bundle ships a `backlog → install-backlog` symlink, so the Backlog.md CLI resolves the recipe from
+# inside the bundle — just cd in and use it directly:
+(cd wip/bundles/web-handoff && \
   backlog task create "ensure Chromium present" \
     -l "kind:state,step:ensure-chromium" -m 0.1.0 \
     --ac "chromium --version prints" --dod "ownership recorded" && \
   backlog task create "place launcher config" \
     -l "kind:state,step:place-launcher-config" -m 0.1.0 --dep web-handoff-1 \
-    --ac "launcher reachable from agent scope" && \
-  rm backlog)
+    --ac "launcher reachable from agent scope")
 ```
 
 ## The two cross-cutting rules

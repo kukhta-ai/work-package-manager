@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { existsSync, lstatSync, readdirSync, readFileSync } from "node:fs";
+import { existsSync, lstatSync, readdirSync, readFileSync, readlinkSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { execaSync } from "execa";
@@ -101,6 +101,16 @@ function assertProjectOnDisk(proj: string, name: string): void {
   expect(readFileSync(join(wip, "bundles", "bundle-template", "_AGENTS.md.tmpl"), "utf8")).toMatch(
     /\{\{bundle-id\}\}/,
   );
+
+  // TASK-102 — the bundle-template scaffold ships a `backlog → install-backlog` alias so the Backlog.md CLI
+  // resolves its recipe. Present on every platform (a real symlink on POSIX; the Windows adapter copies); on
+  // POSIX assert it is a RELATIVE link to install-backlog (archive-portable).
+  const tmplBacklog = join(wip, "bundles", "bundle-template", "backlog");
+  expect(existsSync(tmplBacklog)).toBe(true);
+  if (process.platform !== "win32") {
+    expect(lstatSync(tmplBacklog).isSymbolicLink()).toBe(true);
+    expect(readlinkSync(tmplBacklog)).toBe("install-backlog");
+  }
 
   // AC#1 — the empty registries exist as directories under wip/; the authoring backlog at the workspace root:
   expect(existsSync(join(wip, "installer-skills"))).toBe(true);

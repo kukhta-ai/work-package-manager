@@ -146,6 +146,24 @@ describe("MemoryFileSystem (the in-memory FileSystem fake — AC#1)", () => {
     expect(cyc.exists("/x")).toBe(false);
   });
 
+  it("a RELATIVE alias reads back relative (readlink parity) and resolves against the link's parent dir (TASK-102)", () => {
+    const fs = new MemoryFileSystem();
+    // Model the per-bundle `backlog → install-backlog` link: relative target, created beside install-backlog.
+    fs.write("/bundles/web/install-backlog/config.yml", "task_prefix: web\n");
+    fs.ensureAlias("install-backlog", "/bundles/web/backlog");
+
+    // The stored target is the RAW relative string (what `readlinkSync` would return) — never absolutized:
+    expect(fs.aliasTarget("/bundles/web/backlog")).toBe("install-backlog");
+    // …yet `exists` resolves it against the LINK's parent (POSIX symlink semantics), so it points at the real
+    // install-backlog dir — not `/install-backlog`:
+    expect(fs.exists("/bundles/web/backlog")).toBe(true);
+    expect(fs.exists("/install-backlog")).toBe(false);
+
+    // A relative link whose target is absent resolves to false (dangling), like a real symlink:
+    fs.ensureAlias("install-backlog", "/bundles/empty/backlog");
+    expect(fs.exists("/bundles/empty/backlog")).toBe(false);
+  });
+
   it("normalizes paths (trailing slash, '.', '..') consistently", () => {
     const fs = new MemoryFileSystem();
     fs.write("/a/b/../c.txt", "v");

@@ -302,8 +302,9 @@ function checkLockfile(
  * root-relative paths, EXCLUDING the builder-time working dirs ({@link NON_SHIPPABLE_TOP_LEVEL}) and any DISABLED
  * bundle directory (a `bundles/<id>/` whose `<id>` is neither enabled nor the `bundle-template/` scaffold — doc 06
  * line 153: "the build never includes it"). The walk does NOT recurse into symlinked directories: in a generated
- * project the only symlinks are the scope aliases (`.claude/skills → installer-skills/`, etc.), so skipping
- * symlinked dirs records the alias path itself without doubling its target's bytes. Pure over the port.
+ * project the symlinks are the scope aliases (`.claude/skills → installer-skills/`, etc.) and each bundle's
+ * `backlog → install-backlog` recipe alias (TASK-102), so skipping symlinked dirs records the alias path itself
+ * without doubling its target's bytes. Pure over the port.
  *
  * @param fs - The FileSystem port.
  * @param root - The project root.
@@ -338,10 +339,11 @@ export function shippableFiles(
       }
 
       if (entry.kind === "directory") {
-        // Do not traverse a symlinked directory (a scope alias): record the link path itself as a leaf so the
-        // ship set names the alias without duplicating installer-skills/ under it. `isSymlink` is best-effort —
-        // the in-memory fake has no symlink-dir distinction, so a real alias only appears through the real
-        // adapter, where it is detected; absent the distinction the dir is walked normally (harmless in tests).
+        // Do not traverse a symlinked directory (a scope alias, or a bundle's `backlog → install-backlog`
+        // alias): record the link path itself as a leaf so the ship set names the alias without duplicating its
+        // target (installer-skills/ or install-backlog/) under it. `isSymlink` is best-effort — the in-memory
+        // fake has no symlink-dir distinction, so a real alias only appears through the real adapter, where it
+        // is detected; absent the distinction the dir is walked normally (harmless in tests).
         if (isSymlinkDir(fs, abs, childRel)) {
           out.push(childRel);
         } else {
@@ -357,20 +359,26 @@ export function shippableFiles(
 }
 
 /**
- * Whether a directory entry is a symlink that must not be traversed (a scope alias). The {@link FileSystem} port's
- * `list` does not expose the symlink bit, so this is a structural heuristic: a directory whose name is a known
- * scanned-scope alias root (`.claude`, `.agents`, `.openclaw`, `.cursor`, `.gemini`) at any level is treated as an
- * alias and recorded as a leaf rather than walked. This prevents the scope aliases — the only symlinks a generated
- * project carries (doc 06) — from double-counting `installer-skills/` content in the ship set. Pure (name-based).
+ * Whether a directory entry is a symlink that must not be traversed (an alias). The {@link FileSystem} port's
+ * `list` does not expose the symlink bit, so this is a structural heuristic over the root-relative path:
+ *
+ * - a directory whose name is a known scanned-scope alias root (`.claude`, `.agents`, `.openclaw`, `.cursor`,
+ *   `.gemini`) at any level — a symlink into `installer-skills/` (doc 05/06); or
+ * - the per-bundle `bundles/<id>/backlog` link — the `backlog → install-backlog` alias every bundle ships so the
+ *   Backlog.md CLI resolves its recipe (TASK-102; doc 06).
+ *
+ * Either is recorded as a **leaf** (the link path itself) rather than walked, so the ship set names the alias
+ * once and never doubles its target's bytes — `installer-skills/**` is not re-counted under a scope alias, and
+ * `install-backlog/**` is not re-counted under a bundle's `backlog/`. Pure (path-based).
  *
  * @param _fs - The FileSystem port (unused; kept for a future symlink-aware port method).
  * @param _abs - The absolute path (unused; reserved).
  * @param rel - The root-relative path of the entry.
- * @returns `true` when the entry is a scope-alias directory to record-not-traverse.
+ * @returns `true` when the entry is an alias directory to record-not-traverse.
  */
 function isSymlinkDir(_fs: FileSystem, _abs: string, rel: string): boolean {
   const name = rel.includes("/") ? (rel.split("/").pop() as string) : rel;
-  return SCOPE_ALIAS_DIR_NAMES.has(name);
+  return SCOPE_ALIAS_DIR_NAMES.has(name) || BUNDLE_BACKLOG_ALIAS_RE.test(rel);
 }
 
 /** The scanned-scope alias directory names (doc 05/06) — symlinks into `installer-skills/`, recorded not walked. */
@@ -381,6 +389,14 @@ const SCOPE_ALIAS_DIR_NAMES: ReadonlySet<string> = new Set([
   ".cursor",
   ".gemini",
 ]);
+
+/**
+ * The per-bundle `backlog → install-backlog` alias path (TASK-102; doc 06): exactly `bundles/<id>/backlog` (the
+ * single bundle segment, no deeper). Matched precisely so a real `install-backlog/` (a different basename) is
+ * still walked and shipped, and only the bundle-level link is recorded as a leaf — never duplicating
+ * `install-backlog/**` through it.
+ */
+const BUNDLE_BACKLOG_ALIAS_RE = /^bundles\/[^/]+\/backlog$/;
 
 /**
  * Compute the {@link BuildPlan} — the pure plan the build commands act on (doc 13 §4/§5). Runs the three pure

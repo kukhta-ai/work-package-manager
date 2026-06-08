@@ -96,7 +96,19 @@ export class MemoryFileSystem implements FileSystem {
     if (target === undefined) return false;
     if (visited.has(p)) return false; // alias cycle → ELOOP-equivalent
     visited.add(p);
-    return this.existsResolved(target, visited);
+    return this.existsResolved(this.resolveAliasTarget(p, target), visited);
+  }
+
+  /**
+   * Resolve an alias's stored (raw) target to an absolute path the way a real symlink resolves: an absolute
+   * target is taken as-is; a **relative** target is resolved against the link's PARENT directory (POSIX
+   * symlink semantics), not the cwd. This is what lets the fake faithfully model a *relative* alias such as
+   * the per-bundle `backlog → install-backlog` link (TASK-102): the raw `install-backlog` is preserved for
+   * inspection (see {@link aliasTarget}) yet still resolves under the bundle dir for {@link exists}.
+   */
+  private resolveAliasTarget(link: string, rawTarget: string): string {
+    const t = rawTarget.replace(/\\/g, "/");
+    return t.startsWith("/") ? this.normalize(t) : this.normalize(`${this.parentOf(link)}/${t}`);
   }
 
   /** @inheritdoc */
@@ -188,22 +200,27 @@ export class MemoryFileSystem implements FileSystem {
   /**
    * Record an alias and report it as a symlink. The in-memory fake has no real platform, so it always uses
    * the symlink kind (the Windows-copy fallback is the real adapter's concern, exercised via
-   * `src/util/symlink.ts`).
+   * `src/util/symlink.ts`). The target is stored **verbatim** (raw), so a relative link's content is
+   * preserved exactly as a real symlink keeps it — an absolute target reads back absolute, a relative one
+   * (e.g. the `backlog → install-backlog` link, TASK-102) reads back relative. Resolution for {@link exists}
+   * happens in {@link resolveAliasTarget}.
    *
    * @inheritdoc
    */
   ensureAlias(target: string, linkPath: string): AliasResult {
     const link = this.normalize(linkPath);
-    this.aliases.set(link, this.normalize(target));
+    this.aliases.set(link, target);
     this.recordDir(this.parentOf(link));
     return { kind: "symlink" };
   }
 
   /**
-   * Test-only accessor: the target an alias points at, or `undefined` if no alias exists at `linkPath`.
+   * Test-only accessor: the raw target an alias points at (mirroring `readlinkSync`), or `undefined` if no
+   * alias exists at `linkPath`. An absolute target reads back absolute; a relative target reads back
+   * relative (so a test can assert a link is RELATIVE, e.g. `backlog → install-backlog`).
    *
    * @param linkPath - The alias location to look up.
-   * @returns The normalized target path, or `undefined`.
+   * @returns The raw target path the link stores, or `undefined`.
    */
   aliasTarget(linkPath: string): string | undefined {
     return this.aliases.get(this.normalize(linkPath));
