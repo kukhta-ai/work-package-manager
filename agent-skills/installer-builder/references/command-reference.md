@@ -42,6 +42,7 @@ wpm project version [bump <major|minor|patch> | set <v>]                    show
 wpm project targets add|list|remove <agent>           the supported agents; add creates a scope-alias + re-renders
 wpm project installer-skills add|list|remove <name> [--path <p>]           project-scoped install-time helper skills
 wpm project validate                                  deps resolve, no cycles, targets non-empty, no orphan dirs
+                                                      (STRUCTURAL only — "good" ≠ "valid": real ACs/verify/how-to-use are the review tasks)
 wpm project root                                      print the resolved deliverable root (<workspace>/wip) for $(...) composition
 
 wpm bundle new <id> [--template <name>] [--disabled] [--version 0.1.0] [--no-advisor]
@@ -65,7 +66,8 @@ wpm bundle <id> advisor add|remove                    the bundle's pull-UX advis
 wpm build dry-run                                      project validate + lockfile check + preview the shippable tree (no artefact)
 wpm build package [--format zip|tarball|git]          write builds/<project>-<version>.<ext>; archive root = the wip/
     deliverable un-nested (manifest.yml at the root), _AGENTS.md→AGENTS.md + per-target aliases synthesized; the
-    wrapper never ships (authoring front door, .authoring-backlog/, builds/ all live above wip/; .git/node_modules/dist pruned)
+    wrapper never ships (authoring front door, .authoring-backlog/, builds/ all live above wip/; .git/node_modules/dist pruned).
+    NOTE: default format zip needs a system `zip` binary — use --format tarball if it is absent
 wpm build publish <destination>                       build, then push to a registry/git remote (optional)
 ```
 
