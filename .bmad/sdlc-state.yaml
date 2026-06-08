@@ -4,9 +4,14 @@
 # (Distinct from _bmad/ — that is BMAD's own install dir; this dot-dir is our tracker.)
 
 phase: 7
-phase_name: "Authoring-context epic-4 — gate PASS; Phase 7 handoff (awaiting user decision on push/PR)"
+phase_name: "Authoring-context epic-4 + fixes 102/103 DONE; Phase 7 handoff (awaiting user push/PR decision)"
 branch: feature/authoring-context
 epic: authoring-context
+# *** EPIC-4 (96-100) + the two user-requested product fixes TASK-102 + TASK-103 are DONE and merged into feature/authoring-context. ***
+# TASK-102 (install-backlog now Backlog.md-resolvable via a relative backlog->install-backlog symlink per bundle; ships; skill workaround dropped) — APPROVE, archive re-verified end-to-end.
+# TASK-103 (bundle new no longer ships an unregistered payload-skill stub; skills remove deletes on-disk orphans, keeps deregister-leave for registered) — APPROVE; also fixed a bundle-template.e2e snapshot that EISDIR'd on the task-102 symlink.
+# Per-fix gates: tsc/biome clean (197 files), fast suite 1089 passed, targeted e2e green (102: 118 across 5 suites; 103: bundle-new/build/bundle-template/bundle-id). FULL COLD gate SKIPPED at user request ("skip this for gate") — fast+targeted e2e deemed sufficient.
+# REMAINING TRACKED (deferred, not blocking): TASK-95 (--format git transform), TASK-101 (docs/templates reconcile + files-add doc bug), TASK-104 (bundle-template ships into archive + dangling menu), TASK-105 (build ships deregistered on-disk payload skills).
 # *** EPIC-4 COMPLETE (stories 96-100 done + merged --no-ff into feature/authoring-context). GATE = PASS (content-only: agent-skills/*.md + 1 strengthened test + backlog/ledger; NO src/ changes -> fast suite is the right gate; tsc0/biome0/vitest 1076 passed). ***
 # Added 2 skill references (task-conventions.md = AC what-not-how contract; native-surfaces.md = 5 roles + scope table + front-door mechanic); named the core bet in the spine + executor loop/done-gate/how-to-use in quality-protocol; fixed 9 drift spots + the files-add example. DOGFOOD (task-100): a cold agent authored a valid bundle from only the 2 surfaces -> surfaces self-sufficient; gaps resolved-in-skill or DEFERRED.
 # DEFERRED PRODUCT DEFECTS found by the dogfood (tracked, human/product): TASK-102 (BLOCKER: a bundle's install-backlog is NOT Backlog.md-CLI-resolvable -> the documented `cd wip/bundles/<id> && backlog ...` recipe-authoring cmd FAILS; also hits the executor at install time; skill ships a self-cleaning symlink workaround meanwhile), TASK-103 (payload-skill stub limbo), TASK-104 (bundle-template ships into archive + dangling menu). Plus TASK-101 (docs/templates reconcile: missing single-bundle/multi-bundle/with-payload-skill/adopts-system-tool templates + the files-add doc bug). TASK-95 (epic-3: --format git transform).
