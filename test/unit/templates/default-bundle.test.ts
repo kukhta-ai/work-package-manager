@@ -234,6 +234,38 @@ describe("default bundle template — createBundle end-to-end (doc 06/07/08/09)"
     expect(fs.exists(`${ROOT}/bundles/${SAMPLE_ID}/installer-scripts`)).toBe(true);
   });
 
+  it("AC#1 (TASK-103) — produces NO payload-skill stub on disk; payload.skills stays empty (doc 10:282 — `default` ships an empty payload)", () => {
+    const { fs, backlog } = seed();
+    runMutation(
+      lifecycleDeps(fs, backlog),
+      { deliverableRoot: ROOT, workspaceRoot: ROOT },
+      spec(),
+      {
+        id: SAMPLE_ID,
+      },
+    );
+
+    // The payload-skills SLOT exists (a uniform delivery surface — the template's `.keep`), but holds NO skill:
+    const agentSkills = `${ROOT}/bundles/${SAMPLE_ID}/payload/agent-skills`;
+    expect(fs.exists(agentSkills)).toBe(true);
+    expect(fs.list(agentSkills).filter((e) => e.kind === "directory")).toEqual([]); // no `<id>-skill/` stub
+    // No SKILL.md under the shipped payload/agent-skills/ tree (a stub there would ride into the build, AC#3):
+    for (const path of bundleFiles(fs, SAMPLE_ID)) {
+      if (path.includes("/payload/agent-skills/")) {
+        expect(path.endsWith("/SKILL.md"), `unexpected payload SKILL.md at ${path}`).toBe(false);
+      }
+    }
+
+    // The registry the operation writes is empty — `bundle new` registers no payload skill:
+    const bundle = parseBundleManifest(
+      parseYaml(fs.read(`${ROOT}/bundles/${SAMPLE_ID}/bundle.yml`)),
+    );
+    expect(bundle.ok).toBe(true);
+    if (bundle.ok) {
+      expect(bundle.value.payload.skills).toEqual([]);
+    }
+  });
+
   it("AC#2 — the produced bundle carries a detect → setup → verify task scaffold (kind:state + step:<slug>)", () => {
     const { fs, backlog } = seed();
     runMutation(

@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, readlinkSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
@@ -110,7 +110,10 @@ describeIfBuilt("bundle template show / set E2E via dist/cli.js (tasks 55/56)", 
         const walk = (d: string): void => {
           for (const e of readdirSync(d, { withFileTypes: true })) {
             const child = join(d, e.name);
-            if (e.isDirectory()) walk(child);
+            // The `backlog -> install-backlog` alias (task-102) is a symlink: record its target, never
+            // recurse/readFileSync it (which would EISDIR on the linked directory).
+            if (e.isSymbolicLink()) out[child.slice(scaffold.length)] = `-> ${readlinkSync(child)}`;
+            else if (e.isDirectory()) walk(child);
             else out[child.slice(scaffold.length)] = readFileSync(child, "utf8");
           }
         };

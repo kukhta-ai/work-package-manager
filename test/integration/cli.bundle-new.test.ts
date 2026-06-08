@@ -270,6 +270,27 @@ describeIfBuilt("bundle lifecycle via the built dist/cli.js (task-50/51/52 — r
       expect(readFileSync(join(proj, "wip", "manifest.yml"), "utf8")).toMatch(/web/);
     });
   });
+
+  it("TASK-103 AC#1 — `bundle new <id>` leaves NO payload-skill stub on disk and registers no payload skill", async () => {
+    await withTempDir((dir) => {
+      const proj = initWorkspace(builtCli, dir);
+      expect(wpm(proj, ["bundle", "new", "web"]).status).toBe(0);
+
+      // the payload-skills slot exists (the template `.keep`) but ships NO skill subdirectory:
+      const agentSkills = join(proj, "wip", "bundles", "web", "payload", "agent-skills");
+      expect(existsSync(agentSkills)).toBe(true);
+      const subdirs = readdirSync(agentSkills, { withFileTypes: true }).filter((e) =>
+        e.isDirectory(),
+      );
+      expect(subdirs).toEqual([]); // no `<id>-skill/` stub the old template shipped
+      expect(existsSync(join(agentSkills, "web-skill", "SKILL.md"))).toBe(false);
+
+      // the registry is empty — `skills list` prints the empty marker (payload.skills == []):
+      expect(wpm(proj, ["bundle", "web", "skills", "list"]).stdout.trim()).toBe(
+        "(no payload skills)",
+      );
+    });
+  });
 });
 
 /**
