@@ -39,25 +39,25 @@ These trip people up — get them right:
 Example (a state task, then a dependent one):
 
 ```
-cd wip/bundles/web-handoff
-backlog task create "ensure Chromium present" \
-  -l "kind:state,step:ensure-chromium" -m 0.1.0 \
-  --ac "chromium --version prints" --dod "ownership recorded"
-backlog task create "place launcher config" \
-  -l "kind:state,step:place-launcher-config" -m 0.1.0 --dep web-handoff-1 \
-  --ac "launcher reachable from agent scope"
+# Backlog.md resolves a `backlog/` dir, so point it at the install-backlog with a temp symlink, then
+# remove it so it never ships (known CLI gap — TASK-102). Self-cleaning subshell:
+(cd wip/bundles/web-handoff && ln -sfn install-backlog backlog && \
+  backlog task create "ensure Chromium present" \
+    -l "kind:state,step:ensure-chromium" -m 0.1.0 \
+    --ac "chromium --version prints" --dod "ownership recorded" && \
+  backlog task create "place launcher config" \
+    -l "kind:state,step:place-launcher-config" -m 0.1.0 --dep web-handoff-1 \
+    --ac "launcher reachable from agent scope" && \
+  rm backlog)
 ```
 
 ## The two cross-cutting rules
 
-- **Structure, not content** (doc `10`). The `wpm` CLI manages structure — projects, bundles, manifest entries,
-  the registered references to payload files and skills. The user-facing **content** — task descriptions,
-  SKILL.md bodies, payload file contents — you write directly via the filesystem (your editor, write tools,
-  `cat > … << EOF`). The CLI's role is to register, list, and validate what you placed, never to author prose.
-- **No-mirror / above Backlog.md** (doc `10`, `11`). The CLI does **not** wrap Backlog.md task operations —
-  not reads (list, view, search) and not writes (create, edit, reorder, archive). You operate every
-  install-backlog task and the authoring-backlog with **Backlog.md directly**, inside the relevant backlog
-  root. The CLI contributes to the authoring-backlog only by *materialising tasks when scope changes elsewhere*.
+- **Structure, not content** (doc `10`). The CLI manages structure (projects, bundles, manifest entries,
+  registered file/skill references); you write all **content** (task bodies, SKILL.md bodies, payload files) via
+  the filesystem. The CLI registers/lists/validates what you placed — it never authors prose.
+- **No-mirror** (doc `10`, `11`). The CLI does **not** wrap Backlog.md task ops; operate every install-backlog
+  and the authoring-backlog with **Backlog.md directly** (it only *materialises* authoring tasks as scope changes).
 
 ## The deliverable executor front door is `_AGENTS.md` (doc `06`, `12`)
 
