@@ -96,6 +96,7 @@ import {
   listSkillRefsSpec,
   PAYLOAD_SKILLS_DESCRIPTOR,
   removeSkillRefSpec,
+  removeUnregisteredSkillStubSpec,
   scaffoldSkillRefSpec,
   scanInstallerSkillsSpec,
 } from "./core/operations/skill-refs.js";
@@ -1277,8 +1278,10 @@ const bundleScriptsModule: PerBundleCommandModule = {
  * This keeps the 3-way decision a thin CLI branch (the existence-probe-in-CLI pattern of `bundleFilesModule`)
  * and the two core specs single-purpose + reusable. Structure-not-content: `add` never authors the SKILL.md body
  * (scaffold renders a structural stub from the snippet; attach validates+registers what the author placed);
- * `remove` deregisters and leaves the SKILL.md on disk (76#1/#2). `list` is registry-based (75#1) — payload
- * skills are inert until install, so the registry is authoritative.
+ * `remove` is the symmetric 3-way (TASK-103): a REGISTERED skill deregisters and its SKILL.md stays on disk
+ * (76#1/#2), an UNREGISTERED on-disk stub is deleted (a stray scaffold — nothing to deregister), and a name that
+ * is neither errors — the CLI dispatches by a registry probe. `list` is registry-based (75#1) — payload skills
+ * are inert until install, so the registry is authoritative.
  */
 const bundleSkillsModule: PerBundleCommandModule = {
   register(sub, ctx, root, id, workspaceRoot) {
@@ -1368,28 +1371,58 @@ const bundleSkillsModule: PerBundleCommandModule = {
     ]);
 
     // ── skills remove <name> ────────────────────────────────────────────────────────────────────────────────
-    // Deregister-not-delete: the entry leaves bundle.yml but the SKILL.md stays on disk (doc 10 row 172). A name
-    // that is not registered ⇒ the operation's NotFound (exit 1, nothing changed).
+    // A 3-WAY mirroring `skills add`'s scaffold/attach/error split — the CLI owns the probe (a pure `check` has no
+    // port, doc 13 §1):
+    //   - REGISTERED → deregister-not-delete: the entry leaves bundle.yml but the SKILL.md stays on disk (doc 10
+    //     row 175; 76#1/#2) — {@link removeSkillRefSpec}.
+    //   - UNREGISTERED but present on disk → delete the stray scaffold dir (TASK-103): nothing is registered to
+    //     deregister, so removing the orphan stub is the sensible `remove` — {@link removeUnregisteredSkillStubSpec}
+    //     (never touches registered content).
+    //   - neither → the orphan spec's NotFound (exit 1, nothing changed; 76#3).
+    // The registry probe is a pure read (`listSkillRefsSpec`) — the authoritative registered set (payload skills
+    // are inert until install, doc 06). Each branch is a COMPLETE `runMutation` (its own spec + input), mirroring
+    // the `add` leaf, so the per-branch input type is inferred independently.
     const removeLeaf = skills
       .command("remove")
       .argument(
         "<name>",
-        "the registered payload skill to deregister (the SKILL.md is left on disk)",
+        "the payload skill to remove: deregister it (SKILL.md left on disk) if registered, else delete its stray on-disk stub",
       )
-      .description("deregister a payload skill, leaving its SKILL.md on disk (doc 10)")
+      .description(
+        "deregister a registered payload skill (leaving its SKILL.md), or delete an unregistered on-disk stub (doc 10; TASK-103)",
+      )
       .action((name: string) => {
-        const result = runMutation(
-          lifecycleDepsFor(ctx, root),
-          { deliverableRoot: root, workspaceRoot },
-          removeSkillRefSpec(PAYLOAD_SKILLS_DESCRIPTOR),
-          { id, name },
+        const scope = { deliverableRoot: root, workspaceRoot };
+        const { value: registered } = runRead(
+          ctx.deps.fs,
+          scope,
+          listSkillRefsSpec(PAYLOAD_SKILLS_DESCRIPTOR),
+          { id },
         );
+        const isRegistered = registered.some((skill) => skill.name === name);
+        const result = isRegistered
+          ? runMutation(
+              lifecycleDepsFor(ctx, root),
+              scope,
+              removeSkillRefSpec(PAYLOAD_SKILLS_DESCRIPTOR),
+              { id, name },
+            )
+          : runMutation(
+              lifecycleDepsFor(ctx, root),
+              scope,
+              removeUnregisteredSkillStubSpec(PAYLOAD_SKILLS_DESCRIPTOR),
+              { id, name },
+            );
         ctx.io.out.write(formatResult(result));
       });
     withExamples(removeLeaf, [
       {
         command: "wpm bundle web-handoff skills remove handoff-web",
-        note: "deregister handoff-web (its SKILL.md stays on disk)",
+        note: "deregister a registered skill (its SKILL.md stays on disk)",
+      },
+      {
+        command: "wpm bundle web-handoff skills remove stray-skill",
+        note: "delete an unregistered on-disk stub (e.g. an old scaffold) that was never registered",
       },
     ]);
   },
@@ -1683,10 +1716,11 @@ const PER_BUNDLE_COMPLETION_SPECS: CompletionSpecs = {
   "scripts add": { args: ["payload-scripts-on-disk"] },
   "scripts remove": { args: ["payload-scripts-registered"] },
   // `bundle <id> skills add <name>` (Family O) — completes from the skill-folder NAMES present under
-  // payload/agent-skills/ (the attachable skills; a brand-new name yields none). `skills remove <name>`
-  // completes from the REGISTERED `payload.skills` names. Both id-aware (read the host id off the context).
+  // payload/agent-skills/ (the attachable skills; a brand-new name yields none). `skills remove <name>` completes
+  // from the REMOVABLE set — REGISTERED `payload.skills` names ∪ on-disk stub folders (TASK-103), so an orphan
+  // stub it can now delete is completable too. Both id-aware (read the host id off the context).
   "skills add": { args: ["skills-on-disk"] },
-  "skills remove": { args: ["skills-registered"] },
+  "skills remove": { args: ["skills-removable"] },
   // `bundle <id> installer-skills add <name>` (Family P) — completes from the helper-folder NAMES present under
   // installer-skills/ (the attachable helpers, matching the directory-scan `list`). `installer-skills remove
   // <name>` completes from the REGISTERED `installerSkills` names (AC79#4 — the deregister set). Both id-aware.

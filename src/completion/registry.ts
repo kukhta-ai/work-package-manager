@@ -13,6 +13,7 @@ import {
 } from "./project-installer-skills.js";
 import { skillNamesOnDisk } from "./skills-on-disk.js";
 import { skillNamesRegistered } from "./skills-registered.js";
+import { skillNamesRemovable } from "./skills-removable.js";
 import { CompletionRegistry } from "./sources.js";
 import { allTemplateNames, bundleTemplateNames, projectTemplateNames } from "./template-names.js";
 
@@ -64,12 +65,14 @@ export function defaultRegistry(): CompletionRegistry {
     "payload-scripts-registered",
     payloadRegisteredSource((bundle) => bundle.payload.scripts),
   );
-  // The payload-skill sources (Family O) — both id-aware (read `ctx.bundleId`): `skills add <name>` completes
-  // from the skill-folder NAMES present under payload/agent-skills/ (attachable skills); `skills remove <name>`
-  // from the REGISTERED `payload.skills` names. The registry, not a scan, is authoritative for the registered
-  // set because payload skills are inert until install (doc 06).
+  // The payload-skill sources (Family O) — all id-aware (read `ctx.bundleId`): `skills add <name>` completes from
+  // the skill-folder NAMES present under payload/agent-skills/ (attachable skills); `skills remove <name>` from
+  // the REMOVABLE set — the UNION of REGISTERED `payload.skills` names and on-disk stub folders (TASK-103), so an
+  // unregistered orphan stub it can now delete is also completable. The registry, not a scan, is authoritative
+  // for the registered set because payload skills are inert until install (doc 06).
   registry.register("skills-on-disk", skillNamesOnDisk);
   registry.register("skills-registered", skillNamesRegistered);
+  registry.register("skills-removable", skillNamesRemovable);
   // The installer-skill sources (Family P) — the installer-skills twins of the payload-skill sources, both
   // id-aware (read `ctx.bundleId`): `installer-skills add <name>` completes from the helper-folder NAMES present
   // under `bundles/<id>/installer-skills/` (the attachable helpers, matching the directory-scan `list`);

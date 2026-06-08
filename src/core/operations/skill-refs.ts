@@ -1,6 +1,6 @@
 import { join } from "node:path";
 import { editYaml } from "../../util/yaml.js";
-import { NotFoundError } from "../errors.js";
+import { ConstraintError, NotFoundError } from "../errors.js";
 import type { AuthoringTaskSpec, BundleManifest, Project, SkillRef } from "../model/index.js";
 import { validateSkillFrontmatter } from "../services/frontmatter.js";
 import type { ApplyContext, ApplyOutcome, OperationSpec, ReadSpec } from "./lifecycle.js";
@@ -359,6 +359,71 @@ export function removeSkillRefSpec(
       });
       ctx.fs.write(ymlPath, text);
       return { changedPaths: [ymlPath] };
+    },
+  };
+}
+
+/** The input to {@link removeUnregisteredSkillStubSpec}: the host id and the on-disk-but-unregistered skill name. */
+export interface RemoveUnregisteredSkillInput {
+  /** The host bundle (selected + enabled-guarded by the `bundle <id>` routing). */
+  readonly id: string;
+  /** The unregistered skill name whose stray on-disk stub directory is removed. */
+  readonly name: string;
+}
+
+/**
+ * `bundle <id> skills remove <name>` — the ORPHAN-CLEANUP branch (TASK-103), a mutation. The companion of {@link
+ * removeSkillRefSpec}: where that DEREGISTERS a REGISTERED skill and leaves its SKILL.md on disk
+ * (deregister-not-delete, 76#1/#2), THIS removes a skill that is present on disk but NOT registered — a stray
+ * scaffold (an old `bundle new` payload-skill stub, or a hand-placed stub never `skills add`-registered). Because
+ * nothing is registered there is nothing to deregister, so the sensible `remove` is to delete the stray scaffold
+ * DIRECTORY `<onDiskDir>/<name>/` through the fs port. This NEVER deletes registered content: the registry is
+ * authoritative for payload skills (inert until install, doc 06), so an unregistered on-disk skill was never
+ * committed through `add` and is debris — and ② CHECK guards that `<name>` is genuinely unregistered before any
+ * delete, so the deregister-not-delete contract for committed skills is preserved.
+ *
+ * The CLI dispatches here only when the name is NOT registered (it owns the registry probe — the registered-vs-
+ * orphan split is the COMMAND-layer's, mirroring the `add` 3-way: a pure `check` has no port to probe disk).
+ * ② CHECK re-asserts the host bundle and that `<name>` is unregistered (defense-in-depth). ③ APPLY probes the
+ * conventional on-disk directory through the fs port; if present it removes it (recursively), else it raises a
+ * {@link NotFoundError} (nothing registered, nothing on disk — nothing to remove), so a name matching neither
+ * exits 1 with nothing changed. No `materialise`.
+ *
+ * @param descriptor - The skill category descriptor.
+ * @returns The orphan-cleanup operation spec.
+ */
+export function removeUnregisteredSkillStubSpec(
+  descriptor: SkillRefDescriptor,
+): OperationSpec<RemoveUnregisteredSkillInput> {
+  const stubDirRel = (name: string): string => `${descriptor.onDiskDir}/${name}`;
+
+  return {
+    summary: (_project, { name }) =>
+      `removed unregistered ${descriptor.noun} ${name} (deleted the stray stub at ${stubDirRel(name)}/)`,
+
+    check: (project, { id, name }) => {
+      const current = descriptor.select(requireBundle(project, id));
+      if (current.some((existing) => existing.name === name)) {
+        // A registered skill is removed by DEREGISTER (removeSkillRefSpec), which LEAVES its SKILL.md on disk;
+        // this delete path must never touch author-committed content (76#1/#2). Guard against a mis-dispatch.
+        throw new ConstraintError(
+          `${descriptor.noun} "${name}" is registered in "${id}" — deregister it (its SKILL.md is left on disk), not stub removal`,
+        );
+      }
+    },
+
+    apply: (ctx: ApplyContext, _project, { id, name }): ApplyOutcome => {
+      const dirRel = stubDirRel(name);
+      const dirAbs = join(ctx.root, "bundles", id, dirRel);
+      if (!ctx.fs.exists(dirAbs)) {
+        throw new NotFoundError(
+          `${descriptor.noun} "${name}" is not registered in "${id}" and no stub exists at ${dirRel}/ — nothing to remove`,
+        );
+      }
+      // Remove only the stray scaffold's own directory (recursively via the port); the parent `<onDiskDir>/` and
+      // any sibling skills are left untouched.
+      ctx.fs.remove(dirAbs);
+      return { changedPaths: [dirAbs] };
     },
   };
 }

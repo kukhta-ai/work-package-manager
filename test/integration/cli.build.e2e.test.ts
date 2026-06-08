@@ -382,6 +382,27 @@ describeIfBuilt("`wpm build package` E2E (task-83, through dist/cli.js)", () => 
     });
   });
 
+  it("TASK-103 AC#3 — a bundle that ships NO payload skill packages with no placeholder skill in the archive", async () => {
+    await withTempDir(async (dir) => {
+      const proj = initProject(dir);
+      expect(cli(["project", "targets", "add", "claude-code", "-C", proj], dir).code).toBe(0);
+      // a config-only bundle: a fresh `bundle new` registers/ships no payload skill (TASK-103):
+      expect(cli(["bundle", "new", "web", "-C", proj], dir).code).toBe(0);
+
+      const r = cli(["build", "package", "--format", "tarball", "-C", proj], dir);
+      expect(r.code).toBe(0);
+      const archive = join(proj, "builds", "demo-0.1.0.tgz");
+      expect(existsSync(archive)).toBe(true);
+
+      const listed = execFileSync("tar", ["-tzf", archive], { encoding: "utf8" });
+      // NO payload SKILL.md under any bundle's payload/agent-skills/<name>/ — the build ships no placeholder skill.
+      // (The `.keep` slot file sits directly under agent-skills/, not in a `<name>/` subdir, so it is not matched.)
+      expect(listed).not.toMatch(/bundles\/[^/]+\/payload\/agent-skills\/[^/]+\/SKILL\.md/);
+      // Sanity: the bundle DID ship (so the negative assertion is meaningful):
+      expect(listed).toMatch(/^(\.\/)?bundles\/web\/bundle\.yml$/m);
+    });
+  });
+
   it("AC83#3 — an unsupported --format value exits 2 (usage error)", async () => {
     await withTempDir(async (dir) => {
       const proj = initProject(dir);
