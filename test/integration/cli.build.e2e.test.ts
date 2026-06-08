@@ -5,6 +5,7 @@ import {
   mkdirSync,
   readdirSync,
   readFileSync,
+  readlinkSync,
   writeFileSync,
 } from "node:fs";
 import { join } from "node:path";
@@ -215,6 +216,49 @@ describeIfBuilt("`wpm build package` E2E (task-83, through dist/cli.js)", () => 
       expect(lstatSync(join(ex, "CLAUDE.md")).isSymbolicLink()).toBe(true);
       expect(readFileSync(join(ex, "CLAUDE.md"), "utf8")).toBe(`# root\n${ROOT_SENTINEL}\n`);
       expect(lstatSync(join(ex, "bundles", "web", "CLAUDE.md")).isSymbolicLink()).toBe(true);
+    });
+  });
+
+  it("TASK-102 — the archive ships `bundles/<id>/backlog` as a symlink → install-backlog (once, no double-include) and the EXTRACTED recipe resolves under the Backlog.md CLI (AC#3)", async () => {
+    // The shipped link is a relative POSIX symlink (tar preserves it); on Windows authoring it is a copy, so
+    // gate the symlink-shape + executor-resolution proof to POSIX (the designed-for case).
+    if (process.platform === "win32") return;
+    await withTempDir((dir) => {
+      const proj = initProject(dir);
+      expect(cli(["project", "targets", "add", "claude-code", "-C", proj], dir).code).toBe(0);
+      expect(cli(["bundle", "new", "web", "-C", proj], dir).code).toBe(0);
+
+      const r = cli(["build", "package", "--format", "tarball", "-C", proj], dir);
+      expect(r.code).toBe(0);
+      const archive = join(proj, "builds", "demo-0.1.0.tgz");
+      expect(existsSync(archive)).toBe(true);
+
+      // The archive lists `bundles/web/backlog` (the link) AND the real install-backlog content. The recipe's
+      // config.yml appears EXACTLY ONCE (it is NOT duplicated through the `backlog/` link), and nothing is
+      // archived UNDER `bundles/web/backlog/` (the link is a leaf, never traversed):
+      const listed = execFileSync("tar", ["-tzf", archive], { encoding: "utf8" });
+      expect(listed).toMatch(/^(\.\/)?bundles\/web\/backlog$/m);
+      expect(
+        listed
+          .split("\n")
+          .filter((l) => /^(\.\/)?bundles\/web\/install-backlog\/config\.yml$/.test(l)),
+      ).toHaveLength(1);
+      expect(listed).not.toMatch(/(^|\/)bundles\/web\/backlog\//m); // no children under the link
+
+      // Extract and prove the EXECUTOR's install-time flow: the link is a relative symlink → install-backlog,
+      // and the Backlog.md CLI resolves the recipe with the extracted bundle as cwd (AC#3).
+      const ex = join(dir, "extracted");
+      mkdirSync(ex, { recursive: true });
+      execFileSync("tar", ["-xzf", archive, "-C", ex]);
+      const exBacklog = join(ex, "bundles", "web", "backlog");
+      expect(lstatSync(exBacklog).isSymbolicLink()).toBe(true);
+      expect(readlinkSync(exBacklog)).toBe("install-backlog");
+      // `backlog task list` resolves from the extracted bundle (throws on a non-zero exit / unresolved project):
+      const recipe = execFileSync("backlog", ["task", "list", "--plain"], {
+        cwd: join(ex, "bundles", "web"),
+        encoding: "utf8",
+      });
+      expect(recipe).toMatch(/Detect/i); // the scaffold's detect→setup→verify recipe is resolvable
     });
   });
 

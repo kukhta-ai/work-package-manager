@@ -116,6 +116,22 @@ describe("initProject — scaffolds an authoring workspace (task-87; docs 06/10/
     expect(fs.list(`${TARGET}/builds`)).toEqual([]); // empty
   });
 
+  it("TASK-102 — the always-shipped bundle-template scaffold carries a RELATIVE `backlog → install-backlog` alias", () => {
+    const fs = seedTemplates();
+    const result = initProject(deps(fs, new FakeBacklog()), {
+      targetDir: TARGET,
+      name: "hermes-handoff",
+    });
+
+    const link = `${WIP}/bundles/bundle-template/backlog`;
+    // RELATIVE target (archive-portable), and it resolves to the scaffold's real install-backlog dir, so a
+    // `bundle new` clone inherits a working link and the scaffold itself is Backlog.md-CLI-resolvable:
+    expect(fs.aliasTarget(link)).toBe("install-backlog");
+    expect(fs.exists(link)).toBe(true);
+    expect(fs.exists(`${WIP}/bundles/bundle-template/install-backlog`)).toBe(true);
+    expect(result.changedPaths).toContain(link);
+  });
+
   it("AC#3 — the workspace .gitignore excludes BOTH the authoring backlog AND builds/", () => {
     const fs = seedTemplates();
     const result = initProject(deps(fs, new FakeBacklog()), {
@@ -376,6 +392,8 @@ describe("initProject — honors a template that DECLARES targets / pre-includes
     expect(fs.aliasTarget(`${WIP}/bundles/core/.claude/skills`)).toBe(
       `${WIP}/bundles/core/installer-skills`,
     );
+    // TASK-102 — a pre-included bundle also gets its RELATIVE `backlog → install-backlog` recipe alias:
+    expect(fs.aliasTarget(`${WIP}/bundles/core/backlog`)).toBe("install-backlog");
   });
 
   it("AC#7 + — materialises the project-wide set AND the per-bundle set for each pre-included bundle", () => {

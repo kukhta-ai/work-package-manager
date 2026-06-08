@@ -17,7 +17,7 @@ import { materialiseAuthoringTasks } from "../services/materialisation.js";
 import { renderSnippet, renderTree } from "../services/render.js";
 import { parseBundleManifest, parseManifest } from "../services/schema/index.js";
 import { resolveTemplate } from "../services/template-resolver.js";
-import { perBundleAuthoringTasks } from "./create-bundle.js";
+import { ensureBundleBacklogAlias, perBundleAuthoringTasks } from "./create-bundle.js";
 import { makeArtefactDeriver } from "./derive-artefacts-capability.js";
 
 /**
@@ -333,6 +333,10 @@ export function initProject(deps: InitProjectDeps, input: InitProjectInput): Ope
     fs.write(abs, file.content);
     changedPaths.push(abs);
   }
+  // The bundle-template scaffold ships an install-backlog too, so it carries the same `backlog →
+  // install-backlog` relative alias every bundle does (TASK-102): a `bundle new` clone inherits a working link
+  // and the always-shipped scaffold itself resolves under the Backlog.md CLI.
+  changedPaths.push(ensureBundleBacklogAlias(fs, bundleTemplateDir));
   changedPaths.push(join(wip, "bundles"));
 
   // 6. Create the empty installer-skills/ + templates/ dirs under wip/ (the manifest's empty registries; the
@@ -374,6 +378,13 @@ export function initProject(deps: InitProjectDeps, input: InitProjectInput): Ope
   for (const alias of desired.aliasPlan.aliases) {
     fs.ensureAlias(join(wip, alias.aliasTo), join(wip, alias.linkPath));
     changedPaths.push(join(wip, alias.linkPath));
+  }
+
+  // Per-bundle `backlog → install-backlog` relative alias for every bundle the template pre-includes (TASK-102;
+  // `minimal` pre-includes none, so this is empty for it). Each bundle's dir + install-backlog were rendered
+  // from the template's files/ in step 3; the bundle-template scaffold's link is created in step 5 above.
+  for (const id of projection.manifest.bundles) {
+    changedPaths.push(ensureBundleBacklogAlias(fs, join(wip, "bundles", id)));
   }
 
   // 9. Render the AUTHORING front door (+ a CLAUDE.md symlink alias) at the WORKSPACE ROOT from the template's

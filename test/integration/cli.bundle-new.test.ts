@@ -1,5 +1,13 @@
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  lstatSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  readlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
@@ -191,6 +199,57 @@ describeIfBuilt("bundle lifecycle via the built dist/cli.js (task-50/51/52 — r
       // The program's OWN --version still prints the program version (kept working by the fix):
       const ver = execFileSync(process.execPath, [builtCli, "--version"], { encoding: "utf8" });
       expect(ver.trim()).toBe(pkg.version);
+    });
+  });
+
+  it("TASK-102 — `backlog` inside a fresh bundle resolves its install-backlog WITHOUT a manual symlink; tasks land in install-backlog/tasks/ (AC#1/#2)", async () => {
+    // The fix is a relative POSIX symlink; on Windows the adapter copies install-backlog → backlog, so a write
+    // through `backlog/` does NOT reach install-backlog (the known copy-fallback degradation). Prove the
+    // designed-for POSIX behaviour.
+    if (process.platform === "win32") return;
+    await withTempDir((dir) => {
+      const proj = initWorkspace(builtCli, dir);
+      expect(wpm(proj, ["bundle", "new", "web"]).status).toBe(0);
+
+      const bundleDir = join(proj, "wip", "bundles", "web");
+      // wpm shipped the link — it is a RELATIVE symlink to install-backlog (archive-portable):
+      const link = join(bundleDir, "backlog");
+      expect(lstatSync(link).isSymbolicLink()).toBe(true);
+      expect(readlinkSync(link)).toBe("install-backlog");
+
+      // Run the REAL Backlog.md CLI with the bundle as cwd — NO `ln -sfn install-backlog backlog` workaround.
+      // It must resolve the bundle's install-backlog (the executor's flow) and create the recipe task there.
+      execFileSync(
+        "backlog",
+        [
+          "task",
+          "create",
+          "ensure thing",
+          "-l",
+          "kind:state,step:ensure-thing",
+          "-m",
+          "0.1.0",
+          "--ac",
+          "it is present",
+        ],
+        { cwd: bundleDir, encoding: "utf8" },
+      );
+
+      // AC#1/#2 — the task persisted to THIS bundle's install-backlog/tasks/ (resolved through the link), not a
+      // stray real `backlog/` dir and not the workspace authoring backlog. The bundle scaffold ships the
+      // detect→setup→verify trio, so assert by the unique step slug we just created (the new task landed HERE):
+      const tasksDir = join(bundleDir, "install-backlog", "tasks");
+      const created = readdirSync(tasksDir)
+        .filter((f) => f.endsWith(".md"))
+        .filter((f) => readFileSync(join(tasksDir, f), "utf8").includes("step:ensure-thing"));
+      expect(created).toHaveLength(1);
+
+      // …and `backlog task list` resolves from within the bundle (AC#1):
+      const listed = execFileSync("backlog", ["task", "list", "--plain"], {
+        cwd: bundleDir,
+        encoding: "utf8",
+      });
+      expect(listed).toContain("ensure thing");
     });
   });
 

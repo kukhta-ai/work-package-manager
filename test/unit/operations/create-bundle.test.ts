@@ -181,6 +181,27 @@ describe("createBundle — end-to-end through the lifecycle (doc 13 §5; doc 10 
     expect(fs.aliasTarget(`${ROOT}/.claude/skills`)).toBe(`${ROOT}/installer-skills`);
   });
 
+  it("TASK-102 — creates a RELATIVE `backlog → install-backlog` alias in the bundle (resolves the recipe under the Backlog.md CLI)", () => {
+    const { fs, backlog } = seed();
+    const result = runMutation(
+      lifecycleDeps(fs, backlog),
+      { deliverableRoot: ROOT, workspaceRoot: ROOT },
+      spec(),
+      { id: "web" },
+    );
+
+    const link = `${ROOT}/bundles/web/backlog`;
+    // The link is RELATIVE — its raw target is exactly `install-backlog`, never an absolute path (so it stays
+    // valid after the archive is extracted to any path):
+    expect(fs.aliasTarget(link)).toBe("install-backlog");
+    // …and it RESOLVES: `exists` follows it (relative to the bundle dir) to the real install-backlog dir the
+    // scaffold wrote, so `cd bundles/web && backlog …` would find config.yml + tasks/ (AC#1/#2):
+    expect(fs.exists(link)).toBe(true);
+    expect(fs.exists(`${ROOT}/bundles/web/install-backlog/config.yml`)).toBe(true);
+    // It is recorded as a changed path (observable in the OperationResult):
+    expect(result.changedPaths).toContain(link);
+  });
+
   it("AC#3 — the operation composes services; the harness drove ④ rerender and ⑤ materialise, not the spec", () => {
     // The createBundleSpec's `apply` performs only structural writes; it does not import/call the derivation
     // or the materialiser — yet both happened (orchestrator re-derived, tasks created). This is verified by the

@@ -62,8 +62,7 @@ Drive it in this arc; the per-phase detail and the exact authoring-task list are
    - set its metadata and dependencies: `wpm bundle <id> meta …`, `wpm bundle <id> requires add <dep> "^x.y.z"`;
    - **fill its install-backlog by calling Backlog.md directly inside the bundle** —
      `backlog task create "…" -l "kind:state,step:<slug>" -m <version> --ac "…"` — building the
-     detect→setup→verify trio with the V2 tags (see `references/conventions.md` for the exact invocation,
-     incl. pointing Backlog.md at the install-backlog — a current CLI gap, TASK-102);
+     detect→setup→verify trio with the V2 tags (see `references/conventions.md` for the exact invocation);
    - author payload content with your editor, then **register** it: `wpm bundle <id> files add …`,
      `wpm bundle <id> skills add <name>`.
 5. **Validate and build.** `wpm build dry-run` (runs `project validate`), then `wpm build package`.

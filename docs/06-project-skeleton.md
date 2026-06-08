@@ -85,6 +85,8 @@ hermes-handoff/                       the deliverable (= contents of wip/ during
     │   │       └── handoff-core/       name; inert until install copies them into the agent's scope.
     │   │           └── SKILL.md        Namespaced; descriptions written for RUNTIME triggers, not install.
     │   ├── installer-scripts/ [OPT]  install-time TOOLING — runs DURING install (probes, smoke tests); not delivered
+    │   ├── backlog → install-backlog  [REQ]  relative symlink so the Backlog.md CLI resolves the recipe from
+    │   │                                     inside the bundle (at authoring time AND when the executor works it)
     │   └── install-backlog/   [REQ]  THE RECIPE — shipped, versioned, replaced wholesale on update; holds NO receipt.
     │       │                         The agent stamps a persistent working copy elsewhere (the var/lib analog) and
     │       │                         fills THAT in — the filled-in copy is the receipt; its done migration tasks

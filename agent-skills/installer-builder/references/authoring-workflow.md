@@ -63,12 +63,12 @@ wpm bundle new web-handoff                            # > Created. Advisor scaff
 wpm bundle web-handoff meta --summary "Hand off a web page to the user's browser"
 wpm bundle web-handoff requires add core "^0.1.0"     # core ships at the default 0.1.0; constraint must be satisfiable
 
-# Fill the install-backlog by calling Backlog.md DIRECTLY inside the bundle (see conventions.md):
-(cd wip/bundles/web-handoff && ln -sfn install-backlog backlog && \
+# Fill the install-backlog by calling Backlog.md DIRECTLY inside the bundle (see conventions.md). Each bundle
+# ships a `backlog → install-backlog` symlink, so the CLI resolves the recipe from inside the bundle:
+(cd wip/bundles/web-handoff && \
    backlog task create "ensure Chromium present" \
      -l "kind:state,step:ensure-chromium" -m 0.1.0 \
-     --ac "chromium --version prints" --dod "ownership recorded" && rm backlog)
-# (the ln/rm works around a current Backlog.md resolution gap — TASK-102)
+     --ac "chromium --version prints" --dod "ownership recorded")
 
 # Author payload via the filesystem, THEN register it (the CLI doesn't write content):
 #   cp launcher.json wip/bundles/web-handoff/payload/files/   then:
