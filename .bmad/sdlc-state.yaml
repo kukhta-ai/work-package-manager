@@ -4,9 +4,10 @@
 # (Distinct from _bmad/ — that is BMAD's own install dir; this dot-dir is our tracker.)
 
 phase: 7
-phase_name: "Authoring-context epic-4 + fixes 102/103 DONE; Phase 7 handoff (awaiting user push/PR decision)"
+phase_name: "Authoring-context epic-4 + fixes 102/103 DONE; Phase 7 HANDOFF DONE — PR #3 open, awaiting HUMAN merge"
 branch: feature/authoring-context
 epic: authoring-context
+# PHASE 7 HANDOFF DONE (user: "yes, open pr into workspace branch"): pushed origin feature/authoring-context; opened PR #3 https://github.com/kukhta-ai/work-package-manager/pull/3 (feature/authoring-context -> feature/authoring-workspace, clean epic-4 + 102/103 diff). HUMAN reviews + merges the stack bottom-up (PR #1 -> dev, PR #2 -> feature/cli, PR #3 -> feature/authoring-workspace).
 # *** EPIC-4 (96-100) + the two user-requested product fixes TASK-102 + TASK-103 are DONE and merged into feature/authoring-context. ***
 # TASK-102 (install-backlog now Backlog.md-resolvable via a relative backlog->install-backlog symlink per bundle; ships; skill workaround dropped) — APPROVE, archive re-verified end-to-end.
 # TASK-103 (bundle new no longer ships an unregistered payload-skill stub; skills remove deletes on-disk orphans, keeps deregister-leave for registered) — APPROVE; also fixed a bundle-template.e2e snapshot that EISDIR'd on the task-102 symlink.
