@@ -54,6 +54,28 @@ function hasZip(): boolean {
   }
 }
 
+/** Whether `unzip` can list a zip archive (needed only for conditional cross-format layout parity). */
+function hasUnzip(): boolean {
+  try {
+    execFileSync("unzip", ["-v"], { stdio: "pipe" });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** Return a normalized root-relative archive layout, ignoring backend-specific directory-only entries. */
+function archiveLayout(archive: string): string[] {
+  const listed = archive.endsWith(".zip")
+    ? execFileSync("unzip", ["-Z1", archive], { encoding: "utf8" })
+    : execFileSync("tar", ["-tzf", archive], { encoding: "utf8" });
+  return listed
+    .split("\n")
+    .map((line) => line.replace(/^\.\//, "").trim())
+    .filter((line) => line.length > 0 && !line.endsWith("/"))
+    .sort();
+}
+
 /**
  * Concatenate the UTF-8 content of every regular file beneath `root` (recursively) into one blob, so a leak
  * regression can assert a sentinel is absent from the WHOLE extracted archive — content, not just file names.
@@ -400,6 +422,65 @@ describeIfBuilt("`wpm build package` E2E (task-83, through dist/cli.js)", () => 
       expect(listed).not.toMatch(/bundles\/[^/]+\/payload\/agent-skills\/[^/]+\/SKILL\.md/);
       // Sanity: the bundle DID ship (so the negative assertion is meaningful):
       expect(listed).toMatch(/^(\.\/)?bundles\/web\/bundle\.yml$/m);
+    });
+  });
+
+  it("TASK-95 AC#1-4 — git packages the same un-nested, prefix-stripped layout as tarball (and zip when available)", async () => {
+    await withTempDir(async (dir) => {
+      const proj = initProject(dir);
+      expect(cli(["project", "targets", "add", "claude-code", "-C", proj], dir).code).toBe(0);
+      expect(cli(["bundle", "new", "web", "-C", proj], dir).code).toBe(0);
+
+      const ROOT_SENTINEL = "TASK95-ROOT-EXECUTOR-3f8c";
+      const BUNDLE_SENTINEL = "TASK95-BUNDLE-EXECUTOR-b247";
+      const WRAPPER_SENTINEL = "TASK95-WORKSPACE-WRAPPER-MUST-NOT-SHIP-91ad";
+      writeFileSync(join(proj, "wip", "_AGENTS.md"), `# root\n${ROOT_SENTINEL}\n`);
+      writeFileSync(
+        join(proj, "wip", "bundles", "web", "_AGENTS.md"),
+        `# web\n${BUNDLE_SENTINEL}\n`,
+      );
+      writeFileSync(join(proj, ".authoring-backlog", "task95-leak.txt"), WRAPPER_SENTINEL);
+      writeFileSync(join(proj, "builds", "task95-leak.txt"), WRAPPER_SENTINEL);
+
+      const tgz = join(proj, "builds", "demo-0.1.0.tgz");
+      expect(cli(["build", "package", "--format", "tarball", "-C", proj], dir).code).toBe(0);
+      const tarballLayout = archiveLayout(tgz);
+
+      // The workspace created by init is intentionally NOT initialized as its own Git repository. Git format
+      // must package the prepared ship set, not require/ascend to an enclosing repository's raw HEAD.
+      const gitBuild = cli(["build", "package", "--format", "git", "-C", proj], dir);
+      expect(gitBuild.code).toBe(0);
+      const gitLayout = archiveLayout(tgz);
+      expect(gitLayout).toEqual(tarballLayout);
+
+      // AC#1/#3: un-nested root + canonical root/bundle front doors and target aliases; no reserved prefix.
+      expect(gitLayout).toContain("manifest.yml");
+      expect(gitLayout).toContain("AGENTS.md");
+      expect(gitLayout).toContain("CLAUDE.md");
+      expect(gitLayout).toContain("bundles/web/AGENTS.md");
+      expect(gitLayout).toContain("bundles/web/CLAUDE.md");
+      expect(gitLayout.some((path) => path === "wip" || path.startsWith("wip/"))).toBe(false);
+      expect(gitLayout.some((path) => path.endsWith("_AGENTS.md"))).toBe(false);
+      // AC#2: the three workspace-wrapper regions and the archive itself never enter the Git archive.
+      expect(gitLayout.some((path) => path.startsWith(".authoring-backlog/"))).toBe(false);
+      expect(gitLayout.some((path) => path.startsWith("builds/"))).toBe(false);
+      expect(gitLayout).not.toContain("task95-leak.txt");
+
+      const extracted = join(dir, "task95-git-extracted");
+      mkdirSync(extracted, { recursive: true });
+      execFileSync("tar", ["-xzf", tgz, "-C", extracted]);
+      expect(readFileSync(join(extracted, "AGENTS.md"), "utf8")).toBe(`# root\n${ROOT_SENTINEL}\n`);
+      expect(readFileSync(join(extracted, "bundles", "web", "AGENTS.md"), "utf8")).toBe(
+        `# web\n${BUNDLE_SENTINEL}\n`,
+      );
+      expect(lstatSync(join(extracted, "CLAUDE.md")).isSymbolicLink()).toBe(true);
+      expect(concatAllFiles(extracted)).not.toContain(WRAPPER_SENTINEL);
+
+      // AC#4: zip is part of the same parity assertion when both authoring and listing tools are available.
+      if (hasZip() && hasUnzip()) {
+        expect(cli(["build", "package", "--format", "zip", "-C", proj], dir).code).toBe(0);
+        expect(archiveLayout(join(proj, "builds", "demo-0.1.0.zip"))).toEqual(tarballLayout);
+      }
     });
   });
 

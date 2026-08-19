@@ -3,10 +3,13 @@
 # Re-read on every resume; update at every phase boundary.
 # (Distinct from _bmad/ — that is BMAD's own install dir; this dot-dir is our tracker.)
 
-phase: 7
-phase_name: "Authoring-context epic-4 + fixes 102/103 DONE; Phase 7 HANDOFF DONE — PR #3 open, awaiting HUMAN merge"
-branch: feature/authoring-context
+phase: 5
+phase_name: "Authoring-context follow-up completion — Autonomous build (TASK-95, 101, 104, 105)"
+branch: feature/ac-task-95
 epic: authoring-context
+# USER RESUMED 2026-08-19: "finish this feature". Reopened Phase 5 for the four tracked follow-ups
+# in dependency order: TASK-95, TASK-101, TASK-104, TASK-105. Each runs the full mandated
+# create-story -> dev-story -> qa-generate-e2e-tests -> separate story-automator-review loop.
 # PHASE 7 HANDOFF DONE (user: "yes, open pr into workspace branch"): pushed origin feature/authoring-context; opened PR #3 https://github.com/kukhta-ai/work-package-manager/pull/3 (feature/authoring-context -> feature/authoring-workspace, clean epic-4 + 102/103 diff). HUMAN reviews + merges the stack bottom-up (PR #1 -> dev, PR #2 -> feature/cli, PR #3 -> feature/authoring-workspace).
 # *** EPIC-4 (96-100) + the two user-requested product fixes TASK-102 + TASK-103 are DONE and merged into feature/authoring-context. ***
 # TASK-102 (install-backlog now Backlog.md-resolvable via a relative backlog->install-backlog symlink per bundle; ships; skill workaround dropped) — APPROVE, archive re-verified end-to-end.
@@ -22,8 +25,8 @@ epic: authoring-context
 # Stories: 96 (AC what-not-how contract ref) + 97 (native-surfaces ref) = Story A; 98 (name the bet + executor loop + done-gate + how-to-use close) + 99 (drift/correctness fixes: skill install, no-rerender, wip/ paths, build rows, drop non-existent templates) = Story B; 100 (dogfood-verify) = Story C. 101 = human-gated docs/templates reconcile (build templates vs fix docs/10-11 + doc-05).
 # DECISIONS (proceeding defaults; user said "proceed"): teach current truth in the skill; DEFER building templates + editing human-owned docs (05/10/11) -> TASK-101 human-gated. EPIC-3 below.
 # === EPIC-3 (authoring-workspace) COMPLETE — PR #2 open (feature/authoring-workspace -> feature/cli), awaiting HUMAN merge. Details retained below. ===
-active_story: null
-review_cycle: 0
+active_story: task-95
+review_cycle: 2
 # *** ALL 10 EPIC-3 STORIES DONE + merged --no-ff into feature/authoring-workspace: 85, 92, 86, 87, 91, 88, 94, 89, 90, 93. ***
 # Follow-up TASK-95 created (deferred --format git reconciliation; pre-existing, outside task-90 scope). PHASE 6 epic gate IN PROGRESS.
 # *** PHASE 6 EPIC GATE = PASS. *** Cold E2E green (tsc0/biome0/build0/vitest 1217 passed, 96 files). testarch-trace 61/61 ACs (100%, 0 gaps, P0 100%). testarch-nfr PASS (Maintainability/Reliability/Security/Fake-Real-Parity; Perf=CONCERNS note-only, pre-existing ~22min real-binary e2e). retro=GREEN w/ tracked AMBER carry-forwards. Gate artifacts committed 165a144.
@@ -233,14 +236,14 @@ specialists:
   architect:    {spawned: true,  id: "af0958eff0e1846e5", role: "architecture conformance vs docs/12-13", status: "P3 done — architecture/epics/readiness=PASS; RESUME if a task reveals a design gap"}
   tea:          {spawned: true,  id: "aa6e3730c6822131e", role: "test design/framework/ci/trace/nfr/gate", status: "P3 done — test-design/framework=vitest/ci=matrix; RESUME in P6 (trace/nfr/final gate)"}
   sm:           {spawned: true,  id: "a58a6182b0009cbb7", role: "sprint setup + create-story per task",  status: "P4 done — sprint-status.yaml; worker owns create-story in the P5 loop"}
-  worker:       {spawned: true,  id: "a2b7fcc7ac77791f1", role: "dev-story implementation (fresh worker #3, invokes bmad-* skills)", last_skill: "dev-story @ the materialise-root lifecycle fix (in progress)", status: "ACTIVE worker (rotated). a7f5ad601 (worker #2) degraded -> parse errors after ~9 tasks (33, dev-merge, A:35/36+S1, E:42/43/44); a67b0906 (worker #1) degraded after ~30. OPERATING RULE: workers accumulate transcript + eventually parse-error on resume; ROTATE to a fresh Agent every ~5-8 tasks or on the first 0-tool/parse-error return. Worker #2 implemented 31,32,28,29,33,A,E; #1 implemented 1-27,30."}
+  worker:       {spawned: true,  id: "/root/followup_worker", role: "persistent follow-up story worker", last_skill: "bmad-dev-story @ task-95 (review fixes absorbed)", status: "TASK-95 worker loop complete; full gate green (1237 tests)."}
   # CROSS-CUTTING FIX in flight (worker #3): the task-25 lifecycle ⑤ MATERIALISE used ctx.root, but the real authoring backlog is
   # <project>/.authoring-backlog -- so every materialising command (targets add; createBundle/bundle new later) FAILED on a real
   # project (BacklogCli shells out cwd=root; project root isn't a backlog root). Hidden by FakeBacklog-at-project-root tests; CAUGHT
   # by the orchestrator's real-binary spot-check. Fix: materialise into join(ctx.root, AUTHORING_BACKLOG_DIR) [shared constant] +
   # update the FakeBacklog tests to init at .authoring-backlog (parity) + a real-backlog regression test. Rides feature/cli-targets.
   worker_retired: {id: "a67b0906de8ff721d", reason: "broke on continuations -- big authoring runs worked but short follow-ups returned 0 tool_uses + got confused; retired after task-30. Do not re-dispatch."}
-  reviewer:     {spawned: true,  id: "a7f5a303c38f8ec6d", role: "separate-lane review",                  last_skill: "bmad-story-automator-review @ task-29 (APPROVE; report-only)", status: "reviewed through task-29; re-verified the omelette protocol fix 3 ways (loop closes for bash/zsh/fish, byte-accurate to omelette 0.4.17)"}
+  reviewer:     {spawned: true,  id: "/root/followup_reviewer", role: "persistent separate-lane follow-up reviewer", last_skill: "bmad-story-automator-review @ task-95 (cycle 2 APPROVE)", status: "TASK-95 clean: no new findings; prior HIGH/HIGH/MEDIUM/LOW all closed; full gate 1237 tests."}
   investigator: {spawned: false,                          role: "systematic debugging at the epic gate", status: "spawn in P6 on cold-E2E failure"}
   retro:        {spawned: false,                          role: "epic retrospective",                    status: "spawn after task-33 (end of P5)"}
 
@@ -266,4 +269,4 @@ tooling:
   tool_target: "claude-code"
   claude_code_skills: ".claude/skills (56 skills)"
 
-last_updated: "2026-06-01"
+last_updated: "2026-08-19"

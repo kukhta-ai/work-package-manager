@@ -1,5 +1,6 @@
 import { execFileSync } from "node:child_process";
 import {
+  chmodSync,
   existsSync,
   lstatSync,
   mkdirSync,
@@ -34,6 +35,15 @@ function has(tool: string): boolean {
   }
 }
 const hasZip = has("zip");
+
+/** Return a normalized root-relative layout for any gzip-tar archive, ignoring directory-only entries. */
+function tarLayout(archive: string): string[] {
+  return execFileSync("tar", ["-tzf", archive], { encoding: "utf8" })
+    .split("\n")
+    .map((line) => line.replace(/^\.\//, "").trim())
+    .filter((line) => line.length > 0 && !line.endsWith("/"))
+    .sort();
+}
 
 /** Seed a small shippable tree on real disk under `root` and return the relative file list. */
 function seedShip(root: string): string[] {
@@ -165,13 +175,42 @@ describe("createArchive — front-door transforms (task-90, staging)", () => {
   });
 });
 
-describe("createArchive — git (archives the committed HEAD)", () => {
-  it("produces a .tgz from `git archive HEAD` when the project is a committed repo", async () => {
+describe("createArchive — git (TASK-95 prepared-tree parity)", () => {
+  it("archives exactly the transformed ship set and matches the tarball layout", async () => {
     await withTempDir(async (dir) => {
       const root = join(dir, "proj");
-      mkdirSync(root, { recursive: true });
-      seedShip(root);
-      // Make it a committed git repo.
+      mkdirSync(join(root, "bundles", "core"), { recursive: true });
+      mkdirSync(join(root, "bundles", "disabled"), { recursive: true });
+      mkdirSync(join(root, "installer-skills"), { recursive: true });
+      mkdirSync(join(root, ".authoring-backlog"), { recursive: true });
+      mkdirSync(join(root, ".claude"), { recursive: true });
+      writeFileSync(join(root, "manifest.yml"), "project:\n  name: demo\n");
+      writeFileSync(join(root, "_AGENTS.md"), "# root executor\n");
+      writeFileSync(join(root, "bundles", "core", "_AGENTS.md"), "# core executor\n");
+      writeFileSync(join(root, "bundles", "core", "bundle.yml"), "id: core\n");
+      writeFileSync(join(root, "bundles", "disabled", "bundle.yml"), "id: disabled\n");
+      writeFileSync(join(root, "installer-skills", "demo.txt"), "skill\n");
+      writeFileSync(join(root, "ident.txt"), "$Id: author-owned-sentinel $\n");
+      const UTF16_BYTES = Buffer.from([0xff, 0xfe, 0x41, 0x00, 0x0a, 0x00]);
+      writeFileSync(join(root, "utf16.txt"), UTF16_BYTES);
+      writeFileSync(join(root, ".authoring-backlog", "LEAK.txt"), "must not ship\n");
+      // Source Git policy must not override the already-computed build plan: both files themselves ship, the
+      // ignored skill still ships, and export-ignore must not remove manifest.yml from the Git-format archive.
+      writeFileSync(join(root, ".gitignore"), "installer-skills/\n");
+      writeFileSync(
+        join(root, ".gitattributes"),
+        [
+          "manifest.yml export-ignore",
+          "ident.txt ident",
+          "utf16.txt working-tree-encoding=UTF-16LE-BOM",
+          "",
+        ].join("\n"),
+      );
+      symlinkSync("../installer-skills", join(root, ".claude", "skills"));
+
+      // Commit the source repository's trackable tree so the pre-TASK-95 `git archive HEAD` implementation
+      // demonstrably leaks files outside the plan. The ignored planned skill intentionally remains uncommitted;
+      // the fixed implementation must ignore source HEAD/Git policy and consume `files` only.
       const git = (args: string[]) =>
         execFileSync("git", args, {
           cwd: root,
@@ -190,42 +229,144 @@ describe("createArchive — git (archives the committed HEAD)", () => {
 
       const out = join(dir, "out");
       mkdirSync(out, { recursive: true });
+      const files = [
+        ".claude/skills",
+        ".gitattributes",
+        ".gitignore",
+        "_AGENTS.md",
+        "bundles/core/_AGENTS.md",
+        "bundles/core/bundle.yml",
+        "ident.txt",
+        "installer-skills/demo.txt",
+        "manifest.yml",
+        "utf16.txt",
+      ];
+      const transforms = [
+        { from: "_AGENTS.md", to: "AGENTS.md", aliases: ["CLAUDE.md"] },
+        {
+          from: "bundles/core/_AGENTS.md",
+          to: "bundles/core/AGENTS.md",
+          aliases: ["bundles/core/CLAUDE.md"],
+        },
+      ];
+      const tarball = createArchive({
+        root,
+        outDir: out,
+        baseName: "demo-tarball",
+        format: "tarball",
+        files,
+        transforms,
+      });
       const archive = createArchive({
         root,
         outDir: out,
-        baseName: "demo-1.0.0",
+        baseName: "demo-git",
         format: "git",
-        files: ["manifest.yml"], // git ignores `files`; HEAD is the source
+        files,
+        transforms,
       });
-      // The returned package path is POSIX on every OS — assert the `/`-form (a no-op on Linux/macOS).
-      expect(archive).toBe(toPosix(join(out, "demo-1.0.0.tgz")));
+      expect(archive).toBe(toPosix(join(out, "demo-git.tgz")));
       expect(existsSync(archive)).toBe(true);
-      const listed = execFileSync("tar", ["-tzf", archive], { encoding: "utf8" });
-      expect(listed).toContain("manifest.yml");
+
+      const expected = [
+        ".claude/skills",
+        ".gitattributes",
+        ".gitignore",
+        "AGENTS.md",
+        "CLAUDE.md",
+        "bundles/core/AGENTS.md",
+        "bundles/core/CLAUDE.md",
+        "bundles/core/bundle.yml",
+        "ident.txt",
+        "installer-skills/demo.txt",
+        "manifest.yml",
+        "utf16.txt",
+      ].sort();
+      expect(tarLayout(archive)).toEqual(expected);
+      expect(tarLayout(archive)).toEqual(tarLayout(tarball));
+      expect(tarLayout(archive)).not.toContain(".authoring-backlog/LEAK.txt");
+      expect(tarLayout(archive)).not.toContain("bundles/disabled/bundle.yml");
+      expect(tarLayout(archive).some((path) => path.endsWith("_AGENTS.md"))).toBe(false);
+
+      // The temporary Git plumbing is only a packaging mechanism: authored bytes must not be cleaned or
+      // transcoded by attributes carried in the deliverable itself.
+      const extracted = join(dir, "git-extracted");
+      mkdirSync(extracted, { recursive: true });
+      execFileSync("tar", ["-xzf", archive, "-C", extracted]);
+      expect(readFileSync(join(extracted, "ident.txt"))).toEqual(
+        readFileSync(join(root, "ident.txt")),
+      );
+      expect(readFileSync(join(extracted, "utf16.txt"))).toEqual(UTF16_BYTES);
     });
   });
 
-  it("a non-git project is a clear typed error (not a crash)", async () => {
+  it("does not require the source deliverable to be a Git repository", async () => {
     await withTempDir(async (dir) => {
       const root = join(dir, "proj");
       mkdirSync(root, { recursive: true });
-      seedShip(root);
-      let thrown: unknown;
-      try {
-        createArchive({ root, outDir: dir, baseName: "demo-1.0.0", format: "git", files: [] });
-      } catch (e) {
-        thrown = e;
-      }
-      expect(isDomainError(thrown)).toBe(true);
-      expect((thrown as Error).message).toMatch(/git/i);
+      const files = seedShip(root);
+      const archive = createArchive({
+        root,
+        outDir: dir,
+        baseName: "demo-1.0.0",
+        format: "git",
+        files,
+      });
+      expect(tarLayout(archive)).toEqual([...files].sort());
     });
   });
 });
 
 describe("createArchive — zip (missing-tool handling)", () => {
+  it("requests symlink-preserving mode instead of dereferencing planned alias paths", async () => {
+    if (process.platform === "win32") return;
+    await withTempDir(async (dir) => {
+      const root = join(dir, "proj");
+      const bin = join(dir, "bin");
+      mkdirSync(join(root, "installer-skills"), { recursive: true });
+      mkdirSync(join(root, ".claude"), { recursive: true });
+      mkdirSync(bin, { recursive: true });
+      writeFileSync(join(root, "installer-skills", "demo.txt"), "skill\n");
+      symlinkSync("../installer-skills", join(root, ".claude", "skills"));
+
+      // A deterministic stand-in for Info-ZIP: it refuses the archive call unless the documented `-y`
+      // (`--symlinks`) switch is present. This keeps the regression covered even on CI images without zip.
+      const fakeZip = join(bin, "zip");
+      writeFileSync(
+        fakeZip,
+        [
+          "#!/usr/bin/env node",
+          'const fs = require("node:fs");',
+          "const args = process.argv.slice(2);",
+          'if (args[0] === "-v") process.exit(0);',
+          'if (!args.includes("-y")) process.exit(9);',
+          'fs.writeFileSync(args[args.indexOf("-y") + 1], "fake zip");',
+          "",
+        ].join("\n"),
+      );
+      chmodSync(fakeZip, 0o755);
+
+      const previousPath = process.env.PATH;
+      process.env.PATH = `${bin}:${previousPath ?? ""}`;
+      try {
+        const archive = createArchive({
+          root,
+          outDir: dir,
+          baseName: "symlink-layout",
+          format: "zip",
+          files: [".claude/skills", "installer-skills/demo.txt"],
+        });
+        expect(existsSync(archive)).toBe(true);
+      } finally {
+        if (previousPath === undefined) delete process.env.PATH;
+        else process.env.PATH = previousPath;
+      }
+    });
+  });
+
   it(
     hasZip
-      ? "produces a real .zip when zip is available (or degrades to a clear typed error)"
+      ? "produces a real .zip when zip is available"
       : "raises a clear typed error when zip is absent",
     async () => {
       await withTempDir(async (dir) => {
@@ -239,30 +380,15 @@ describe("createArchive — zip (missing-tool handling)", () => {
           // The returned package path is POSIX on every OS (a portable artefact reference) — assert against the
           // `/`-form so the expectation is correct on Windows too, where `join` would otherwise yield `\`.
           const expected = toPosix(join(out, "demo-1.0.0.zip"));
-          // `zip -v` succeeded (the probe), but the ARCHIVE invocation may still fail for an environmental reason
-          // on some platforms (a `zip` build whose arg-shape differs). The contract is: produce the archive, or
-          // raise a clear typed ValidationError — never crash. So accept either, rather than wrongly asserting
-          // "zip not available" when zip is present-but-the-invocation-differs.
-          let archive: string | undefined;
-          let thrown: unknown;
-          try {
-            archive = createArchive({
-              root,
-              outDir: out,
-              baseName: "demo-1.0.0",
-              format: "zip",
-              files,
-            });
-          } catch (e) {
-            thrown = e;
-          }
-          if (archive !== undefined) {
-            expect(archive).toBe(expected);
-            expect(existsSync(archive)).toBe(true);
-          } else {
-            expect(isDomainError(thrown)).toBe(true);
-            expect((thrown as Error).message).toMatch(/zip/i);
-          }
+          const archive = createArchive({
+            root,
+            outDir: out,
+            baseName: "demo-1.0.0",
+            format: "zip",
+            files,
+          });
+          expect(archive).toBe(expected);
+          expect(existsSync(archive)).toBe(true);
         } else {
           let thrown: unknown;
           try {
