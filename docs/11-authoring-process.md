@@ -161,11 +161,12 @@ The no-mirror principle from `10` applies fully here: the authoring-backlog uses
 Putting it together end-to-end:
 
 ```
-# Author kicks off the project. single-bundle ships `core`; init materialises the
-# project-wide task set (8) + core's per-bundle set. core is dependency-only, created
-# with --no-advisor by the template, so its set is 11 — total 19 tasks.
-wpm init hermes-handoff --template single-bundle
+# Author kicks off with the shipped minimal template. init materialises the project-wide
+# task set (8); core is then created dependency-only with --no-advisor, adding its
+# per-bundle set (11) — total 19 tasks.
+wpm init hermes-handoff --template minimal
 cd hermes-handoff
+wpm bundle new core --version 0.3.0 --no-advisor
 
 # See what's outstanding, and read titles (the agent picks work by title, not by id).
 # The authoring-backlog has task_prefix=authoring, so its ids are authoring-N:
@@ -190,7 +191,7 @@ wpm project meta --description "..." --license MIT --repository "..."
 (cd wip/bundles/core && \
    backlog task create "stand up handoff channel" \
      -l "kind:state,step:standup-channel" \
-     -m 0.1.0 \
+     -m 0.3.0 \
      --ac "channel reachable from agent scope" \
      --dod "ownership recorded")
 # …more state tasks until the detect/setup/verify trio is complete…
@@ -200,6 +201,11 @@ wpm project meta --description "..." --license MIT --repository "..."
 # (12 with the auto-advisor; 11 with --no-advisor):
 wpm bundle new pdf-handoff
 # > Created bundle 'pdf-handoff'. Advisor scaffolded. Materialised 12 authoring tasks.
+
+# Author payload content via the filesystem, then register the path relative to payload/files/:
+mkdir -p wip/bundles/pdf-handoff/payload/files
+cp launchers/launcher.json wip/bundles/pdf-handoff/payload/files/
+wpm bundle pdf-handoff files add launcher.json
 
 # Bumping a version — materialises bump-specific review tasks:
 wpm bundle pdf-handoff version bump minor
