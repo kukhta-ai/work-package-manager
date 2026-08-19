@@ -9,7 +9,10 @@ Read with `10` (the CLI surface this project implements), `07` (the templates it
 A single Node.js + TypeScript package, distributed via npm, that ships three things:
 
 1. **The `wpm` CLI binary** — the surface fully specified in `10`.
-2. **Built-in templates** — the project templates (`minimal`, `single-bundle`, `multi-bundle`) and bundle templates (`default`, `with-payload-skill`, `adopts-system-tool`) the CLI scaffolds from. Hand-authored, version-controlled, copied verbatim by `wpm init` / `bundle new` with mechanical placeholder substitution. The project templates carry more than directory structure: their files hold the *instructional content* that makes a generated install work — the orchestrator skill, the front-door recognition text, the per-task workflow, the loop instructions (catalogued in `06`, "What the template's files actually say"). They do *not* bundle a discipline-enforcer skill of our own; where an author wants enforcement, they vendor an existing one (`06`).
+2. **Built-in templates** — the hand-authored, version-controlled trees the CLI scaffolds from with mechanical placeholder substitution.
+   **Shipped project templates:** `minimal`.
+   **Shipped bundle templates:** `default`.
+   Project-local templates can add specialized shapes and shadow a built-in of the same name. The shipped project template carries more than directory structure: its files hold the *instructional content* that makes a generated install work — the orchestrator skill, the front-door recognition text, the per-task workflow, the loop instructions (catalogued in `06`, "What the template's files actually say"). It does *not* bundle a discipline-enforcer skill of our own; where an author wants enforcement, they vendor an existing one (`06`).
 3. **The builder's own agent skill** — `installer-builder/SKILL.md` plus references, packaged so an agent reading it knows how to drive the CLI to author a bundle-project. The meta-skill that closes the loop: the CLI is agent-friendly *by virtue of an agent skill that ships alongside it*, not by hoping the agent figures it out from `--help`.
 
 The doc set (`docs/00-14.md`) lives in the same repo and is part of what ships, but is a static deliverable — not loaded at runtime, not executed, just there to be read.
@@ -146,41 +149,36 @@ installer/                          the installer-builder project root
 │   ── BUILT-IN TEMPLATES ────────────────────────────────────────────────
 ├── templates/                 [REQ]  ships in the npm package; the built-in template set (project-local templates/ shadow these)
 │   ├── project/
-│   │   ├── minimal/
-│   │   │   ├── template.yml             scope: project, parameters: [project-name]
-│   │   │   ├── files/                   the snippet tree, copied at init with substitution
-│   │   │   │   ├── manifest.yml.tmpl
-│   │   │   │   ├── AGENTS.md.tmpl       front door: recognition + kickoff + the install shape (06)
-│   │   │   │   ├── RALPH-LOOP.md.tmpl   the unattended-loop rules, as plain instructions (06)
-│   │   │   │   ├── README.md.tmpl
-│   │   │   │   └── installer-skills/
-│   │   │   │       └── {{project-name}}-installer/
-│   │   │   │           └── SKILL.md.tmpl         the orchestrator skill (per-project)
-│   │   │   │       (an author may also VENDOR third-party discipline skills here — e.g. from
-│   │   │   │        superpowers, MIT — but those aren't part of the builder's template; see 06)
-│   │   │   └── snippets/                ON-DEMAND stubs, rendered later by add commands (not copied at init)
-│   │   │       ├── advisor.SKILL.md.tmpl        rendered by `bundle <id> advisor add` / `bundle new`
-│   │   │       ├── installer-skill.SKILL.md.tmpl rendered by `… installer-skills add` (scaffold branch)
-│   │   │       └── payload-skill.SKILL.md.tmpl   rendered by `bundle <id> skills add` (scaffold branch)
-│   │   ├── single-bundle/
-│   │   │   ├── template.yml
-│   │   │   └── files/                   minimal/ + pre-included `core` bundle
-│   │   └── multi-bundle/
-│   │       ├── template.yml
-│   │       └── files/                   minimal/ + core + two example bundles via requires
+│   │   └── minimal/
+│   │       ├── template.yml             scope: project, parameters: [project-name]
+│   │       ├── files/                   copied at init with substitution
+│   │       │   ├── manifest.yml.tmpl
+│   │       │   ├── RALPH-LOOP.md.tmpl   the unattended-loop rules, as plain instructions (06)
+│   │       │   ├── README.md.tmpl
+│   │       │   └── installer-skills/
+│   │       │       └── {{project-name}}-installer/
+│   │       │           └── references/journaling.md.tmpl
+│   │       │       (an author may also VENDOR third-party discipline skills here — e.g. from
+│   │       │        superpowers, MIT — but those aren't part of the builder's template; see 06)
+│   │       └── snippets/                derived front doors + ON-DEMAND stubs (not copied wholesale)
+│   │           ├── AGENTS.md                    executor front-door source
+│   │           ├── authoring-front-door.md.tmpl workspace front-door source
+│   │           ├── installer-skills/{{project-name}}-installer/SKILL.md
+│   │           ├── advisor.SKILL.md.tmpl        rendered by `bundle <id> advisor add` / `bundle new`
+│   │           ├── installer-skill.SKILL.md.tmpl rendered by `… installer-skills add` (scaffold branch)
+│   │           └── payload-skill.SKILL.md.tmpl   rendered by `bundle <id> skills add` (scaffold branch)
 │   │
 │   └── bundle/
-│       ├── default/
-│       │   ├── template.yml             scope: bundle
-│       │   └── files/
-│       │       ├── bundle.yml.tmpl
-│       │       ├── AGENTS.md.tmpl       per-bundle scope notes
-│       │       └── install-backlog/
-│       │           └── config.yml.tmpl  DoD scaffold
-│       ├── with-payload-skill/
-│       │   └── files/                   default/ + payload/agent-skills/{{name}}/ scaffold
-│       └── adopts-system-tool/
-│           └── files/                   default/ + the detect→adopt-or-install pattern
+│       └── default/
+│           ├── template.yml             scope: bundle; `bundle.yml` is written canonically
+│           └── files/
+│               ├── _AGENTS.md.tmpl      author-owned per-bundle front door
+│               ├── install-backlog/
+│               │   ├── config.yml.tmpl  DoD scaffold
+│               │   └── tasks/           detect → setup → verify starter tasks
+│               ├── installer-scripts/
+│               ├── installer-skills/
+│               └── payload/             empty agent-skills/, files/, and templates/ roots
 │
 │   ── BUILDER'S OWN AGENT SKILL (for authoring, builder-side) ───────────
 ├── agent-skills/              [REQ]  ships in the npm package; the meta-skill for AUTHORING bundle-projects
@@ -218,7 +216,7 @@ installer/                          the installer-builder project root
 │   │   └── ...
 │   └── fixtures/
 │       ├── hermes-handoff/          the worked-example project for tests
-│       ├── single-bundle-project/
+│       ├── minimal-project/
 │       └── ...
 │
 │   ── BUILD & CI ───────────────────────────────────────────────────────
@@ -307,7 +305,7 @@ Mapping principles to where they live in the code:
 
 ## Templates as data, not code
 
-Built-in templates in `templates/` are *static directory trees plus a small `template.yml`*. The CLI's `render.ts` reads `template.yml` to learn the parameter list, walks `files/` recursively, and writes each file out with `{{placeholder}}` substitution. There is no template engine logic in the templates themselves — no conditionals, no loops, no logic. If a template needs different shapes for different cases (e.g., `multi-bundle` vs `single-bundle`), those are *separate template directories*, not branches in one template.
+Built-in templates in `templates/` are *static directory trees plus a small `template.yml`*. The CLI's `render.ts` reads `template.yml` to learn the parameter list, walks `files/` recursively, and writes each file out with `{{placeholder}}` substitution. There is no template engine logic in the templates themselves — no conditionals, no loops, no logic. When a project needs specialized shapes, each is a separate project-local template directory rather than a conditional branch inside another template.
 
 A project template carries two kinds of content: `files/` is copied wholesale at `init` time; `snippets/` holds single-file stubs rendered on demand later (the advisor, install-time-skill, and payload-skill SKILL.md stubs that `… advisor add` / `… installer-skills add` / `… skills add` emit in their scaffold branch). Both use the same `render.ts` substitution; they differ only in *when* the CLI reaches for them. Keeping snippets in the template (rather than hard-coding the stub text in the CLI) is the same structure-not-content discipline that governs everything else: the stub's shape is template-author content, and the CLI only fills variables.
 
@@ -348,9 +346,10 @@ npm i -g <installer-package-name>
 # (Optional) install the agent skill
 installer skill install      # copies agent-skills/installer-builder/ into the user's scope
 
-# Create their first bundle-project
-wpm init my-installer --template multi-bundle
+# Create their first bundle-project, then add the bundles it needs
+wpm init my-installer --template minimal
 cd my-installer
+wpm bundle new core --no-advisor
 
 # Their agent (Claude Code, Codex, etc.) takes over from here, working through the
 # authoring-backlog that init populated

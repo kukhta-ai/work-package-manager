@@ -5,7 +5,7 @@
 
 phase: 5
 phase_name: "Authoring-context follow-up completion — Autonomous build (TASK-95, 101, 104, 105)"
-branch: feature/ac-task-95
+branch: feature/ac-task-101
 epic: authoring-context
 # USER RESUMED 2026-08-19: "finish this feature". Reopened Phase 5 for the four tracked follow-ups
 # in dependency order: TASK-95, TASK-101, TASK-104, TASK-105. Each runs the full mandated
@@ -25,7 +25,7 @@ epic: authoring-context
 # Stories: 96 (AC what-not-how contract ref) + 97 (native-surfaces ref) = Story A; 98 (name the bet + executor loop + done-gate + how-to-use close) + 99 (drift/correctness fixes: skill install, no-rerender, wip/ paths, build rows, drop non-existent templates) = Story B; 100 (dogfood-verify) = Story C. 101 = human-gated docs/templates reconcile (build templates vs fix docs/10-11 + doc-05).
 # DECISIONS (proceeding defaults; user said "proceed"): teach current truth in the skill; DEFER building templates + editing human-owned docs (05/10/11) -> TASK-101 human-gated. EPIC-3 below.
 # === EPIC-3 (authoring-workspace) COMPLETE — PR #2 open (feature/authoring-workspace -> feature/cli), awaiting HUMAN merge. Details retained below. ===
-active_story: task-95
+active_story: task-101
 review_cycle: 2
 # *** ALL 10 EPIC-3 STORIES DONE + merged --no-ff into feature/authoring-workspace: 85, 92, 86, 87, 91, 88, 94, 89, 90, 93. ***
 # Follow-up TASK-95 created (deferred --format git reconciliation; pre-existing, outside task-90 scope). PHASE 6 epic gate IN PROGRESS.
@@ -236,14 +236,14 @@ specialists:
   architect:    {spawned: true,  id: "af0958eff0e1846e5", role: "architecture conformance vs docs/12-13", status: "P3 done — architecture/epics/readiness=PASS; RESUME if a task reveals a design gap"}
   tea:          {spawned: true,  id: "aa6e3730c6822131e", role: "test design/framework/ci/trace/nfr/gate", status: "P3 done — test-design/framework=vitest/ci=matrix; RESUME in P6 (trace/nfr/final gate)"}
   sm:           {spawned: true,  id: "a58a6182b0009cbb7", role: "sprint setup + create-story per task",  status: "P4 done — sprint-status.yaml; worker owns create-story in the P5 loop"}
-  worker:       {spawned: true,  id: "/root/followup_worker", role: "persistent follow-up story worker", last_skill: "bmad-dev-story @ task-95 (review fixes absorbed)", status: "TASK-95 worker loop complete; full gate green (1237 tests)."}
+  worker:       {spawned: true,  id: "/root/followup_worker", role: "persistent follow-up story worker", last_skill: "bmad-dev-story @ task-101 (review-fix absorption)", status: "Cycle-1 fixes inspected; APPROVE with 0 pending items; story evidence updated before the worker turn stalled."}
   # CROSS-CUTTING FIX in flight (worker #3): the task-25 lifecycle ⑤ MATERIALISE used ctx.root, but the real authoring backlog is
   # <project>/.authoring-backlog -- so every materialising command (targets add; createBundle/bundle new later) FAILED on a real
   # project (BacklogCli shells out cwd=root; project root isn't a backlog root). Hidden by FakeBacklog-at-project-root tests; CAUGHT
   # by the orchestrator's real-binary spot-check. Fix: materialise into join(ctx.root, AUTHORING_BACKLOG_DIR) [shared constant] +
   # update the FakeBacklog tests to init at .authoring-backlog (parity) + a real-backlog regression test. Rides feature/cli-targets.
   worker_retired: {id: "a67b0906de8ff721d", reason: "broke on continuations -- big authoring runs worked but short follow-ups returned 0 tool_uses + got confused; retired after task-30. Do not re-dispatch."}
-  reviewer:     {spawned: true,  id: "/root/followup_reviewer", role: "persistent separate-lane follow-up reviewer", last_skill: "bmad-story-automator-review @ task-95 (cycle 2 APPROVE)", status: "TASK-95 clean: no new findings; prior HIGH/HIGH/MEDIUM/LOW all closed; full gate 1237 tests."}
+  reviewer:     {spawned: true,  id: "/root/followup_reviewer2", role: "replacement persistent separate-lane follow-up reviewer", last_skill: "bmad-story-automator-review @ task-101 (cycle 2 APPROVE)", status: "Clean exact-diff audit: 0 findings; type/lint/build + 1250/1250 tests + inventories + diff-check passed."}
   investigator: {spawned: false,                          role: "systematic debugging at the epic gate", status: "spawn in P6 on cold-E2E failure"}
   retro:        {spawned: false,                          role: "epic retrospective",                    status: "spawn after task-33 (end of P5)"}
 
