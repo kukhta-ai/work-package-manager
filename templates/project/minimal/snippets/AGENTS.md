@@ -27,8 +27,8 @@ restarts:
 
 1. **Orient.** Read `manifest.yml` — the project's identity and its enabled bundles.
 2. **Detect.** Look at the environment to see what is already present; never assume.
-3. **Offer the menu.** Present the available bundles for the user to choose from:
-{{bundles}}
+3. **Offer the menu.** Read each enabled bundle's `summary` and conversationally ask which functionality the
+   user wants. Never expose internal bundle ids, and derive dependencies rather than asking about them.
 4. **Resolve & preview.** For the chosen bundles, resolve their `requires` dependencies (install a dependency
    before what needs it), then **preview the plan and get consent** before changing anything.
 5. **Work each bundle's backlog, task by task.** For every task, run the uniform loop —

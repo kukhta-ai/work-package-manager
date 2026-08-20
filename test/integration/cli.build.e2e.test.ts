@@ -6,6 +6,7 @@ import {
   readdirSync,
   readFileSync,
   readlinkSync,
+  symlinkSync,
   writeFileSync,
 } from "node:fs";
 import { join } from "node:path";
@@ -184,8 +185,8 @@ describeIfBuilt("`wpm build package` E2E (task-83, through dist/cli.js)", () => 
       // AC90#2/#5: the executor front door ships under its CANONICAL stripped name `AGENTS.md`, and the reserved
       // `_AGENTS.md` is GONE from the archive (never both names).
       expect(listed).toMatch(/^(\.\/)?AGENTS\.md$/m);
-      // No reserved-prefix front door ships under the `_AGENTS.md` BASENAME (the bundle-template's
-      // `_AGENTS.md.tmpl` scaffold is a `.tmpl`, not a front door, so it is intentionally not matched).
+      // No reserved-prefix front door ships under the `_AGENTS.md` BASENAME. The authoring bundle-template
+      // scaffold is excluded from the archive entirely (TASK-104).
       expect(listed).not.toMatch(/(^|\/)_AGENTS\.md$/m);
       // AC89#3: the authoring backlog, the authoring front door (workspace-root AGENTS.md), and builds/ are ABSENT.
       expect(listed).not.toContain(".authoring-backlog");
@@ -217,7 +218,7 @@ describeIfBuilt("`wpm build package` E2E (task-83, through dist/cli.js)", () => 
       expect(existsSync(archive)).toBe(true);
 
       // AC90#5: no reserved-prefix front door (the `_AGENTS.md` basename) anywhere in the archive — never both
-      // names. (The bundle-template's `_AGENTS.md.tmpl` is a `.tmpl` scaffold, not a front door, so it is exempt.)
+      // names. The authoring bundle-template scaffold is excluded from the archive entirely (TASK-104).
       const listed = execFileSync("tar", ["-tzf", archive], { encoding: "utf8" });
       expect(listed).not.toMatch(/(^|\/)_AGENTS\.md$/m);
       // AC90#2: the canonical front door + the CLAUDE.md alias are present at the root AND in the bundle.
@@ -422,6 +423,111 @@ describeIfBuilt("`wpm build package` E2E (task-83, through dist/cli.js)", () => 
       expect(listed).not.toMatch(/bundles\/[^/]+\/payload\/agent-skills\/[^/]+\/SKILL\.md/);
       // Sanity: the bundle DID ship (so the negative assertion is meaningful):
       expect(listed).toMatch(/^(\.\/)?bundles\/web\/bundle\.yml$/m);
+    });
+  });
+
+  it("TASK-104 — every package format prunes builder templates but preserves registered runtime `.tmpl` files and symlinks", async () => {
+    await withTempDir(async (dir) => {
+      const proj = initProject(dir);
+      const executorFrontDoor = join(proj, "wip", "_AGENTS.md");
+      const assertRuntimeBundleMenu = (): void => {
+        const content = readFileSync(executorFrontDoor, "utf8");
+        expect(content).not.toContain("{{bundles}}");
+        expect(content).not.toMatch(/choose from:\s*$/im);
+        expect(content).toContain("Read each enabled bundle's `summary`");
+        expect(content).toContain("Never expose internal bundle ids");
+      };
+
+      // Zero enabled bundles: init renders a complete runtime-discovery protocol, never a static menu.
+      assertRuntimeBundleMenu();
+      expect(cli(["project", "targets", "add", "claude-code", "-C", proj], dir).code).toBe(0);
+      expect(cli(["bundle", "new", "web", "-C", proj], dir).code).toBe(0);
+      // One enabled bundle: the author-owned front door remains complete and discovers it from the manifest.
+      assertRuntimeBundleMenu();
+
+      const wip = join(proj, "wip");
+      const runtimeDir = join(wip, "bundles", "web", "payload", "templates", "nested");
+      mkdirSync(runtimeDir, { recursive: true });
+      writeFileSync(join(runtimeDir, "runtime.conf.tmpl"), "port={{port}}\n", "utf8");
+      expect(
+        cli(["bundle", "web", "templates", "add", "nested/runtime.conf.tmpl", "-C", proj], dir)
+          .code,
+      ).toBe(0);
+
+      // A root builder source must be pruned. A file-like orphan under bundles/ models the real adapter's
+      // DirEntry shape for a symlink and proves it cannot bypass the manifest boundary.
+      writeFileSync(join(wip, "README.md.tmpl"), "unresolved={{project-name}}\n", "utf8");
+      const outsideBundle = join(dir, "orphan-bundle.txt");
+      writeFileSync(outsideBundle, "ORPHAN-BUNDLE-MUST-NOT-SHIP\n", "utf8");
+      if (process.platform !== "win32") {
+        symlinkSync(outsideBundle, join(wip, "bundles", "orphan-link"));
+        symlinkSync("runtime.conf.tmpl", join(runtimeDir, "runtime-link.tmpl"));
+        expect(
+          cli(["bundle", "web", "templates", "add", "nested/runtime-link.tmpl", "-C", proj], dir)
+            .code,
+        ).toBe(0);
+      }
+
+      const runtimeTemplate = "bundles/web/payload/templates/nested/runtime.conf.tmpl";
+      const runtimeLink = "bundles/web/payload/templates/nested/runtime-link.tmpl";
+      const assertClean = (layout: readonly string[]): void => {
+        expect(layout.some((path) => path.startsWith("bundles/bundle-template/"))).toBe(false);
+        expect(layout).not.toContain("README.md.tmpl");
+        expect(layout).not.toContain("bundles/orphan-link");
+        expect(
+          layout.filter(
+            (path) => path.endsWith(".tmpl") && !path.startsWith("bundles/web/payload/templates/"),
+          ),
+        ).toEqual([]);
+        expect(layout).toContain(runtimeTemplate);
+        if (process.platform !== "win32") expect(layout).toContain(runtimeLink);
+        expect(layout).toContain("bundles/web/bundle.yml");
+        expect(layout).toContain("AGENTS.md");
+        expect(layout).toContain("bundles/web/AGENTS.md");
+      };
+
+      const layouts: string[][] = [];
+      const assertArchive = (archive: string, format: "tar" | "zip", label: string): void => {
+        const layout = archiveLayout(archive);
+        assertClean(layout);
+        layouts.push(layout);
+
+        const extracted = join(dir, `task104-${label}-extracted`);
+        mkdirSync(extracted, { recursive: true });
+        if (format === "zip") {
+          execFileSync("unzip", ["-q", archive, "-d", extracted]);
+        } else {
+          execFileSync("tar", ["-xzf", archive, "-C", extracted]);
+        }
+        expect(readFileSync(join(extracted, runtimeTemplate), "utf8")).toBe("port={{port}}\n");
+        if (process.platform !== "win32") {
+          const link = join(extracted, runtimeLink);
+          expect(lstatSync(link).isSymbolicLink()).toBe(true);
+          expect(readlinkSync(link)).toBe("runtime.conf.tmpl");
+          expect(readFileSync(link, "utf8")).toBe("port={{port}}\n");
+        }
+      };
+
+      expect(cli(["build", "package", "--format", "tarball", "-C", proj], dir).code).toBe(0);
+      assertArchive(join(proj, "builds", "demo-0.1.0.tgz"), "tar", "tarball");
+
+      expect(cli(["build", "package", "--format", "git", "-C", proj], dir).code).toBe(0);
+      assertArchive(join(proj, "builds", "demo-0.1.0.tgz"), "tar", "git");
+
+      if (hasZip() && hasUnzip()) {
+        expect(cli(["build", "package", "--format", "zip", "-C", proj], dir).code).toBe(0);
+        assertArchive(join(proj, "builds", "demo-0.1.0.zip"), "zip", "zip");
+      }
+
+      for (const layout of layouts.slice(1)) expect(layout).toEqual(layouts[0]);
+
+      // Packaging is read-only over the authoring workspace: the scaffold remains present and can still feed
+      // a later bundle-new operation after every archive backend has run.
+      expect(existsSync(join(wip, "bundles", "bundle-template", "_AGENTS.md.tmpl"))).toBe(true);
+      expect(cli(["bundle", "new", "later", "--version", "7.8.9", "-C", proj], dir).code).toBe(0);
+      // Multiple enabled bundles: no mutation reintroduces a rendered list or dangling introducer.
+      assertRuntimeBundleMenu();
+      expect(existsSync(join(wip, "bundles", "later", "install-backlog", "config.yml"))).toBe(true);
     });
   });
 

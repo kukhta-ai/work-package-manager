@@ -40,7 +40,7 @@ const LOCKFILE_NAME = "wpm.lock";
 const INSTALLER_SKILLS_DIR = "installer-skills";
 /** The bundles directory (doc 06/10). */
 const BUNDLES_DIR = "bundles";
-/** The default bundle scaffold under `bundles/`, always shippable even without a manifest entry (doc 10). */
+/** The authoring-only default bundle scaffold under `bundles/`; it is copied to create bundles but never ships. */
 const BUNDLE_TEMPLATE_DIR = "bundle-template";
 
 /**
@@ -299,9 +299,11 @@ function checkLockfile(
 
 /**
  * Enumerate the SHIPPABLE file tree (doc 06 §"Project skeleton"): every file under the project root, as sorted
- * root-relative paths, EXCLUDING the builder-time working dirs ({@link NON_SHIPPABLE_TOP_LEVEL}) and any DISABLED
- * bundle directory (a `bundles/<id>/` whose `<id>` is neither enabled nor the `bundle-template/` scaffold — doc 06
- * line 153: "the build never includes it"). The walk does NOT recurse into symlinked directories: in a generated
+ * root-relative paths, EXCLUDING the builder-time working dirs ({@link NON_SHIPPABLE_TOP_LEVEL}), every DISABLED
+ * bundle directory, the authoring-only `bundles/bundle-template/` scaffold, and unresolved builder-template
+ * sources. Runtime payload templates under an enabled bundle remain shippable because their `.tmpl` suffix is
+ * product content interpreted at install time, not a builder placeholder. The walk does NOT recurse into
+ * symlinked directories: in a generated
  * project the symlinks are the scope aliases (`.claude/skills → installer-skills/`, etc.) and each bundle's
  * `backlog → install-backlog` recipe alias (TASK-102), so skipping symlinked dirs records the alias path itself
  * without doubling its target's bytes. Pure over the port.
@@ -331,11 +333,18 @@ export function shippableFiles(
       if (rel === "" && NON_SHIPPABLE_TOP_LEVEL.has(entry.name)) {
         continue;
       }
-      // Prune disabled bundle directories: a bundles/<id>/ not enabled in the manifest and not the scaffold.
-      if (rel === BUNDLES_DIR && entry.kind === "directory") {
-        if (entry.name !== BUNDLE_TEMPLATE_DIR && !enabled.has(entry.name)) {
-          continue;
-        }
+      // Prune every non-enabled direct child of bundles/, including the authoring-only bundle-template
+      // scaffold. Do not key this on `entry.kind`: the real FileSystem reports symlinks as file-like leaves,
+      // and an orphan/scaffold symlink must not bypass the same manifest boundary as a directory.
+      if (rel === BUNDLES_DIR && (entry.name === BUNDLE_TEMPLATE_DIR || !enabled.has(entry.name))) {
+        continue;
+      }
+
+      // `.tmpl` is the builder's source suffix. The only shippable exception is a real enabled bundle's
+      // payload/templates/ subtree: those are runtime parameterized files by contract (docs 06/07), not an
+      // unresolved builder source. Keeping this exception avoids silently dropping an author's payload.
+      if (entry.kind !== "directory" && isUnresolvedBuilderTemplate(childRel, enabled)) {
+        continue;
       }
 
       if (entry.kind === "directory") {
@@ -356,6 +365,15 @@ export function shippableFiles(
   };
   walk("");
   return out.sort();
+}
+
+/** Whether a `.tmpl` path is unresolved builder input rather than an enabled bundle's runtime payload template. */
+function isUnresolvedBuilderTemplate(rel: string, enabled: ReadonlySet<string>): boolean {
+  if (!rel.endsWith(".tmpl")) {
+    return false;
+  }
+  const match = /^bundles\/([^/]+)\/payload\/templates\//.exec(rel);
+  return match === null || !enabled.has(match[1] as string);
 }
 
 /**

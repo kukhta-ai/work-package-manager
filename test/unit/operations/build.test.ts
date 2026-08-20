@@ -216,18 +216,27 @@ describe("shippableFiles — the prune-aware ship set (AC82#3)", () => {
     expect(files.some((f) => f.startsWith("dist/"))).toBe(false);
   });
 
-  it("EXCLUDES a DISABLED bundle dir (present but not in the manifest) but keeps bundle-template/", () => {
+  it("EXCLUDES disabled bundles, the authoring-only bundle-template scaffold, and unresolved builder templates", () => {
     const fs = seedBuildable();
-    // A disabled bundle dir (on disk, NOT in enabledBundleIds) and the scaffold:
+    // A disabled bundle dir (on disk, NOT in enabledBundleIds), a file-like direct child that models how the
+    // real adapter reports a symlink, the authoring-only scaffold, and a stray builder-template source. A real
+    // nested payload template remains shippable because its `.tmpl` suffix is part of the runtime payload
+    // contract, not an unresolved builder placeholder.
     fs.write(`${PROJ}/bundles/disabled-one/bundle.yml`, "id: disabled-one\nversion: 0.1.0\n");
+    fs.write(`${PROJ}/bundles/orphan-link`, "../outside-bundle");
     fs.write(`${PROJ}/bundles/bundle-template/AGENTS.md.tmpl`, "# {{bundle-id}}\n");
+    fs.write(`${PROJ}/README.md.tmpl`, "# unresolved builder source\n");
+    fs.write(`${PROJ}/bundles/core/payload/templates/nested/runtime.conf.tmpl`, "port={{port}}\n");
     const files = shippableFiles(fs, PROJ, ["core"]);
     // the enabled bundle ships:
     expect(files).toContain("bundles/core/bundle.yml");
-    // the scaffold ships (allowed under bundles/ without a manifest entry):
-    expect(files).toContain("bundles/bundle-template/AGENTS.md.tmpl");
+    expect(files).toContain("bundles/core/payload/templates/nested/runtime.conf.tmpl");
+    // authoring scaffolds and unresolved builder-template sources never ship:
+    expect(files.some((f) => f.startsWith("bundles/bundle-template/"))).toBe(false);
+    expect(files).not.toContain("README.md.tmpl");
     // the disabled dir does NOT ship (doc 06: "the build never includes it"):
     expect(files.some((f) => f.startsWith("bundles/disabled-one/"))).toBe(false);
+    expect(files).not.toContain("bundles/orphan-link");
   });
 
   it("returns a SORTED list (deterministic)", () => {

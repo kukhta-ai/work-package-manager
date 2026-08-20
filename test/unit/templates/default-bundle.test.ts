@@ -312,6 +312,31 @@ describe("default bundle template — createBundle end-to-end (doc 06/07/08/09)"
     expect(detectBody.toUpperCase()).toContain(`${SAMPLE_ID.toUpperCase()}-1`);
   });
 
+  it.each([
+    "2.4.6",
+    "10.20.30-beta.2+build.7",
+  ])("TASK-104 — every scaffold recipe task records requested initial version %s as its milestone", (version) => {
+    const { fs, backlog } = seed();
+    runMutation(
+      lifecycleDeps(fs, backlog),
+      { deliverableRoot: ROOT, workspaceRoot: ROOT },
+      spec(),
+      { id: SAMPLE_ID, version },
+    );
+
+    const tasksDir = `${ROOT}/bundles/${SAMPLE_ID}/install-backlog/tasks`;
+    const taskFiles = fs.list(tasksDir).filter((entry) => entry.kind === "file");
+    expect(taskFiles).toHaveLength(3);
+    for (const task of taskFiles) {
+      const body = fs.read(`${tasksDir}/${task.name}`);
+      const frontmatter = parseYaml(body.slice(4, body.indexOf("\n---", 4))) as Record<
+        string,
+        unknown
+      >;
+      expect(frontmatter.milestone, task.name).toBe(version);
+    }
+  });
+
   it("AC#3 — every placeholder is substituted in the produced bundle (no marker in any content OR path)", () => {
     const { fs, backlog } = seed();
     runMutation(
