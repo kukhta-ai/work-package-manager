@@ -9,6 +9,7 @@ import { NodeFileSystem } from "../../src/adapters/node-fs.js";
 import { type CliDeps, run } from "../../src/cli.js";
 import { AUTHORING_SKILL_NAME } from "../../src/core/operations/install-authoring-skill.js";
 import type { CliIo, OutputSink } from "../../src/util/exit.js";
+import { toPosix } from "../../src/util/posix-path.js";
 import { withTempDir } from "../helpers/tmpdir.js";
 
 /**
@@ -55,7 +56,7 @@ describe("wpm skill install over a real filesystem (task-91)", () => {
       const dest = join(home, ".claude", "skills", AUTHORING_SKILL_NAME);
       expect(existsSync(join(dest, "SKILL.md"))).toBe(true);
       expect(existsSync(join(dest, "references"))).toBe(true);
-      expect(i.out.text).toContain(dest);
+      expect(i.out.text).toContain(toPosix(dest));
     });
   });
 

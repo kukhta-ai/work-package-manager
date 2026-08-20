@@ -9,36 +9,63 @@ import {
   symlinkSync,
   writeFileSync,
 } from "node:fs";
-import { join } from "node:path";
+import { delimiter, join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { MemoryFileSystem } from "../../../src/adapters/memory-fs.js";
 import { NodeFileSystem } from "../../../src/adapters/node-fs.js";
 import { createArchive, pushArchive } from "../../../src/adapters/packager.js";
 import { isDomainError } from "../../../src/core/errors.js";
 import { toPosix } from "../../../src/util/posix-path.js";
+import { runSync } from "../../../src/util/shell.js";
 import { withTempDir } from "../../helpers/tmpdir.js";
 
 /**
- * Unit tests for the build PACKAGER adapter (task-83) over a REAL tmpdir — it is infrastructure (it shells out
- * via `runSync`), so it is exercised end-to-end against real `tar`/`git`, not in memory. ZIP expectations are
- * selected from the host probe's three observable states: usable, spawn-absent, or present-but-nonzero. The
- * always-on assertions also cover tarball, Git, fake-ZIP exact-set/failure semantics, and both push kinds.
+ * Integration tests for the build PACKAGER adapter (task-83) over a REAL tmpdir. The adapter shells out via
+ * `runSync`, so real tar/Git/archive and remote-push coverage belongs under the serialized integration budget,
+ * not the subprocess-free unit project. ZIP expectations use the same launcher and success classifier as
+ * production; deterministic shims cover absence, usability, stale replacement, and post-probe failure.
  */
 
-/** The three version-probe states production deliberately distinguishes for optional archive tools. */
-type ToolProbeState = "spawn-absent" | "usable" | "present-nonzero";
+/** The availability states production distinguishes for an optional tool's version probe. */
+type ToolProbeState = "unavailable" | "usable";
 
-/** Classify a CLI probe without collapsing a process exit into a spawn failure. */
+/** Classify a CLI probe through the production launcher: only a successful version command is usable. */
 function probeTool(tool: string): ToolProbeState {
   try {
-    execFileSync(tool, ["-v"], { stdio: "pipe" });
+    runSync(tool, ["-v"]);
     return "usable";
-  } catch (error) {
-    const status = (error as { status?: number | null }).status;
-    return typeof status === "number" ? "present-nonzero" : "spawn-absent";
+  } catch {
+    return "unavailable";
   }
 }
 const zipProbeState = probeTool("zip");
+
+/** Install a cross-platform `zip` command shim backed by a Node script. */
+function installFakeZip(bin: string, source: string): void {
+  mkdirSync(bin, { recursive: true });
+  const script = join(bin, "fake-zip.cjs");
+  writeFileSync(script, source);
+  if (process.platform === "win32") {
+    writeFileSync(join(bin, "zip.cmd"), `@echo off\r\n"${process.execPath}" "${script}" %*\r\n`);
+    return;
+  }
+  const launcher = join(bin, "zip");
+  writeFileSync(
+    launcher,
+    `#!/bin/sh\nexec ${JSON.stringify(process.execPath)} ${JSON.stringify(script)} "$@"\n`,
+  );
+  chmodSync(launcher, 0o755);
+}
+
+/** Temporarily replace or prepend the process PATH, returning an exact restoration callback. */
+function useToolPath(bin: string, includeExisting = true): () => void {
+  const previous = process.env.PATH;
+  process.env.PATH = includeExisting && previous ? `${bin}${delimiter}${previous}` : bin;
+  return () => {
+    if (previous === undefined) delete process.env.PATH;
+    else process.env.PATH = previous;
+  };
+}
 
 /** Return a normalized root-relative layout for any gzip-tar archive, ignoring directory-only entries. */
 function tarLayout(archive: string): string[] {
@@ -322,6 +349,66 @@ describe("createArchive — git (TASK-95 prepared-tree parity)", () => {
 });
 
 describe("createArchive — zip (missing-tool handling)", () => {
+  it("reports unavailable when no zip command resolves through the production launcher", async () => {
+    await withTempDir(async (dir) => {
+      const root = join(dir, "proj");
+      const emptyBin = join(dir, "empty-bin");
+      mkdirSync(root, { recursive: true });
+      mkdirSync(emptyBin, { recursive: true });
+      const files = seedShip(root);
+      const restorePath = useToolPath(emptyBin, false);
+      try {
+        let thrown: unknown;
+        try {
+          createArchive({ root, outDir: dir, baseName: "absent", format: "zip", files });
+        } catch (error) {
+          thrown = error;
+        }
+        expect(isDomainError(thrown)).toBe(true);
+        expect((thrown as Error).message).toMatch(/zip.*not available|tarball/i);
+        expect(existsSync(join(dir, "absent.zip"))).toBe(false);
+      } finally {
+        restorePath();
+      }
+    });
+  });
+
+  it("treats a non-zero version probe as unavailable and never invokes the archiver", async () => {
+    await withTempDir(async (dir) => {
+      const root = join(dir, "proj");
+      const bin = join(dir, "bin");
+      const invoked = join(dir, "archive-invoked");
+      mkdirSync(root, { recursive: true });
+      const files = seedShip(root);
+      installFakeZip(
+        bin,
+        [
+          'const fs = require("node:fs");',
+          "const args = process.argv.slice(2);",
+          'if (args[0] === "-v") process.exit(7);',
+          `fs.writeFileSync(${JSON.stringify(invoked)}, "called");`,
+          "process.exit(9);",
+          "",
+        ].join("\n"),
+      );
+      const restorePath = useToolPath(bin);
+      try {
+        let thrown: unknown;
+        try {
+          createArchive({ root, outDir: dir, baseName: "nonzero", format: "zip", files });
+        } catch (error) {
+          thrown = error;
+        }
+        expect(isDomainError(thrown)).toBe(true);
+        expect((thrown as Error).message).toMatch(/zip.*not available|tarball/i);
+        expect(existsSync(invoked)).toBe(false);
+        expect(existsSync(join(dir, "nonzero.zip"))).toBe(false);
+      } finally {
+        restorePath();
+      }
+    });
+  });
+
   it("requests symlink-preserving mode instead of dereferencing planned alias paths", async () => {
     if (process.platform === "win32") return;
     await withTempDir(async (dir) => {
@@ -329,17 +416,14 @@ describe("createArchive — zip (missing-tool handling)", () => {
       const bin = join(dir, "bin");
       mkdirSync(join(root, "installer-skills"), { recursive: true });
       mkdirSync(join(root, ".claude"), { recursive: true });
-      mkdirSync(bin, { recursive: true });
       writeFileSync(join(root, "installer-skills", "demo.txt"), "skill\n");
       symlinkSync("../installer-skills", join(root, ".claude", "skills"));
 
       // A deterministic stand-in for Info-ZIP: it refuses the archive call unless the documented `-y`
       // (`--symlinks`) switch is present. This keeps the regression covered even on CI images without zip.
-      const fakeZip = join(bin, "zip");
-      writeFileSync(
-        fakeZip,
+      installFakeZip(
+        bin,
         [
-          "#!/usr/bin/env node",
           'const fs = require("node:fs");',
           "const args = process.argv.slice(2);",
           'if (args[0] === "-v") process.exit(0);',
@@ -348,10 +432,8 @@ describe("createArchive — zip (missing-tool handling)", () => {
           "",
         ].join("\n"),
       );
-      chmodSync(fakeZip, 0o755);
 
-      const previousPath = process.env.PATH;
-      process.env.PATH = `${bin}:${previousPath ?? ""}`;
+      const restorePath = useToolPath(bin);
       try {
         const archive = createArchive({
           root,
@@ -362,30 +444,25 @@ describe("createArchive — zip (missing-tool handling)", () => {
         });
         expect(existsSync(archive)).toBe(true);
       } finally {
-        if (previousPath === undefined) delete process.env.PATH;
-        else process.env.PATH = previousPath;
+        restorePath();
       }
     });
   });
 
   it("replaces an existing archive so incremental zip updates cannot retain stale entries", async () => {
-    if (process.platform === "win32") return;
     await withTempDir(async (dir) => {
       const root = join(dir, "proj");
       const bin = join(dir, "bin");
       mkdirSync(root, { recursive: true });
-      mkdirSync(bin, { recursive: true });
       writeFileSync(join(root, "keep.txt"), "keep\n");
       writeFileSync(join(root, "stale.txt"), "stale\n");
       writeFileSync(join(root, "fail.txt"), "fail\n");
 
       // Emulate Info-ZIP's update semantics: when the output already exists, retain its old entries and add the
       // newly requested ones. The production adapter must remove the old output before invoking this tool.
-      const fakeZip = join(bin, "zip");
-      writeFileSync(
-        fakeZip,
+      installFakeZip(
+        bin,
         [
-          "#!/usr/bin/env node",
           'const fs = require("node:fs");',
           "const args = process.argv.slice(2);",
           'if (args[0] === "-v") process.exit(0);',
@@ -398,10 +475,8 @@ describe("createArchive — zip (missing-tool handling)", () => {
           "",
         ].join("\n"),
       );
-      chmodSync(fakeZip, 0o755);
 
-      const previousPath = process.env.PATH;
-      process.env.PATH = `${bin}:${previousPath ?? ""}`;
+      const restorePath = useToolPath(bin);
       try {
         const request = {
           root,
@@ -422,10 +497,11 @@ describe("createArchive — zip (missing-tool handling)", () => {
           thrown = err;
         }
         expect(isDomainError(thrown)).toBe(true);
+        expect((thrown as Error).message).toMatch(/zip failed/i);
+        expect((thrown as Error).message).not.toMatch(/not available|use.*tarball/i);
         expect(existsSync(archive)).toBe(false);
       } finally {
-        if (previousPath === undefined) delete process.env.PATH;
-        else process.env.PATH = previousPath;
+        restorePath();
       }
     });
   });
@@ -433,9 +509,7 @@ describe("createArchive — zip (missing-tool handling)", () => {
   it(
     zipProbeState === "usable"
       ? "produces a real .zip when zip is usable"
-      : zipProbeState === "spawn-absent"
-        ? "raises unavailable guidance when zip cannot be spawned"
-        : "preserves a typed zip failure when the present tool exits non-zero",
+      : "raises unavailable guidance when zip's version probe is not successful",
     async () => {
       await withTempDir(async (dir) => {
         const root = join(dir, "proj");
@@ -465,12 +539,7 @@ describe("createArchive — zip (missing-tool handling)", () => {
             thrown = e;
           }
           expect(isDomainError(thrown)).toBe(true);
-          if (zipProbeState === "spawn-absent") {
-            expect((thrown as Error).message).toMatch(/zip.*not available|tarball/i);
-          } else {
-            expect((thrown as Error).message).toMatch(/zip failed/i);
-            expect((thrown as Error).message).not.toMatch(/not available|use.*tarball/i);
-          }
+          expect((thrown as Error).message).toMatch(/zip.*not available|tarball/i);
         }
       });
     },

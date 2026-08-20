@@ -99,18 +99,17 @@ function outputPath(req: PackageRequest): string {
  *
  * @param tool - The executable name (e.g. `"zip"`).
  * @param versionArg - The benign argument that prints a version and exits 0 (e.g. `"-v"`).
- * @returns `true` when the tool ran (exists), `false` on a spawn failure (absent).
+ * @returns `true` only when the version probe exits successfully; otherwise `false`.
  */
 function toolAvailable(tool: string, versionArg: string): boolean {
   try {
     runSync(tool, [versionArg]);
     return true;
-  } catch (err) {
-    // `runSync` throws two shapes: "Command failed (exit N)" when the tool RAN but exited non-zero (so it
-    // EXISTS), and "Command could not be run" on a spawn failure (the tool is ABSENT). Only the latter means
-    // unavailable — a present-but-nonzero version probe still proves the tool exists.
-    const message = err instanceof Error ? err.message : String(err);
-    return message.startsWith("Command failed (exit");
+  } catch {
+    // Availability means the requested tool is usable, not merely that some wrapper process started. On
+    // Windows an unresolved command can be routed through cmd.exe and surface as a numeric exit, so every
+    // failed version probe is unavailable regardless of its launcher-specific error shape.
+    return false;
   }
 }
 
