@@ -364,6 +364,68 @@ describe("createArchive — zip (missing-tool handling)", () => {
     });
   });
 
+  it("replaces an existing archive so incremental zip updates cannot retain stale entries", async () => {
+    if (process.platform === "win32") return;
+    await withTempDir(async (dir) => {
+      const root = join(dir, "proj");
+      const bin = join(dir, "bin");
+      mkdirSync(root, { recursive: true });
+      mkdirSync(bin, { recursive: true });
+      writeFileSync(join(root, "keep.txt"), "keep\n");
+      writeFileSync(join(root, "stale.txt"), "stale\n");
+      writeFileSync(join(root, "fail.txt"), "fail\n");
+
+      // Emulate Info-ZIP's update semantics: when the output already exists, retain its old entries and add the
+      // newly requested ones. The production adapter must remove the old output before invoking this tool.
+      const fakeZip = join(bin, "zip");
+      writeFileSync(
+        fakeZip,
+        [
+          "#!/usr/bin/env node",
+          'const fs = require("node:fs");',
+          "const args = process.argv.slice(2);",
+          'if (args[0] === "-v") process.exit(0);',
+          'const outIndex = args.indexOf("-y") + 1;',
+          "const out = args[outIndex];",
+          'const prior = fs.existsSync(out) ? JSON.parse(fs.readFileSync(out, "utf8")) : [];',
+          "const next = args.slice(outIndex + 1);",
+          'if (next.includes("fail.txt")) { fs.writeFileSync(out, "partial"); process.exit(9); }',
+          "fs.writeFileSync(out, JSON.stringify([...new Set([...prior, ...next])].sort()));",
+          "",
+        ].join("\n"),
+      );
+      chmodSync(fakeZip, 0o755);
+
+      const previousPath = process.env.PATH;
+      process.env.PATH = `${bin}:${previousPath ?? ""}`;
+      try {
+        const request = {
+          root,
+          outDir: dir,
+          baseName: "successive",
+          format: "zip" as const,
+        };
+        const archive = createArchive({ ...request, files: ["keep.txt", "stale.txt"] });
+        expect(JSON.parse(readFileSync(archive, "utf8"))).toEqual(["keep.txt", "stale.txt"]);
+
+        createArchive({ ...request, files: ["keep.txt"] });
+        expect(JSON.parse(readFileSync(archive, "utf8"))).toEqual(["keep.txt"]);
+
+        let thrown: unknown;
+        try {
+          createArchive({ ...request, files: ["fail.txt"] });
+        } catch (err) {
+          thrown = err;
+        }
+        expect(isDomainError(thrown)).toBe(true);
+        expect(existsSync(archive)).toBe(false);
+      } finally {
+        if (previousPath === undefined) delete process.env.PATH;
+        else process.env.PATH = previousPath;
+      }
+    });
+  });
+
   it(
     hasZip
       ? "produces a real .zip when zip is available"

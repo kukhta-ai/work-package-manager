@@ -22,6 +22,11 @@
 - [x] The optional `uninstall-backlog/` reverse-recipe surface remains shippable even with valid skill-like
   frontmatter and cannot be claimed by a payload ref; segment-exact controls keep
   `uninstall-backlog-extra/custom.md` available as a legitimate custom package.
+- [x] `test/unit/adapters/packager.test.ts` uses a deterministic fake Info-ZIP that retains prior entries when
+  updating an existing archive. Two successive requests to the same output prove production removes the old ZIP
+  and the second archive contains only its current `PackageRequest.files`, even when real ZIP is unavailable.
+- [x] The same fake writes a partial output and exits non-zero; production returns a typed failure and removes the
+  partial canonical archive so failed packaging cannot leave a misleading distributable in `builds/`.
 
 ### Integration / E2E tests
 
@@ -31,6 +36,8 @@
   symlink verification, and layout parity.
 - [x] The scenario rejects unregistered conventional, exact-prefix, custom, cross-bundle, and file-like custom
   symlink-directory packages in both archive phases.
+- [x] On hosts with ZIP/unzip, that same scenario rebuilds the identical `.zip` path after real deregistration
+  and asserts every formerly registered package path is absent, covering the CI failure through the built CLI.
 - [x] `test/integration/operations/build-shippable-symlink.test.ts` continues to prove real alias leaves are not
   traversed after `shippableFiles` began consuming the canonical loaded `Project` model.
 
@@ -40,8 +47,8 @@
 - Focused evidence spans build policy, schema, payload CLI, unchanged installerSkills CLI, real symlink behavior,
   and one successive real-CLI archive workflow.
 - Archive states: registered and post-deregistration; dry-run and package use the same ship set.
-- Package formats: tarball and git exercised with extracted layout parity; zip remains conditional and was not
-  available in this environment (`zip`/`unzip` absent).
+- Package formats: tarball and git exercised with extracted layout parity; real ZIP remains conditional and was
+  unavailable in this environment, while fake Info-ZIP provides unconditional successive-output semantics.
 - API endpoints: not applicable (Node CLI project).
 - UI workflows / semantic locators: not applicable (no GUI by design).
 
@@ -56,6 +63,14 @@
   remains the product-diff evidence and was not redundantly rerun.
 - TypeScript typecheck, Biome lint (200 files), production build, documentation/inventory probes, and
   `git diff --check`: passed.
+- CI-regression verification: fake-ZIP red 1 failed / 10 passed, green packager 11/11; built E2E/symlink 27/27;
+  full regression 1,279/1,279 across 99 files; typecheck, Biome lint (200 files), build, and diff-check passed.
+- Post-review absorption verification: focused packager 11/11 plus typecheck, Biome lint (200 files), production
+  build, and diff-check passed. No product/test file changed during absorption, so the reviewer's exact-final
+  built E2E/symlink 27/27 and full 1,279/1,279 evidence remains applicable.
+- Final post-absorption verification: focused packager 11/11, built E2E/symlink 27/27, typecheck, Biome lint
+  (200 files), production build, and fresh full regression 1,279/1,279 across 99 files all passed; the full run
+  started at 10:29:14 UTC and completed in 376.72s.
 - Tests use Vitest's established patterns, isolated temporary workspaces, no sleeps, and no order dependency.
 
 ## Critical Assertions
@@ -68,6 +83,10 @@
   injected filesystem port and omitted.
 - Deregistration removes only the `bundle.yml` reference: conventional and custom sources remain on disk, while
   the next dry-run and every archive backend omit their complete directories.
+- ZIP creation removes a prior same-name archive before invoking Info-ZIP, preventing its update mode from
+  retaining stale entries that are absent from the authoritative current ship set.
+- A failed ZIP invocation removes any partial canonical output before propagating its typed error; temporary
+  staged sources are still cleaned in the outer `finally` path.
 - Bundle installer-skills and ordinary other-category payload content remain shippable even when a document has
   valid skill-like frontmatter; bundle/project installerSkills parsing and CLI behavior remain unchanged.
 
@@ -91,6 +110,17 @@
 - `bmad-dev-story` was re-invoked after cycle-2 review against the complete story. Customization again resolved
   with no activation prepend/append steps, no matching project-context facts, and no completion hook. The worker
   re-absorbed both cycle-2 fixes, verified all prior safeguards, and made no further product/test change.
+- After CI run 32355637349, `bmad-dev-story` was re-invoked for the stale ZIP-entry defect, followed by
+  `bmad-qa-generate-e2e-tests` for the regression. Both resolved with no activation prepend/append steps, no
+  matching project-context facts, and empty completion hooks.
+- `bmad-story-automator-review` was then re-invoked against the full repair diff from `4547434`. It approved the
+  exact-set fix and auto-fixed one MEDIUM partial-output cleanup gap; focused packager 11/11, built E2E/symlink
+  27/27, and full regression 1,279/1,279 all passed with 0 open findings.
+- `bmad-dev-story` was re-invoked after that review against the complete story. Customization resolved with no
+  activation prepend/append steps, no matching project-context facts, and an empty completion hook; the worker
+  absorbed the cleanup fix without further product/test changes.
+- A final `bmad-story-automator-review` invocation audited the complete four-file repair diff from `4547434`
+  after absorption, confirmed all findings closed and the File List coherent, and approved with 0 fresh findings.
 
 ## Workflow Evidence
 

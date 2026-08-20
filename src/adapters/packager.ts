@@ -124,9 +124,10 @@ function toolAvailable(tool: string, versionArg: string): boolean {
  * - **git** → stage the exact shippable set, write a temporary Git tree from it, then run `git archive` over
  *   that tree. This keeps Git-format layout identical to tarball/zip without depending on the source workspace's
  *   repository or committed `HEAD` (TASK-95).
- * - **zip** → `zip -r -q -y <out> <files…>` (cwd = root): `-y` preserves planned symlinks instead of
- *   dereferencing them, so zip layout stays aligned with tarball/Git. `zip` may be ABSENT — probed first; a
- *   missing `zip` raises a typed error suggesting `--format tarball` rather than crashing.
+ * - **zip** → replace any prior output, then `zip -r -q -y <out> <files…>` (cwd = root): removing the prior
+ *   archive prevents Info-ZIP's update mode from retaining entries absent from the new plan, while `-y`
+ *   preserves planned symlinks instead of dereferencing them. `zip` may be ABSENT — probed first; a missing
+ *   `zip` raises a typed error suggesting `--format tarball` rather than crashing.
  *
  * @param req - The package request (root, output dir, base name, format, shippable files).
  * @returns The absolute path of the produced archive.
@@ -313,8 +314,9 @@ function createGitArchive(req: PackageRequest, out: string): string {
 }
 
 /**
- * Create a zip of the shippable files via `zip -r -q -y` (cwd = source dir). Info-ZIP's `-y` stores symbolic
- * links as links rather than following their targets, preserving the same planned layout as tarball/Git.
+ * Create a fresh zip of the shippable files via `zip -r -q -y` (cwd = source dir). Info-ZIP updates an existing
+ * output and retains entries omitted from the new invocation, so the old archive is removed first. Its `-y`
+ * flag stores symbolic links as links rather than following their targets, preserving tarball/Git layout.
  */
 function createZip(req: PackageRequest, out: string): string {
   if (!toolAvailable("zip", "-v")) {
@@ -324,10 +326,20 @@ function createZip(req: PackageRequest, out: string): string {
   }
   const source = archiveSource(req);
   try {
+    // Info-ZIP treats an existing output as an archive to update. Remove it so every build is an exact fresh
+    // representation of PackageRequest.files, matching tar/git overwrite semantics and the dry-run plan.
+    rmSync(out, { force: true });
     // Run with cwd=<source dir> so entries are root-relative; `-y` preserves scope/front-door alias symlinks.
-    runArchiveTool("zip", ["-r", "-q", "-y", out, ...source.files], "zip", {
-      cwd: source.dir,
-    });
+    try {
+      runArchiveTool("zip", ["-r", "-q", "-y", out, ...source.files], "zip", {
+        cwd: source.dir,
+      });
+    } catch (err) {
+      // A failed archiver may leave a truncated file at the canonical output path. Do not let callers mistake
+      // that partial output for either the prior successful archive or the requested exact replacement.
+      rmSync(out, { force: true });
+      throw err;
+    }
   } finally {
     if (source.cleanup !== undefined) {
       rmSync(source.cleanup, { recursive: true, force: true });
