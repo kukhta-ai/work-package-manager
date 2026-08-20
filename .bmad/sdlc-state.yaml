@@ -3,9 +3,9 @@
 # Re-read on every resume; update at every phase boundary.
 # (Distinct from _bmad/ — that is BMAD's own install dir; this dot-dir is our tracker.)
 
-phase: 5
-phase_name: "Authoring-context follow-up completion — Autonomous build (TASK-95, 101, 104, 105)"
-branch: feature/ac-task-105
+phase: 6
+phase_name: "Authoring-context follow-up completion — cold epic gate"
+branch: feature/authoring-context
 epic: authoring-context
 # USER RESUMED 2026-08-19: "finish this feature". Reopened Phase 5 for the four tracked follow-ups
 # in dependency order: TASK-95, TASK-101, TASK-104, TASK-105. Each runs the full mandated
@@ -15,7 +15,7 @@ epic: authoring-context
 # TASK-102 (install-backlog now Backlog.md-resolvable via a relative backlog->install-backlog symlink per bundle; ships; skill workaround dropped) — APPROVE, archive re-verified end-to-end.
 # TASK-103 (bundle new no longer ships an unregistered payload-skill stub; skills remove deletes on-disk orphans, keeps deregister-leave for registered) — APPROVE; also fixed a bundle-template.e2e snapshot that EISDIR'd on the task-102 symlink.
 # Per-fix gates: tsc/biome clean (197 files), fast suite 1089 passed, targeted e2e green (102: 118 across 5 suites; 103: bundle-new/build/bundle-template/bundle-id). FULL COLD gate SKIPPED at user request ("skip this for gate") — fast+targeted e2e deemed sufficient.
-# REMAINING TRACKED (deferred, not blocking): TASK-95 (--format git transform), TASK-101 (docs/templates reconcile + files-add doc bug), TASK-104 (bundle-template ships into archive + dangling menu), TASK-105 (build ships deregistered on-disk payload skills).
+# FOLLOW-UPS COMPLETE + merged: TASK-95 (git-format parity), TASK-101 (template/docs reconciliation), TASK-104 (filtered archive scaffold/front-door parity), TASK-105 (registered payload-skill ship policy). Final cold gate in progress.
 # *** EPIC-4 COMPLETE (stories 96-100 done + merged --no-ff into feature/authoring-context). GATE = PASS (content-only: agent-skills/*.md + 1 strengthened test + backlog/ledger; NO src/ changes -> fast suite is the right gate; tsc0/biome0/vitest 1076 passed). ***
 # Added 2 skill references (task-conventions.md = AC what-not-how contract; native-surfaces.md = 5 roles + scope table + front-door mechanic); named the core bet in the spine + executor loop/done-gate/how-to-use in quality-protocol; fixed 9 drift spots + the files-add example. DOGFOOD (task-100): a cold agent authored a valid bundle from only the 2 surfaces -> surfaces self-sufficient; gaps resolved-in-skill or DEFERRED.
 # DEFERRED PRODUCT DEFECTS found by the dogfood (tracked, human/product): TASK-102 (BLOCKER: a bundle's install-backlog is NOT Backlog.md-CLI-resolvable -> the documented `cd wip/bundles/<id> && backlog ...` recipe-authoring cmd FAILS; also hits the executor at install time; skill ships a self-cleaning symlink workaround meanwhile), TASK-103 (payload-skill stub limbo), TASK-104 (bundle-template ships into archive + dangling menu). Plus TASK-101 (docs/templates reconcile: missing single-bundle/multi-bundle/with-payload-skill/adopts-system-tool templates + the files-add doc bug). TASK-95 (epic-3: --format git transform).
@@ -25,8 +25,8 @@ epic: authoring-context
 # Stories: 96 (AC what-not-how contract ref) + 97 (native-surfaces ref) = Story A; 98 (name the bet + executor loop + done-gate + how-to-use close) + 99 (drift/correctness fixes: skill install, no-rerender, wip/ paths, build rows, drop non-existent templates) = Story B; 100 (dogfood-verify) = Story C. 101 = human-gated docs/templates reconcile (build templates vs fix docs/10-11 + doc-05).
 # DECISIONS (proceeding defaults; user said "proceed"): teach current truth in the skill; DEFER building templates + editing human-owned docs (05/10/11) -> TASK-101 human-gated. EPIC-3 below.
 # === EPIC-3 (authoring-workspace) COMPLETE — PR #2 open (feature/authoring-workspace -> feature/cli), awaiting HUMAN merge. Details retained below. ===
-active_story: task-105
-review_cycle: 3
+active_story: null
+review_cycle: 0
 # *** ALL 10 EPIC-3 STORIES DONE + merged --no-ff into feature/authoring-workspace: 85, 92, 86, 87, 91, 88, 94, 89, 90, 93. ***
 # Follow-up TASK-95 created (deferred --format git reconciliation; pre-existing, outside task-90 scope). PHASE 6 epic gate IN PROGRESS.
 # *** PHASE 6 EPIC GATE = PASS. *** Cold E2E green (tsc0/biome0/build0/vitest 1217 passed, 96 files). testarch-trace 61/61 ACs (100%, 0 gaps, P0 100%). testarch-nfr PASS (Maintainability/Reliability/Security/Fake-Real-Parity; Perf=CONCERNS note-only, pre-existing ~22min real-binary e2e). retro=GREEN w/ tracked AMBER carry-forwards. Gate artifacts committed 165a144.
@@ -236,7 +236,7 @@ specialists:
   architect:    {spawned: true,  id: "af0958eff0e1846e5", role: "architecture conformance vs docs/12-13", status: "P3 done — architecture/epics/readiness=PASS; RESUME if a task reveals a design gap"}
   tea:          {spawned: true,  id: "aa6e3730c6822131e", role: "test design/framework/ci/trace/nfr/gate", status: "P3 done — test-design/framework=vitest/ci=matrix; RESUME in P6 (trace/nfr/final gate)"}
   sm:           {spawned: true,  id: "a58a6182b0009cbb7", role: "sprint setup + create-story per task",  status: "P4 done — sprint-status.yaml; worker owns create-story in the P5 loop"}
-  worker:       {spawned: true,  id: "/root/followup_worker2", role: "replacement persistent follow-up story worker", last_skill: "bmad-dev-story @ task-105 (review continuation cycle 3)", status: "cycle-2 fixes re-absorbed; artifact-only continuation; focused/static/build green; story in review."}
+  worker:       {spawned: true,  id: "/root/followup_worker2", role: "replacement persistent follow-up story worker", last_skill: "bmad-dev-story @ task-105 (review continuation cycle 3)", status: "TASK-95/101/104/105 complete and merged; final cold gate pending."}
   # CROSS-CUTTING FIX in flight (worker #3): the task-25 lifecycle ⑤ MATERIALISE used ctx.root, but the real authoring backlog is
   # <project>/.authoring-backlog -- so every materialising command (targets add; createBundle/bundle new later) FAILED on a real
   # project (BacklogCli shells out cwd=root; project root isn't a backlog root). Hidden by FakeBacklog-at-project-root tests; CAUGHT
