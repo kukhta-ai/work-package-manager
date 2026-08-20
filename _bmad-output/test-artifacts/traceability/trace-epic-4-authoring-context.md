@@ -1,6 +1,7 @@
 ---
 stepsCompleted: ['step-01-load-context', 'step-02-discover-tests', 'step-03-map-criteria', 'step-04-analyze-gaps', 'step-05-gate-decision']
-lastStep: 'step-05-gate-decision'
+editStepsCompleted: ['step-01-assess', 'step-02-apply-edit']
+lastStep: 'step-02-apply-edit'
 lastSaved: '2026-08-20'
 workflowType: 'testarch-trace'
 inputDocuments:
@@ -18,22 +19,26 @@ oracleConfidence: 'high'
 oracleResolutionMode: 'formal_requirements'
 oracleSources:
   - 'Backlog.md TASK-95..TASK-105 acceptance criteria (40 criteria, read only through the Backlog.md CLI)'
-  - '_bmad-output/implementation-artifacts/stories/story-phase-6-windows-ci-remediation.md (6 criteria)'
+  - '_bmad-output/implementation-artifacts/stories/story-phase-6-windows-ci-remediation.md (7 criteria)'
 externalPointerStatus: 'not_used'
 configuredOutputFile: '_bmad-output/test-artifacts/traceability/traceability-matrix.md'
 scopedOutputFile: '_bmad-output/test-artifacts/traceability/trace-epic-4-authoring-context.md'
 outputRoutingReason: 'Preserve the completed foundation, CLI, and epic-3 trace histories in their existing artifacts.'
-tempCoverageMatrixPath: '/tmp/tea-trace-coverage-matrix-2026-08-20T12-13-30-830Z.json'
+interimTempCoverageMatrixPath: '/tmp/tea-trace-coverage-matrix-2026-08-20T12-13-30-830Z.json'
 e2eTraceSummaryFile: '_bmad-output/test-artifacts/e2e-trace-summary.json'
 gateDecisionFile: '_bmad-output/test-artifacts/gate-decision.json'
 baseCoverageDecision: 'PASS'
-gateDecision: 'CONCERNS'
+priorGateDecision: 'CONCERNS'
+gateDecision: 'PASS'
+finalGateSourceSha: 'd0a65ce6a11bb98f1583cfdeb73eb7b4153d0e3b'
+finalEvidenceRunId: 32376865726
+finalEvidenceRunUrl: 'https://github.com/kukhta-ai/work-package-manager/actions/runs/32376865726'
 ---
 
 # Traceability Matrix & Gate Decision — EPIC-4 `authoring-context`
 
 **Target:** authoring-context feature plus its Phase-6 ZIP and Windows CI remediation
-**Exact merged head:** `f59c1b570d92de89c0549cf41088042fbffc2abf`
+**Exact merged head:** `d0a65ce6a11bb98f1583cfdeb73eb7b4153d0e3b`
 **Branch:** `feature/authoring-context`
 **Date:** 2026-08-20
 **Evaluator:** Root / TEA (Murat)
@@ -47,8 +52,8 @@ gateDecision: 'CONCERNS'
 ## Step 1 — Context and oracle resolution
 
 The highest-precedence usable oracle is the committed formal requirements: 40 checked acceptance criteria
-across TASK-95 through TASK-105 plus the six checked criteria in the Phase-6 Windows remediation story. The
-46-item oracle covers the complete authoring-context branch scope now presented for handoff: authoring guidance,
+across TASK-95 through TASK-105 plus the seven checked criteria in the Phase-6 Windows remediation story. The
+47-item oracle covers the complete authoring-context branch scope now presented for handoff: authoring guidance,
 cold-agent dogfood, docs/template reconciliation, Backlog.md recipe reachability, payload-skill lifecycle,
 archive-layout parity and filtering, registered-skill shipping, exact ZIP replacement, and Windows platform
 contracts. No synthetic requirements or external pointers are needed.
@@ -57,11 +62,11 @@ contracts. No synthetic requirements or external pointers are needed.
 
 - The authoring-context ledger records the original need profile, surface constraints, detected gaps, and the
   delivery/dogfood rationale that became TASK-96 through TASK-105.
-- The Phase-6 investigation exhaustively partitions the prior Windows failures into six mechanisms totaling
-  `261 + 16 + 1 + 3 + 2 + 1 = 284`; it concludes with Medium diagnostic confidence because two deductions
-  require a post-fix Windows matrix run for empirical closure.
-- The remediation story and QA summary map those six mechanisms one-for-one to deterministic unit/integration
-  coverage and record independent review approval with zero open findings.
+- The Phase-6 investigation exhaustively partitions the original Windows failures into six mechanisms totaling
+  `261 + 16 + 1 + 3 + 2 + 1 = 284`, then partitions the follow-up into seven Windows / four POSIX failures.
+  Its concluded High-confidence correction closes all residual mechanisms, including the production ZIP probe.
+- The remediation story and QA summary map the corrected mechanisms one-for-one to deterministic unit/integration
+  coverage, a serialized real-subprocess integration budget, and independent review approval with zero findings.
 - The system test design defines Vitest unit/integration/real-binary coverage and the pure-core import boundary;
   the CI design makes Node 20/22 across Ubuntu, macOS, and Windows part of the quality contract.
 - The prior epic-3 trace and NFR assessment establish the artifact style and the workspace/build baseline from
@@ -70,19 +75,21 @@ contracts. No synthetic requirements or external pointers are needed.
   the six Windows-platform corrections and regressions, the concluded investigation, workflow evidence, and
   SDLC state. No unrelated product scope was found.
 
-### Exact-head execution evidence supplied to this gate
+### Final execution evidence supplied to this gate
 
 - `npm ci`: PASS
 - TypeScript typecheck: PASS
 - Biome lint/core-boundary gate: PASS on 200 files
 - Production build: PASS
-- Full Vitest regression: **1,286/1,286 across 99 files**, 385.62 seconds
+- Full Vitest regression: **1,288/1,288 across 99 files**, 387.94 seconds
 - Clean exact-head checkout: PASS
 - Production dependency audit: **0 vulnerabilities**
 
-The exact-head local evidence is complete and green. The only evidence not yet available at this step is the
-post-fix external Node 20/22 Windows matrix required by the investigation and CI design to empirically close the
-two deduced Windows portions.
+This cold local gate ran at executable-equivalent head `3dc5a20` immediately before the final ledger-only
+commit. GitHub Actions run [32376865726](https://github.com/kukhta-ai/work-package-manager/actions/runs/32376865726)
+then executed exact head `d0a65ce6a11bb98f1583cfdeb73eb7b4153d0e3b`: all six Ubuntu/macOS/Windows,
+Node 20/22 jobs passed. Windows reported 1,286 passed plus the two expected POSIX-only skips (1,288 total),
+empirically closing the platform evidence dependency.
 
 ## Step 2 — Relevant test inventory
 
@@ -110,8 +117,6 @@ surface. There is no HTTP API, browser component, or UI layer.
 | `ACX-U-PAYLOAD-02` | `test/unit/operations/build.test.ts:362` | registry authority is isolated per enabled bundle | active; passed |
 | `ACX-U-PAYLOAD-03` | `test/unit/operations/build.test.ts:390` | missing/invalid registered documents fail and authorize nothing | active; passed |
 | `ACX-U-PAYLOAD-04` | `test/unit/schema/bundle.test.ts:337` | overlapping package roots and duplicate deregistration names are rejected | active; passed |
-| `ACX-U-GIT-01` | `test/unit/adapters/packager.test.ts:182` | Git and tar adapters emit the same exact path/byte set | active; passed |
-| `ACX-U-ZIP-01` | `test/unit/adapters/packager.test.ts:371` | same-path ZIP is replaced exactly and partial failure output is removed | active; passed |
 | `ACX-U-WIN-01` | `test/unit/services/context.test.ts:156` | Win32 fake uses native drive-rooted context semantics | active; passed |
 | `ACX-U-WIN-02` | `test/unit/cli/project-reads-commands.test.ts:234` | native context becomes portable only at stdout | active; passed |
 | `ACX-U-WIN-03` | `test/unit/operations/install-authoring-skill.test.ts:187` | native copy paths plus portable returned skill paths | active; passed |
@@ -119,13 +124,13 @@ surface. There is no HTTP API, browser component, or UI layer.
 | `ACX-U-WIN-05` | `test/unit/adapters/memory-fs.test.ts:186` | relative alias target stays byte-for-byte unchanged | active; passed |
 | `ACX-U-WIN-06` | `test/unit/operations/scaffold-skill.test.ts:112` | native write path plus portable changed-path result | active; passed |
 | `ACX-U-WIN-07` | `test/unit/services/template-resolver.test.ts:149` | native probes plus portable not-found diagnostics | active; passed |
-| `ACX-U-WIN-08` | `test/unit/adapters/packager.test.ts:431` | ZIP probe distinguishes usable, spawn-absent, and present-nonzero | active; passed in host-selected branch |
 
 ### Real-adapter and built-CLI E2E tests
 
 | Stable ID | File:line | Title / purpose | State |
 |---|---|---|---|
 | `ACX-E-GIT-01` | `test/integration/cli.build.e2e.test.ts:742` | Git archive parity across all TASK-95 outcomes | active after build; passed |
+| `ACX-E-GIT-02` | `test/integration/adapters/packager.test.ts:210` | Git and tar adapters emit the same exact path/byte set | active; passed |
 | `ACX-E-DOCS-01` | `test/integration/docs-template-examples.e2e.test.ts:55` | reconciled minimal/core flow, real Backlog shim, relative registration | active after build; passed |
 | `ACX-E-DOCS-02` | `test/integration/docs-template-examples.e2e.test.ts:97` | missing legacy templates fail without partial scaffolds | active after build; passed |
 | `ACX-E-ALIAS-01` | `test/integration/cli.bundle-new.test.ts:205` | Backlog CLI inside a fresh bundle reaches its install recipe | active after build; passed |
@@ -142,12 +147,17 @@ surface. There is no HTTP API, browser component, or UI layer.
 | `ACX-E-WIN-ALIAS-05` | `test/integration/cli.init.test.ts:332` | built init/targets flow asserts POSIX symlink or Windows readable copy | active after build; passed on cold host |
 | `ACX-E-WIN-BUILD-01` | `test/integration/cli.build.e2e.test.ts:164` | native archive existence plus portable printed output | active after build; passed |
 | `ACX-E-WIN-CMD-01` | `test/integration/core-boundary.test.ts:104` | Execa local Biome launch surfaces `noRestrictedImports` | active; passed |
+| `ACX-E-ZIP-01` | `test/integration/adapters/packager.test.ts:453` | same-path ZIP replacement is exact and post-probe failure removes partial output | active; passed |
+| `ACX-E-WIN-ZIP-01` | `test/integration/adapters/packager.test.ts:352` | absent ZIP launcher is unavailable and creates no archive | active; passed |
+| `ACX-E-WIN-ZIP-02` | `test/integration/adapters/packager.test.ts:376` | nonzero ZIP version probe is unavailable and creates no archive | active; passed |
 
 ### Non-Vitest acceptance evidence
 
 | Stable ID | Level | Source | State |
 |---|---|---|---|
 | `ACX-E-DOGFOOD-01` | E2E acceptance exercise | TASK-100 implementation notes / `/tmp/dogfood/demo` run | completed: a cold agent using only the two shipped surfaces authored, validated, and packaged a minimal bundle; every stall was logged and resolved or deferred into tracked tasks |
+| `ACX-CI-WIN20-01` | external CI acceptance | [Windows / Node 20 job 96450286493](https://github.com/kukhta-ai/work-package-manager/actions/runs/32376865726/job/96450286493) | exact SHA; 99 files; 1,286 passed + 2 expected POSIX-only skips; 1,421.99 s; passed |
+| `ACX-CI-WIN22-01` | external CI acceptance | [Windows / Node 22 job 96450286506](https://github.com/kukhta-ai/work-package-manager/actions/runs/32376865726/job/96450286506) | exact SHA; 99 files; 1,286 passed + 2 expected POSIX-only skips; 1,528.35 s; passed |
 
 ### Execution-state and conditional-coverage audit
 
@@ -157,10 +167,10 @@ surface. There is no HTTP API, browser component, or UI layer.
 - Two NodeFileSystem identity cases use `it.runIf(process.platform !== "win32")` because POSIX symlink identity
   is not the Windows product contract. Forced-Win32 unit/integration cases and the platform-aware built-init test
   provide the complementary copy coverage; this is deliberate partitioning, not a blind skip.
-- Real ZIP/unzip layout assertions are tool-conditional. The always-on fake Info-ZIP test covers exact-set
-  replacement and partial-output cleanup, while tarball and Git parity always execute.
-- The full exact-head regression passed **1,286/1,286**. Post-fix external Windows Node 20/22 execution remains
-  pending and is an evidence-state concern, not an uncovered source test.
+- Real ZIP/unzip layout assertions are tool-conditional. The always-on subprocess seams cover absent, nonzero,
+  exact-set replacement, and partial-output cleanup; the real-tool path runs when available.
+- The follow-up cold regression passed **1,288/1,288**. Exact-head CI then passed all six OS/Node cells; on
+  Windows the two POSIX-identity cases were the expected contract skips and every applicable case passed.
 
 ### `coverage_heuristics`
 
@@ -170,7 +180,7 @@ surface. There is no HTTP API, browser component, or UI layer.
 | Authentication/authorization | **not applicable** — no auth/session/permission surface |
 | UI journeys and UI states | **not applicable** — no browser/component UI |
 | Error/edge paths | Covered: unavailable templates fail atomically; unregistered/invalid/overlapping payload refs are rejected or omitted; wrapper/scaffold/reserved-name leaks are negatively asserted; archive failures remove partial output; command-launch diagnostics remain visible |
-| Happy-path-only criteria | None identified in the 46-item oracle; content criteria use inspection plus structural guards, while behavioral criteria include their contract-relevant negative/edge outcomes |
+| Happy-path-only criteria | None identified in the 47-item oracle; content criteria use inspection plus structural guards, while behavioral criteria include their contract-relevant negative/edge outcomes |
 
 ## Step 3 — Requirements-to-tests traceability matrix
 
@@ -186,10 +196,10 @@ linking, and length-discipline qualities. There are no P3 criteria.
 
 | AC | Priority | Coverage | Evidence |
 |---|---|---|---|
-| 95.1 Git root is the un-nested deliverable and matches tar/zip layout | P0 | FULL | `ACX-E-GIT-01`, `ACX-U-GIT-01` |
+| 95.1 Git root is the un-nested deliverable and matches tar/zip layout | P0 | FULL | `ACX-E-GIT-01`, `ACX-E-GIT-02` |
 | 95.2 wrapper, authoring backlog/output, and disabled bundles are excluded | P0 | FULL | `ACX-E-GIT-01` negative path/content sentinels |
 | 95.3 executor front doors ship only under canonical stripped names/aliases | P0 | FULL | `ACX-E-GIT-01` canonical/reserved-name and extracted-byte assertions |
-| 95.4 every supported format yields the same layout | P0 | FULL | `ACX-E-GIT-01`, `ACX-U-GIT-01`; tar/Git always, real ZIP when available, fake ZIP invocation guard always |
+| 95.4 every supported format yields the same layout | P0 | FULL | `ACX-E-GIT-01`, `ACX-E-GIT-02`; tar/Git always, real ZIP when available, subprocess ZIP guards always |
 
 ### TASK-96 — acceptance-criteria contract in the authoring skill
 
@@ -275,33 +285,34 @@ linking, and length-discipline qualities. There are no P3 criteria.
 | AC | Priority | Coverage | Evidence |
 |---|---|---|---|
 | 105.1 on-disk but unregistered payload skill is absent from archive | P0 | FULL | `ACX-U-PAYLOAD-01`/`02`/`03`/`04`, `ACX-E-PAYLOAD-01` |
-| 105.2 `skills remove` causes omission from the next archive | P0 | FULL | `ACX-E-PAYLOAD-01`; `ACX-U-ZIP-01` proves same-path ZIP exact replacement and failure cleanup |
+| 105.2 `skills remove` causes omission from the next archive | P0 | FULL | `ACX-E-PAYLOAD-01`; `ACX-E-ZIP-01` proves same-path ZIP exact replacement and failure cleanup |
 
 ### Phase-6 Windows CI remediation story
 
 | AC | Priority | Coverage | Evidence |
 |---|---|---|---|
-| WIN.1 context path dialect follows injected platform | P0 | FULL | `ACX-U-WIN-01`; existing POSIX context suite remains green |
-| WIN.2 normalization occurs only at five logical/result/fake seams; relative aliases unchanged | P0 | FULL | `ACX-U-WIN-02` through `ACX-U-WIN-07`, including native effect spies and relative control |
+| WIN.1 context path dialect follows injected platform | P0 | FULL | `ACX-U-WIN-01`; `ACX-CI-WIN20-01`, `ACX-CI-WIN22-01` close the real-platform cascade |
+| WIN.2 normalization occurs only at five logical/result/fake seams; relative aliases unchanged | P0 | FULL | `ACX-U-WIN-02` through `ACX-U-WIN-07`; both exact-head Windows CI jobs pass |
 | WIN.3 built archive uses native existence path and portable stdout | P0 | FULL | `ACX-E-WIN-BUILD-01` |
 | WIN.4 tests assert Windows copy and preserve real POSIX symlinks | P0 | FULL | `ACX-E-WIN-ALIAS-01` through `05`; forced-copy cases execute on every host |
-| WIN.5 Backlog and Biome harness commands use Execa with diagnostics | P0 | FULL | `ACX-E-DOCS-01`, `ACX-E-WIN-CMD-01` |
-| WIN.6 ZIP coverage distinguishes three probe states without changing production `toolAvailable` | P0 | FULL | `ACX-U-WIN-08`, `ACX-U-ZIP-01`; production file hash unchanged at `04c1dc4e037834740ec1bd9ff898b76c5c30c74b` |
+| WIN.5 Backlog and Biome harness commands use Execa with diagnostics | P0 | FULL | `ACX-E-DOCS-01`, `ACX-E-WIN-CMD-01`; both exact-head Windows CI jobs pass |
+| WIN.6 ZIP availability follows the production launcher contract: absent/nonzero probes produce no archive, while a zero probe permits success or typed failure with cleanup | P0 | FULL | `ACX-E-WIN-ZIP-01`, `ACX-E-WIN-ZIP-02`, `ACX-E-ZIP-01`; both Windows CI jobs pass |
+| WIN.7 the real-subprocess packager suite remains inside its serialized 60-second integration budget without a global timeout increase | P0 | FULL | `test/integration/adapters/packager.test.ts`; 13/13 focused cases, follow-up 1,288/1,288 regression, and both Windows CI jobs pass |
 
 ### Matrix validation
 
-- **P0:** 21/21 FULL; every previously broken or load-bearing build/platform outcome has automated coverage.
+- **P0:** 22/22 FULL; every previously broken or load-bearing build/platform outcome has automated coverage.
 - **P1:** 20/20 FULL; content-only requirements use criterion-level independent inspection, while the primary
   cold-agent journey has direct E2E acceptance evidence.
 - **P2:** 5/5 FULL by inspection plus structural guards.
-- **Overall:** 46/46 FULL. No PARTIAL, NONE, UNIT-ONLY, or INTEGRATION-ONLY requirement remains.
+- **Overall:** 47/47 FULL. No PARTIAL, NONE, UNIT-ONLY, or INTEGRATION-ONLY requirement remains.
 - Unit/E2E overlap is deliberate defense in depth at archive, alias, payload-lifecycle, and platform seams:
   pure policy/fake observations are checked at unit level, and filesystem/process/archive behavior is checked
   through real adapters or the built CLI. No duplicate test asserts the same layer without a distinct purpose.
 - Criteria 96.4, 101.2, and 104.2 are static content/rendering contracts for which exhaustive repository scans
   or zero/one/many pure rendering tables are the highest-fidelity level. WIN.1 and WIN.2 are injected-platform
-  pure/effect-port seam contracts, while WIN.6 is a test-harness three-state classifier plus unchanged-production
-  proof. Their unit/static evidence is therefore level-appropriate rather than an accidental `UNIT-ONLY` gap;
+  pure/effect-port seam contracts, while WIN.6 and WIN.7 combine real-subprocess integration coverage with
+  exact-head Windows execution. Their unit/static evidence is therefore level-appropriate rather than a gap;
   their downstream journeys remain covered by the built-CLI/platform bands.
 - API/auth/UI heuristic fields are not applicable. Every criterion implying an alternate/error state includes a
   negative or edge assertion, and no critical journey is marked FULL from a unit-only test.
@@ -316,16 +327,16 @@ auth, error-path, and UI heuristics; this section is their deterministic merge w
 
 | Priority | Fully covered | Partial | Uncovered | Coverage |
 |---|---:|---:|---:|---:|
-| P0 | 21 / 21 | 0 | 0 | 100% |
+| P0 | 22 / 22 | 0 | 0 | 100% |
 | P1 | 20 / 20 | 0 | 0 | 100% |
 | P2 | 5 / 5 | 0 | 0 | 100% |
 | P3 | 0 / 0 | 0 | 0 | 100% (empty class) |
-| **Overall** | **46 / 46** | **0** | **0** | **100%** |
+| **Overall** | **47 / 47** | **0** | **0** | **100%** |
 
 There are no `NONE`, `PARTIAL`, `UNIT-ONLY`, or `INTEGRATION-ONLY` criteria. The deduplicated relevant
-inventory contains 44 active cases/evidence exercises across 23 automated-test files: 26 Unit and 18 E2E.
-No relevant case is skipped, pending, or marked fixme. POSIX-only symlink cases are intentional platform
-partitions backed by forced-Windows copy cases, rather than blockers.
+inventory contains 47 active cases/evidence exercises across 23 automated-test files plus two external CI jobs:
+23 Unit and 24 E2E/acceptance evidence items. No relevant case is pending or marked fixme. The two POSIX-only
+symlink cases are intentional Windows skips, empirically observed alongside the forced-Windows copy cases.
 
 ### Gap and heuristic results
 
@@ -341,29 +352,26 @@ partitions backed by forced-Windows copy cases, rather than blockers.
 | UI journeys without E2E | 0 | not applicable: no browser/component UI |
 | UI states without coverage | 0 | not applicable: no UI state model |
 
-The only open item is an **execution-evidence dependency**, not a traceability or test-source gap: the
-post-fix external Windows Node 20/22 jobs have not yet executed. Forced-Win32 regressions cover the six repaired
-mechanisms locally, but the concluded investigation explicitly reserves empirical closure of the 248-test
-context cascade (**WIN.1**) and Biome launcher diagnosis (**WIN.5**) for that matrix.
+The interim execution-evidence dependency is now closed. Exact-head Windows Node 20 and Node 22 jobs passed
+the full applicable suite, empirically closing the context cascade, launcher diagnosis, production ZIP probe,
+and integration-budget correction. There is no remaining traceability, test-source, or platform-evidence gap.
 
-The real Info-ZIP successive-output branch is tool-conditional and does not register an explicit skip when the
-binary is absent. That is an evidence-transparency limitation, but not an additional open gate risk here: the
-deterministic fake reproduces Info-ZIP update behavior on every host, verifies exact replacement and partial
-failure cleanup, and the original external CI failure supplied the real-tool reproduction.
+The real Info-ZIP success branch remains tool-conditional by product contract, while absent and nonzero probes,
+exact replacement, typed failure, and cleanup are always exercised through real subprocess boundaries. This is
+explicit conditional coverage rather than an unobserved skip or open risk.
 
 ### Recommendations
 
-1. **HIGH — execute the external matrix.** Push or otherwise run this exact head through the configured
-   Ubuntu/macOS/Windows Node 20/22 jobs, retaining the Windows logs and check URLs as gate evidence.
-2. **HIGH — refresh the gate after CI.** Re-run the actual `bmad-testarch-trace` workflow against the same head
-   after both Windows jobs complete; do not infer final platform closure from the forced-Win32 local tests.
+1. **COMPLETED — external matrix.** Run 32376865726 retained all six job results and exact Windows logs.
+2. **COMPLETED — final trace refresh.** This edit-mode rerun incorporates the external evidence and closes
+   `R-ACX-WINDOWS-CI-EVIDENCE`.
 3. **LOW — retain periodic test-quality review.** The current independent review is clean; use
    `bmad-testarch-test-review` again only when the test implementation materially changes.
 
-Phase 1 is complete. Its machine-readable coverage matrix is saved at
-`/tmp/tea-trace-coverage-matrix-2026-08-20T12-13-30-830Z.json` for the Phase-2 gate calculation.
+The original Phase-1 matrix remains historical evidence. The configured machine-readable summary and gate
+outputs below now carry the final 47-item calculation.
 
-## Step 5 — Epic gate decision
+## Step 5 — Interim epic gate decision (historical)
 
 # Gate Decision: **CONCERNS** (interim)
 
@@ -416,3 +424,58 @@ CONCERNS verdict, the exact source SHA, and the single open risk.
 
 **Final workflow display:** 🚨 **GATE DECISION: CONCERNS** — coverage criteria are fully met; external Windows
 Node 20/22 evidence is the sole remaining gate concern.
+
+## Final gate update — external matrix closure
+
+# Gate Decision: **PASS** (final)
+
+This Edit-mode rerun preserves the interim decision above as audit history and evaluates the current seven-AC
+remediation story plus exact-head external evidence. The deterministic result is **PASS**: P0 is 22/22, P1 is
+20/20, P2 is 5/5, and overall coverage is 47/47. There is no coverage gap, open high risk, waiver, or conflicting
+evidence.
+
+### Exact-head CI evidence
+
+[GitHub Actions run 32376865726](https://github.com/kukhta-ai/work-package-manager/actions/runs/32376865726)
+completed successfully for commit `d0a65ce6a11bb98f1583cfdeb73eb7b4153d0e3b` on
+`feature/authoring-context`. Workflow metadata and the two Windows logs were independently inspected.
+
+| Matrix cell | Job | Result | Vitest evidence |
+|---|---|---|---|
+| Ubuntu / Node 20 | `96450286300` | PASS | 99 files, 1,288 passed, 624.24 s |
+| Ubuntu / Node 22 | `96450286615` | PASS | 99 files, 1,288 passed, 866.72 s |
+| macOS / Node 20 | `96450286759` | PASS | 99 files, 1,288 passed, 674.55 s |
+| macOS / Node 22 | `96450286530` | PASS | 99 files, 1,288 passed, 725.07 s |
+| Windows / Node 20 | [96450286493](https://github.com/kukhta-ai/work-package-manager/actions/runs/32376865726/job/96450286493) | PASS | 99 files, 1,286 passed + 2 expected POSIX-only skips = 1,288, 1,421.99 s |
+| Windows / Node 22 | [96450286506](https://github.com/kukhta-ai/work-package-manager/actions/runs/32376865726/job/96450286506) | PASS | 99 files, 1,286 passed + 2 expected POSIX-only skips = 1,288, 1,528.35 s |
+
+Every job's install, typecheck, Biome (200 files), build, and test steps passed. The logs show no test or command
+error. CI's three high npm advisories are confined to development dependencies; the supplied production audit
+is zero and this dependency-maintenance information does not alter the product gate.
+
+The preceding cold local gate at executable-equivalent `3dc5a20` also passed `npm ci`, typecheck, Biome on 200
+files, build, and **1,288/1,288 across 99 files in 387.94 seconds**, with a clean checkout and zero production
+audit findings. Commit `d0a65ce` changes only the SDLC ledger relative to that gate; exact-head CI independently
+executes the final commit itself.
+
+### Final criteria and risk disposition
+
+| Criterion | Required | Actual | Status |
+|---|---:|---:|---|
+| P0 coverage | 100% | 22/22 (100%) | MET |
+| P1 coverage | 90% target; 80% minimum | 20/20 (100%) | MET |
+| Overall coverage | 80% minimum | 47/47 (100%) | MET |
+| Critical coverage gaps | 0 | 0 | MET |
+| Open score-9 risks | 0 | 0 | MET |
+| External Windows Node 20/22 evidence | both configured jobs green | both green | MET |
+
+`R-ACX-WINDOWS-CI-EVIDENCE` is **CLOSED / MITIGATED**. Its interim probability 2 × impact 3 score of 6 falls
+to zero residual exposure for this gate: the exact-head Windows pair empirically closes the originally deduced
+WIN.1/WIN.5 paths and the follow-up WIN.6 production ZIP and WIN.7 integration-budget paths. No new failure or
+gap appeared in any of the six matrix cells.
+
+The relevant NFR baseline remains **PASS (with notes)** and was not re-audited by this workflow. No concern or
+waiver remains for human disposition.
+
+**Final workflow display:** ✅ **GATE DECISION: PASS** — 47/47 formal requirements are FULL and the exact-head
+six-cell OS/Node matrix closes the sole interim Windows evidence risk.

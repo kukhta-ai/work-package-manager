@@ -3,8 +3,8 @@
 # Re-read on every resume; update at every phase boundary.
 # (Distinct from _bmad/ — that is BMAD's own install dir; this dot-dir is our tracker.)
 
-phase: 6
-phase_name: "Authoring-context epic gate — external CI verification"
+phase: 7
+phase_name: "Handoff — PR #3 awaiting human review/merge"
 branch: feature/authoring-context
 epic: authoring-context
 # USER RESUMED 2026-08-19: "finish this feature". Reopened Phase 5 for the four tracked follow-ups
@@ -22,6 +22,7 @@ epic: authoring-context
 # CI run 32368788474 at 8920284: Ubuntu/macOS Node 20/22 passed 1286/1286. Windows Node 22 failed 4 deterministic cases; Node 20 failed the same 4 plus 3 real-subprocess tests exceeding the unit project's 5s budget. Follow-up bmad-investigate concluded High confidence: 3 stale portable-output expectations, 1 real Windows ZIP-availability product seam, and 3 integration-style packager timeouts. Dedicated follow-up fix branch active.
 # FOLLOW-UP #2 IMPLEMENTATION APPROVED: three output expectations corrected; ZIP availability requires zero-exit probe; real packager subprocess suite moved to existing serialized integration budget. Worker dev+QA and separate review/absorption actually ran; 13/13 packager, 42/42 focused, typecheck/Biome/build, and exact-final 1288/1288 across 99 files passed; 0 open findings. External Windows rerun remains.
 # FOLLOW-UP #2 COLD GATE PASS at 3dc5a20 from fresh clone: npm ci; typecheck; Biome (200 files); build; Vitest 1288/1288 across 99 files (387.94s); clean diff; production audit 0. Ready for external six-cell matrix rerun.
+# PHASE-6 FINAL PASS: CI run 32376865726 at d0a65ce completed 6/6 green on Ubuntu/macOS/Windows with Node 20/22. Windows each passed 1286 plus 2 expected POSIX-only skips (1288 accounted). Final actual bmad-testarch-trace Edit+Validate maps 47/47 AC FULL (P0 22, P1 20, P2 5), closes the sole Windows evidence risk, and returns deterministic PASS. Product/test work is complete; Phase 7 waits only for human review/merge of PR #3.
 # *** EPIC-4 COMPLETE (stories 96-100 done + merged --no-ff into feature/authoring-context). GATE = PASS (content-only: agent-skills/*.md + 1 strengthened test + backlog/ledger; NO src/ changes -> fast suite is the right gate; tsc0/biome0/vitest 1076 passed). ***
 # Added 2 skill references (task-conventions.md = AC what-not-how contract; native-surfaces.md = 5 roles + scope table + front-door mechanic); named the core bet in the spine + executor loop/done-gate/how-to-use in quality-protocol; fixed 9 drift spots + the files-add example. DOGFOOD (task-100): a cold agent authored a valid bundle from only the 2 surfaces -> surfaces self-sufficient; gaps resolved-in-skill or DEFERRED.
 # DEFERRED PRODUCT DEFECTS found by the dogfood (tracked, human/product): TASK-102 (BLOCKER: a bundle's install-backlog is NOT Backlog.md-CLI-resolvable -> the documented `cd wip/bundles/<id> && backlog ...` recipe-authoring cmd FAILS; also hits the executor at install time; skill ships a self-cleaning symlink workaround meanwhile), TASK-103 (payload-skill stub limbo), TASK-104 (bundle-template ships into archive + dangling menu). Plus TASK-101 (docs/templates reconcile: missing single-bundle/multi-bundle/with-payload-skill/adopts-system-tool templates + the files-add doc bug). TASK-95 (epic-3: --format git transform).
@@ -240,7 +241,7 @@ specialists:
   pm:           {spawned: true,  id: "ad55659c67626dac3", role: "PRD conformance vs docs/00-05",        status: "P2 done — prd shim; no scope conflicts (noted wpm/installer bin placeholder)"}
   ux-designer:  {spawned: false,                          role: "UX spec",                              status: "skipped — no GUI per docs/12"}
   architect:    {spawned: true,  id: "af0958eff0e1846e5", role: "architecture conformance vs docs/12-13", status: "P3 done — architecture/epics/readiness=PASS; RESUME if a task reveals a design gap"}
-  tea:          {spawned: true,  id: "/root/phase6_tea", role: "test design/framework/ci/trace/nfr/gate", last_skill: "bmad-testarch-trace @ epic-4 authoring-context (interim CONCERNS)", status: "46/46 AC FULL; coverage base PASS; sole score-6 concern is pending external Windows Node 20/22 evidence; re-run after CI."}
+  tea:          {spawned: true,  id: "/root/phase6_tea", role: "test design/framework/ci/trace/nfr/gate", last_skill: "bmad-testarch-trace @ epic-4 authoring-context (final PASS)", status: "47/47 AC FULL; 6/6 CI green; Windows evidence risk closed; deterministic Phase-6 PASS."}
   sm:           {spawned: true,  id: "a58a6182b0009cbb7", role: "sprint setup + create-story per task",  status: "P4 done — sprint-status.yaml; worker owns create-story in the P5 loop"}
   worker:       {spawned: true,  id: "/root/followup_worker2", role: "replacement persistent follow-up story worker", last_skill: "bmad-dev-story @ windows-ci-gate follow-up #2 (review absorption)", status: "Residual Windows fix implemented; artifact fix absorbed; 42/42 focused + static/build green; reviewer exact full gate 1288/1288."}
   # CROSS-CUTTING FIX in flight (worker #3): the task-25 lifecycle ⑤ MATERIALISE used ctx.root, but the real authoring backlog is
@@ -253,7 +254,7 @@ specialists:
   investigator: {spawned: true, id: "/root/ci_investigator", role: "systematic debugging at the epic gate", last_skill: "bmad-investigate @ windows-ci-gate follow-up #2", status: "Concluded (High): five mechanisms exhaust Windows Node22=4 and Node20=7 residual failures; bounded product/test fix plan recorded."}
   retro:        {spawned: false,                          role: "epic retrospective",                    status: "spawn after task-33 (end of P5)"}
 
-gates_pending: ["Phase-6 external CI rerun and final testarch-trace", "Human review and merge PR #3 into feature/authoring-workspace"]
+gates_pending: ["Human review and merge PR #3 into feature/authoring-workspace"]
 # GOAL EXTENDED (2026-06-01): "complete to task 33 ... full SDLC; THEN merge to dev and start the same SDLC
 # from it with the CLI tasks pushed there (update from remote) and go to task 84 (to the end)." So:
 #   (1) finish the foundation epic 23-33 + the Phase-6 epic gate;
@@ -275,4 +276,4 @@ tooling:
   tool_target: "claude-code"
   claude_code_skills: ".claude/skills (56 skills)"
 
-last_updated: "2026-08-20T13:52:48Z"
+last_updated: "2026-08-20T14:35:44Z"
