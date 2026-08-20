@@ -134,6 +134,21 @@ describe("parseBundleManifest — the payload reference registry (L files + M te
     }
   });
 
+  it("keeps reserved-root matching segment-exact for similarly named custom packages", () => {
+    const r = parseBundleManifest({
+      ...wellFormed(),
+      payload: {
+        skills: [{ name: "custom", path: "uninstall-backlog-extra/custom.md" }],
+      },
+    });
+    expect(r.ok).toBe(true);
+    if (r.ok) {
+      expect(r.value.payload.skills).toEqual([
+        { name: "custom", path: "uninstall-backlog-extra/custom.md" },
+      ]);
+    }
+  });
+
   it("a payload with files+templates+scripts only ⇒ payload.skills is [] (partial-payload compatibility)", () => {
     const r = parseBundleManifest({
       ...wellFormed(),
@@ -278,11 +293,62 @@ describe("parseBundleManifest — the payload reference registry (L files + M te
       { ...wellFormed(), payload: { skills: [{ name: 5, path: "p" }] } },
       "payload.skills",
     ],
+    [
+      "payload.skills traversal path",
+      { ...wellFormed(), payload: { skills: [{ name: "x", path: "../escape.md" }] } },
+      "payload.skills",
+    ],
+    [
+      "payload.skills absolute path",
+      { ...wellFormed(), payload: { skills: [{ name: "x", path: "/outside/x.md" }] } },
+      "payload.skills",
+    ],
+    [
+      "payload.skills backslash path",
+      { ...wellFormed(), payload: { skills: [{ name: "x", path: "custom\\x.md" }] } },
+      "payload.skills",
+    ],
+    [
+      "payload.skills root-level path",
+      { ...wellFormed(), payload: { skills: [{ name: "x", path: "x.md" }] } },
+      "payload.skills",
+    ],
+    [
+      "payload.skills reserved category path",
+      { ...wellFormed(), payload: { skills: [{ name: "x", path: "payload/files/x.md" }] } },
+      "payload.skills",
+    ],
+    [
+      "payload.skills uninstall recipe path",
+      {
+        ...wellFormed(),
+        payload: { skills: [{ name: "x", path: "uninstall-backlog/steps/x.md" }] },
+      },
+      "payload.skills",
+    ],
   ])("rejects %s naming %s", (_label, data, expectedField) => {
     const r = parseBundleManifest(data);
     expect(r.ok).toBe(false);
     if (!r.ok) {
       expect(`${r.problem.field} ${r.problem.message}`).toContain(expectedField);
+    }
+  });
+
+  it("rejects overlapping payload package roots and duplicate payload deregistration names", () => {
+    const ambiguousRegistries = [
+      [
+        { name: "one", path: "custom/one.md" },
+        { name: "two", path: "custom/two.md" },
+      ],
+      [
+        { name: "same", path: "custom/one/entry.md" },
+        { name: "same", path: "custom/two/entry.md" },
+      ],
+    ];
+    for (const skills of ambiguousRegistries) {
+      const r = parseBundleManifest({ ...wellFormed(), payload: { skills } });
+      expect(r.ok).toBe(false);
+      if (!r.ok) expect(`${r.problem.field} ${r.problem.message}`).toContain("payload.skills");
     }
   });
 });
@@ -291,6 +357,23 @@ describe("parseBundleManifest — the payload reference registry (L files + M te
 // registry (Family P). It is a SIBLING of `payload` (not inside it — installer-skills are not delivered payload,
 // doc 06/07) with the SAME `{name, path}` shape as `payload.skills`. Purely additive: absent ⇒ `[]`.
 describe("parseBundleManifest — the installerSkills registry (Family P, doc 10 row 173)", () => {
+  it("keeps installerSkills path parsing independent from payload-package containment policy", () => {
+    const r = parseBundleManifest({
+      ...wellFormed(),
+      installerSkills: [
+        { name: "legacy-root", path: "legacy.md" },
+        { name: "relocated", path: "custom/relocated.md" },
+      ],
+    });
+    expect(r.ok).toBe(true);
+    if (r.ok) {
+      expect(r.value.installerSkills).toEqual([
+        { name: "legacy-root", path: "legacy.md" },
+        { name: "relocated", path: "custom/relocated.md" },
+      ]);
+    }
+  });
+
   it("absent installerSkills ⇒ [] (old/partial bundle.yml compat), and payload is unaffected", () => {
     const r = parseBundleManifest(wellFormed()); // wellFormed has neither payload nor installerSkills
     expect(r.ok).toBe(true);

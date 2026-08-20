@@ -159,6 +159,74 @@ describe("bundle <id> skills add — ATTACH branch (task-74 #1)", () => {
     expect(skillsOf(fs, "a")).toEqual([{ name: "s2", path: "elsewhere/SKILL.md" }]);
   });
 
+  it("attaches an arbitrary custom document basename without redefining it to SKILL.md", async () => {
+    const { fs, backlog } = seed({ placedAt: { "custom/two.md": skillMd("two") } });
+    const i = io();
+    expect(
+      await run(
+        ["bundle", "a", "skills", "add", "two", "--path", "custom/two.md", "-C", PROJ],
+        deps(fs, backlog),
+        i,
+      ),
+    ).toBe(0);
+    expect(skillsOf(fs, "a")).toEqual([{ name: "two", path: "custom/two.md" }]);
+  });
+
+  it("attaches a similarly named custom package without treating it as a reserved root", async () => {
+    const path = "uninstall-backlog-extra/custom.md";
+    const { fs, backlog } = seed({ placedAt: { [path]: skillMd("custom") } });
+    const i = io();
+    expect(
+      await run(
+        ["bundle", "a", "skills", "add", "custom", "--path", path, "-C", PROJ],
+        deps(fs, backlog),
+        i,
+      ),
+    ).toBe(0);
+    expect(skillsOf(fs, "a")).toEqual([{ name: "custom", path }]);
+  });
+
+  it.each([
+    "../escape.md",
+    "/outside/x.md",
+    "custom\\x.md",
+    "x.md",
+    "payload/files/x.md",
+    "uninstall-backlog/steps/x.md",
+  ])("rejects unsafe or reserved payload-skill --path %s before probing", async (path) => {
+    const { fs, backlog } = seed({ placedAt: { [path]: skillMd("x") } });
+    const before = fs.read(`${PROJ}/wip/bundles/a/bundle.yml`);
+    const i = io();
+    expect(
+      await run(
+        ["bundle", "a", "skills", "add", "x", "--path", path, "-C", PROJ],
+        deps(fs, backlog),
+        i,
+      ),
+    ).toBe(2);
+    expect(i.err.text).toContain("portable relative file path");
+    expect(fs.read(`${PROJ}/wip/bundles/a/bundle.yml`)).toBe(before);
+  });
+
+  it("rejects a second registration whose containing package root overlaps an existing skill", async () => {
+    const aYml = `${bundleYmlFor("a")}payload:\n  skills:\n    - name: one\n      path: custom/one.md\n`;
+    const { fs, backlog } = seed({
+      aYml,
+      placedAt: { "custom/one.md": skillMd("one"), "custom/two.md": skillMd("two") },
+    });
+    const before = fs.read(`${PROJ}/wip/bundles/a/bundle.yml`);
+    const i = io();
+    expect(
+      await run(
+        ["bundle", "a", "skills", "add", "two", "--path", "custom/two.md", "-C", PROJ],
+        deps(fs, backlog),
+        i,
+      ),
+    ).toBe(1);
+    expect(i.err.text).toContain("overlaps registered payload skill");
+    expect(fs.read(`${PROJ}/wip/bundles/a/bundle.yml`)).toBe(before);
+  });
+
   it("rejects an attach whose SKILL.md has invalid frontmatter (no description): exit 1, nothing registered", async () => {
     const { fs, backlog } = seed({
       placedAt: { [`${AGENT_SKILLS}/bad/SKILL.md`]: "---\nname: bad\n---\nno description\n" },

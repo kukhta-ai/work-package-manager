@@ -133,16 +133,16 @@ describe("project installer-skills add — ATTACH branch (task-45 #1)", () => {
   });
 
   it("attaches via --path: registers the explicit (relocated) path", async () => {
-    const { fs, backlog } = seed({ placedAt: { "elsewhere/SKILL.md": skillMd("d2") } });
+    const { fs, backlog } = seed({ placedAt: { "custom/helper.md": skillMd("d2") } });
     const i = io();
     expect(
       await run(
-        ["project", "installer-skills", "add", "d2", "--path", "elsewhere/SKILL.md", "-C", PROJ],
+        ["project", "installer-skills", "add", "d2", "--path", "custom/helper.md", "-C", PROJ],
         deps(fs, backlog),
         i,
       ),
     ).toBe(0);
-    expect(installerSkillsOf(fs)).toEqual([{ name: "d2", path: "elsewhere/SKILL.md" }]);
+    expect(installerSkillsOf(fs)).toEqual([{ name: "d2", path: "custom/helper.md" }]);
   });
 
   it("rejects an attach whose SKILL.md has invalid frontmatter (no description): exit 1, nothing registered", async () => {
