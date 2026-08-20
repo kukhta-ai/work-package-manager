@@ -3,8 +3,8 @@
 ## Hand-off Brief
 
 1. **What happened.** Confirmed: GitHub Actions run `32355637349` failed the same 284 tests on Windows/Node 20 and Windows/Node 22 at commit `4547434117562bb79a9dfe0e670f66934a8034e4`, after install, type-check, lint/boundary enforcement, and build had passed.
-2. **Where the case stands.** Concluded with Medium confidence: the complete failure set partitions into six bounded mechanisms, comprising one product adapter error-classification defect and 283 deterministic path/fake or Windows-incompatible test-harness outcomes rather than a demonstrated broad runtime CLI failure.
-3. **What's needed next.** Apply the six seam-scoped corrections through `bmad-quick-dev`, then prove them with the targeted Windows bands and complete Node 20/22 plus Ubuntu/macOS gate below.
+2. **Where the case stands.** Concluded with Medium confidence: the complete failure set partitions into six bounded mechanisms, and the ZIP member is a unit-harness three-state classification defect rather than a production `toolAvailable` defect or a demonstrated broad runtime CLI failure.
+3. **What's needed next.** Apply the six seam-scoped corrections through `bmad-quick-dev`—leaving production `toolAvailable` unchanged—then prove them with the targeted Windows bands and complete Node 20/22 plus Ubuntu/macOS gate below.
 
 ## Case Info
 
@@ -46,7 +46,7 @@ The supplied report says that Phase-7 PR #3 run `32355637349` fails on Windows N
 | 3 | Trace NodeFileSystem symlink behavior, privileges, fallback policy, and test contract | High | Done | Adapter unconditionally copies on `win32` per docs 12/13; three tests assert POSIX symlink identity without a Windows guard. Runner privilege is not consulted. |
 | 4 | Verify or refute core-boundary path/import test failures | High | Done | Rule/lint gate passed. The self-test directly executes the extensionless npm Biome shim through `execFileSync`, catches the spawn error, and asserts against empty output. |
 | 5 | Compare historical cross-platform CI evidence and relevant commits | Medium | Done | No successful run is available, but commits `4eb869c` and `b998a11` establish the native-I/O/POSIX-logical-path split and Execa command-shim pattern; later commits introduced the uncovered seams. |
-| 6 | Separate stale-ZIP failures from Windows-only mechanisms | Medium | Done | The Windows packager failure is missing-tool classification, not stale archive membership; commit `15b671e` fixes stale replacement only and leaves `toolAvailable` unchanged. |
+| 6 | Separate stale-ZIP failures from Windows-only mechanisms | Medium | Done | Stale archive membership is independent; the Windows unit helper collapses a present-but-nonzero probe into “absent,” while production `toolAvailable` correctly distinguishes that state from spawn failure and requires no change. |
 | 7 | Explain the 280 failures outside the four initially named tests | High | Done | Exhaustive partition below accounts for all 284 tests and distinguishes cascades from independent failures. |
 | 8 | Trace the exact source/caller chain for each confirmed mechanism | High | Done | Outcome 4 maps six mechanisms and every affected test to the narrowest correction boundary; see Source Code Trace. |
 
@@ -65,7 +65,7 @@ The supplied report says that Phase-7 PR #3 run `32355637349` fails on Windows N
 | 2026-08-20 09:47:02Z | Run `32355637349` started for branch `feature/authoring-context`, SHA `4547434117562bb79a9dfe0e670f66934a8034e4`. | GitHub Actions run metadata | Confirmed |
 | 2026-08-20 10:11:23Z | Windows/Node 22 test step failed after setup, dependency install, type-check, lint, and build succeeded. | GitHub Actions job `96384106228` metadata | Confirmed |
 | 2026-08-20 10:13:40Z | Windows/Node 20 test step failed after setup, dependency install, type-check, lint, and build succeeded. | GitHub Actions job `96384106372` metadata | Confirmed |
-| 2026-08-20 | Commit `15b671e` fixed stale Info-ZIP replacement after the failing SHA; it did not change Windows missing-tool classification. | `git show 15b671e` | Confirmed |
+| 2026-08-20 | Commit `15b671e` fixed stale Info-ZIP replacement after the failing SHA; it did not change the independent unit-harness probe classification or production `toolAvailable`. | `git show 15b671e` | Confirmed |
 
 ## Confirmed Findings
 
@@ -104,7 +104,7 @@ The supplied report says that Phase-7 PR #3 run `32355637349` fails on Windows N
 | Build E2E expects a native `\\` output although the packager contract deliberately returns portable `/` | 1 | Confirmed | Test expectation |
 | Tests demand symlink identity where the documented Windows adapter policy returns a copy | 3 | Confirmed | Test platform guard/expectation |
 | Tests directly launch npm command shims with `execFileSync` | 2 | Confirmed/Deduced | Test subprocess harness |
-| Missing `zip` is treated as an available tool that later fails | 1 | Confirmed | Product adapter error classification |
+| The ZIP unit helper collapses present-but-nonzero and absent probes into one boolean state | 1 | Confirmed | Test-harness three-state classification; production `toolAvailable` is correct |
 
 **Detail:** This partition is exhaustive by failed test, not a sampling of error strings. It refutes both a single universal cause and the original three-family inventory. The first two mechanisms are one broad path-semantics family, but their correction boundaries differ: platform-selected path operations for context versus normalization only where native paths become logical/fake-observable values.
 
@@ -132,11 +132,11 @@ The supplied report says that Phase-7 PR #3 run `32355637349` fails on Windows N
 
 **Detail:** The docs E2E test calls bare `backlog` through `execFileSync`; the boundary self-test calls the extensionless `node_modules/.bin/biome` npm shim the same way and then discards the caught spawn error, leaving empty output. Node documents that `.cmd` shims cannot be invoked directly with `execFile` on Windows: [Node.js child processes: spawning `.bat` and `.cmd`](https://nodejs.org/api/child_process.html#spawning-bat-and-cmd-files-on-windows). Provisioning is not absent: the lockfile installs the Windows Backlog binary, and the production Execa/cross-spawn adapter tests pass in the same jobs.
 
-### Finding 10: Windows exposes a genuine missing-ZIP classification defect
+### Finding 10: The ZIP unit helper collapses a present-but-unusable command into “absent”
 
-**Evidence:** `src/adapters/packager.ts:104`-`src/adapters/packager.ts:114`, `src/adapters/packager.ts:319`-`src/adapters/packager.ts:328`; Windows log assertion `test/unit/adapters/packager.test.ts:400:45`.
+**Evidence:** `test/unit/adapters/packager.test.ts:28`-`test/unit/adapters/packager.test.ts:37`, `test/unit/adapters/packager.test.ts:370`-`test/unit/adapters/packager.test.ts:400`; `src/util/shell.ts:60`-`src/util/shell.ts:79`; `src/adapters/packager.ts:95`-`src/adapters/packager.ts:114`, `src/adapters/packager.ts:319`-`src/adapters/packager.ts:350`; Windows job `96384106228` log at the `packager.test.ts:400` failure.
 
-**Detail:** The `zip -v` probe returns a wrapped non-zero command failure (`'zip' is not recognized`) on Windows. `toolAvailable` treats every `Command failed (exit …)` as proof that the executable exists, so packaging proceeds and emits generic “zip failed” instead of the promised typed “not available; use tarball” error. This is independent of stale ZIP entries; the later stale-archive fix in `15b671e` does not alter this probe.
+**Detail:** `runSync` emits `Command could not be run` only when no process starts and `Command failed (exit N)` when a process starts but exits non-zero. Production `toolAvailable` intentionally returns false for the former and true for the latter, then preserves a later archive-invocation failure as typed `zip failed`; this is the documented three-state behavior. The test helper's `has()` catches both `execFileSync` failure shapes and returns the same `false`, so it enters the absent-tool assertion even when the production-compatible probe reached a present-but-unusable command. The log's `Command failed (exit 1)` and subsequent `zip failed` result agree with production semantics; the misleading command-not-recognized stderr does not turn a process exit into a spawn failure. Only the test helper/expectation needs correction, and stale ZIP entries remain independent.
 
 ### Finding 11: The core-boundary invariant itself did not fail
 
@@ -168,13 +168,13 @@ The supplied report says that Phase-7 PR #3 run `32355637349` fails on Windows N
 
 **Conclusion:** The 277-test path group is not 277 regressions and must not be fixed by globally forcing POSIX paths. `resolveContext` must select its path dialect from the injected platform; the other five producers keep native effect paths and normalize only their logical/fake-observable result.
 
-### Deduction 2: The Windows gate needs test portability fixes plus one product fix
+### Deduction 2: The Windows gate does not require a ZIP adapter probe change
 
 **Based on:** Findings 5, 8, 9, and 10.
 
-**Reasoning:** Symlink assertions contradict the documented copy policy; two subprocess helpers bypass the Windows-aware Execa path; the package-output assertion contradicts an explicit POSIX-return contract. Only missing-ZIP classification produces wrong product-facing error behavior under the intended Windows execution path.
+**Reasoning:** Symlink assertions contradict the documented copy policy; two subprocess helpers bypass the Windows-aware Execa path; the package-output assertion contradicts an explicit POSIX-return contract. For ZIP, `runSync` and `toolAvailable` already distinguish spawn failure from a process that exits non-zero, whereas the unit helper maps every thrown `execFileSync` result to the single boolean `false` and therefore selects the wrong assertion branch.
 
-**Conclusion:** Treating every failure as a product change would drift the adapter contract. The coherent remediation has separate test/fake, subprocess-harness, platform-expectation, and product-error-classification parts.
+**Conclusion:** Treating the ZIP failure as a product change would erase a deliberate adapter distinction. The coherent remediation has separate path/fake, subprocess-harness, platform-expectation, portable-output, and test-only ZIP three-state-classification parts; production `toolAvailable` remains unchanged.
 
 ### Deduction 3: Runner symlink privilege cannot explain the observed copy results
 
@@ -212,7 +212,7 @@ The supplied report says that Phase-7 PR #3 run `32355637349` fails on Windows N
 
 **Would refute:** Each failure family traces to unrelated defects with no shared producer or platform boundary.
 
-**Resolution:** Six bounded mechanisms exhaustively account for all failures. Two path mechanisms account for 277, and bounded command-shim and symlink-test mechanisms account for five more. Refutation found two independent single-test mechanisms: a wrong package-output expectation and a product ZIP error-classification defect; therefore no universal single cause exists.
+**Resolution:** Six bounded mechanisms exhaustively account for all failures. Two path mechanisms account for 277, and bounded command-shim and symlink-test mechanisms account for five more. Refutation found two independent single-test mechanisms: a wrong package-output expectation and a ZIP unit helper that collapses three process states; therefore no universal single cause exists.
 
 ### Hypothesis 3: The bulk CLI failures are genuine Windows product failures
 
@@ -280,23 +280,37 @@ The supplied report says that Phase-7 PR #3 run `32355637349` fails on Windows N
 
 **Would confirm:** The failing assertion compares archive membership across successive builds.
 
-**Would refute:** The log shows that `zip` is absent and the failure concerns error classification before an archive is produced.
+**Would refute:** The failure concerns probe/invocation classification before an archive is produced rather than archive membership across successive builds.
 
-**Resolution:** Windows reports `'zip' is not recognized`; the assertion expects the typed missing-tool message. Commit `15b671e` addresses stale replacement but leaves this failure path unchanged.
+**Resolution:** The helper's version probe selects its “absent” branch, while production reaches archive invocation and returns typed `zip failed`; no archive-membership comparison is involved. Commit `15b671e` addresses stale replacement but leaves this independent test-harness path unchanged.
 
 ### Hypothesis 8: `toolAvailable` misclassifies the Windows missing-command result
 
-**Status:** Confirmed
+**Status:** Refuted
 
 **Theory:** The probe treats a non-zero command-wrapper result as evidence that `zip` exists, then invokes it again and maps the failure to the wrong product error.
 
 **Supporting indicators:** The log contains `Command failed (exit 1): zip ...` and Windows command-not-recognized text.
 
-**Would confirm:** Source returns `true` for `Command failed (exit …)` and proceeds to `runArchiveTool`.
+**Would confirm:** `runSync` reports a spawn failure (`Command could not be run`, with no process exit code) and `toolAvailable` nevertheless returns true.
 
-**Would refute:** Source distinguishes the Windows command-not-recognized result as absent.
+**Would refute:** Source returns false for spawn failure and true only for the distinct case where a process ran and exited non-zero.
 
-**Resolution:** Confirmed at `src/adapters/packager.ts:104`-`src/adapters/packager.ts:114` and `src/adapters/packager.ts:319`-`src/adapters/packager.ts:328`.
+**Resolution:** Refuted by `src/util/shell.ts:60`-`src/util/shell.ts:79` and `src/adapters/packager.ts:104`-`src/adapters/packager.ts:114`: the adapter uses two explicit error shapes and preserves their intended distinction. The Windows log contains `Command failed (exit 1)`, not the spawn-failure shape, so proceeding to `runArchiveTool` and returning typed `zip failed` is consistent with the production contract despite the stderr wording.
+
+### Hypothesis 9: The ZIP unit helper collapses present-but-unusable and absent into one state
+
+**Status:** Confirmed
+
+**Theory:** The test-only `has()` helper returns false for any `execFileSync` exception, causing a present-but-nonzero command to enter the absent-tool assertion branch.
+
+**Supporting indicators:** The helper has an unqualified `catch { return false; }`; the selected test title says “when zip is absent,” but production reaches archive invocation and returns `zip failed` after a process exit.
+
+**Would confirm:** Source shows one boolean false branch for both spawn failure and non-zero exit, and the log shows the production non-zero-exit path.
+
+**Would refute:** The helper independently distinguishes no-process spawn failure from a process exit and selects an expectation for each.
+
+**Resolution:** Confirmed at `test/unit/adapters/packager.test.ts:28`-`test/unit/adapters/packager.test.ts:37` and `test/unit/adapters/packager.test.ts:370`-`test/unit/adapters/packager.test.ts:400`, cross-checked with the `Command failed (exit 1)`/`zip failed` log. The correction belongs only in the test's state classifier and conditional expectations.
 
 ## Missing Evidence
 
@@ -313,7 +327,7 @@ The supplied report says that Phase-7 PR #3 run `32355637349` fails on Windows N
 | Trigger | `.github/workflows/ci.yml:85` runs the full Vitest suite after install, type-check, lint/boundary enforcement, and build have passed. |
 | Condition | `windows-latest`, Node 20 and Node 22, failing SHA `4547434117562bb79a9dfe0e670f66934a8034e4`. |
 | Failure inventory | 284 tests in 41 files on each Node version; six source/caller mechanisms below sum exactly to 284. |
-| Area boundary | No workflow, dependency-install, TypeScript, build, or forbidden-core-import failure occurred. The fault perimeter is path-result/fake semantics, platform-specific test behavior, two test subprocess launchers, and ZIP error classification. |
+| Area boundary | No workflow, dependency-install, TypeScript, build, or forbidden-core-import failure occurred. The fault perimeter is path-result/fake semantics, platform-specific test behavior, two test subprocess launchers, and a ZIP unit-helper state-classification mismatch. |
 
 ### Mechanism 1 — context path dialect ignores the injected platform (261 tests)
 
@@ -357,13 +371,13 @@ The exact sum is `1 + 4 + 7 + 2 + 2 = 16`. A blanket `path.posix` conversion bef
 - **Biome (Deduced):** `test/integration/core-boundary.test.ts:19`-`test/integration/core-boundary.test.ts:21` builds the extensionless `.bin/biome` path; `test/integration/core-boundary.test.ts:48`-`test/integration/core-boundary.test.ts:59` launches it with `execFileSync` and converts any spawn failure to empty output. The dedicated Biome boundary step passed; the test then failed only because empty output lacked `noRestrictedImports`.
 - **Established correction:** use `execaSync` as commit `b998a11` and `src/util/shell.ts:44`-`src/util/shell.ts:57` already do. Invoke `backlog` by command name. Invoke Biome with local-bin resolution and `reject:false`, preserve stdout/stderr/non-zero diagnostics, and surface a no-process/undefined-exit result instead of silently returning empty output.
 
-### Mechanism 6 — missing ZIP is misclassified as a present tool (1 test)
+### Mechanism 6 — the ZIP test helper collapses three process states (1 test)
 
-- **Origin:** `src/adapters/packager.ts:104`-`src/adapters/packager.ts:114` treats every `Command failed (exit …)` from the benign `zip -v` probe as proof that the executable exists.
-- **Caller chain:** `src/adapters/packager.ts:321`-`src/adapters/packager.ts:334` accepts that result, invokes `zip -r`, and wraps the second failure as generic `zip failed`.
-- **Condition/effect:** the Windows command wrapper returns exit 1 and the explicit text `'zip' is not recognized as an internal or external command`; the test correctly chose its absent-tool branch and expected the promised `not available; use tarball` error.
-- **Refutation:** this is not a “present but quirky ZIP” assertion mismatch. The log explicitly establishes absence, while the product predicate says present. It is also not the stale-entry defect fixed by `15b671e`.
-- **Smallest correction:** treat the benign probe as a usability test: only exit 0 is available/usable; any probe failure returns false. A tool that passes the probe but fails the real archive invocation must still receive the distinct typed `zip failed` result. Avoid locale-specific matching of Windows’ command-not-recognized text.
+- **Origin:** `test/unit/adapters/packager.test.ts:28`-`test/unit/adapters/packager.test.ts:37` returns `false` for every version-probe exception, merging absent spawn, present-but-nonzero, and usable into only two observable states.
+- **Production contract:** `src/util/shell.ts:60`-`src/util/shell.ts:79` separates no-process spawn failure from non-zero process exit; `src/adapters/packager.ts:104`-`src/adapters/packager.ts:114` correctly maps only spawn failure to unavailable and preserves present-but-nonzero as present.
+- **Caller chain:** boolean `hasZip === false` selects `test/unit/adapters/packager.test.ts:392`-`test/unit/adapters/packager.test.ts:400` and expects unavailable; production reaches `src/adapters/packager.ts:325`-`src/adapters/packager.ts:350`, attempts the archive, and returns typed `zip failed` for the non-zero invocation.
+- **Condition/effect:** the Windows job records `Command failed (exit 1)` and `zip failed`, proving the production non-zero-exit branch. The stderr says `'zip' is not recognized`, but the wrapper's structured process outcome—not localized stderr text—defines the adapter state.
+- **Smallest correction:** make the test probe/conditional expectations represent three states: spawn failure → expect `not available`/tarball guidance; exit-zero probe → expect ZIP success; process-ran/non-zero probe → expect typed `zip failed`. Do not change `toolAvailable`, do not match localized stderr, and keep the stale-entry fix separate.
 
 ## Final Conclusion
 
@@ -371,20 +385,20 @@ The exact sum is `1 + 4 + 7 + 2 + 2 = 16`. A blanket `path.posix` conversion bef
 
 **Status:** Concluded
 
-All 284 failures are exhaustively partitioned and their source/caller correction seams are bounded. Confirmed source/log evidence establishes the two path seams, documented copy fallback, Backlog command-shim misuse, portable-output expectation mismatch, and missing-ZIP misclassification; the Biome spawn mechanism and exact per-test extent of the 248-test CLI cascade remain Deduced from shared symptoms rather than directly logged at every call site. Those two minor uncertainties require post-fix Windows execution to close empirically, but they do not leave an open diagnostic branch or change the proposed correction boundaries.
+All 284 failures are exhaustively partitioned and their source/caller correction seams are bounded. Confirmed source/log evidence establishes the two path seams, documented copy fallback, Backlog command-shim misuse, portable-output expectation mismatch, and ZIP unit-helper state collapse; production `toolAvailable` correctly distinguishes spawn failure from present-but-nonzero and requires no change. The Biome spawn mechanism and exact per-test extent of the 248-test CLI cascade remain Deduced from shared symptoms rather than directly logged at every call site. Those two minor uncertainties require post-fix Windows execution to close empirically, but they do not leave an open diagnostic branch or change the proposed correction boundaries.
 
 ## Recommended Next Steps
 
 ### Fix direction
 
-Apply the six corrections at the seams above, with no workflow provisioning change and no change to the documented Windows copy policy:
+Apply the six corrections at the seams above, with no workflow provisioning change, no change to the documented Windows copy policy, and no change to production `toolAvailable`:
 
 1. **Context path dialect — 261 tests.** Make `resolveContext` select `path.posix` or `path.win32` from `Environment.platform()` and use that dialect consistently; retain the default POSIX fake and add an explicit Windows-drive fake case proving genuine Win32 roots remain native.
 2. **Logical-result and fake-observation paths — 16 tests.** Apply `toPosix` only at the five output/result/diagnostic/fake-recording seams; retain native values for every filesystem/process effect and preserve relative alias targets byte-for-byte.
 3. **Build archive stdout — 1 test.** Correct the E2E expectation to the packager's portable POSIX result while keeping native paths for archive creation and existence checks.
 4. **Symlink platform contract — 3 tests.** Limit the two explicitly POSIX identity tests to non-Windows and make CLI-init assert a readable non-symlink copy on Windows; do not change the unconditional Windows copy policy or add a privilege probe.
 5. **Command-shim launchers — 2 tests.** Move the Backlog and Biome test-only launches to Execa, use local-bin resolution where appropriate, retain non-zero stdout/stderr, and fail visibly when no process launches.
-6. **ZIP availability classification — 1 test.** Treat any failed benign `zip -v` usability probe as unavailable, without locale-specific message matching, while retaining the separate typed `zip failed` result when a probe succeeds but archive creation later fails.
+6. **ZIP test-state classification — 1 test.** Replace the test helper's boolean availability model with spawn-failed, exit-zero, and process-ran/non-zero states; assert unavailable only for spawn failure, success for exit zero, and typed `zip failed` for present-but-nonzero. Production `toolAvailable` remains unchanged.
 
 ### Diagnostic
 
@@ -405,7 +419,7 @@ After applying the corrections, verify on `windows-latest` in three bands:
    npx vitest run test/unit/services/template-resolver.acceptance.test.ts test/unit/services/template-resolver.test.ts test/unit/templates/default-bundle.test.ts
    ```
 
-2. **Platform/process band:** run the commands below. Require native archive existence plus POSIX stdout, Windows readable-copy behavior, 19 Backlog tasks, a visible `noRestrictedImports` diagnostic, the typed absent-ZIP message, and a distinct post-probe ZIP invocation-failure result.
+2. **Platform/process band:** run the commands below. Require native archive existence plus POSIX stdout, Windows readable-copy behavior, 19 Backlog tasks, a visible `noRestrictedImports` diagnostic, and all three ZIP test states: spawn failure yields unavailable guidance, exit zero yields success, and process-ran/non-zero yields typed `zip failed` without changing production `toolAvailable`.
 
    ```text
    npm run build
@@ -419,4 +433,28 @@ After applying the corrections, verify on `windows-latest` in three bands:
 - Confirmed: the explicit Biome/core-boundary lint step passed in both Windows jobs, so any claimed boundary failure must be a separate Vitest test rather than failure of the workflow lint command itself.
 - Confirmed: the workflow itself calls out Windows symlink-to-copy fallback as expected matrix coverage at `.github/workflows/ci.yml:41`-`.github/workflows/ci.yml:43`.
 - Missing evidence: no historical successful CI run exists, so claims that these failures are recent regressions cannot be established from CI history alone.
-- Confirmed: commit `15b671e` fixes stale Info-ZIP archive entries but does not touch the Windows missing-tool probe; both fixes are required independently.
+- Confirmed: commit `15b671e` fixes stale Info-ZIP archive entries; the independent Windows correction is confined to the unit helper's three-state classification, and production `toolAvailable` must remain untouched.
+
+## Follow-up: 2026-08-20
+
+### New Evidence
+
+- Confirmed at failing SHA `4547434117562bb79a9dfe0e670f66934a8034e4`: `src/util/shell.ts:60`-`src/util/shell.ts:79` emits distinct spawn-failure and non-zero-exit shapes, and `src/adapters/packager.ts:104`-`src/adapters/packager.ts:114` intentionally maps them to absent versus present.
+- Confirmed: `test/unit/adapters/packager.test.ts:28`-`test/unit/adapters/packager.test.ts:37` catches every `execFileSync` exception and returns `false`, losing that distinction before choosing the assertion at `test/unit/adapters/packager.test.ts:392`-`test/unit/adapters/packager.test.ts:400`.
+- Confirmed in Windows job `96384106228`: production reports `Command failed (exit 1)` and typed `zip failed`, which is the present-but-nonzero branch, even though the launched command's stderr contains command-not-recognized wording.
+
+### Additional Findings
+
+The earlier interpretation privileged localized stderr over the wrapper's explicit process-state contract. The structured result and control flow are stronger evidence: production started a process that exited non-zero, while only the test labeled every probe exception “absent.”
+
+### Updated Hypotheses
+
+Hypothesis 8 is retained and changed from Confirmed to Refuted. Hypothesis 9 records the replacement finding: the test helper, not `toolAvailable`, collapses the three states.
+
+### Backlog Changes
+
+No investigation path remains open. Mechanism 6's correction boundary moved from `src/adapters/packager.ts` to `test/unit/adapters/packager.test.ts`; all other five mechanisms and the exhaustive `261 + 16 + 1 + 3 + 2 + 1 = 284` partition remain unchanged.
+
+### Updated Conclusion
+
+Status remains Concluded with Medium confidence. Production `toolAvailable` requires no modification; only the ZIP test probe and its conditional expectations must distinguish spawn failure, exit-zero success, and present-but-nonzero failure. The resolved `workflow.on_complete` hook is empty, so this follow-up requires no completion-hook action.
