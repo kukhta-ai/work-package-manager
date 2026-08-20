@@ -4,8 +4,8 @@
 # (Distinct from _bmad/ — that is BMAD's own install dir; this dot-dir is our tracker.)
 
 phase: 6
-phase_name: "Authoring-context epic gate — CI remediation"
-branch: fix/authoring-context/ci-gate
+phase_name: "Authoring-context epic gate — cold verification"
+branch: feature/authoring-context
 epic: authoring-context
 # USER RESUMED 2026-08-19: "finish this feature". Reopened Phase 5 for the four tracked follow-ups
 # in dependency order: TASK-95, TASK-101, TASK-104, TASK-105. Each runs the full mandated
@@ -249,7 +249,7 @@ specialists:
   investigator: {spawned: true, id: "/root/ci_investigator", role: "systematic debugging at the epic gate", last_skill: "bmad-investigate @ windows-ci-gate", status: "Concluded (Medium): all 284 Windows failures partitioned into six bounded mechanisms with exact repair/verification seams."}
   retro:        {spawned: false,                          role: "epic retrospective",                    status: "spawn after task-33 (end of P5)"}
 
-gates_pending: ["Phase-6 CI remediation: restore the Windows matrix", "Human review and merge PR #3 into feature/authoring-workspace"]
+gates_pending: ["Phase-6 cold gate and external CI matrix", "Human review and merge PR #3 into feature/authoring-workspace"]
 # GOAL EXTENDED (2026-06-01): "complete to task 33 ... full SDLC; THEN merge to dev and start the same SDLC
 # from it with the CLI tasks pushed there (update from remote) and go to task 84 (to the end)." So:
 #   (1) finish the foundation epic 23-33 + the Phase-6 epic gate;
@@ -271,4 +271,4 @@ tooling:
   tool_target: "claude-code"
   claude_code_skills: ".claude/skills (56 skills)"
 
-last_updated: "2026-08-20T11:47:24Z"
+last_updated: "2026-08-20T11:48:15Z"
