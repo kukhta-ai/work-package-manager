@@ -916,7 +916,7 @@ describeIfBuilt("FULL workspace lifecycle E2E (AC93#2, through dist/cli.js)", ()
       //    prints the resolved deliverable path = <workspace>/wip.
       const root = cli(["project", "root", "-C", proj], dir);
       expect(root.code).toBe(0);
-      expect(root.stdout.trim()).toBe(join(proj, "wip"));
+      expect(root.stdout.trim()).toBe(toPosix(join(proj, "wip")));
 
       // 3. bundle new scaffolds INTO the deliverable (wip/bundles/web/), under the reserved front-door prefix.
       expect(cli(["bundle", "new", "web", "-C", proj], dir).code).toBe(0);

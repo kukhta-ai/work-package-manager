@@ -30,8 +30,11 @@ native filesystem or process semantics.
 4. Cross-platform alias tests assert the documented unconditional Windows copy fallback while retaining proof
    of real POSIX symlinks.
 5. Backlog and Biome test-harness commands run through Execa with non-zero and launch diagnostics preserved.
-6. ZIP unit coverage distinguishes spawn-absent, usable, and present-but-nonzero tools without changing the
-   production `toolAvailable` behavior.
+6. ZIP availability follows the production launcher outcome: an absent command or non-zero version probe is
+   unavailable and never reaches archive creation, while a zero-exit probe permits either successful creation
+   or a typed archive failure with partial-output cleanup.
+7. The real-subprocess packager suite runs under the existing serialized 60-second integration budget, with its
+   prior tar, Git, ZIP, exact-set, transform, and push coverage preserved and no global timeout change.
 
 ## Tasks / Subtasks
 
@@ -46,15 +49,20 @@ native filesystem or process semantics.
   - [x] Separate native archive existence from portable build stdout
   - [x] Assert Windows copies and POSIX symlinks according to the documented adapter policy
   - [x] Launch Backlog and local Biome command shims through Execa and preserve diagnostics
-- [x] Correct the ZIP test harness's three-state probe model only (AC: 6)
-  - [x] Keep production `toolAvailable` byte-for-byte unchanged
-  - [x] Assert unavailable guidance only for spawn absence and typed ZIP failure when a process ran non-zero
+- [x] Correct the ZIP availability boundary from the production launcher result (AC: 6)
+  - [x] Treat only a zero-exit version probe as usable, without localized diagnostic matching or a global
+        `runSync` change
+  - [x] Deterministically prove command absence, non-zero probe/no archive, zero-probe success, and zero-probe
+        typed archive failure with partial-output cleanup
+- [x] Move the real-subprocess packager suite into the existing serialized integration budget (AC: 7)
+  - [x] Preserve every prior packager case and the integration project's existing 60-second timeout
+  - [x] Leave global/unit-project timeout configuration unchanged
 - [x] Invoke QA automation and run the targeted path/platform bands plus typecheck, lint, build, full regression,
-      and diff hygiene gates (AC: 1-6)
+      and diff hygiene gates (AC: 1-7)
 
 ## Dev Notes
 
-### Immutable remediation boundary
+### Remediation boundary and Follow-up #2 supersession
 
 - The concluded investigation exhaustively partitions the 284 Windows failures into `261 + 16 + 1 + 3 + 2 +
   1`; this story implements those six correction mechanisms and does not reopen diagnosis.
@@ -70,8 +78,9 @@ native filesystem or process semantics.
   symlink first, or change this product policy.
 - Backlog and Biome command-shim fixes belong to test harnesses. Use Execa; retain stdout, stderr, exit status,
   and a visible launch-failure result.
-- Production `src/adapters/packager.ts::toolAvailable` is correct and must not change. Only the test helper may
-  distinguish spawn absence, zero exit, and non-zero process exit.
+- Follow-up #2 supersedes the original test-only ZIP diagnosis: production
+  `src/adapters/packager.ts::toolAvailable` must treat a version probe as usable only when `runSync` returns
+  successfully. Do not parse localized diagnostics or change the shared `runSync` contract.
 
 ### Required evidence
 
@@ -130,6 +139,28 @@ GPT-5 Codex persistent worker
   passed 32/32, then typecheck, Biome (200 files), build, and diff hygiene passed. The reviewer's fresh exact-final
   1,286/1,286 full run remains the full-regression evidence because no product or test bytes changed during
   absorption.
+- External-CI Follow-up #2: `bmad-dev-story` was invoked again against this story on baseline `c76a44b`, with
+  no customization activation steps, project-context facts, or completion hook. The concluded follow-up was
+  read in full and supersedes the original test-only ZIP conclusion: an optional tool is usable only when its
+  version probe exits zero, without localized stderr matching or a global `runSync` change.
+- Follow-up red/green: after the test-only patch and packager-suite reclassification, the unchanged production
+  code failed exactly 1/13 packager cases (12 passed): a non-zero version probe reached archive invocation and
+  returned typed `zip failed`. The one-function probe correction then passed 13/13. The combined corrected
+  output/packager band passed 42/42 across 4 integration files.
+- Follow-up QA: `bmad-qa-generate-e2e-tests` was invoked after implementation; customization again resolved to
+  no activation steps, facts, or completion hook. Deterministic production-launcher cases now cover command
+  absence, a non-zero version probe, successful ZIP replacement, and successful probe followed by typed archive
+  failure with partial-output removal.
+- Follow-up final gates: typecheck passed; Biome passed on 200 files; production build passed; the exact full
+  Vitest suite passed 1,288/1,288 across 99 files in 384.27 seconds; `git diff --check` passed. No global test
+  timeout, `src/util/shell.ts`, or unrelated production behavior changed.
+- Follow-up #2 review absorption: `bmad-dev-story` was re-invoked after the separate-lane APPROVE verdict.
+  Customization again resolved with no activation additions, project-context facts, or completion hook. The
+  reviewer changed only the story and QA contract/evidence; the five-file product/test composite remained
+  byte-identical at SHA-256 `5f4f52361b8e31e66574e53da83d8e0505f7626e18b635d25a92cccd94acb9e7`.
+  The corrected integration band passed 42/42, followed by typecheck, Biome (200 files), build, and diff hygiene.
+  Because product/test bytes did not change, the reviewer's fresh exact-final 1,288/1,288 run remains the full
+  regression evidence for this artifact-only absorption.
 
 ### Completion Notes List
 
@@ -139,30 +170,40 @@ GPT-5 Codex persistent worker
   authoring-skill records, absolute memory-fake alias observations, skill-stub changed paths, and template-miss
   diagnostics. Relative alias targets are not rewritten.
 - Cross-platform test harnesses now model the documented archive-output, alias, npm-command-shim, and ZIP probe
-  contracts without changing Windows symlink policy or production archive-tool availability logic.
+  contracts without changing Windows symlink policy. Follow-up #2 supersedes the initial archive-tool
+  availability conclusion as recorded above.
 - QA evidence is recorded in
   `_bmad-output/implementation-artifacts/tests/test-summary-phase-6-windows-ci-remediation.md`; local automation
   is green and the external Windows Node 20/22 matrix remains the final empirical CI confirmation.
 - The approved reviewer comments are absorbed without executable changes; the story is returned to `review`
   for the parent-owned Phase-6 integration decision.
+- Follow-up #2 corrects only three stale portable-output expectations, the ZIP availability probe, and the test
+  project classification for the real tar/Git packager suite. Native filesystem values, post-probe typed ZIP
+  failure, stale-archive replacement, symlink/archive parity, and the existing 60-second integration budget are
+  preserved.
+- The reviewer-corrected live AC6/AC7, checked subtasks, and remediation note are absorbed without executable
+  changes; the story is returned to `review` for parent-owned integration and fresh Windows matrix confirmation.
 
 ### File List
 
 - `_bmad-output/implementation-artifacts/stories/story-phase-6-windows-ci-remediation.md` (new)
 - `_bmad-output/implementation-artifacts/tests/test-summary-phase-6-windows-ci-remediation.md` (new)
 - `src/adapters/memory-fs.ts`
+- `src/adapters/packager.ts`
 - `src/cli.ts`
 - `src/core/operations/install-authoring-skill.ts`
 - `src/core/operations/scaffold-skill.ts`
 - `src/core/services/context.ts`
 - `src/core/services/template-resolver.ts`
 - `test/integration/adapters/node-fs.test.ts`
+- `test/integration/adapters/packager.test.ts` (moved from `test/unit/adapters/packager.test.ts`)
 - `test/integration/cli.build.e2e.test.ts`
 - `test/integration/cli.init.test.ts`
+- `test/integration/cli.project-reads.test.ts`
+- `test/integration/cli.skill-install.test.ts`
 - `test/integration/core-boundary.test.ts`
 - `test/integration/docs-template-examples.e2e.test.ts`
 - `test/unit/adapters/memory-fs.test.ts`
-- `test/unit/adapters/packager.test.ts`
 - `test/unit/cli/project-reads-commands.test.ts`
 - `test/unit/operations/install-authoring-skill.test.ts`
 - `test/unit/operations/scaffold-skill.test.ts`
@@ -258,6 +299,96 @@ deduced portions identified by the concluded investigation.
 **APPROVE** — 0 fresh findings; all six mechanisms and both review fixes remain closed. Story status is `done`.
 External Windows Node 20/22 CI remains the only unproven empirical evidence.
 
+## Senior Developer Review (AI) — External CI Follow-up #2
+
+### Reviewer and Workflow Evidence
+
+GPT-5 Codex persistent separate-lane reviewer — Follow-up #2 review cycle 1
+
+- Invoked `bmad-story-automator-review` against this story and audited the complete current diff from
+  `c76a44b0aaccb2db68379abfd507e377c91fd442` on `fix/authoring-context/windows-ci-followup`.
+- Workflow customization resolved to English/intermediate critical-only automation with no custom review
+  configuration, activation additions, project-context facts, or completion hook. Parent-owned Backlog, state,
+  investigation, branch/commit/push, and `.serena/` surfaces remained untouched.
+- Exact inventory is one product file, the packager test move, three portable-expectation test files, this story,
+  and its QA summary. `src/util/shell.ts`, `vitest.config.ts`, core, package metadata, and CI configuration have no
+  baseline delta.
+
+### Finding and Auto-fix
+
+- **MEDIUM — fixed:** the operative AC6, checked subtasks, and remediation-boundary note still required
+  production `toolAvailable` to remain unchanged even though concluded Follow-up #2 superseded that initial
+  diagnosis. The story contract now requires exit-zero availability, deterministic absence/non-zero/success/
+  post-probe-failure evidence, and the unchanged integration timeout boundary; stale historical cycle evidence
+  remains explicitly historical.
+
+### Seven-Failure Trace and Acceptance Audit
+
+- Shared Windows Node 20/22 failures 1–2 map to the two project-root display expectations in
+  `cli.build.e2e` and `cli.project-reads`; failure 3 maps to the skill-install destination display expectation.
+  All three now compare `toPosix(...)` while their real native `existsSync`, extraction, and scaffold checks are
+  unchanged.
+- Shared failure 4 maps to the ZIP version probe. `toolAvailable` now succeeds iff the unchanged production
+  `runSync` returns normally; every thrown probe result is unavailable. There is no localized stderr matching or
+  shared launcher change. A direct baseline-classifier probe reproduced the red logic: a real exit 7 produces
+  `Command failed (exit 7)` and the former prefix test incorrectly classified it as available.
+- Node-20-only failures 5–6 are the real tar/Git archive cases and failure 7 is the real Git-remote case. Moving
+  the complete packager file into the serialized integration project applies the existing 60-second per-test
+  budget. The 11 baseline cases are preserved and 2 deterministic availability cases are added; no global/unit
+  timeout changed.
+- Deterministic same-launcher coverage proves: command absent -> unavailable/no archive; non-zero probe ->
+  unavailable/no archive invocation; zero probe + archive success; and zero probe + archive failure -> typed
+  `zip failed` with partial output removed. Existing exact-set, stale-replacement, symlink, front-door transform,
+  format-parity, local-push, and Git-remote cases all remain active.
+- The four shared plus three Node-20-only failures therefore map exactly to the five bounded Follow-up #2
+  corrections. No unrelated product policy, core boundary, workflow, dependency, or test-timeout expansion is
+  present.
+
+### Fresh Gate Evidence
+
+- Packager integration: 13/13; combined corrected integration band: 42/42 across 4 files.
+- Typecheck: PASS; Biome lint/core boundary: PASS (200 files); production build: PASS.
+- Exact full regression: 1,288/1,288 across 99 files (started 13:28:07 UTC, duration 382.82s).
+- File inventory, unchanged shell/config probes, tracked and untracked whitespace hygiene, and
+  `git diff --check`: PASS.
+
+### Outcome
+
+**APPROVE** — 1 MEDIUM artifact finding auto-fixed; 0 open findings. All seven reported Windows failures are
+covered by the bounded implementation and green local evidence. Story status is `done`; a fresh external Windows
+Node 20/22 matrix remains the only empirical evidence not reproducible on this host.
+
+## Senior Developer Review (AI) — Follow-up #2 Final Absorption
+
+### Workflow and Exact-Diff Audit
+
+- Re-invoked `bmad-story-automator-review` after worker absorption and re-audited the complete current diff from
+  `c76a44b0aaccb2db68379abfd507e377c91fd442`. Customization again resolved to English/intermediate critical-only
+  automation with no custom activation, project-context facts, or completion hook; parent-owned state,
+  investigation, branch/integration, and `.serena/` surfaces remained untouched.
+- The corrected live AC6/AC7, checked tasks, supersession boundary, seven-failure trace, File List, and QA evidence
+  all remain present and coherent. The current five executable files independently reproduce the sorted
+  path-and-SHA-256 composite `5f4f52361b8e31e66574e53da83d8e0505f7626e18b635d25a92cccd94acb9e7`.
+- Absorption therefore changed no product/test bytes. All 11 baseline packager cases plus the 2 deterministic
+  availability cases remain active; core, `src/util/shell.ts`, `vitest.config.ts`, package metadata, and CI
+  configuration remain outside the delta. All seven external-failure mappings and the prior MEDIUM artifact fix
+  remain closed.
+
+### Fresh Gate Evidence
+
+- Corrected integration band: 42/42 across 4 files (started 13:40:25 UTC, duration 43.33s).
+- Typecheck: PASS; Biome lint/core boundary: PASS (200 files); production build: PASS.
+- Composite, 99-file test inventory, protected-surface probes, staged-file inventory, tracked/untracked
+  whitespace checks, and `git diff --check`: PASS.
+- Because executable bytes are unchanged, the prior exact-final full regression remains authoritative:
+  1,288/1,288 across 99 files (started 13:28:07 UTC, duration 382.82s).
+
+### Outcome
+
+**APPROVE** — 0 fresh findings and 0 open findings. The Follow-up #2 implementation, tests, and absorbed review
+artifacts are final-review clean; story status is `done`. Fresh external Windows Node 20/22 CI remains the only
+empirical evidence not reproducible on this host.
+
 ## Change Log
 
 - 2026-08-20: Created the Phase-6 remediation story directly from the concluded investigation for dev-story
@@ -272,3 +403,14 @@ External Windows Node 20/22 CI remains the only unproven empirical evidence.
   returned the story to review.
 - 2026-08-20: Final review cycle verified the unchanged 18-file composite, reran focused/static/built gates,
   confirmed all findings closed, and approved the story as done pending external Windows CI evidence.
+- 2026-08-20: External CI Follow-up #2 corrected three portable-output expectations and ZIP availability,
+  moved the real-subprocess packager suite into the integration project, regenerated QA evidence, passed the
+  exact 1,288-test regression, and returned the story to review.
+- 2026-08-20: Independent Follow-up #2 review reconciled all seven external failures, repaired one MEDIUM stale
+  story-contract contradiction, passed focused/static/build/full gates, and approved the story as done pending
+  fresh external Windows matrix evidence.
+- 2026-08-20: Re-invoked dev-story in Follow-up #2 review-continuation mode, absorbed the corrected live
+  AC6/AC7/tasks/notes and QA evidence, verified byte-identical product/test inputs with focused/static/build
+  gates, and returned the story to review.
+- 2026-08-20: Final Follow-up #2 review re-invoked story-automator-review, reproduced the five-file executable
+  composite, passed focused/static/build and hygiene gates, found no fresh issue, and approved the story as done.

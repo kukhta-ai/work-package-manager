@@ -7,6 +7,7 @@ import { NodeFileSystem } from "../../src/adapters/node-fs.js";
 import { ProcessEnvironment } from "../../src/adapters/process-env.js";
 import { type CliDeps, run } from "../../src/cli.js";
 import type { CliIo, OutputSink } from "../../src/util/exit.js";
+import { toPosix } from "../../src/util/posix-path.js";
 import { withTempDir } from "../helpers/tmpdir.js";
 
 /**
@@ -90,7 +91,7 @@ describe("cli `project` reads over a real filesystem (tasks 37/49/48)", () => {
       // root (49): the bare resolved DELIVERABLE path (the workspace's wip/) on a single line.
       const rootIo = io();
       expect(await run(["project", "root", "-C", dir], realDeps(), rootIo)).toBe(0);
-      expect(rootIo.out.text).toBe(`${join(dir, "wip")}\n`);
+      expect(rootIo.out.text).toBe(`${toPosix(join(dir, "wip"))}\n`);
     });
   });
 
