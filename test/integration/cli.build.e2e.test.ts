@@ -531,6 +531,213 @@ describeIfBuilt("`wpm build package` E2E (task-83, through dist/cli.js)", () => 
     });
   });
 
+  it("TASK-105 — successive archives ship only registered payload-skill packages after real deregistration", async () => {
+    await withTempDir(async (dir) => {
+      const proj = initProject(dir);
+      expect(cli(["project", "targets", "add", "claude-code", "-C", proj], dir).code).toBe(0);
+      expect(cli(["bundle", "new", "web", "-C", proj], dir).code).toBe(0);
+      expect(cli(["bundle", "new", "other", "-C", proj], dir).code).toBe(0);
+
+      const wip = join(proj, "wip");
+      const web = join(wip, "bundles", "web");
+      const other = join(wip, "bundles", "other");
+      const skillMd = (name: string): string =>
+        `---\nname: ${name}\ndescription: Use ${name} after installation.\n---\n# ${name}\n`;
+
+      const keptRoot = join(web, "payload", "agent-skills", "kept");
+      mkdirSync(join(keptRoot, "references"), { recursive: true });
+      mkdirSync(join(keptRoot, "assets"), { recursive: true });
+      writeFileSync(join(keptRoot, "SKILL.md"), skillMd("kept"), "utf8");
+      writeFileSync(join(keptRoot, "references", "guide.md"), "registered guide\n", "utf8");
+      writeFileSync(join(keptRoot, "assets", "prompt.tmpl"), "hello {{name}}\n", "utf8");
+      if (process.platform !== "win32") {
+        symlinkSync("../references/guide.md", join(keptRoot, "assets", "guide-link.md"));
+      }
+
+      const movedRoot = join(web, "custom");
+      mkdirSync(join(movedRoot, "assets"), { recursive: true });
+      writeFileSync(join(movedRoot, "two.md"), skillMd("moved"), "utf8");
+      writeFileSync(join(movedRoot, "assets", "moved.txt"), "registered custom path\n", "utf8");
+
+      // A registered custom symlink package uses an arbitrary marker basename too. NodeFileSystem reports the
+      // directory link as file-like, while add/read follows it to validate the referenced document.
+      const linkedTarget = join(dir, "registered-linked-target");
+      const linkedRoot = join(web, "payload", "custom-skills", "linked");
+      if (process.platform !== "win32") {
+        mkdirSync(linkedTarget, { recursive: true });
+        mkdirSync(join(web, "payload", "custom-skills"), { recursive: true });
+        writeFileSync(join(linkedTarget, "linked-entry.md"), skillMd("linked"), "utf8");
+        writeFileSync(join(linkedTarget, "asset.txt"), "linked package asset\n", "utf8");
+        symlinkSync(linkedTarget, linkedRoot, "dir");
+      }
+
+      // Exact-boundary and bundle-isolation negatives. None is registered in its host bundle.
+      const conventionalOrphans = [
+        join(web, "payload", "agent-skills", "kept-extra"),
+        join(web, "payload", "agent-skills", "orphan"),
+        join(other, "payload", "agent-skills", "kept"),
+      ];
+      for (const orphan of conventionalOrphans) {
+        mkdirSync(orphan, { recursive: true });
+        writeFileSync(join(orphan, "SKILL.md"), skillMd("orphan"), "utf8");
+      }
+      const customSibling = join(web, "payload", "custom-skills", "moved-extra");
+      mkdirSync(customSibling, { recursive: true });
+      writeFileSync(join(customSibling, "SKILL.md"), skillMd("moved-extra"), "utf8");
+
+      // A custom symlinked skill directory is file-like through NodeFileSystem.list and must still be rejected.
+      const customOrphanTarget = join(dir, "custom-orphan-target");
+      mkdirSync(customOrphanTarget, { recursive: true });
+      writeFileSync(join(customOrphanTarget, "orphan-entry.md"), skillMd("linked-orphan"), "utf8");
+      const customOrphanLink = join(web, "payload", "custom-skills", "linked-orphan");
+      if (process.platform !== "win32") symlinkSync(customOrphanTarget, customOrphanLink, "dir");
+
+      // Controls: bundle installer-skills and another payload category are not governed by payload.skills.
+      const helper = join(web, "installer-skills", "helper", "SKILL.md");
+      const deliveredFile = join(web, "payload", "files", "manual", "info.md");
+      const deliveredTemplate = join(web, "payload", "templates", "manual", "info.md.tmpl");
+      const deliveredDoc = join(web, "docs", "manual", "info.md");
+      const uninstallRecipe = join(web, "uninstall-backlog", "notes", "info.md");
+      mkdirSync(join(web, "installer-skills", "helper"), { recursive: true });
+      mkdirSync(join(web, "payload", "files", "manual"), { recursive: true });
+      mkdirSync(join(web, "payload", "templates", "manual"), { recursive: true });
+      mkdirSync(join(web, "docs", "manual"), { recursive: true });
+      mkdirSync(join(web, "uninstall-backlog", "notes"), { recursive: true });
+      writeFileSync(helper, skillMd("helper"), "utf8");
+      writeFileSync(deliveredFile, skillMd("ordinary-file"), "utf8");
+      writeFileSync(deliveredTemplate, skillMd("ordinary-template"), "utf8");
+      writeFileSync(deliveredDoc, skillMd("ordinary-doc"), "utf8");
+      writeFileSync(uninstallRecipe, skillMd("ordinary-uninstall-recipe"), "utf8");
+
+      expect(cli(["bundle", "web", "skills", "add", "kept", "-C", proj], dir).code).toBe(0);
+      expect(
+        cli(["bundle", "web", "skills", "add", "moved", "--path", "custom/two.md", "-C", proj], dir)
+          .code,
+      ).toBe(0);
+      if (process.platform !== "win32") {
+        expect(
+          cli(
+            [
+              "bundle",
+              "web",
+              "skills",
+              "add",
+              "linked",
+              "--path",
+              "payload/custom-skills/linked/linked-entry.md",
+              "-C",
+              proj,
+            ],
+            dir,
+          ).code,
+        ).toBe(0);
+      }
+
+      const kept = "bundles/web/payload/agent-skills/kept";
+      const moved = "bundles/web/custom";
+      const controls = [
+        "bundles/web/installer-skills/helper/SKILL.md",
+        "bundles/web/payload/files/manual/info.md",
+        "bundles/web/payload/templates/manual/info.md.tmpl",
+        "bundles/web/docs/manual/info.md",
+        "bundles/web/uninstall-backlog/notes/info.md",
+      ];
+      const absentAlways = [
+        "bundles/web/payload/agent-skills/kept-extra/SKILL.md",
+        "bundles/web/payload/agent-skills/orphan/SKILL.md",
+        "bundles/other/payload/agent-skills/kept/SKILL.md",
+        "bundles/web/payload/custom-skills/moved-extra/SKILL.md",
+        "bundles/web/payload/custom-skills/linked-orphan",
+      ];
+      const registeredPaths = [
+        `${kept}/SKILL.md`,
+        `${kept}/references/guide.md`,
+        `${kept}/assets/prompt.tmpl`,
+        `${moved}/two.md`,
+        `${moved}/assets/moved.txt`,
+      ];
+      if (process.platform !== "win32") {
+        registeredPaths.push(`${kept}/assets/guide-link.md`);
+        registeredPaths.push("bundles/web/payload/custom-skills/linked");
+      }
+
+      const beforeDryRun = cli(["build", "dry-run", "-C", proj], dir);
+      expect(beforeDryRun.code).toBe(0);
+      for (const path of [...registeredPaths, ...controls])
+        expect(beforeDryRun.stdout).toContain(path);
+      for (const path of absentAlways) expect(beforeDryRun.stdout).not.toContain(path);
+
+      const formats: Array<{ name: "tarball" | "git" | "zip"; ext: "tgz" | "zip" }> = [
+        { name: "tarball", ext: "tgz" },
+        { name: "git", ext: "tgz" },
+      ];
+      if (hasZip() && hasUnzip()) formats.push({ name: "zip", ext: "zip" });
+
+      const packageLayouts = (
+        phase: "registered" | "deregistered",
+        shouldContainRegistered: boolean,
+      ): string[][] => {
+        const layouts: string[][] = [];
+        for (const format of formats) {
+          expect(cli(["build", "package", "--format", format.name, "-C", proj], dir).code).toBe(0);
+          const archive = join(proj, "builds", `demo-0.1.0.${format.ext}`);
+          const layout = archiveLayout(archive);
+          layouts.push(layout);
+          for (const path of controls) expect(layout).toContain(path);
+          for (const path of absentAlways) expect(layout).not.toContain(path);
+          for (const path of registeredPaths) {
+            if (shouldContainRegistered) expect(layout).toContain(path);
+            else expect(layout).not.toContain(path);
+          }
+
+          const extracted = join(dir, `task105-${phase}-${format.name}`);
+          mkdirSync(extracted, { recursive: true });
+          if (format.ext === "zip") execFileSync("unzip", ["-q", archive, "-d", extracted]);
+          else execFileSync("tar", ["-xzf", archive, "-C", extracted]);
+          if (shouldContainRegistered) {
+            expect(readFileSync(join(extracted, `${kept}/references/guide.md`), "utf8")).toBe(
+              "registered guide\n",
+            );
+            expect(readFileSync(join(extracted, `${kept}/assets/prompt.tmpl`), "utf8")).toBe(
+              "hello {{name}}\n",
+            );
+            if (process.platform !== "win32") {
+              expect(
+                lstatSync(join(extracted, `${kept}/assets/guide-link.md`)).isSymbolicLink(),
+              ).toBe(true);
+              expect(
+                lstatSync(
+                  join(extracted, "bundles/web/payload/custom-skills/linked"),
+                ).isSymbolicLink(),
+              ).toBe(true);
+            }
+          }
+        }
+        for (const layout of layouts.slice(1)) expect(layout).toEqual(layouts[0]);
+        return layouts;
+      };
+
+      packageLayouts("registered", true);
+
+      expect(cli(["bundle", "web", "skills", "remove", "kept", "-C", proj], dir).code).toBe(0);
+      expect(cli(["bundle", "web", "skills", "remove", "moved", "-C", proj], dir).code).toBe(0);
+      if (process.platform !== "win32") {
+        expect(cli(["bundle", "web", "skills", "remove", "linked", "-C", proj], dir).code).toBe(0);
+      }
+      // Deregister-not-delete: both conventional and custom sources remain author-editable on disk.
+      expect(existsSync(join(keptRoot, "SKILL.md"))).toBe(true);
+      expect(existsSync(join(movedRoot, "two.md"))).toBe(true);
+      if (process.platform !== "win32") expect(lstatSync(linkedRoot).isSymbolicLink()).toBe(true);
+
+      const afterDryRun = cli(["build", "dry-run", "-C", proj], dir);
+      expect(afterDryRun.code).toBe(0);
+      for (const path of [...registeredPaths, ...absentAlways])
+        expect(afterDryRun.stdout).not.toContain(path);
+      for (const path of controls) expect(afterDryRun.stdout).toContain(path);
+      packageLayouts("deregistered", false);
+    });
+  });
+
   it("TASK-95 AC#1-4 — git packages the same un-nested, prefix-stripped layout as tarball (and zip when available)", async () => {
     await withTempDir(async (dir) => {
       const proj = initProject(dir);

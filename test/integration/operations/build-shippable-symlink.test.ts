@@ -2,6 +2,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { NodeFileSystem } from "../../../src/adapters/node-fs.js";
 import { shippableFiles } from "../../../src/core/operations/build.js";
+import { loadProject } from "../../../src/core/operations/lifecycle.js";
 import { withTempDir } from "../../helpers/tmpdir.js";
 
 /**
@@ -22,15 +23,18 @@ describe("shippableFiles — the per-bundle `backlog → install-backlog` alias 
       // plus the per-bundle `backlog → install-backlog` RELATIVE symlink wpm ships.
       fs.write(
         join(dir, "manifest.yml"),
-        "project:\n  name: demo\n  version: 1.0.0\nbundles:\n  - web\n",
+        "project:\n  name: demo\n  version: 1.0.0\ntargets: []\nbundles:\n  - web\n",
       );
       const bundle = join(dir, "bundles", "web");
-      fs.write(join(bundle, "bundle.yml"), "id: web\nversion: 0.1.0\n");
+      fs.write(
+        join(bundle, "bundle.yml"),
+        "id: web\nversion: 0.1.0\nsummary: web\nconfirmation: safe\nrequires: {}\n",
+      );
       fs.write(join(bundle, "install-backlog", "config.yml"), "task_prefix: web\n");
       fs.write(join(bundle, "install-backlog", "tasks", "web-1.md"), "# detect\n");
       fs.ensureAlias("install-backlog", join(bundle, "backlog")); // relative symlink → real on POSIX
 
-      const ship = shippableFiles(fs, dir, ["web"]);
+      const ship = shippableFiles(fs, dir, loadProject(fs, dir));
 
       // The link is recorded ONCE, as a leaf (the link path itself — never traversed):
       expect(ship.filter((p) => p === "bundles/web/backlog")).toEqual(["bundles/web/backlog"]);
@@ -53,15 +57,18 @@ describe("shippableFiles — the per-bundle `backlog → install-backlog` alias 
       // not duplicated through `backlog/`.
       fs.write(
         join(dir, "manifest.yml"),
-        "project:\n  name: demo\n  version: 1.0.0\nbundles:\n  - web\n",
+        "project:\n  name: demo\n  version: 1.0.0\ntargets: []\nbundles:\n  - web\n",
       );
       const bundle = join(dir, "bundles", "web");
-      fs.write(join(bundle, "bundle.yml"), "id: web\nversion: 0.1.0\n");
+      fs.write(
+        join(bundle, "bundle.yml"),
+        "id: web\nversion: 0.1.0\nsummary: web\nconfirmation: safe\nrequires: {}\n",
+      );
       fs.write(join(bundle, "install-backlog", "config.yml"), "task_prefix: web\n");
       // A real copied `backlog/` directory (NOT a symlink) — the win32 fallback shape.
       fs.write(join(bundle, "backlog", "config.yml"), "task_prefix: web\n");
 
-      const ship = shippableFiles(fs, dir, ["web"]);
+      const ship = shippableFiles(fs, dir, loadProject(fs, dir));
 
       // `backlog` is recorded once as a leaf, and its copied contents are NOT enumerated (no double-include):
       expect(ship.filter((p) => p === "bundles/web/backlog")).toEqual(["bundles/web/backlog"]);

@@ -1,6 +1,7 @@
 import { join } from "node:path";
-import type { AgentName, Project, ValidationReport } from "../model/index.js";
+import type { AgentName, Project, ValidationProblem, ValidationReport } from "../model/index.js";
 import type { FileSystem } from "../ports/index.js";
+import { validateSkillFrontmatter } from "../services/frontmatter.js";
 import {
   type Lockfile,
   parseLockfile,
@@ -9,6 +10,11 @@ import {
   type VerifyResult,
   verifyLockfile,
 } from "../services/integrity.js";
+import {
+  isPathWithin,
+  isReservedPayloadSkillPackageRoot,
+  payloadSkillPackageRoot,
+} from "../services/skill-ref-path.js";
 import { validateProject } from "../services/validate.js";
 
 /**
@@ -200,8 +206,6 @@ export interface BuildPlan {
 export interface BuildPlanInput {
   /** The loaded project (manifest + every enabled bundle's parsed `bundle.yml`). */
   readonly project: Project;
-  /** The enabled bundle ids (`manifest.bundles`) — drives the disabled-dir exclusion. */
-  readonly enabledBundleIds: readonly string[];
   /** The directory names present under `bundles/` — the input `validateProject` needs to detect orphans. */
   readonly bundleDirectoryNames: readonly string[];
 }
@@ -310,15 +314,16 @@ function checkLockfile(
  *
  * @param fs - The FileSystem port.
  * @param root - The project root.
- * @param enabledBundleIds - The manifest-enabled bundle ids (the disabled-dir filter).
+ * @param project - The loaded project model: its manifest drives enabled-bundle pruning and each enabled
+ * bundle's `payload.skills` registry authorizes payload-skill directory packages.
  * @returns The sorted, root-relative shippable file paths.
  */
-export function shippableFiles(
-  fs: FileSystem,
-  root: string,
-  enabledBundleIds: readonly string[],
-): string[] {
-  const enabled = new Set<string>(enabledBundleIds);
+export function shippableFiles(fs: FileSystem, root: string, project: Project): string[] {
+  const enabled = new Set<string>(project.manifest.bundles);
+  const skillPolicies = payloadSkillPolicies(fs, root, project);
+  const registeredSkillRoots = [...skillPolicies.values()].flatMap(
+    (policy) => policy.registeredRoots,
+  );
   const out: string[] = [];
 
   const walk = (rel: string): void => {
@@ -340,10 +345,27 @@ export function shippableFiles(
         continue;
       }
 
+      // `bundle.yml payload.skills` is authoritative. Under the conventional payload-skill container, recurse
+      // only into an exact registered directory root (or an ancestor needed to reach a nested custom root).
+      // Apply this before the entry-kind branch so a file-like symlink root cannot bypass registration.
+      const skillPolicy = conventionalSkillContainerPolicy(rel, skillPolicies);
+      if (
+        skillPolicy !== undefined &&
+        !skillPolicy.registeredRoots.some(
+          (registeredRoot) =>
+            registeredRoot === childRel || registeredRoot.startsWith(`${childRel}/`),
+        )
+      ) {
+        continue;
+      }
+
       // `.tmpl` is the builder's source suffix. The only shippable exception is a real enabled bundle's
-      // payload/templates/ subtree: those are runtime parameterized files by contract (docs 06/07), not an
-      // unresolved builder source. Keeping this exception avoids silently dropping an author's payload.
-      if (entry.kind !== "directory" && isUnresolvedBuilderTemplate(childRel, enabled)) {
+      // payload/templates/ subtree or a registered payload-skill root: both are runtime product content, not
+      // unresolved builder sources. Keeping these exceptions avoids silently breaking an author's payload.
+      if (
+        entry.kind !== "directory" &&
+        isUnresolvedBuilderTemplate(childRel, enabled, registeredSkillRoots)
+      ) {
         continue;
       }
 
@@ -364,16 +386,183 @@ export function shippableFiles(
     }
   };
   walk("");
-  return out.sort();
+  return filterPayloadSkillPackages(fs, root, out, skillPolicies).sort();
 }
 
 /** Whether a `.tmpl` path is unresolved builder input rather than an enabled bundle's runtime payload template. */
-function isUnresolvedBuilderTemplate(rel: string, enabled: ReadonlySet<string>): boolean {
+function isUnresolvedBuilderTemplate(
+  rel: string,
+  enabled: ReadonlySet<string>,
+  registeredSkillRoots: readonly string[],
+): boolean {
   if (!rel.endsWith(".tmpl")) {
+    return false;
+  }
+  if (registeredSkillRoots.some((root) => isPathWithin(rel, root))) {
     return false;
   }
   const match = /^bundles\/([^/]+)\/payload\/templates\//.exec(rel);
   return match === null || !enabled.has(match[1] as string);
+}
+
+/** The payload-skill ship policy for one enabled bundle, projected from the already parsed project model. */
+interface PayloadSkillPolicy {
+  readonly bundleRoot: string;
+  readonly conventionalRoot: string;
+  readonly declaredRoots: readonly string[];
+  readonly registeredRoots: readonly string[];
+}
+
+/** Project each enabled bundle's existing, valid `payload.skills` refs into exact package boundaries. */
+function payloadSkillPolicies(
+  fs: FileSystem,
+  root: string,
+  project: Project,
+): ReadonlyMap<string, PayloadSkillPolicy> {
+  const policies = new Map<string, PayloadSkillPolicy>();
+  for (const [id, bundle] of project.bundles) {
+    const bundleRoot = `${BUNDLES_DIR}/${id}`;
+    const declaredRoots = new Set<string>();
+    const registeredRoots = new Set<string>();
+    for (const ref of bundle.payload.skills) {
+      const skillRoot = payloadSkillPackageRoot(ref.path);
+      const documentPath = `${bundleRoot}/${ref.path}`;
+      if (skillRoot === undefined) continue;
+      const absoluteRoot = `${bundleRoot}/${skillRoot}`;
+      declaredRoots.add(absoluteRoot);
+      if (!fs.exists(join(root, documentPath))) continue;
+      if (isValidSkillDocument(fs, root, documentPath)) registeredRoots.add(absoluteRoot);
+    }
+    policies.set(String(id), {
+      bundleRoot,
+      conventionalRoot: `${bundleRoot}/payload/agent-skills`,
+      declaredRoots: [...declaredRoots].sort(),
+      registeredRoots: [...registeredRoots].sort(),
+    });
+  }
+  return policies;
+}
+
+/** Return the bundle policy when `rel` is exactly its conventional payload-skill container. */
+function conventionalSkillContainerPolicy(
+  rel: string,
+  policies: ReadonlyMap<string, PayloadSkillPolicy>,
+): PayloadSkillPolicy | undefined {
+  const match = /^bundles\/([^/]+)\/payload\/agent-skills$/.exec(rel);
+  return match === null ? undefined : policies.get(match[1] as string);
+}
+
+/**
+ * Remove detectable custom-path payload-skill packages that have no registry entry. Conventional roots were
+ * pruned during traversal (including symlink leaves); this second pass handles relocated skill directories by
+ * recognizing a valid skill-frontmatter document with any basename. Reserved bundle surfaces with independent
+ * delivery/scan semantics are excluded from detection, so their ordinary frontmatter-bearing files are intact.
+ */
+function filterPayloadSkillPackages(
+  fs: FileSystem,
+  root: string,
+  paths: readonly string[],
+  policies: ReadonlyMap<string, PayloadSkillPolicy>,
+): string[] {
+  const unregisteredRoots = new Set<string>();
+  for (const path of paths) {
+    const match = /^bundles\/([^/]+)\/(.+)$/.exec(path);
+    if (match === null) continue;
+    const policy = policies.get(match[1] as string);
+    if (policy === undefined) continue;
+    if (policy.registeredRoots.some((registeredRoot) => isPathWithin(path, registeredRoot))) {
+      continue;
+    }
+    const skillRoot = detectedSkillPackageRoot(fs, root, path);
+    if (skillRoot === undefined) continue;
+    const bundleRelativeRoot = skillRoot.slice(policy.bundleRoot.length + 1);
+    if (isProtectedNonPayloadSkillSurface(bundleRelativeRoot)) continue;
+    unregisteredRoots.add(skillRoot);
+  }
+
+  return paths.filter((path) => {
+    const policy = [...policies.values()].find((candidate) =>
+      isPathWithin(path, candidate.bundleRoot),
+    );
+    if (policy === undefined) return true;
+    if (policy.registeredRoots.some((registeredRoot) => isPathWithin(path, registeredRoot))) {
+      return true;
+    }
+    // A declared ref whose document is missing or invalid never authorizes neighboring package content.
+    if (policy.declaredRoots.some((declaredRoot) => isPathWithin(path, declaredRoot))) {
+      return false;
+    }
+    // Traversal may enter an ancestor to reach a nested registered custom root. Only the ancestor leaf itself
+    // (not arbitrary sibling content below it) is eligible to survive alongside the exact registered subtree.
+    if (isPathWithin(path, policy.conventionalRoot)) {
+      return policy.registeredRoots.some((registeredRoot) => registeredRoot.startsWith(`${path}/`));
+    }
+    return ![...unregisteredRoots].some((unregisteredRoot) => isPathWithin(path, unregisteredRoot));
+  });
+}
+
+/**
+ * Detect the package root represented by one enumerated leaf. Regular skill documents may use any basename.
+ * The real adapter reports a directory symlink as a file-like leaf, so an immediate directory listing is also
+ * attempted; a valid document directly inside that linked directory identifies the link itself as the package.
+ */
+function detectedSkillPackageRoot(fs: FileSystem, root: string, path: string): string | undefined {
+  if (isValidSkillDocument(fs, root, path)) {
+    const slash = path.lastIndexOf("/");
+    return slash > 0 ? path.slice(0, slash) : undefined;
+  }
+  try {
+    for (const entry of fs.list(join(root, path))) {
+      if (entry.kind === "file" && isValidSkillDocument(fs, root, `${path}/${entry.name}`)) {
+        return path;
+      }
+    }
+  } catch {
+    // A normal file is not listable; only a directory-like symlink reaches the loop above.
+  }
+  return undefined;
+}
+
+/** Whether an on-disk document has the same valid frontmatter required by `skills add --path`. */
+function isValidSkillDocument(fs: FileSystem, root: string, documentPath: string): boolean {
+  try {
+    validateSkillFrontmatter(fs.read(join(root, documentPath)), documentPath);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** Bundle subtrees whose valid skill-like frontmatter belongs to a distinct non-payload-skill surface. */
+function isProtectedNonPayloadSkillSurface(bundleRelativeRoot: string): boolean {
+  return isReservedPayloadSkillPackageRoot(bundleRelativeRoot);
+}
+
+/** Build-blocking problems for registered payload-skill documents that are missing or no longer valid. */
+function payloadSkillSourceProblems(
+  fs: FileSystem,
+  root: string,
+  project: Project,
+): ValidationProblem[] {
+  const problems: ValidationProblem[] = [];
+  for (const [id, bundle] of project.bundles) {
+    for (const ref of bundle.payload.skills) {
+      const relative = `${BUNDLES_DIR}/${id}/${ref.path}`;
+      const field = `bundles.${id}.payload.skills.${ref.name}.path`;
+      if (!fs.exists(join(root, relative))) {
+        problems.push({
+          message: `registered payload skill "${ref.name}" is missing at ${relative}`,
+          field,
+        });
+      } else if (!isValidSkillDocument(fs, root, relative)) {
+        problems.push({
+          message: `registered payload skill "${ref.name}" is invalid at ${relative}`,
+          field,
+        });
+      }
+    }
+  }
+  return problems;
 }
 
 /**
@@ -429,16 +618,21 @@ const BUNDLE_BACKLOG_ALIAS_RE = /^bundles\/[^/]+\/backlog$/;
  * @throws If `wpm.lock` is present but malformed (`parseLockfile`'s contract — a tampered lock is a defect).
  */
 export function computeBuildPlan(fs: FileSystem, root: string, input: BuildPlanInput): BuildPlan {
-  const { project, enabledBundleIds, bundleDirectoryNames } = input;
+  const { project, bundleDirectoryNames } = input;
 
   // (1) validate — fail the build on any coherence problem (AC82#1).
-  const validation = validateProject(project, bundleDirectoryNames);
+  const projectValidation = validateProject(project, bundleDirectoryNames);
+  const skillProblems = payloadSkillSourceProblems(fs, root, project);
+  const validation: ValidationReport = {
+    ok: projectValidation.ok && skillProblems.length === 0,
+    problems: [...projectValidation.problems, ...skillProblems],
+  };
 
   // (2) frozen-lockfile — verify wpm.lock against the vendored content (AC82#2); absent ⇒ trivial pass.
   const { check, lock } = checkLockfile(fs, root);
 
   // (3) shippable enumeration — the file tree that would ship (AC82#3 / `build package` archive content).
-  const shippable = shippableFiles(fs, root, enabledBundleIds);
+  const shippable = shippableFiles(fs, root, project);
 
   // (4) front-door transforms — the build-time `_AGENTS.md` → `AGENTS.md` (+ per-target aliases) strip the
   // packager performs while archiving (task-90; doc 06/12). Pure policy here; the adapter performs the effect.

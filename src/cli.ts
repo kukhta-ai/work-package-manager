@@ -106,6 +106,10 @@ import type { BacklogMd, Clock, Environment, FileSystem } from "./core/ports/ind
 import { resolveContext } from "./core/services/context.js";
 import { parseManifest, parseTemplateDescriptor } from "./core/services/schema/index.js";
 import {
+  PAYLOAD_SKILL_PATH_REQUIREMENT,
+  payloadSkillPackageRoot,
+} from "./core/services/skill-ref-path.js";
+import {
   listTemplates,
   resolveTemplate,
   type TemplateSummary,
@@ -1311,12 +1315,15 @@ const bundleSkillsModule: PerBundleCommandModule = {
         // (the pure operation `check` has no port — the same place `bundleFilesModule` puts its add check).
         const conventional = conventionalSkillPath(PAYLOAD_SKILLS_DESCRIPTOR, name);
         const targetRel = opts.path ?? conventional;
+        if (payloadSkillPackageRoot(targetRel) === undefined) {
+          throw new UsageError(`--path "${targetRel}" ${PAYLOAD_SKILL_PATH_REQUIREMENT}`);
+        }
         const exists = ctx.deps.fs.exists(join(root, "bundles", id, targetRel));
 
         if (opts.path !== undefined && !exists) {
           // 74#3: --path given but nothing there → typed error (exit 1), register nothing.
           throw new NotFoundError(
-            `no SKILL.md at bundles/${id}/${opts.path} — omit --path to scaffold a stub at ${conventional}, or place the file there first`,
+            `no skill document at bundles/${id}/${opts.path} — omit --path to scaffold a stub at ${conventional}, or place the file there first`,
           );
         }
 
@@ -1386,10 +1393,10 @@ const bundleSkillsModule: PerBundleCommandModule = {
       .command("remove")
       .argument(
         "<name>",
-        "the payload skill to remove: deregister it (SKILL.md left on disk) if registered, else delete its stray on-disk stub",
+        "the payload skill to remove: deregister it (source package left on disk) if registered, else delete its stray on-disk stub",
       )
       .description(
-        "deregister a registered payload skill (leaving its SKILL.md), or delete an unregistered on-disk stub (doc 10; TASK-103)",
+        "deregister a registered payload skill (leaving its source package), or delete an unregistered conventional on-disk stub (doc 10; TASK-103)",
       )
       .action((name: string) => {
         const scope = { deliverableRoot: root, workspaceRoot };
@@ -1418,7 +1425,7 @@ const bundleSkillsModule: PerBundleCommandModule = {
     withExamples(removeLeaf, [
       {
         command: "wpm bundle web-handoff skills remove handoff-web",
-        note: "deregister a registered skill (its SKILL.md stays on disk)",
+        note: "deregister a registered skill (its complete source package stays on disk)",
       },
       {
         command: "wpm bundle web-handoff skills remove stray-skill",
@@ -3019,7 +3026,6 @@ function loadBuildPlan(ctx: CommandContext, root: string): BuildPlan {
   const project = loadProject(ctx.deps.fs, root);
   return computeBuildPlan(ctx.deps.fs, root, {
     project,
-    enabledBundleIds: project.manifest.bundles,
     bundleDirectoryNames: bundleDirectoryNames(ctx.deps.fs, root),
   });
 }
