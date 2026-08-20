@@ -1037,20 +1037,11 @@ function validSkillMd(name: string): string {
 describeIfBuilt(
   "bundle <id> skills add / list / remove E2E via dist/cli.js (tasks 74/75/76)",
   () => {
-    it("74#1 ATTACH — `skills add <id>-skill` attaches the shipped sample; registers {name,path}; content unchanged; NO materialised line", async () => {
+    it("74#1 ATTACH — `skills add <id>-skill` attaches an author-placed SKILL.md; registers {name,path}; content unchanged; NO materialised line", async () => {
       await withTempDir((dir) => {
         const proj = projectWithWeb(dir);
-        // A fresh `bundle new web` ships payload/agent-skills/web-skill/SKILL.md (the default template's sample).
-        const samplePath = join(
-          proj,
-          "wip",
-          "bundles",
-          "web",
-          "payload",
-          "agent-skills",
-          "web-skill",
-          "SKILL.md",
-        );
+        // A fresh `bundle new web` no longer ships a payload-skill sample (TASK-103); place one so `add` ATTACHES it.
+        const samplePath = placeSkill(proj, "web", "web-skill", validSkillMd("web-skill"));
         expect(existsSync(samplePath)).toBe(true);
         const sampleBefore = readFileSync(samplePath, "utf8");
 
@@ -1135,7 +1126,7 @@ describeIfBuilt(
           "(no payload skills)",
         );
 
-        expect(wpm(proj, ["bundle", "web", "skills", "add", "web-skill"]).status).toBe(0); // attach the sample
+        expect(wpm(proj, ["bundle", "web", "skills", "add", "web-skill"]).status).toBe(0); // scaffold (no sample ships now — TASK-103)
         expect(wpm(proj, ["bundle", "web", "skills", "add", "fresh-skill"]).status).toBe(0); // scaffold a new one
         const list = wpm(proj, ["bundle", "web", "skills", "list"]);
         expect(list.status).toBe(0);
@@ -1171,7 +1162,7 @@ describeIfBuilt(
       });
     });
 
-    it("76#3 — `skills remove` for a name NOT registered exits non-zero; bundle.yml unchanged", async () => {
+    it("76#3 — `skills remove` for a name NEITHER registered NOR on disk exits non-zero; bundle.yml unchanged", async () => {
       await withTempDir((dir) => {
         const proj = projectWithWeb(dir);
         const ymlPath = join(proj, "wip", "bundles", "web", "bundle.yml");
@@ -1181,16 +1172,43 @@ describeIfBuilt(
       });
     });
 
-    it("completion: `skills add` lists on-disk skill folders; `skills remove` lists registered names", async () => {
+    it("TASK-103 AC#2 — an UNREGISTERED on-disk payload-skill stub is REMOVED through the CLI (orphan cleanup)", async () => {
       await withTempDir((dir) => {
         const proj = projectWithWeb(dir);
-        // a fresh bundle ships the web-skill folder on disk → add completes from the folder names:
+        // place a stub on disk that is NEVER registered (models an old `bundle new` stub / a hand-placed scaffold):
+        const stubDir = join(proj, "wip", "bundles", "web", "payload", "agent-skills", "stray");
+        placeSkill(proj, "web", "stray", validSkillMd("stray"));
+        expect(existsSync(join(stubDir, "SKILL.md"))).toBe(true);
+        // it is NOT registered:
+        expect(wpm(proj, ["bundle", "web", "skills", "list"]).stdout).not.toContain("stray");
+
+        const remove = wpm(proj, ["bundle", "web", "skills", "remove", "stray"]);
+        expect(remove.status).toBe(0);
+        expect(remove.stdout).toContain("removed unregistered payload skill stray");
+        // the stray scaffold directory is gone (the build can no longer ship it):
+        expect(existsSync(stubDir)).toBe(false);
+      });
+    });
+
+    it("completion: `skills add` lists on-disk skill folders; `skills remove` lists removable (registered ∪ on-disk) names", async () => {
+      await withTempDir((dir) => {
+        const proj = projectWithWeb(dir);
+        // a fresh bundle ships NO sample skill (TASK-103); place an on-disk folder so `add` completes it:
+        placeSkill(proj, "web", "web-skill", validSkillMd("web-skill"));
         const addPos = cli(["__complete", "bundle", "web", "skills", "add", ""], { cwd: proj })
           .stdout.split("\n")
           .filter(Boolean);
         expect(addPos).toContain("web-skill");
 
-        // register it, then remove → completes from the REGISTERED names:
+        // an UNREGISTERED on-disk stub already completes for `remove` (the removable union — TASK-103):
+        const removeOrphan = cli(["__complete", "bundle", "web", "skills", "remove", ""], {
+          cwd: proj,
+        })
+          .stdout.split("\n")
+          .filter(Boolean);
+        expect(removeOrphan).toContain("web-skill");
+
+        // register it, then remove → still completes (now from the REGISTERED side of the union):
         expect(wpm(proj, ["bundle", "web", "skills", "add", "web-skill"]).status).toBe(0);
         const removePos = cli(["__complete", "bundle", "web", "skills", "remove", ""], {
           cwd: proj,

@@ -133,6 +133,30 @@ describe("minimal project template — instantiation (doc 06/07)", () => {
     expect(frontDoor).toContain("references/journaling.md");
   });
 
+  it.each([
+    ["zero", ""],
+    ["one", "- Install the shared channel."],
+    ["multiple", "- Install the shared channel.\n- Install browser handoff."],
+  ])("TASK-104 — the executor front door has no dangling `choose from:` line with %s bundles", (_label, bundles) => {
+    const fs = seedTemplates();
+    const resolution = resolveTemplate("minimal", "project", { fs, builtinTemplatesRoot: BUILTIN });
+    if (!resolution.found) throw new Error("minimal project template not found");
+    const snippet = resolution.template.snippets.find((s) => s.path === "AGENTS.md");
+    if (snippet === undefined) throw new Error("front-door snippet not found");
+
+    const rendered = renderSnippet(
+      snippet,
+      new Map([
+        ["project-name", "demo"],
+        ["bundles", bundles],
+      ]),
+    ).content;
+    expect(rendered).not.toMatch(/choose from:\s*$/im);
+    expect(rendered).not.toContain("{{bundles}}");
+    expect(rendered).toContain("Read each enabled bundle's `summary`");
+    expect(rendered).toContain("Never expose internal bundle ids");
+  });
+
   it("AC#3 — on-demand advisor / install-time / payload skill stubs are resolvable and render", () => {
     const fs = seedTemplates();
     const resolution = resolveTemplate("minimal", "project", { fs, builtinTemplatesRoot: BUILTIN });

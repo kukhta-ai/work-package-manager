@@ -1,0 +1,96 @@
+{
+  "schema_version": "0.1.0",
+  "snapshot_at": "2026-08-20T14:30:59.360Z",
+  "repo": "work-package-manager",
+  "workflow": "bmad-testarch-trace",
+  "collection_mode": "contract_static_plus_external_ci",
+  "collection_status": "COLLECTED",
+  "inventory_basis": "acceptance_criteria",
+  "gate_basis": "priority_thresholds",
+  "source_sha": "d0a65ce6a11bb98f1583cfdeb73eb7b4153d0e3b",
+  "target": { "type": "epic", "id": "epic-4-authoring-context", "label": "authoring-context feature plus Phase-6 ZIP and Windows CI remediation" },
+  "decision_mode": "deterministic",
+  "evaluator": "Root",
+  "confidence": "high",
+  "oracle": {
+    "resolution_mode": "formal_requirements",
+    "confidence": "high",
+    "sources": [
+      "Backlog.md TASK-95..TASK-105 acceptance criteria (40 criteria; read via CLI)",
+      "_bmad-output/implementation-artifacts/stories/story-phase-6-windows-ci-remediation.md (7 criteria)"
+    ],
+    "external_pointer_status": "not_used",
+    "synthetic": false
+  },
+  "coverage": {
+    "inventory": { "covered": 47, "total": 47, "pct": 100 },
+    "priority_breakdown": {
+      "P0": { "total": 22, "covered": 22, "pct": 100 },
+      "P1": { "total": 20, "covered": 20, "pct": 100 },
+      "P2": { "total": 5, "covered": 5, "pct": 100 },
+      "P3": { "total": 0, "covered": 0, "pct": 100 }
+    },
+    "by_level": {
+      "e2e": { "tests": 24, "criteria_covered": 22 },
+      "api": { "tests": 0, "criteria_covered": 0 },
+      "component": { "tests": 0, "criteria_covered": 0 },
+      "unit": { "tests": 23, "criteria_covered": 19 },
+      "other": { "tests": 0, "criteria_covered": 0 }
+    }
+  },
+  "tests": { "files": 23, "cases": 47, "external_ci_jobs": 2, "skipped_cases": 2, "expected_platform_skips": 2, "fixme_cases": 0, "pending_cases": 0 },
+  "risk_summary": { "critical_open": 0, "high_open": 0, "medium_open": 0, "low_open": 0 },
+  "open_risks": [],
+  "closed_risks": [
+    {
+      "id": "R-ACX-WINDOWS-CI-EVIDENCE",
+      "category": "TECH",
+      "title": "Post-fix Windows Node 20/22 execution evidence",
+      "previous_probability": 2,
+      "previous_impact": 3,
+      "previous_score": 6,
+      "status": "CLOSED",
+      "action": "MITIGATED",
+      "residual_score": 0,
+      "closure_evidence": "GitHub Actions run 32376865726; Windows jobs 96450286493 and 96450286506 passed on exact source SHA"
+    }
+  ],
+  "heuristics": { "endpoint_gaps": 0, "auth_negative_path_status": "not_applicable", "error_path_status": "present", "ui_journey_status": "not_applicable", "ui_state_status": "not_applicable" },
+  "blockers": [],
+  "recommendations": [
+    { "priority": "LOW", "action": "Run bmad-testarch-test-review again only when the test implementation materially changes.", "requirements": [] }
+  ],
+  "base_coverage_gate_status": "PASS",
+  "gate_status": "PASS",
+  "gate_rationale": "All 47 formal requirements are FULL: P0 22/22, P1 20/20, P2 5/5. Exact-head CI run 32376865726 passed all six Ubuntu/macOS/Windows Node 20/22 cells, closing the sole interim score-6 Windows evidence risk.",
+  "gate_criteria": {
+    "p0_coverage_required": "100%", "p0_coverage_actual": "100%", "p0_status": "MET",
+    "p1_coverage_target": "90%", "p1_coverage_minimum": "80%", "p1_coverage_actual": "100%", "p1_status": "MET",
+    "overall_coverage_minimum": "80%", "overall_coverage_actual": "100%", "overall_status": "MET",
+    "external_windows_status": "MET"
+  },
+  "execution_evidence": {
+    "cold_local_pre_ledger_commit": {
+      "source_sha": "3dc5a20", "executable_equivalent_to_final_head": true,
+      "npm_ci": "PASS", "typecheck": "PASS", "biome_files": 200, "build": "PASS",
+      "vitest_passed": 1288, "vitest_total": 1288, "vitest_files": 99, "duration_seconds": 387.94,
+      "clean_checkout": "PASS", "production_audit_vulnerabilities": 0
+    },
+    "exact_head_ci": {
+      "run_id": 32376865726, "status": "completed", "conclusion": "success",
+      "source_sha": "d0a65ce6a11bb98f1583cfdeb73eb7b4153d0e3b", "matrix_jobs_passed": 6, "matrix_jobs_total": 6,
+      "windows_node_20": { "job_id": 96450286493, "status": "PASS", "vitest_files": 99, "passed": 1286, "expected_posix_only_skips": 2, "total": 1288, "duration_seconds": 1421.99 },
+      "windows_node_22": { "job_id": 96450286506, "status": "PASS", "vitest_files": 99, "passed": 1286, "expected_posix_only_skips": 2, "total": 1288, "duration_seconds": 1528.35 }
+    }
+  },
+  "nfr_baseline": { "artifact": "_bmad-output/test-artifacts/nfr-assessment-epic-3-authoring-workspace.md", "verdict": "PASS (with notes)", "reassessed_by_this_workflow": false },
+  "links": {
+    "trace_report_path": "_bmad-output/test-artifacts/traceability/trace-epic-4-authoring-context.md",
+    "trace_report_url": "",
+    "artifact_url": "https://github.com/kukhta-ai/work-package-manager/actions/runs/32376865726",
+    "journey_evidence_url": "",
+    "windows_node_20_job_url": "https://github.com/kukhta-ai/work-package-manager/actions/runs/32376865726/job/96450286493",
+    "windows_node_22_job_url": "https://github.com/kukhta-ai/work-package-manager/actions/runs/32376865726/job/96450286506"
+  },
+  "evidence_risk_summary": { "critical_open": 0, "high_open": 0, "medium_open": 0, "low_open": 0 }
+}

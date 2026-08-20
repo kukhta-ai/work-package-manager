@@ -46,7 +46,7 @@ A command that lacks either is a CLI bug, not a corner case. The cost of meeting
 installer
 │
 ├── init <project-name>                          project-creating · scaffolds an authoring workspace
-│       [--at <path>]                              defaults to cwd
+│       [--at <path>]                              workspace defaults to ./<project-name>
 │       [--template <name>]                        default: built-in "minimal"
 │       [--list-templates] [--param key=value …]
 │
@@ -137,7 +137,7 @@ One row per leaf command. The **Group** column is left blank when it carries fro
 
 | Group | Command | Actions on invocation |
 |---|---|---|
-| `init` | `init <name> [--at <path>] [--template <name>] [--list-templates] [--param k=v]` | 1. Resolve template (default builtin `minimal`)<br>2. Refuse if target path exists<br>3. Create the **authoring workspace root** at `<path>`/cwd: the authoring front door (`AGENTS.md` + `CLAUDE.md`/`GEMINI.md` aliases) that flips an agent into authoring mode (`04`, `12`), the `.authoring-backlog/` Backlog.md root (`task_prefix=authoring`), the deliverable subdirectory `wip/`, and the build-output directory `builds/`<br>4. **Template-driven**: copy the template `files/` into `wip/`, substituting `{{placeholders}}` mechanically (no prose generated) — the deliverable, not the workspace root, receives the shipped skeleton of `06`<br>5. **Template-driven**: instantiate `wip/manifest.yml` from the template's `manifest.yml` snippet — project name from positional, `targets:` and `bundles:` taken from the template (typically empty for `minimal`; pre-populated for `single-bundle`/`multi-bundle`)<br>6. Create `wip/bundles/` and copy the default bundle template to `wip/bundles/bundle-template/`; create empty `wip/installer-skills/` and `wip/templates/`<br>7. Lay down the **author-owned executor front door** under the reserved prefix — `wip/_AGENTS.md` (and per bundle `wip/bundles/<id>/_AGENTS.md`) — kept `.md` so it stays editable but not auto-discovered during authoring; the build later strips the prefix to the live `AGENTS.md` (`12`)<br>8. Create scope-alias symlinks under `wip/` for each target listed in `manifest.yml.targets` (looked up from the CLI's built-in agent→alias map); if no targets, no aliases yet (added later by `project targets add`)<br>9. **Template-driven**: render `wip/installer-skills/<project>-installer/SKILL.md` from project template snippets (the executor front door is author-owned, not rendered here)<br>10. **Task-driven**: materialise the project-wide authoring tasks (set metadata, confirm targets, release-phase tasks, project-wide review tasks) per the catalog in `11`<br>11. **Task-driven**: for each bundle the template pre-includes in `manifest.yml.bundles`, materialise its per-bundle authoring task set (same as `bundle new`'s materialisation)<br>12. Add `.authoring-backlog/` and `builds/` to the workspace `.gitignore`<br>13. Print summary (workspace created at `<path>`, deliverable under `wip/`, N authoring tasks materialised) |
+| `init` | `init <name> [--at <path>] [--template <name>] [--list-templates] [--param k=v]` | 1. Resolve template (default builtin `minimal`)<br>2. Refuse if target path exists<br>3. Create the **authoring workspace root** at `<path>` when `--at` is given, otherwise at `<cwd>/<name>`: the authoring front door (`AGENTS.md` + `CLAUDE.md`/`GEMINI.md` aliases) that flips an agent into authoring mode (`04`, `12`), the `.authoring-backlog/` Backlog.md root (`task_prefix=authoring`), the deliverable subdirectory `wip/`, and the build-output directory `builds/`<br>4. **Template-driven**: copy the template `files/` into `wip/`, substituting `{{placeholders}}` mechanically (no prose generated) — the deliverable, not the workspace root, receives the shipped skeleton of `06`<br>5. **Template-driven**: instantiate `wip/manifest.yml` from the template's `manifest.yml` snippet — project name from positional, with `targets:` and `bundles:` taken from the template (both empty in the shipped `minimal`; a project-local template may pre-populate them)<br>6. Create `wip/bundles/` and copy the default bundle template to `wip/bundles/bundle-template/`; create empty `wip/installer-skills/` and `wip/templates/`<br>7. Lay down the **author-owned executor front door** under the reserved prefix — `wip/_AGENTS.md` (and per bundle `wip/bundles/<id>/_AGENTS.md`) — kept `.md` so it stays editable but not auto-discovered during authoring; the build later strips the prefix to the live `AGENTS.md` (`12`)<br>8. Create scope-alias symlinks under `wip/` for each target listed in `manifest.yml.targets` (looked up from the CLI's built-in agent→alias map); if no targets, no aliases yet (added later by `project targets add`)<br>9. **Template-driven**: render `wip/installer-skills/<project>-installer/SKILL.md` from project template snippets (the executor front door is author-owned, not rendered here)<br>10. **Task-driven**: materialise the project-wide authoring tasks (set metadata, confirm targets, release-phase tasks, project-wide review tasks) per the catalog in `11`<br>11. **Task-driven**: for each bundle the template pre-includes in `manifest.yml.bundles`, materialise its per-bundle authoring task set (same as `bundle new`'s materialisation)<br>12. Add `.authoring-backlog/` and `builds/` to the workspace `.gitignore`<br>13. Print summary (workspace created at the resolved workspace path, deliverable under `wip/`, N authoring tasks materialised) |
 | `template` | `template list [--scope ...]` | 1. Enumerate templates from built-in + (project's `templates/`, if in one)<br>2. Apply `--scope` filter<br>3. Print grouped by source, indicating shadowing (project shadows built-in) |
 |  | `template show <name> [--scope ...]` | 1. Resolve by name + scope (project → built-in priority)<br>2. Read `template.yml`<br>3. Print metadata + a tree summary of `files/` |
 | `project` | `project show [--json]` | 1. Read `manifest.yml`<br>2. Read each enabled bundle's `bundle.yml` for its version<br>3. Print orientation (name / version / description / root path / targets / bundles) — or the JSON form |
@@ -170,9 +170,9 @@ One row per leaf command. The **Group** column is left blank when it carries fro
 |  | `bundle <id> files remove <path>` | 1. Deregister the reference<br>2. Leave the file on disk; print "deregistered; file left at `payload/files/<path>` — delete it yourself if you meant to" |
 |  | `bundle <id> templates add\|list\|remove <path>` | Same as `files`, against `payload/templates/`; `remove` deregisters and leaves the file, printing where |
 |  | `bundle <id> scripts add\|list\|remove <path>` | Same as `files`, against `installer-scripts/` (install-time tooling; NOT delivered to user); `remove` deregisters and leaves the file, printing where |
-|  | `bundle <id> skills add <name> [--path <path>]` | 1. Resolve target: `--path` if given, else `bundles/<id>/payload/agent-skills/<name>/SKILL.md`<br>2. **If a SKILL.md exists there (attach):** validate frontmatter; register the reference<br>3. **If none exists and no `--path` (scaffold):** **Template-driven** render a payload-skill stub at the conventional path (frontmatter `name: <name>` + placeholder runtime-trigger description); **Task-driven** materialise "Write payload skill `<name>` for `<id>`"; register<br>4. **If `--path` given but nothing exists there:** error<br>5. Print what it did (attached, or scaffolded + task id) |
+|  | `bundle <id> skills add <name> [--path <path>]` | 1. Resolve target: `--path` if given, else `bundles/<id>/payload/agent-skills/<name>/SKILL.md`. Registry names are unique because `<name>` is the deregistration key. An explicit path may use any document basename (for example `custom/two.md`) but must be a portable contained `/`-separated path inside its own package directory; its containing-directory package must not overlap another registered payload-skill package or a reserved non-payload surface (`payload/files`, `payload/templates`, installer skills/scripts, docs, the `install-backlog`/`backlog` recipe aliases, the optional `uninstall-backlog`, or agent scope aliases)<br>2. **If a skill document exists there (attach):** validate frontmatter; register the reference and treat its containing directory as the complete payload-skill package<br>3. **If none exists and no `--path` (scaffold):** **Template-driven** render a payload-skill stub at the conventional path (frontmatter `name: <name>` + placeholder runtime-trigger description); **Task-driven** materialise "Write payload skill `<name>` for `<id>`"; register<br>4. **If `--path` is unsafe/conflicting or names nothing:** error; register nothing<br>5. Print what it did (attached, or scaffolded + task id) |
 |  | `bundle <id> skills list` | 1. Enumerate registered payload skills |
-|  | `bundle <id> skills remove <name>` | 1. Deregister; print "deregistered; SKILL.md left at `payload/agent-skills/<name>/` — delete it yourself if you meant to" |
+|  | `bundle <id> skills remove <name>` | 1. Deregister; leave the registered skill's complete source package at its actual containing directory and print that location; the next build omits it unless still authorized by a valid registry entry |
 |  | `bundle <id> installer-skills add <name> [--path <path>]` | 1. Resolve target: `--path` if given, else `bundles/<id>/installer-skills/<name>/SKILL.md`<br>2. **If a SKILL.md exists there (attach):** validate frontmatter (`name`, `description`); register the reference<br>3. **If none exists and no `--path` (scaffold):** **Template-driven** render a stub at the conventional path from the project template's installer-skill snippet (frontmatter `name: <name>` + placeholder description/body — no sense-dependent prose); **Task-driven** materialise "Write content for install-time skill `<name>` in `<id>`"; register<br>4. **If `--path` was given but nothing exists there:** error (omit `--path` to scaffold a stub at the conventional location)<br>5. Ensure the bundle's `installer-skills/` scope aliases exist (per `06`'s self-similar surfaces); create if absent<br>6. Print what it did (attached, or scaffolded + the task id) |
 |  | `bundle <id> installer-skills list` | 1. Enumerate `bundles/<id>/installer-skills/` for helper SKILL.md files |
 |  | `bundle <id> installer-skills remove <name>` | 1. Deregister; print "deregistered; SKILL.md left at `bundles/<id>/installer-skills/<name>/`" |
@@ -181,8 +181,8 @@ One row per leaf command. The **Group** column is left blank when it carries fro
 | `project` | `project installer-skills add <name> [--path <path>]` | 1. Refuse a `<name>` ending in `-advisor` (reserved) or matching the main installer skill name<br>2. Resolve target: `--path` if given, else `installer-skills/<name>/SKILL.md` at root<br>3. **If a SKILL.md exists there (attach):** validate frontmatter; register at root scope<br>4. **If none exists and no `--path` (scaffold):** **Template-driven** render a stub at the conventional path from the project template's installer-skill snippet; **Task-driven** materialise "Write content for install-time skill `<name>`"; register<br>5. **If `--path` was given but nothing exists there:** error (omit `--path` to scaffold)<br>6. Print what it did (attached, or scaffolded + the task id) |
 |  | `project installer-skills list` | 1. Enumerate root `installer-skills/` for project helpers (excluding the main installer skill and the `<id>-advisor` skills) |
 |  | `project installer-skills remove <name>` | 1. Deregister at root; print "deregistered; SKILL.md left at `installer-skills/<name>/`" |
-| `build` | `build dry-run` | 1. Run `project validate` (fail-fast on error)<br>2. Verify `wpm.lock` against vendored content — hashes must match (frozen-lockfile; fail on drift)<br>3. Print what would ship — the un-nested `wip/` deliverable as the archive file tree, with `_AGENTS.md` shown at its built name `AGENTS.md`, and each vendored artifact's locked version + source; produce no artefact and write nothing to `builds/`<br>4. (Deeper checks — independence, simulate-executor, simulate-upgrade, slug uniqueness, DoD compliance — live as review-phase tasks in `.authoring-backlog/`; see `11`) |
-|  | `build package [--format zip\|tarball\|git]` | 1. Run `project validate`<br>2. Verify `wpm.lock` (frozen-lockfile; fail on drift)<br>3. Build the artifact from the `wip/` deliverable un-nested to the archive root (content unchanged): strip the reserved `_AGENTS.md` prefix to the live `AGENTS.md` and create the `CLAUDE.md`/`GEMINI.md` aliases per targets (`12`), and exclude the workspace wrapper (authoring front door, `.authoring-backlog/`, `builds/`)<br>4. Write the distributable into `builds/`, named `<project>-<version>.<ext>` from `manifest.yml.project` name + version for the `--format` (default `zip`); print the output path |
+| `build` | `build dry-run` | 1. Run `project validate` (fail-fast on error)<br>2. Verify `wpm.lock` against vendored content — hashes must match (frozen-lockfile; fail on drift)<br>3. Print what would ship — the un-nested release ship set from `wip/`: exclude `bundles/bundle-template/`, disabled/orphaned bundle entries, payload-skill packages absent from their enabled bundle's `payload.skills` registry, and unresolved builder-source `*.tmpl` files; retain complete registered payload-skill directories and runtime `*.tmpl` payloads; show `_AGENTS.md` at its built name `AGENTS.md`, and show each vendored artifact's locked version + source; produce no artefact and write nothing to `builds/`<br>4. (Deeper checks — independence, simulate-executor, simulate-upgrade, slug uniqueness, DoD compliance — live as review-phase tasks in `.authoring-backlog/`; see `11`) |
+|  | `build package [--format zip\|tarball\|git]` | 1. Run `project validate`<br>2. Verify `wpm.lock` (frozen-lockfile; fail on drift)<br>3. Build the artifact from the `wip/` release ship set un-nested to the archive root: exclude `bundles/bundle-template/`, disabled/orphaned bundle entries, payload-skill packages absent from their enabled bundle's `payload.skills` registry, and unresolved builder-source `*.tmpl` files; retain complete registered payload-skill directories and runtime `*.tmpl` payloads; strip the reserved `_AGENTS.md` prefix to the live `AGENTS.md`, create the `CLAUDE.md`/`GEMINI.md` aliases per targets (`12`), and exclude the workspace wrapper (authoring front door, `.authoring-backlog/`, `builds/`)<br>4. Write the distributable into `builds/`, named `<project>-<version>.<ext>` from `manifest.yml.project` name + version for the `--format` (default `zip`); print the output path |
 |  | `build publish <destination>` | 1. Build package (above)<br>2. Push to `<destination>` (registry URL, git remote, etc.) |
 | `skill` | `skill install` | 1. Detect which supported agents' **user (personal) skill scope** is present on the machine (doc 05's scope table)<br>2. Copy the bundled `agent-skills/installer-builder/` into each detected scope (e.g. `~/.claude/skills/installer-builder/`), reporting installed vs updated per scope and naming each scope written; re-running is idempotent<br>3. If no supported agent scope is detected, report it and exit non-zero, writing nothing<br>4. Project-independent: never writes inside any workspace deliverable (`12`) |
 
@@ -196,7 +196,7 @@ The task catalog (which command materialises which tasks, with phases, ACs, and 
 
 ## Project context resolution
 
-Every project-bound command needs to know which authoring workspace it's operating on, and operates on that workspace's deliverable subdirectory `wip/`. Resolution mirrors git: the CLI walks up from the current working directory until it finds the **workspace marker** — a directory holding the deliverable subdirectory `wip/` with a `wip/manifest.yml`, beside the authoring front door — and treats that directory as the **workspace root** and `<workspace>/wip` as the **deliverable root** every project-bound command reads and writes. (The marker is `wip/manifest.yml` rather than `.authoring-backlog/`, which is gitignored and absent after a fresh clone, and rather than a bare `AGENTS.md`, whose basename is too generic to identify a workspace alone.) Because the walk-up keys on `wip/manifest.yml` at the *parent* of the deliverable, a command run anywhere within the workspace — the root, inside `wip/`, or inside a bundle at `wip/bundles/<id>/…` — resolves the **same** deliverable root. The global flag `-C, --project <path>` overrides the search and targets a workspace elsewhere; project-creating `init` writes the workspace to `<path>` if `--at <path>` is given (default cwd), and `template list`/`show` fall back to built-ins only when no workspace is resolved.
+Every project-bound command needs to know which authoring workspace it's operating on, and operates on that workspace's deliverable subdirectory `wip/`. Resolution mirrors git: the CLI walks up from the current working directory until it finds the **workspace marker** — a directory holding the deliverable subdirectory `wip/` with a `wip/manifest.yml`, beside the authoring front door — and treats that directory as the **workspace root** and `<workspace>/wip` as the **deliverable root** every project-bound command reads and writes. (The marker is `wip/manifest.yml` rather than `.authoring-backlog/`, which is gitignored and absent after a fresh clone, and rather than a bare `AGENTS.md`, whose basename is too generic to identify a workspace alone.) Because the walk-up keys on `wip/manifest.yml` at the *parent* of the deliverable, a command run anywhere within the workspace — the root, inside `wip/`, or inside a bundle at `wip/bundles/<id>/…` — resolves the **same** deliverable root. The global flag `-C, --project <path>` overrides the search and targets a workspace elsewhere; project-creating `init` writes the workspace to `<path>` if `--at <path>` is given, otherwise to `<cwd>/<name>`, and `template list`/`show` fall back to built-ins only when no workspace is resolved.
 
 A project-bound command run outside any workspace exits non-zero with a single clear line, e.g.:
 
@@ -258,16 +258,16 @@ A template is a directory with a metadata file plus the tree to copy:
 └── README.md             optional human-facing notes
 ```
 
-A minimal `template.yml`:
+A minimal `template.yml` schema (replace the angle-bracket placeholders when authoring the project-local template):
 
 ```yaml
-name: adopts-system-tool
+name: <template-name>
 scope: bundle
-description: A bundle that wraps a system tool, pre-scaffolded with the adopt-or-install pattern.
+description: <what this project-local template scaffolds>
 parameters:
   - name: bundle-id            # always present, supplied by `bundle new`
   - name: version              # defaults to 0.1.0 if not provided
-  - name: tool                 # the system tool being wrapped, e.g. "chromium"
+  - name: tool                 # one project-specific parameter, for example
     required: true
 ```
 
@@ -277,9 +277,13 @@ Templates resolve in priority order: **project-local** (`templates/` at project 
 
 The starter set of built-ins is deliberately small. A project that wants its own shapes adds directories under its `templates/`; those are picked up automatically.
 
-**Project templates:** `minimal` (root files only + the default bundle template installed as `bundles/bundle-template/`), `single-bundle` (`minimal` + one wired-in `core` bundle), `multi-bundle` (`minimal` + `core` + two example bundles depending on it via `requires`).
+**Shipped project templates:** `minimal`.
 
-**Bundle templates:** `default` (detect→setup→verify state-task scaffold, empty payload, no migrations), `with-payload-skill` (`default` + a `payload/agent-skills/<name>/SKILL.md` runtime-trigger scaffold), `adopts-system-tool` (the detect→adopt-or-install pattern pre-scaffolded with the ownership-aware notes layout).
+`minimal` provides the project root files and installs the default bundle scaffold at `bundles/bundle-template/`; it starts with no enabled bundles. Authors who need a recurring pre-populated shape can provide a project-local project template.
+
+**Shipped bundle templates:** `default`.
+
+`default` provides the detect→setup→verify state-task scaffold with empty payload directories and no migrations. Specialized payload or adopt-existing-tool shapes can be supplied as project-local bundle templates; the CLI discovers them from the project's `templates/` directory but does not ship them as built-ins.
 
 Reusing a refined bundle as a template today is a copy: drop the bundle's shape (with placeholders) into `templates/` as a bundle-scoped template, and `bundle new --template <name>` scaffolds from it. Cross-project and cross-author template sharing — a real registry with fetch/publish — is deferred until the core proves out (see `12`).
 
@@ -288,8 +292,8 @@ Reusing a refined bundle as a template today is a copy: drop the bundle's shape 
 A first-pass authoring session on a new project:
 
 ```
-# single-bundle ships `core` only; we add the two handoff bundles explicitly.
-wpm init hermes-handoff --template single-bundle
+# minimal starts with no enabled bundles; add each bundle explicitly.
+wpm init hermes-handoff --template minimal
 cd hermes-handoff
 
 wpm project meta --description "Handoff capabilities for agentic workflows" \
@@ -297,7 +301,8 @@ wpm project meta --description "Handoff capabilities for agentic workflows" \
 wpm project targets add claude-code
 wpm project targets add hermes
 
-# core comes from the template; it's a dependency-only bundle, so give it a summary.
+# Core is dependency-only, so create it without an advisor at the version used below.
+wpm bundle new core --version 0.3.0 --no-advisor
 wpm bundle core meta --summary "The handoff messaging channel"
 
 # Scaffold the two handoff bundles. Each `bundle new` creates the dir, enables it,
@@ -332,7 +337,7 @@ wpm bundle doc-handoff requires add core "^0.3.0"
 
 # Author payload content via filesystem first (CLI doesn't write content):
 mkdir -p wip/bundles/web-handoff/payload/files
-cp launchers/web-handoff.json wip/bundles/web-handoff/payload/files/
+cp launchers/launcher.json wip/bundles/web-handoff/payload/files/
 
 mkdir -p wip/bundles/web-handoff/payload/agent-skills/handoff-web
 cat > wip/bundles/web-handoff/payload/agent-skills/handoff-web/SKILL.md << 'EOF'
@@ -344,11 +349,11 @@ description: Hand off a web page to the user's browser via the handoff channel
 EOF
 
 # Then register both with the CLI (it verifies and records, doesn't author):
-wpm bundle web-handoff files  add payload/files/web-handoff.json
+wpm bundle web-handoff files add launcher.json
 wpm bundle web-handoff skills add handoff-web
 
-# Note: AGENTS.md and the main installer skill were re-rendered automatically as
-# each of the above structural commands ran (no separate update step).
+# Note: the main installer skill was re-rendered as structural commands ran. The
+# author-owned executor front door is reviewed through its authoring task instead.
 
 # Review-phase work — the tasks were materialised at `bundle new` time, so
 # the agent just lists them via Backlog.md and works through them:

@@ -159,6 +159,74 @@ describe("bundle <id> skills add — ATTACH branch (task-74 #1)", () => {
     expect(skillsOf(fs, "a")).toEqual([{ name: "s2", path: "elsewhere/SKILL.md" }]);
   });
 
+  it("attaches an arbitrary custom document basename without redefining it to SKILL.md", async () => {
+    const { fs, backlog } = seed({ placedAt: { "custom/two.md": skillMd("two") } });
+    const i = io();
+    expect(
+      await run(
+        ["bundle", "a", "skills", "add", "two", "--path", "custom/two.md", "-C", PROJ],
+        deps(fs, backlog),
+        i,
+      ),
+    ).toBe(0);
+    expect(skillsOf(fs, "a")).toEqual([{ name: "two", path: "custom/two.md" }]);
+  });
+
+  it("attaches a similarly named custom package without treating it as a reserved root", async () => {
+    const path = "uninstall-backlog-extra/custom.md";
+    const { fs, backlog } = seed({ placedAt: { [path]: skillMd("custom") } });
+    const i = io();
+    expect(
+      await run(
+        ["bundle", "a", "skills", "add", "custom", "--path", path, "-C", PROJ],
+        deps(fs, backlog),
+        i,
+      ),
+    ).toBe(0);
+    expect(skillsOf(fs, "a")).toEqual([{ name: "custom", path }]);
+  });
+
+  it.each([
+    "../escape.md",
+    "/outside/x.md",
+    "custom\\x.md",
+    "x.md",
+    "payload/files/x.md",
+    "uninstall-backlog/steps/x.md",
+  ])("rejects unsafe or reserved payload-skill --path %s before probing", async (path) => {
+    const { fs, backlog } = seed({ placedAt: { [path]: skillMd("x") } });
+    const before = fs.read(`${PROJ}/wip/bundles/a/bundle.yml`);
+    const i = io();
+    expect(
+      await run(
+        ["bundle", "a", "skills", "add", "x", "--path", path, "-C", PROJ],
+        deps(fs, backlog),
+        i,
+      ),
+    ).toBe(2);
+    expect(i.err.text).toContain("portable relative file path");
+    expect(fs.read(`${PROJ}/wip/bundles/a/bundle.yml`)).toBe(before);
+  });
+
+  it("rejects a second registration whose containing package root overlaps an existing skill", async () => {
+    const aYml = `${bundleYmlFor("a")}payload:\n  skills:\n    - name: one\n      path: custom/one.md\n`;
+    const { fs, backlog } = seed({
+      aYml,
+      placedAt: { "custom/one.md": skillMd("one"), "custom/two.md": skillMd("two") },
+    });
+    const before = fs.read(`${PROJ}/wip/bundles/a/bundle.yml`);
+    const i = io();
+    expect(
+      await run(
+        ["bundle", "a", "skills", "add", "two", "--path", "custom/two.md", "-C", PROJ],
+        deps(fs, backlog),
+        i,
+      ),
+    ).toBe(1);
+    expect(i.err.text).toContain("overlaps registered payload skill");
+    expect(fs.read(`${PROJ}/wip/bundles/a/bundle.yml`)).toBe(before);
+  });
+
   it("rejects an attach whose SKILL.md has invalid frontmatter (no description): exit 1, nothing registered", async () => {
     const { fs, backlog } = seed({
       placedAt: { [`${AGENT_SKILLS}/bad/SKILL.md`]: "---\nname: bad\n---\nno description\n" },
@@ -173,7 +241,8 @@ describe("bundle <id> skills add — ATTACH branch (task-74 #1)", () => {
   });
 
   it("attaches the default-template sample skill (its frontmatter is valid) when present on disk", async () => {
-    // A `bundle new`-created bundle ships payload/agent-skills/<id>-skill/SKILL.md; placing one here models that.
+    // Placing a SKILL.md models an author-placed payload skill (a fresh `bundle new` no longer ships a sample —
+    // TASK-103); `skills add` then ATTACHES it.
     const { fs, backlog } = seed({ placedSkills: ["a-skill"] });
     const i = io();
     expect(
@@ -397,6 +466,31 @@ describe("bundle <id> skills remove (task-76)", () => {
     expect(help).toMatch(/Usage:/);
     expect(help).toContain("<name>");
     expect(help).toMatch(/Example/i);
+  });
+
+  it("TASK-103 AC#2 — an UNREGISTERED on-disk stub is DELETED through the CLI (orphan cleanup); exit 0, clear message", async () => {
+    // A stub on disk that was NEVER registered (e.g. an old `bundle new` payload-skill stub): a's bundle.yml has
+    // no payload key, yet payload/agent-skills/stray/SKILL.md sits on disk.
+    const { fs, backlog } = seed({ placedSkills: ["stray"] });
+    expect(skillsOf(fs, "a")).toEqual([]); // genuinely unregistered
+    const i = io();
+    expect(
+      await run(["bundle", "a", "skills", "remove", "stray", "-C", PROJ], deps(fs, backlog), i),
+    ).toBe(0);
+    // the stray scaffold dir is gone; the registry is still empty (there was nothing to deregister):
+    expect(fs.exists(`${PROJ}/wip/bundles/a/${AGENT_SKILLS}/stray`)).toBe(false);
+    expect(fs.exists(`${PROJ}/wip/bundles/a/${AGENT_SKILLS}/stray/SKILL.md`)).toBe(false);
+    expect(skillsOf(fs, "a")).toEqual([]);
+    expect(i.out.text).toContain("removed unregistered payload skill stray");
+  });
+
+  it("TASK-103 — `skills remove` completes an UNREGISTERED on-disk stub too (the removable union)", async () => {
+    const { fs, backlog } = seed({ placedSkills: ["orphan"] }); // on disk, never registered
+    const i = io();
+    expect(
+      await run(["__complete", "bundle", "a", "skills", "remove", ""], deps(fs, backlog, PROJ), i),
+    ).toBe(0);
+    expect(i.out.text.split("\n").filter(Boolean)).toContain("orphan");
   });
 });
 

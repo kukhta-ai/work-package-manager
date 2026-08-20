@@ -59,8 +59,8 @@ export interface PackageRequest {
    * `frontDoorTransforms`). When non-empty, the tarball/zip formats STAGE the shippable set into a temp dir and,
    * per transform, write the canonical `AGENTS.md` from the reserved `_AGENTS.md`'s bytes (verbatim), synthesize
    * the per-target alias front doors, and drop the `_AGENTS.md` (so the archive carries the canonical name only).
-   * Omitted/empty ⇒ the archive contains exactly `files`, unchanged (the pre-task-90 behaviour). `git` archives
-   * the committed HEAD and does not apply transforms (the same way it ignores `files`).
+   * Omitted/empty ⇒ the archive contains exactly `files`, unchanged (the pre-task-90 behaviour). Every format,
+   * including `git`, consumes this same transformed file set (TASK-95).
    */
   readonly transforms?: readonly FrontDoorTransform[];
 }
@@ -99,18 +99,17 @@ function outputPath(req: PackageRequest): string {
  *
  * @param tool - The executable name (e.g. `"zip"`).
  * @param versionArg - The benign argument that prints a version and exits 0 (e.g. `"-v"`).
- * @returns `true` when the tool ran (exists), `false` on a spawn failure (absent).
+ * @returns `true` only when the version probe exits successfully; otherwise `false`.
  */
 function toolAvailable(tool: string, versionArg: string): boolean {
   try {
     runSync(tool, [versionArg]);
     return true;
-  } catch (err) {
-    // `runSync` throws two shapes: "Command failed (exit N)" when the tool RAN but exited non-zero (so it
-    // EXISTS), and "Command could not be run" on a spawn failure (the tool is ABSENT). Only the latter means
-    // unavailable — a present-but-nonzero version probe still proves the tool exists.
-    const message = err instanceof Error ? err.message : String(err);
-    return message.startsWith("Command failed (exit");
+  } catch {
+    // Availability means the requested tool is usable, not merely that some wrapper process started. On
+    // Windows an unresolved command can be routed through cmd.exe and surface as a numeric exit, so every
+    // failed version probe is unavailable regardless of its launcher-specific error shape.
+    return false;
   }
 }
 
@@ -121,11 +120,13 @@ function toolAvailable(tool: string, versionArg: string): boolean {
  *
  * - **tarball** → `tar -czf <out> -C <root> -T <listfile>`: the sorted relative paths are written to a temp
  *   list file (avoids ARG_MAX and is robust for large sets), and `tar` reads the files itself.
- * - **git** → `git archive --format=tar.gz -o <out> HEAD` (cwd = root): archives the COMMITTED tree at HEAD
- *   (so it honours `.gitignore`, naturally excluding `.authoring-backlog/`). Requires a git repo with a
- *   commit; otherwise a clear typed error.
- * - **zip** → `zip -r -q <out> <files…>` (cwd = root): `zip` may be ABSENT — probed first; a missing `zip`
- *   raises a typed error suggesting `--format tarball` rather than crashing.
+ * - **git** → stage the exact shippable set, write a temporary Git tree from it, then run `git archive` over
+ *   that tree. This keeps Git-format layout identical to tarball/zip without depending on the source workspace's
+ *   repository or committed `HEAD` (TASK-95).
+ * - **zip** → replace any prior output, then `zip -r -q -y <out> <files…>` (cwd = root): removing the prior
+ *   archive prevents Info-ZIP's update mode from retaining entries absent from the new plan, while `-y`
+ *   preserves planned symlinks instead of dereferencing them. `zip` may be ABSENT — probed first; a missing
+ *   `zip` raises a typed error suggesting `--format tarball` rather than crashing.
  *
  * @param req - The package request (root, output dir, base name, format, shippable files).
  * @returns The absolute path of the produced archive.
@@ -134,9 +135,8 @@ function toolAvailable(tool: string, versionArg: string): boolean {
 export function createArchive(req: PackageRequest): string {
   const out = outputPath(req);
 
-  if (req.files.length === 0 && req.format !== "git") {
-    // Nothing to archive (git ignores `files` and archives HEAD, so it is exempt). An empty ship set is an
-    // environment/state problem, not a bad CLI argument → ValidationError (exit 1).
+  if (req.files.length === 0) {
+    // An empty ship set is an environment/state problem, not a bad CLI argument → ValidationError (exit 1).
     throw new ValidationError("nothing to package: the shippable file set is empty");
   }
 
@@ -157,9 +157,9 @@ export function createArchive(req: PackageRequest): string {
 }
 
 /**
- * A staged archive source: the directory whose tree is archived plus the sorted, root-relative file list to put
- * in it. Either the project root + the plain shippable set (no transforms), or a temp staging dir + the
- * transformed set (the `_AGENTS.md` → `AGENTS.md` strip applied — task-90).
+ * An archive source: the directory whose tree is archived plus the sorted, root-relative file list to put in it.
+ * Either the project root + plain shippable set (tarball/zip without transforms), or a temp staging directory +
+ * the prepared set (all Git builds, and transformed tarball/zip builds).
  */
 interface ArchiveSource {
   /** The directory the archive is rooted at (`-C <dir>` / the zip cwd). */
@@ -171,71 +171,73 @@ interface ArchiveSource {
 }
 
 /**
- * Stage the shippable set into a temp dir and apply the executor-front-door transforms (task-90; doc 06/12), so
- * the archive carries the canonical `AGENTS.md` (+ per-target aliases) instead of the reserved `_AGENTS.md`. Each
- * shippable entry is copied into the staging dir PRESERVING symlinks (the scope aliases must survive as links),
- * then per transform: the canonical front door is written from the ORIGINAL `_AGENTS.md`'s bytes (verbatim — the
- * build never regenerates it; AC#6), each alias is created as a relative symlink to that canonical name (matching
- * doc 06's build-created aliases), and the staged `_AGENTS.md` is dropped (so it appears under the canonical name
- * only; AC#5). Returns the staging dir + the final sorted file list. The caller deletes the staging dir.
+ * Stage the exact shippable set into a temp dir and apply any executor-front-door transforms (task-90; docs
+ * 06/12). Each entry is copied preserving symlinks. For each transform, the canonical `AGENTS.md` is copied from
+ * the ORIGINAL `_AGENTS.md` bytes, aliases are relative symlinks to it, and the prefixed source is removed. Git
+ * builds always use this prepared source (TASK-95); tarball/zip use it when transforms are present. If staging
+ * fails before returning, this function removes its own temp directory; otherwise the caller owns cleanup.
  *
  * @param req - The package request (root, shippable files, transforms).
  * @returns The {@link ArchiveSource} rooted at the staging dir.
  */
-function stageWithTransforms(req: PackageRequest): ArchiveSource {
+function stageArchiveSource(req: PackageRequest): ArchiveSource {
   const dir = mkdtempSync(join(tmpdir(), "wpm-stage-"));
-
-  // (1) Copy the shippable set into the staging dir, preserving symlinks (scope aliases) and any dir leaves.
-  for (const rel of req.files) {
-    const src = join(req.root, rel);
-    const dst = join(dir, rel);
-    mkdirSync(dirname(dst), { recursive: true });
-    const stat = lstatSync(src);
-    if (stat.isSymbolicLink()) {
-      // Re-create the link with its exact target so the archived entry is byte-identical to a non-staged build.
-      symlinkSync(readlinkSync(src), dst);
-    } else if (stat.isDirectory()) {
-      // A directory leaf (rare — the ship set is files + symlink aliases); recreate it so the path exists.
-      mkdirSync(dst, { recursive: true });
-    } else {
-      copyFileSync(src, dst);
+  try {
+    // (1) Copy the shippable set into the staging dir, preserving symlinks (scope aliases) and any dir leaves.
+    for (const rel of req.files) {
+      const src = join(req.root, rel);
+      const dst = join(dir, rel);
+      mkdirSync(dirname(dst), { recursive: true });
+      const stat = lstatSync(src);
+      if (stat.isSymbolicLink()) {
+        // Re-create the link with its exact target so the archived entry is byte-identical to a non-staged build.
+        symlinkSync(readlinkSync(src), dst);
+      } else if (stat.isDirectory()) {
+        // A directory leaf (rare — the ship set is files + symlink aliases); recreate it so the path exists.
+        mkdirSync(dst, { recursive: true });
+      } else {
+        copyFileSync(src, dst);
+      }
     }
-  }
 
-  // (2) Apply each front-door transform, tracking which paths the archive should list.
-  const dropped = new Set<string>();
-  const added: string[] = [];
-  for (const transform of req.transforms ?? []) {
-    const toDst = join(dir, transform.to);
-    mkdirSync(dirname(toDst), { recursive: true });
-    // Verbatim: copy the ORIGINAL reserved front door's bytes (not the staged copy, which is about to be dropped).
-    copyFileSync(join(req.root, transform.from), toDst);
-    added.push(transform.to);
-    // The aliases are relative symlinks to the canonical name in the same directory (e.g. CLAUDE.md → AGENTS.md).
-    const canonical = basename(transform.to);
-    for (const alias of transform.aliases) {
-      const aliasDst = join(dir, alias);
-      mkdirSync(dirname(aliasDst), { recursive: true });
-      symlinkSync(canonical, aliasDst);
-      added.push(alias);
+    // (2) Apply each front-door transform, tracking which paths the archive should list.
+    const dropped = new Set<string>();
+    const added: string[] = [];
+    for (const transform of req.transforms ?? []) {
+      const toDst = join(dir, transform.to);
+      mkdirSync(dirname(toDst), { recursive: true });
+      // Verbatim: copy the ORIGINAL reserved front door's bytes (not the staged copy, which is about to be dropped).
+      copyFileSync(join(req.root, transform.from), toDst);
+      added.push(transform.to);
+      // The aliases are relative symlinks to the canonical name in the same directory (e.g. CLAUDE.md → AGENTS.md).
+      const canonical = basename(transform.to);
+      for (const alias of transform.aliases) {
+        const aliasDst = join(dir, alias);
+        mkdirSync(dirname(aliasDst), { recursive: true });
+        symlinkSync(canonical, aliasDst);
+        added.push(alias);
+      }
+      // Drop the staged reserved front door so the archive never carries both names (AC#5).
+      rmSync(join(dir, transform.from), { force: true });
+      dropped.add(transform.from);
     }
-    // Drop the staged reserved front door so the archive never carries both names (AC#5).
-    rmSync(join(dir, transform.from), { force: true });
-    dropped.add(transform.from);
-  }
 
-  const files = [...req.files.filter((f) => !dropped.has(f)), ...added].sort();
-  return { dir, files, cleanup: dir };
+    const files = [...req.files.filter((f) => !dropped.has(f)), ...added].sort();
+    return { dir, files, cleanup: dir };
+  } catch (err) {
+    // If copying or transforming fails before an ArchiveSource can be returned, the caller has no cleanup path.
+    rmSync(dir, { recursive: true, force: true });
+    throw err;
+  }
 }
 
 /**
- * Resolve where a tarball/zip archive is rooted and which files it lists. With front-door transforms present, the
- * shippable set is staged and transformed (task-90); otherwise the archive is rooted at the project root over the
- * plain shippable set (the pre-task-90 path, byte-identical).
+ * Resolve where a tarball/zip archive is rooted and which files it lists. With front-door transforms present,
+ * the shippable set is staged and transformed; otherwise those formats archive the project root directly.
  */
 function archiveSource(req: PackageRequest): ArchiveSource {
   if ((req.transforms ?? []).length > 0) {
-    return stageWithTransforms(req);
+    return stageArchiveSource(req);
   }
   return { dir: req.root, files: req.files, cleanup: undefined };
 }
@@ -258,21 +260,63 @@ function createTarball(req: PackageRequest, out: string): string {
   return out;
 }
 
-/** Create a gzip-tar archive of the committed HEAD tree via `git archive` (cwd = root). */
+/**
+ * Create a gzip-tar archive through Git from the exact prepared shippable tree (TASK-95). The temporary index
+ * is written to a tree object and archived directly, so no commit identity or source-repository `HEAD` is needed.
+ */
 function createGitArchive(req: PackageRequest, out: string): string {
+  // Git must ALWAYS stage, even without front-door transforms: req.root may be the `wip/` subdirectory of a
+  // larger repository, and `git archive HEAD` would archive that enclosing checkout rather than req.files.
+  const source = stageArchiveSource(req);
   try {
-    runSync("git", ["archive", "--format=tar.gz", "-o", out, "HEAD"], { cwd: req.root });
+    runSync("git", ["init", "--quiet"], { cwd: source.dir });
+    // The plan is authoritative even when the deliverable carries .gitignore/.gitattributes. Force every staged
+    // path into the index and neutralize every Git attribute that can transform content at check-in/archive time,
+    // so Git neither drops planned paths nor rewrites/transcodes author-owned bytes in the temporary tree.
+    writeFileSync(
+      join(source.dir, ".git", "info", "attributes"),
+      "* -export-ignore -export-subst -text -eol -filter -ident -working-tree-encoding\n",
+      "utf8",
+    );
+    runSync(
+      "git",
+      [
+        "-c",
+        "core.autocrlf=false",
+        "-c",
+        "core.symlinks=true",
+        "add",
+        "--all",
+        "--force",
+        "--",
+        ".",
+      ],
+      { cwd: source.dir },
+    );
+    const tree = runSync("git", ["write-tree"], { cwd: source.dir }).stdout.trim();
+    if (tree.length === 0) {
+      throw new Error("git write-tree returned no tree id");
+    }
+    runSync("git", ["archive", "--format=tar.gz", "-o", out, tree], { cwd: source.dir });
   } catch (err) {
-    // No git repo / no commit / git absent → a clear typed error (exit 1). The underlying message is included.
+    // Git absent or any plumbing/archive failure → a clear typed error (exit 1), with the underlying reason.
     const reason = err instanceof Error ? err.message : String(err);
     throw new ValidationError(
-      `git archive failed — \`--format git\` requires a git repository with at least one commit at ${req.root}\n${reason}`,
+      `git archive failed while packaging the prepared shippable tree\n${reason}`,
     );
+  } finally {
+    if (source.cleanup !== undefined) {
+      rmSync(source.cleanup, { recursive: true, force: true });
+    }
   }
   return out;
 }
 
-/** Create a zip of the shippable files via `zip -r -q` (cwd = source dir); a missing `zip` is a clear typed error. */
+/**
+ * Create a fresh zip of the shippable files via `zip -r -q -y` (cwd = source dir). Info-ZIP updates an existing
+ * output and retains entries omitted from the new invocation, so the old archive is removed first. Its `-y`
+ * flag stores symbolic links as links rather than following their targets, preserving tarball/Git layout.
+ */
 function createZip(req: PackageRequest, out: string): string {
   if (!toolAvailable("zip", "-v")) {
     throw new ValidationError(
@@ -281,8 +325,20 @@ function createZip(req: PackageRequest, out: string): string {
   }
   const source = archiveSource(req);
   try {
-    // `zip -r -q <out> <relpath…>` run with cwd=<source dir> so the entries are stored root-relative.
-    runArchiveTool("zip", ["-r", "-q", out, ...source.files], "zip", { cwd: source.dir });
+    // Info-ZIP treats an existing output as an archive to update. Remove it so every build is an exact fresh
+    // representation of PackageRequest.files, matching tar/git overwrite semantics and the dry-run plan.
+    rmSync(out, { force: true });
+    // Run with cwd=<source dir> so entries are root-relative; `-y` preserves scope/front-door alias symlinks.
+    try {
+      runArchiveTool("zip", ["-r", "-q", "-y", out, ...source.files], "zip", {
+        cwd: source.dir,
+      });
+    } catch (err) {
+      // A failed archiver may leave a truncated file at the canonical output path. Do not let callers mistake
+      // that partial output for either the prior successful archive or the requested exact replacement.
+      rmSync(out, { force: true });
+      throw err;
+    }
   } finally {
     if (source.cleanup !== undefined) {
       rmSync(source.cleanup, { recursive: true, force: true });

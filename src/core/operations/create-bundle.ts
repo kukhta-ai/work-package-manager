@@ -38,12 +38,41 @@ const DEFAULT_BUNDLE_TEMPLATE = "default";
 const BUNDLE_TEMPLATE_DIR = "bundle-template";
 /** The default new-bundle version (doc 10 row `bundle new`: `--version` defaults to `0.1.0`). */
 const DEFAULT_VERSION = "0.1.0";
+/** A bundle's recipe directory (doc 06): the shipped, versioned install-backlog the executor works. */
+const INSTALL_BACKLOG_DIR = "install-backlog";
+/**
+ * The per-bundle alias name the Backlog.md CLI resolves a project by (TASK-102). The CLI walks up from cwd for a
+ * directory **named `backlog/`**; a bundle keeps its recipe under `install-backlog/`, so a relative
+ * `backlog → install-backlog` link makes `cd bundles/<id> && backlog …` operate on the recipe — at authoring
+ * time and from the extracted archive (doc 06). The link is RELATIVE for archive portability.
+ */
+const BACKLOG_ALIAS_DIR = "backlog";
+
+/**
+ * Create the per-bundle `backlog → install-backlog` alias so the Backlog.md CLI resolves a bundle's recipe from
+ * within the bundle (TASK-102; doc 06). Unconditional — every bundle ships an install-backlog, so every bundle
+ * ships this link. The target is the **relative** string `install-backlog` (not an absolute path) so the link
+ * survives extraction to any path. Pure over the FileSystem port (the symlink/copy mechanism is the adapter's).
+ *
+ * @param fs - The filesystem port.
+ * @param bundleDir - The absolute bundle directory (`<root>/bundles/<id>`).
+ * @returns The absolute link path created (for `changedPaths`).
+ */
+export function ensureBundleBacklogAlias(fs: FileSystem, bundleDir: string): string {
+  const linkPath = join(bundleDir, BACKLOG_ALIAS_DIR);
+  fs.ensureAlias(INSTALL_BACKLOG_DIR, linkPath);
+  return linkPath;
+}
 
 /**
  * Read every file under `dir` (recursively) through the FileSystem port into relative-path
  * {@link TemplateFile}s. Returns `[]` if `dir` does not exist. Used to scaffold from the project's
  * `bundles/bundle-template/` directory, which is a `files/`-tree COPY carrying no `template.yml` of its own (so it
  * cannot be read by the template-resolver). Pure over the port.
+ *
+ * The scaffold's own `backlog → install-backlog` alias (TASK-102) is **skipped**: it is a symlink, not a file
+ * (reading it would hit the install-backlog directory it points at), and the cloned bundle gets its OWN link
+ * created fresh in ③ APPLY — so copying the scaffold's is both impossible (it has no file content) and redundant.
  *
  * @param fs - The filesystem port.
  * @param dir - The directory whose tree is read.
@@ -56,6 +85,10 @@ function readDirTree(fs: FileSystem, dir: string): TemplateFile[] {
   const files: TemplateFile[] = [];
   const walk = (current: string, relPrefix: string): void => {
     for (const entry of fs.list(current)) {
+      // Never clone the per-bundle `backlog` alias (a symlink): the new bundle's own is made in APPLY.
+      if (entry.name === BACKLOG_ALIAS_DIR) {
+        continue;
+      }
       const childAbs = join(current, entry.name);
       const childRel = relPrefix === "" ? entry.name : `${relPrefix}/${entry.name}`;
       if (entry.kind === "directory") {
@@ -286,6 +319,10 @@ export function createBundleSpec(deps: CreateBundleDeps): OperationSpec<CreateBu
         fs.write(abs, file.content);
         changedPaths.push(abs);
       }
+
+      // (a′) Create the per-bundle `backlog → install-backlog` relative alias (TASK-102): the scaffold has just
+      // written install-backlog/, so the link now resolves; the Backlog.md CLI can be run inside the bundle.
+      changedPaths.push(ensureBundleBacklogAlias(fs, join(root, "bundles", id)));
 
       // (b) Write the canonical bundle.yml (the structural source of truth for id/version/requires).
       const manifest: BundleManifest = {

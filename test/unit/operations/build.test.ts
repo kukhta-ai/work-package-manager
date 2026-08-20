@@ -38,9 +38,13 @@ function plan(fs: MemoryFileSystem) {
   const project = loadProject(fs, PROJ);
   return computeBuildPlan(fs, PROJ, {
     project,
-    enabledBundleIds: project.manifest.bundles,
     bundleDirectoryNames: bundleDirNames(fs),
   });
+}
+
+/** Enumerate through the same loaded project model production build uses. */
+function ship(fs: MemoryFileSystem): string[] {
+  return shippableFiles(fs, PROJ, loadProject(fs, PROJ));
 }
 
 /**
@@ -194,7 +198,7 @@ describe("computeBuildPlan — frozen-lockfile (AC82#2)", () => {
 describe("shippableFiles — the prune-aware ship set (AC82#3)", () => {
   it("includes the skeleton and EXCLUDES .authoring-backlog/", () => {
     const fs = seedBuildable();
-    const files = shippableFiles(fs, PROJ, ["core"]);
+    const files = ship(fs);
     expect(files).toContain("manifest.yml");
     expect(files).toContain("AGENTS.md");
     expect(files).toContain("README.md");
@@ -210,30 +214,200 @@ describe("shippableFiles — the prune-aware ship set (AC82#3)", () => {
     fs.write(`${PROJ}/.git/HEAD`, "ref: refs/heads/main\n");
     fs.write(`${PROJ}/node_modules/dep/index.js`, "module.exports={}\n");
     fs.write(`${PROJ}/dist/cli.js`, "#!/usr/bin/env node\n");
-    const files = shippableFiles(fs, PROJ, ["core"]);
+    const files = ship(fs);
     expect(files.some((f) => f.startsWith(".git/"))).toBe(false);
     expect(files.some((f) => f.startsWith("node_modules/"))).toBe(false);
     expect(files.some((f) => f.startsWith("dist/"))).toBe(false);
   });
 
-  it("EXCLUDES a DISABLED bundle dir (present but not in the manifest) but keeps bundle-template/", () => {
+  it("EXCLUDES disabled bundles, the authoring-only bundle-template scaffold, and unresolved builder templates", () => {
     const fs = seedBuildable();
-    // A disabled bundle dir (on disk, NOT in enabledBundleIds) and the scaffold:
+    // A disabled bundle dir (on disk, NOT in the project manifest), a file-like direct child that models how the
+    // real adapter reports a symlink, the authoring-only scaffold, and a stray builder-template source. A real
+    // nested payload template remains shippable because its `.tmpl` suffix is part of the runtime payload
+    // contract, not an unresolved builder placeholder.
     fs.write(`${PROJ}/bundles/disabled-one/bundle.yml`, "id: disabled-one\nversion: 0.1.0\n");
+    fs.write(`${PROJ}/bundles/orphan-link`, "../outside-bundle");
     fs.write(`${PROJ}/bundles/bundle-template/AGENTS.md.tmpl`, "# {{bundle-id}}\n");
-    const files = shippableFiles(fs, PROJ, ["core"]);
+    fs.write(`${PROJ}/README.md.tmpl`, "# unresolved builder source\n");
+    fs.write(`${PROJ}/bundles/core/payload/templates/nested/runtime.conf.tmpl`, "port={{port}}\n");
+    const files = ship(fs);
     // the enabled bundle ships:
     expect(files).toContain("bundles/core/bundle.yml");
-    // the scaffold ships (allowed under bundles/ without a manifest entry):
-    expect(files).toContain("bundles/bundle-template/AGENTS.md.tmpl");
+    expect(files).toContain("bundles/core/payload/templates/nested/runtime.conf.tmpl");
+    // authoring scaffolds and unresolved builder-template sources never ship:
+    expect(files.some((f) => f.startsWith("bundles/bundle-template/"))).toBe(false);
+    expect(files).not.toContain("README.md.tmpl");
     // the disabled dir does NOT ship (doc 06: "the build never includes it"):
     expect(files.some((f) => f.startsWith("bundles/disabled-one/"))).toBe(false);
+    expect(files).not.toContain("bundles/orphan-link");
   });
 
   it("returns a SORTED list (deterministic)", () => {
     const fs = seedBuildable();
-    const files = shippableFiles(fs, PROJ, ["core"]);
+    const files = ship(fs);
     expect([...files]).toEqual([...files].sort());
+  });
+
+  it("TASK-105 — ships only exact registered payload-skill roots, preserving complete conventional and custom packages", () => {
+    const fs = seedBuildable();
+    fs.write(
+      `${PROJ}/bundles/core/bundle.yml`,
+      [
+        "id: core",
+        "version: 0.1.0",
+        "summary: the core bundle",
+        "confirmation: safe",
+        "requires: {}",
+        "payload:",
+        "  skills:",
+        "    - name: kept",
+        "      path: payload/agent-skills/kept/SKILL.md",
+        "    - name: moved",
+        "      path: custom/moved-skill/entry.md",
+        "    - name: nested",
+        "      path: payload/agent-skills/group/nested/SKILL.md",
+        "",
+      ].join("\n"),
+    );
+
+    fs.write(
+      `${PROJ}/bundles/core/payload/agent-skills/kept/SKILL.md`,
+      "---\nname: kept\ndescription: Keep this skill.\n---\n# kept\n",
+    );
+    fs.write(`${PROJ}/bundles/core/payload/agent-skills/kept/references/guide.md`, "guide\n");
+    fs.write(`${PROJ}/bundles/core/payload/agent-skills/kept/assets/prompt.tmpl`, "{{value}}\n");
+    fs.write(`${PROJ}/bundles/core/payload/agent-skills/kept-extra/SKILL.md`, "# prefix leak\n");
+    fs.write(`${PROJ}/bundles/core/payload/agent-skills/orphan/SKILL.md`, "# orphan\n");
+    fs.write(
+      `${PROJ}/bundles/core/payload/agent-skills/group/ancestor-leak.txt`,
+      "must not ship\n",
+    );
+    fs.write(`${PROJ}/bundles/core/payload/agent-skills/group/sibling/SKILL.md`, "# sibling\n");
+    fs.write(
+      `${PROJ}/bundles/core/payload/agent-skills/group/nested/SKILL.md`,
+      "---\nname: nested\ndescription: Keep this nested skill.\n---\n# nested\n",
+    );
+    fs.write(`${PROJ}/bundles/core/payload/agent-skills/group/nested/assets/kept.txt`, "kept\n");
+    fs.write(
+      `${PROJ}/bundles/core/custom/moved-skill/entry.md`,
+      "---\nname: moved\ndescription: Keep this moved skill.\n---\n# moved\n",
+    );
+    fs.write(`${PROJ}/bundles/core/custom/moved-skill/assets/icon.svg`, "<svg/>\n");
+    fs.write(
+      `${PROJ}/bundles/core/custom/moved-skill-sibling/SKILL.md`,
+      "---\nname: moved-sibling\ndescription: not registered\n---\n# sibling\n",
+    );
+    fs.write(
+      `${PROJ}/bundles/core/custom/unregistered/entry.md`,
+      "---\nname: unregistered\ndescription: not registered\n---\n# unregistered custom\n",
+    );
+
+    // Non-payload-skill controls: installer skills and other payload categories retain their existing semantics.
+    const skillLikeDocument =
+      "---\nname: ordinary-doc\ndescription: Valid-looking frontmatter that is not a payload skill.\n---\n# ordinary\n";
+    fs.write(`${PROJ}/bundles/core/installer-skills/helper/SKILL.md`, skillLikeDocument);
+    fs.write(`${PROJ}/bundles/core/installer-scripts/manual/info.md`, skillLikeDocument);
+    fs.write(`${PROJ}/bundles/core/payload/files/manual/info.md`, skillLikeDocument);
+    fs.write(`${PROJ}/bundles/core/payload/templates/manual/info.md.tmpl`, skillLikeDocument);
+    fs.write(`${PROJ}/bundles/core/docs/manual/info.md`, skillLikeDocument);
+    fs.write(`${PROJ}/bundles/core/install-backlog/notes/info.md`, skillLikeDocument);
+    fs.write(`${PROJ}/bundles/core/uninstall-backlog/notes/info.md`, skillLikeDocument);
+    fs.write(`${PROJ}/bundles/core/backlog/notes/info.md`, skillLikeDocument);
+    for (const scope of [".agents", ".claude", ".openclaw", ".cursor", ".gemini"]) {
+      fs.write(`${PROJ}/bundles/core/${scope}/skills/info.md`, skillLikeDocument);
+    }
+
+    const files = plan(fs).shippable;
+    expect(files).toEqual(
+      expect.arrayContaining([
+        "bundles/core/payload/agent-skills/kept/SKILL.md",
+        "bundles/core/payload/agent-skills/kept/references/guide.md",
+        "bundles/core/payload/agent-skills/kept/assets/prompt.tmpl",
+        "bundles/core/custom/moved-skill/entry.md",
+        "bundles/core/custom/moved-skill/assets/icon.svg",
+        "bundles/core/payload/agent-skills/group/nested/SKILL.md",
+        "bundles/core/payload/agent-skills/group/nested/assets/kept.txt",
+        "bundles/core/installer-skills/helper/SKILL.md",
+        "bundles/core/installer-scripts/manual/info.md",
+        "bundles/core/payload/files/manual/info.md",
+        "bundles/core/payload/templates/manual/info.md.tmpl",
+        "bundles/core/docs/manual/info.md",
+        "bundles/core/install-backlog/notes/info.md",
+        "bundles/core/uninstall-backlog/notes/info.md",
+        "bundles/core/backlog",
+        "bundles/core/.agents",
+        "bundles/core/.claude",
+        "bundles/core/.openclaw",
+        "bundles/core/.cursor",
+        "bundles/core/.gemini",
+      ]),
+    );
+    expect(
+      files.some((path) => path.startsWith("bundles/core/payload/agent-skills/kept-extra/")),
+    ).toBe(false);
+    expect(files.some((path) => path.startsWith("bundles/core/payload/agent-skills/orphan/"))).toBe(
+      false,
+    );
+    expect(files).not.toContain("bundles/core/payload/agent-skills/group/ancestor-leak.txt");
+    expect(
+      files.some((path) => path.startsWith("bundles/core/payload/agent-skills/group/sibling/")),
+    ).toBe(false);
+    expect(files.some((path) => path.startsWith("bundles/core/custom/moved-skill-sibling/"))).toBe(
+      false,
+    );
+    expect(files.some((path) => path.startsWith("bundles/core/custom/unregistered/"))).toBe(false);
+  });
+
+  it("TASK-105 — payload-skill registration is isolated per enabled bundle", () => {
+    const fs = seedBuildable();
+    fs.write(
+      `${PROJ}/manifest.yml`,
+      "project:\n  name: demo\n  version: 1.2.3\ntargets:\n  - claude-code\nbundles:\n  - core\n  - other\n",
+    );
+    fs.write(
+      `${PROJ}/bundles/core/bundle.yml`,
+      "id: core\nversion: 0.1.0\nsummary: core\nconfirmation: safe\nrequires: {}\npayload:\n  skills:\n    - name: shared\n      path: payload/agent-skills/shared/SKILL.md\n",
+    );
+    fs.write(
+      `${PROJ}/bundles/other/bundle.yml`,
+      "id: other\nversion: 0.1.0\nsummary: other\nconfirmation: safe\nrequires: {}\n",
+    );
+    fs.write(
+      `${PROJ}/bundles/core/payload/agent-skills/shared/SKILL.md`,
+      "---\nname: shared\ndescription: Keep this shared skill.\n---\n# registered\n",
+    );
+    fs.write(
+      `${PROJ}/bundles/other/payload/agent-skills/shared/SKILL.md`,
+      "# same path, not registered\n",
+    );
+
+    const files = plan(fs).shippable;
+    expect(files).toContain("bundles/core/payload/agent-skills/shared/SKILL.md");
+    expect(files).not.toContain("bundles/other/payload/agent-skills/shared/SKILL.md");
+  });
+
+  it("TASK-105 — missing and invalid registered documents fail validation and authorize no package", () => {
+    const fs = seedBuildable();
+    fs.write(
+      `${PROJ}/bundles/core/bundle.yml`,
+      "id: core\nversion: 0.1.0\nsummary: core\nconfirmation: safe\nrequires: {}\npayload:\n  skills:\n    - name: missing\n      path: custom/missing/entry.md\n    - name: invalid\n      path: custom/invalid/entry.md\n",
+    );
+    fs.write(`${PROJ}/bundles/core/custom/missing/assets/leak.txt`, "must not ship\n");
+    fs.write(`${PROJ}/bundles/core/custom/invalid/entry.md`, "# no frontmatter\n");
+    fs.write(`${PROJ}/bundles/core/custom/invalid/assets/leak.txt`, "must not ship\n");
+
+    const result = plan(fs);
+    expect(result.ok).toBe(false);
+    const messages = result.validation.problems.map((problem) => problem.message).join("\n");
+    expect(messages).toContain('registered payload skill "missing" is missing');
+    expect(messages).toContain('registered payload skill "invalid" is invalid');
+    expect(result.shippable.some((path) => path.startsWith("bundles/core/custom/missing/"))).toBe(
+      false,
+    );
+    expect(result.shippable.some((path) => path.startsWith("bundles/core/custom/invalid/"))).toBe(
+      false,
+    );
   });
 });
 

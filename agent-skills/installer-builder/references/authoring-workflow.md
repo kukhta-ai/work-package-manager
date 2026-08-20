@@ -51,26 +51,28 @@ the backlog falls behind reality is sidestepping the CLI (hand-editing `manifest
 ## A worked session (doc `11` §"A worked authoring session", compressed)
 
 ```
-wpm init hermes-handoff --template single-bundle      # materialises project-wide + core's per-bundle tasks
-cd hermes-handoff
+wpm init hermes-handoff --template minimal            # materialises the project-wide authoring tasks (minimal ships no bundle)
+cd hermes-handoff                                     # the workspace root: wpm walks up to wip/manifest.yml
 
 wpm project meta --description "Handoff capabilities" --license MIT
 wpm project targets add claude-code
 wpm project targets add hermes
 
+wpm bundle new core                                  # a base bundle the feature will depend on
 wpm bundle new web-handoff                            # > Created. Advisor scaffolded. Materialised 12 tasks.
 wpm bundle web-handoff meta --summary "Hand off a web page to the user's browser"
-wpm bundle web-handoff requires add core "^0.3.0"
+wpm bundle web-handoff requires add core "^0.1.0"     # core ships at the default 0.1.0; constraint must be satisfiable
 
-# Fill the install-backlog by calling Backlog.md DIRECTLY inside the bundle (see conventions.md):
-(cd bundles/web-handoff && \
+# Fill the install-backlog by calling Backlog.md DIRECTLY inside the bundle (see conventions.md). Each bundle
+# ships a `backlog → install-backlog` symlink, so the CLI resolves the recipe from inside the bundle:
+(cd wip/bundles/web-handoff && \
    backlog task create "ensure Chromium present" \
      -l "kind:state,step:ensure-chromium" -m 0.1.0 \
      --ac "chromium --version prints" --dod "ownership recorded")
 
 # Author payload via the filesystem, THEN register it (the CLI doesn't write content):
-#   cp launcher.json bundles/web-handoff/payload/files/   then:
-wpm bundle web-handoff files  add payload/files/launcher.json
+#   cp launcher.json wip/bundles/web-handoff/payload/files/   then:
+wpm bundle web-handoff files add launcher.json          # <path> is relative to payload/files/
 wpm bundle web-handoff skills add handoff-web            # scaffolds a stub + a "write it" task if absent
 
 # Work the review tasks, then:
