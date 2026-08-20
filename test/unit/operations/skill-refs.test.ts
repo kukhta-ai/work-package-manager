@@ -14,6 +14,7 @@ import {
   listSkillRefsSpec,
   PAYLOAD_SKILLS_DESCRIPTOR,
   removeSkillRefSpec,
+  removeUnregisteredSkillStubSpec,
   scaffoldSkillRefSpec,
 } from "../../../src/core/operations/skill-refs.js";
 import { parseBundleManifest } from "../../../src/core/services/schema/index.js";
@@ -112,7 +113,7 @@ describe("attachSkillRefSpec", () => {
 
     const result = runMutation(
       lifecycleDeps(fs, backlog),
-      { root: ROOT },
+      { deliverableRoot: ROOT, workspaceRoot: ROOT },
       attachSkillRefSpec(PAYLOAD_SKILLS_DESCRIPTOR),
       { id: "a", name: "handoff", path },
     );
@@ -130,7 +131,7 @@ describe("attachSkillRefSpec", () => {
 
     runMutation(
       lifecycleDeps(fs, backlog),
-      { root: ROOT },
+      { deliverableRoot: ROOT, workspaceRoot: ROOT },
       attachSkillRefSpec(PAYLOAD_SKILLS_DESCRIPTOR),
       { id: "a", name: "relocated", path },
     );
@@ -148,7 +149,7 @@ describe("attachSkillRefSpec", () => {
     try {
       runMutation(
         lifecycleDeps(fs, backlog),
-        { root: ROOT },
+        { deliverableRoot: ROOT, workspaceRoot: ROOT },
         attachSkillRefSpec(PAYLOAD_SKILLS_DESCRIPTOR),
         { id: "a", name: "bad", path },
       );
@@ -166,16 +167,26 @@ describe("attachSkillRefSpec", () => {
     const path = `${CONVENTIONAL}/dup/SKILL.md`;
     fs.write(`${ROOT}/bundles/a/${path}`, skillMd("dup"));
     const d = lifecycleDeps(fs, backlog);
-    runMutation(d, { root: ROOT }, attachSkillRefSpec(PAYLOAD_SKILLS_DESCRIPTOR), {
-      id: "a",
-      name: "dup",
-      path,
-    });
-    runMutation(d, { root: ROOT }, attachSkillRefSpec(PAYLOAD_SKILLS_DESCRIPTOR), {
-      id: "a",
-      name: "dup",
-      path,
-    });
+    runMutation(
+      d,
+      { deliverableRoot: ROOT, workspaceRoot: ROOT },
+      attachSkillRefSpec(PAYLOAD_SKILLS_DESCRIPTOR),
+      {
+        id: "a",
+        name: "dup",
+        path,
+      },
+    );
+    runMutation(
+      d,
+      { deliverableRoot: ROOT, workspaceRoot: ROOT },
+      attachSkillRefSpec(PAYLOAD_SKILLS_DESCRIPTOR),
+      {
+        id: "a",
+        name: "dup",
+        path,
+      },
+    );
     expect(skillsOf(fs, "a")).toEqual([{ name: "dup", path }]);
   });
 
@@ -185,7 +196,7 @@ describe("attachSkillRefSpec", () => {
     fs.write(`${ROOT}/bundles/a/${path}`, skillMd("k"));
     runMutation(
       lifecycleDeps(fs, backlog),
-      { root: ROOT },
+      { deliverableRoot: ROOT, workspaceRoot: ROOT },
       attachSkillRefSpec(PAYLOAD_SKILLS_DESCRIPTOR),
       { id: "a", name: "k", path },
     );
@@ -207,7 +218,7 @@ describe("scaffoldSkillRefSpec", () => {
     const { fs, backlog } = seed();
     const result = runMutation(
       lifecycleDeps(fs, backlog),
-      { root: ROOT },
+      { deliverableRoot: ROOT, workspaceRoot: ROOT },
       scaffoldSkillRefSpec(PAYLOAD_SKILLS_DESCRIPTOR, { builtinTemplatesRoot: BUILTIN }),
       { id: "a", name: "fresh" },
     );
@@ -238,7 +249,7 @@ describe("scaffoldSkillRefSpec", () => {
 
     runMutation(
       lifecycleDeps(fs, backlog),
-      { root: ROOT },
+      { deliverableRoot: ROOT, workspaceRoot: ROOT },
       scaffoldSkillRefSpec(PAYLOAD_SKILLS_DESCRIPTOR, { builtinTemplatesRoot: BUILTIN }),
       { id: "a", name: "exists" },
     );
@@ -256,9 +267,14 @@ describe("listSkillRefsSpec", () => {
       "id: a\nversion: 0.1.0\nsummary: a\nconfirmation: safe\nrequires: {}\npayload:\n  skills:\n    - name: one\n      path: payload/agent-skills/one/SKILL.md\n    - name: two\n      path: custom/two.md\n";
     const { fs } = seed(aYml);
     const before = fs.read(`${ROOT}/bundles/a/bundle.yml`);
-    const { value } = runRead(fs, { root: ROOT }, listSkillRefsSpec(PAYLOAD_SKILLS_DESCRIPTOR), {
-      id: "a",
-    });
+    const { value } = runRead(
+      fs,
+      { deliverableRoot: ROOT, workspaceRoot: ROOT },
+      listSkillRefsSpec(PAYLOAD_SKILLS_DESCRIPTOR),
+      {
+        id: "a",
+      },
+    );
     expect(value).toEqual([
       { name: "one", path: "payload/agent-skills/one/SKILL.md" },
       { name: "two", path: "custom/two.md" },
@@ -268,9 +284,14 @@ describe("listSkillRefsSpec", () => {
 
   it("returns [] for a bundle with no registered skills", () => {
     const { fs } = seed();
-    const { value } = runRead(fs, { root: ROOT }, listSkillRefsSpec(PAYLOAD_SKILLS_DESCRIPTOR), {
-      id: "a",
-    });
+    const { value } = runRead(
+      fs,
+      { deliverableRoot: ROOT, workspaceRoot: ROOT },
+      listSkillRefsSpec(PAYLOAD_SKILLS_DESCRIPTOR),
+      {
+        id: "a",
+      },
+    );
     expect(value).toEqual([]);
   });
 });
@@ -289,7 +310,7 @@ describe("removeSkillRefSpec", () => {
 
     const result = runMutation(
       lifecycleDeps(fs, backlog),
-      { root: ROOT },
+      { deliverableRoot: ROOT, workspaceRoot: ROOT },
       removeSkillRefSpec(PAYLOAD_SKILLS_DESCRIPTOR),
       { id: "a", name: "one" },
     );
@@ -307,7 +328,7 @@ describe("removeSkillRefSpec", () => {
     const { fs, backlog } = seed(aYml);
     const result = runMutation(
       lifecycleDeps(fs, backlog),
-      { root: ROOT },
+      { deliverableRoot: ROOT, workspaceRoot: ROOT },
       removeSkillRefSpec(PAYLOAD_SKILLS_DESCRIPTOR),
       { id: "a", name: "moved" },
     );
@@ -321,7 +342,7 @@ describe("removeSkillRefSpec", () => {
     try {
       runMutation(
         lifecycleDeps(fs, backlog),
-        { root: ROOT },
+        { deliverableRoot: ROOT, workspaceRoot: ROOT },
         removeSkillRefSpec(PAYLOAD_SKILLS_DESCRIPTOR),
         { id: "a", name: "ghost" },
       );
@@ -331,5 +352,73 @@ describe("removeSkillRefSpec", () => {
     expect(thrown).toBeInstanceOf(DomainError);
     expect((thrown as DomainError).category).toBe("not-found");
     expect(fs.read(`${ROOT}/bundles/a/bundle.yml`)).toBe(before);
+  });
+});
+
+// ───────────────────────────────────────────────────────────────────────────────────────────────────────────
+// REMOVE ORPHAN (removeUnregisteredSkillStubSpec, TASK-103) — delete a present-but-unregistered stub; the
+// companion of removeSkillRefSpec, and it NEVER deletes registered content (the guard preserves 76#1/#2).
+// ───────────────────────────────────────────────────────────────────────────────────────────────────────────
+describe("removeUnregisteredSkillStubSpec (TASK-103)", () => {
+  it("AC#2 — deletes an on-disk stub directory that is NOT registered, leaves the registry empty, reports it", () => {
+    const { fs, backlog } = seed(); // bundle a has no payload.skills (the old-bundle.yml shape)
+    // A stray scaffold on disk (e.g. an old `bundle new` payload-skill stub) — present but never registered:
+    fs.write(`${ROOT}/bundles/a/payload/agent-skills/stray/SKILL.md`, skillMd("stray"));
+    expect(skillsOf(fs, "a")).toEqual([]);
+
+    const result = runMutation(
+      lifecycleDeps(fs, backlog),
+      { deliverableRoot: ROOT, workspaceRoot: ROOT },
+      removeUnregisteredSkillStubSpec(PAYLOAD_SKILLS_DESCRIPTOR),
+      { id: "a", name: "stray" },
+    );
+
+    // the stray scaffold dir + its SKILL.md are gone; the registry is still empty (nothing was deregistered):
+    expect(fs.exists(`${ROOT}/bundles/a/payload/agent-skills/stray`)).toBe(false);
+    expect(fs.exists(`${ROOT}/bundles/a/payload/agent-skills/stray/SKILL.md`)).toBe(false);
+    expect(skillsOf(fs, "a")).toEqual([]);
+    expect(result.summary).toContain("removed unregistered payload skill stray");
+    expect(result.summary).toContain("payload/agent-skills/stray/");
+  });
+
+  it("errors (NotFound) when the name is neither registered nor on disk, changing nothing", () => {
+    const { fs, backlog } = seed();
+    const before = fs.read(`${ROOT}/bundles/a/bundle.yml`);
+    let thrown: unknown;
+    try {
+      runMutation(
+        lifecycleDeps(fs, backlog),
+        { deliverableRoot: ROOT, workspaceRoot: ROOT },
+        removeUnregisteredSkillStubSpec(PAYLOAD_SKILLS_DESCRIPTOR),
+        { id: "a", name: "ghost" },
+      );
+    } catch (err) {
+      thrown = err;
+    }
+    expect(thrown).toBeInstanceOf(DomainError);
+    expect((thrown as DomainError).category).toBe("not-found");
+    expect(fs.read(`${ROOT}/bundles/a/bundle.yml`)).toBe(before);
+  });
+
+  it("GUARD — refuses (Constraint) to delete a REGISTERED skill's content (deregister-not-delete preserved)", () => {
+    const aYml =
+      "id: a\nversion: 0.1.0\nsummary: a\nconfirmation: safe\nrequires: {}\npayload:\n  skills:\n    - name: kept\n      path: payload/agent-skills/kept/SKILL.md\n";
+    const { fs, backlog } = seed(aYml);
+    fs.write(`${ROOT}/bundles/a/payload/agent-skills/kept/SKILL.md`, skillMd("kept"));
+    let thrown: unknown;
+    try {
+      runMutation(
+        lifecycleDeps(fs, backlog),
+        { deliverableRoot: ROOT, workspaceRoot: ROOT },
+        removeUnregisteredSkillStubSpec(PAYLOAD_SKILLS_DESCRIPTOR),
+        { id: "a", name: "kept" },
+      );
+    } catch (err) {
+      thrown = err;
+    }
+    expect(thrown).toBeInstanceOf(DomainError);
+    expect((thrown as DomainError).category).toBe("constraint");
+    // the guard fired in ② CHECK, BEFORE any delete — the registered skill's content is untouched:
+    expect(fs.exists(`${ROOT}/bundles/a/payload/agent-skills/kept/SKILL.md`)).toBe(true);
   });
 });

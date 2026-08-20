@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { withTempDir } from "../helpers/tmpdir.js";
+import { initWorkspace } from "../helpers/workspace.js";
 
 /**
  * End-to-end (through-the-binary) tests for `project meta` (task-38). They drive the BUILT `dist/cli.js` over a
@@ -43,11 +44,13 @@ function wpm(proj: string, args: readonly string[]): { stdout: string; status: n
   return cli([...args, "-C", proj]);
 }
 
-/** init a real project at <dir>/demo; return the project path (with a real manifest + rendered derived artefacts). */
+/**
+ * Create a real authoring workspace at <dir>/demo via `wpm init` and return the workspace root: the deliverable
+ * (manifest + rendered derived artefacts) nests under `wip/`, the authoring backlog sits at the workspace root,
+ * and project-bound commands resolve it via `-C` (task-88).
+ */
 function initProject(dir: string): string {
-  const proj = join(dir, "demo");
-  execFileSync(process.execPath, [builtCli, "init", "demo", "--at", proj], { encoding: "utf8" });
-  return proj;
+  return initWorkspace(builtCli, dir);
 }
 
 /** The `project:` sub-key order of a manifest text (for key-order preservation assertions). */
@@ -75,7 +78,7 @@ describeIfBuilt("project meta E2E via dist/cli.js (task 38)", () => {
   it("38#1/38#2 — `project meta --description` updates the field; name/version + comment + key order preserved", async () => {
     await withTempDir((dir) => {
       const proj = initProject(dir);
-      const path = join(proj, "manifest.yml");
+      const path = join(proj, "wip", "manifest.yml");
       const orderBefore = projectKeyOrder(readFileSync(path, "utf8"));
 
       const out = wpm(proj, ["project", "meta", "--description", "Acme installer"]);
@@ -108,7 +111,7 @@ describeIfBuilt("project meta E2E via dist/cli.js (task 38)", () => {
       ]);
       expect(out.status).toBe(0);
 
-      const after = readFileSync(join(proj, "manifest.yml"), "utf8");
+      const after = readFileSync(join(proj, "wip", "manifest.yml"), "utf8");
       expect(after).toMatch(/license:\s*MIT/);
       expect(after).toMatch(/repository:\s*https:\/\/example\.com\/r/);
       expect(after).toMatch(/author:\s*Jane Q/);
@@ -121,7 +124,7 @@ describeIfBuilt("project meta E2E via dist/cli.js (task 38)", () => {
   it("38#3 — `project meta` with NO flags reports 'nothing to update' and leaves manifest.yml BYTE-IDENTICAL", async () => {
     await withTempDir((dir) => {
       const proj = initProject(dir);
-      const path = join(proj, "manifest.yml");
+      const path = join(proj, "wip", "manifest.yml");
       const before = readFileSync(path, "utf8");
 
       const out = wpm(proj, ["project", "meta"]);
@@ -142,28 +145,30 @@ describeIfBuilt("project meta E2E via dist/cli.js (task 38)", () => {
       // -C honoured: same command with -C <proj> from outside → exit 0 + the name updated.
       const viaFlag = cli(["project", "meta", "--name", "via-flag", "-C", proj], { cwd: dir });
       expect(viaFlag.status).toBe(0);
-      expect(readFileSync(join(proj, "manifest.yml"), "utf8")).toMatch(/name:\s*via-flag/);
+      expect(readFileSync(join(proj, "wip", "manifest.yml"), "utf8")).toMatch(/name:\s*via-flag/);
     });
   });
 
-  it("38#4 / re-render — `project meta --name` re-renders AGENTS.md + the installer skill at the new-name path", async () => {
+  it("38#4 / re-render — `project meta --name` re-renders the installer skill at the new-name path (front door author-owned)", async () => {
     await withTempDir((dir) => {
       const proj = initProject(dir);
-      // init rendered the front-door + the demo-named installer skill:
-      expect(existsSync(join(proj, "AGENTS.md"))).toBe(true);
-      expect(existsSync(join(proj, "installer-skills", "demo-installer", "SKILL.md"))).toBe(true);
+      // init scaffolded the demo-named installer skill + the author-owned executor front door under wip/:
+      expect(existsSync(join(proj, "wip", "installer-skills", "demo-installer", "SKILL.md"))).toBe(
+        true,
+      );
+      expect(existsSync(join(proj, "wip", "_AGENTS.md"))).toBe(true);
 
       const out = wpm(proj, ["project", "meta", "--name", "renamed"]);
       expect(out.status).toBe(0);
 
-      // the front-door re-rendered with the NEW name:
-      expect(readFileSync(join(proj, "AGENTS.md"), "utf8")).toContain("renamed");
       // the orchestrator snippet path carries {{project-name}} → the installer SKILL.md is at the NEW name's path:
-      expect(existsSync(join(proj, "installer-skills", "renamed-installer", "SKILL.md"))).toBe(
-        true,
-      );
-      // and the manifest name updated:
-      expect(readFileSync(join(proj, "manifest.yml"), "utf8")).toMatch(/name:\s*renamed/);
+      expect(
+        existsSync(join(proj, "wip", "installer-skills", "renamed-installer", "SKILL.md")),
+      ).toBe(true);
+      // the manifest name updated:
+      expect(readFileSync(join(proj, "wip", "manifest.yml"), "utf8")).toMatch(/name:\s*renamed/);
+      // the author-owned executor front door is NOT auto-rendered as a canonical wip/AGENTS.md (task-88):
+      expect(existsSync(join(proj, "wip", "AGENTS.md"))).toBe(false);
     });
   });
 

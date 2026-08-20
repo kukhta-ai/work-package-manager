@@ -9,7 +9,10 @@ Read with `10` (the CLI surface this project implements), `07` (the templates it
 A single Node.js + TypeScript package, distributed via npm, that ships three things:
 
 1. **The `wpm` CLI binary** — the surface fully specified in `10`.
-2. **Built-in templates** — the project templates (`minimal`, `single-bundle`, `multi-bundle`) and bundle templates (`default`, `with-payload-skill`, `adopts-system-tool`) the CLI scaffolds from. Hand-authored, version-controlled, copied verbatim by `wpm init` / `bundle new` with mechanical placeholder substitution. The project templates carry more than directory structure: their files hold the *instructional content* that makes a generated install work — the orchestrator skill, the front-door recognition text, the per-task workflow, the loop instructions (catalogued in `06`, "What the template's files actually say"). They do *not* bundle a discipline-enforcer skill of our own; where an author wants enforcement, they vendor an existing one (`06`).
+2. **Built-in templates** — the hand-authored, version-controlled trees the CLI scaffolds from with mechanical placeholder substitution.
+   **Shipped project templates:** `minimal`.
+   **Shipped bundle templates:** `default`.
+   Project-local templates can add specialized shapes and shadow a built-in of the same name. The shipped project template carries more than directory structure: its files hold the *instructional content* that makes a generated install work — the orchestrator skill, the front-door recognition text, the per-task workflow, the loop instructions (catalogued in `06`, "What the template's files actually say"). It does *not* bundle a discipline-enforcer skill of our own; where an author wants enforcement, they vendor an existing one (`06`).
 3. **The builder's own agent skill** — `installer-builder/SKILL.md` plus references, packaged so an agent reading it knows how to drive the CLI to author a bundle-project. The meta-skill that closes the loop: the CLI is agent-friendly *by virtue of an agent skill that ships alongside it*, not by hoping the agent figures it out from `--help`.
 
 The doc set (`docs/00-14.md`) lives in the same repo and is part of what ships, but is a static deliverable — not loaded at runtime, not executed, just there to be read.
@@ -146,41 +149,36 @@ installer/                          the installer-builder project root
 │   ── BUILT-IN TEMPLATES ────────────────────────────────────────────────
 ├── templates/                 [REQ]  ships in the npm package; the built-in template set (project-local templates/ shadow these)
 │   ├── project/
-│   │   ├── minimal/
-│   │   │   ├── template.yml             scope: project, parameters: [project-name]
-│   │   │   ├── files/                   the snippet tree, copied at init with substitution
-│   │   │   │   ├── manifest.yml.tmpl
-│   │   │   │   ├── AGENTS.md.tmpl       front door: recognition + kickoff + the install shape (06)
-│   │   │   │   ├── RALPH-LOOP.md.tmpl   the unattended-loop rules, as plain instructions (06)
-│   │   │   │   ├── README.md.tmpl
-│   │   │   │   └── installer-skills/
-│   │   │   │       └── {{project-name}}-installer/
-│   │   │   │           └── SKILL.md.tmpl         the orchestrator skill (per-project)
-│   │   │   │       (an author may also VENDOR third-party discipline skills here — e.g. from
-│   │   │   │        superpowers, MIT — but those aren't part of the builder's template; see 06)
-│   │   │   └── snippets/                ON-DEMAND stubs, rendered later by add commands (not copied at init)
-│   │   │       ├── advisor.SKILL.md.tmpl        rendered by `bundle <id> advisor add` / `bundle new`
-│   │   │       ├── installer-skill.SKILL.md.tmpl rendered by `… installer-skills add` (scaffold branch)
-│   │   │       └── payload-skill.SKILL.md.tmpl   rendered by `bundle <id> skills add` (scaffold branch)
-│   │   ├── single-bundle/
-│   │   │   ├── template.yml
-│   │   │   └── files/                   minimal/ + pre-included `core` bundle
-│   │   └── multi-bundle/
-│   │       ├── template.yml
-│   │       └── files/                   minimal/ + core + two example bundles via requires
+│   │   └── minimal/
+│   │       ├── template.yml             scope: project, parameters: [project-name]
+│   │       ├── files/                   copied at init with substitution
+│   │       │   ├── manifest.yml.tmpl
+│   │       │   ├── RALPH-LOOP.md.tmpl   the unattended-loop rules, as plain instructions (06)
+│   │       │   ├── README.md.tmpl
+│   │       │   └── installer-skills/
+│   │       │       └── {{project-name}}-installer/
+│   │       │           └── references/journaling.md.tmpl
+│   │       │       (an author may also VENDOR third-party discipline skills here — e.g. from
+│   │       │        superpowers, MIT — but those aren't part of the builder's template; see 06)
+│   │       └── snippets/                derived front doors + ON-DEMAND stubs (not copied wholesale)
+│   │           ├── AGENTS.md                    executor front-door source
+│   │           ├── authoring-front-door.md.tmpl workspace front-door source
+│   │           ├── installer-skills/{{project-name}}-installer/SKILL.md
+│   │           ├── advisor.SKILL.md.tmpl        rendered by `bundle <id> advisor add` / `bundle new`
+│   │           ├── installer-skill.SKILL.md.tmpl rendered by `… installer-skills add` (scaffold branch)
+│   │           └── payload-skill.SKILL.md.tmpl   rendered by `bundle <id> skills add` (scaffold branch)
 │   │
 │   └── bundle/
-│       ├── default/
-│       │   ├── template.yml             scope: bundle
-│       │   └── files/
-│       │       ├── bundle.yml.tmpl
-│       │       ├── AGENTS.md.tmpl       per-bundle scope notes
-│       │       └── install-backlog/
-│       │           └── config.yml.tmpl  DoD scaffold
-│       ├── with-payload-skill/
-│       │   └── files/                   default/ + payload/agent-skills/{{name}}/ scaffold
-│       └── adopts-system-tool/
-│           └── files/                   default/ + the detect→adopt-or-install pattern
+│       └── default/
+│           ├── template.yml             scope: bundle; `bundle.yml` is written canonically
+│           └── files/
+│               ├── _AGENTS.md.tmpl      author-owned per-bundle front door
+│               ├── install-backlog/
+│               │   ├── config.yml.tmpl  DoD scaffold
+│               │   └── tasks/           detect → setup → verify starter tasks
+│               ├── installer-scripts/
+│               ├── installer-skills/
+│               └── payload/             empty agent-skills/, files/, and templates/ roots
 │
 │   ── BUILDER'S OWN AGENT SKILL (for authoring, builder-side) ───────────
 ├── agent-skills/              [REQ]  ships in the npm package; the meta-skill for AUTHORING bundle-projects
@@ -218,7 +216,7 @@ installer/                          the installer-builder project root
 │   │   └── ...
 │   └── fixtures/
 │       ├── hermes-handoff/          the worked-example project for tests
-│       ├── single-bundle-project/
+│       ├── minimal-project/
 │       └── ...
 │
 │   ── BUILD & CI ───────────────────────────────────────────────────────
@@ -236,6 +234,48 @@ installer/                          the installer-builder project root
     ├── tasks/
     └── archive/
 ```
+
+## The generated authoring workspace (what `wpm init` scaffolds)
+
+The scaffold above is the **builder-project** — the repo that *ships* the `wpm` CLI. It is not what an author works in. When an author runs `wpm init`, the CLI generates a separate, much smaller tree: an **authoring workspace** that wraps the deliverable, distinct from both this builder-project and from the shipped-artifact scaffold of `06`. It has the three regions named consistently across the design set — the **authoring workspace root**, the **deliverable subdirectory `wip/`**, and the **build-output directory `builds/`**:
+
+```
+my-installer/                          the AUTHORING WORKSPACE ROOT (wpm init output; the wrapper, never shipped)
+│
+├── AGENTS.md                          authoring front door: flips the agent into "author a bundle-project" mode;
+│                                      points at the installer-builder skill + the authoring backlog (04, 11)
+├── CLAUDE.md                          → AGENTS.md (symlink alias; GEMINI.md etc. likewise)
+├── .gitignore                         ignores .authoring-backlog/ and builds/ by default
+│
+├── .authoring-backlog/                OUR zone: the authoring agent's work tracker (gitignored, builder-time only; 11)
+│   ├── config.yml                       task_prefix=authoring
+│   └── tasks/
+│
+├── wip/                               the DELIVERABLE under construction — the bundle-project skeleton of 06/07.
+│   │                                  Its release ship set, un-nested to the archive root, IS the shipped artifact.
+│   ├── manifest.yml                     project release identity + enabled bundles + targets (06)
+│   ├── _AGENTS.md                       the executor front door, author-owned, under a reserved leading-underscore
+│   │                                    prefix so it stays .md-editable but is NOT auto-discovered by any agent
+│   │                                    during authoring; the build strips the prefix → AGENTS.md at the archive
+│   │                                    root + CLAUDE.md/GEMINI.md aliases per targets (see below)
+│   ├── installer-skills/  …             install-time skills + scope-alias symlinks (06)
+│   └── bundles/<id>/                    each bundle: its own _AGENTS.md (same prefix rule) + install-backlog/ … (06)
+│
+└── builds/                            BUILD OUTPUT: the archives `wpm build` emits (isolated from the workspace)
+    └── <project>-<version>.<ext>        each archive = the filtered wip/ release ship set at its root (06)
+```
+
+Everything outside `wip/` is authoring-only and never ships; the filtered release ship set from `wip/`, un-nested, *is* the shipped artifact. The filtering removes authoring-only bundle scaffolds, disabled/orphaned bundle entries, unregistered payload-skill packages, and unresolved builder-template sources, while preserving complete registered skill packages and runtime template payloads under enabled bundles. This is the wrapper around `06`'s scaffold, not the scaffold itself — and it is the artifact an author's agent operates on (`04`), driven through the authoring-backlog (`11`). The build's filtering, un-nesting, and executor front door's authoring-time naming are CLI/build behaviour, specified here and with the rest of the `wpm build`/`init` surface (`10`).
+
+## What `wpm build` produces (un-nesting, exclusions, and the front-door prefix-strip)
+
+`wpm build` (`10`) turns the workspace into a shipped artifact by reading the `wip/` deliverable and writing an archive into `builds/`, named `<project>-<version>.<ext>` from `manifest.yml.project`. Three behaviours define the transform; all three follow from the workspace separation above.
+
+**Un-nesting.** The archive root is the release ship set from the `wip/` deliverable, lifted to the top level. Files in that set retain their content; the front-door filenames receive the reserved-prefix transform below. The shipped-artifact contract of `06`/`07` is therefore the filtered contents of `wip/`, viewed from the archive root.
+
+**Exclusions.** The workspace wrapper is **never part of any build artifact**: the authoring backlog (`.authoring-backlog/`), the authoring front door (the workspace-root `AGENTS.md` and its `CLAUDE.md`/`GEMINI.md` aliases), and the build-output directory (`builds/`) are all excluded from every archive. Within `wip/`, the authoring-only `bundles/bundle-template/` scaffold, every disabled or orphaned direct child of `bundles/`, every payload-skill package absent from its enabled bundle's `bundle.yml` `payload.skills` registry, and every unresolved builder-source `*.tmpl` file are excluded. A registry path names a valid skill-frontmatter document with any basename; its containing directory is the complete package—including references, assets, nested files, and symlink leaves—and nested `*.tmpl` files in that directory remain runtime product content. Registry names are unique deregistration keys, paths are portable contained `/`-separated paths, and package roots cannot overlap each other or reserved non-payload surfaces, including payload files/templates, installer skills/scripts, docs, install/backlog recipe aliases, the optional uninstall recipe, and agent scope aliases; a missing/invalid registered document is a build-validation error and authorizes nothing. This payload-only policy does not change the independent installer-skill registries, install/uninstall recipes, or other payload categories. A `*.tmpl` beneath an enabled bundle's `payload/templates/` tree is likewise runtime payload content. Packaging does not mutate authoring inputs, so the scaffold and deregistered skill sources remain available on disk even though they are absent from the archive.
+
+**The executor front door's reserved-prefix transform.** The deliverable's executor front door — the file that, once installed, recognises an *end user's* agent and runs the install (`06`, `07`) — must be **editable by the author during authoring yet invisible to the *authoring* agent**, which would otherwise read it as a directive (agent instruction-file discovery is by **exact basename**, with no globs, and every target agent does on-demand subdirectory loading, so nesting under `wip/` alone does not shield it). It is therefore authored under a **reserved leading-underscore prefix** — `wip/_AGENTS.md`, and per bundle `wip/bundles/<id>/_AGENTS.md` — kept `.md` so it stays author-editable, but never matched by any agent's front-door basename (`AGENTS.md`/`CLAUDE.md`/`GEMINI.md`). The build **strips the leading underscore** to restore the canonical names — `_AGENTS.md` → `AGENTS.md` at the archive root, `bundles/<id>/_AGENTS.md` → `bundles/<id>/AGENTS.md` — and creates the `CLAUDE.md`/`GEMINI.md` aliases (build-created symlinks) for each agent in `manifest.targets` — and the same prefix-strip-plus-alias treatment applies per bundle, so each `bundles/<id>/_AGENTS.md` likewise yields `bundles/<id>/AGENTS.md` with its own build-created per-target `bundles/<id>/CLAUDE.md`/`GEMINI.md` aliases. Only the front door carries the prefix; the aliases are build-created. Authored front-door content must therefore **avoid** the reserved source names `AGENTS.md`, `CLAUDE.md`, `GEMINI.md`, `AGENTS.override.md`, and `CONTEXT.md` (all auto-discovered), and must not use the `.tmpl` suffix. Runtime payload templates are the explicit exception described above. The **per-project installer skill and the advisors are not prefixed and not transformed**: they remain ordinary authored deliverable content under `wip/` and ship as-is, because they are `SKILL.md` files that activate only when a scanned scope points at them — during authoring the workspace's scope aliases do not, so they need no shielding. (Caveat: a user could *non-default*-configure an agent to also read `_AGENTS.md`; the design protects against defaults and documents the residual case rather than claiming an absolute guarantee.)
 
 ## Layered architecture
 
@@ -265,7 +305,7 @@ Mapping principles to where they live in the code:
 
 ## Templates as data, not code
 
-Built-in templates in `templates/` are *static directory trees plus a small `template.yml`*. The CLI's `render.ts` reads `template.yml` to learn the parameter list, walks `files/` recursively, and writes each file out with `{{placeholder}}` substitution. There is no template engine logic in the templates themselves — no conditionals, no loops, no logic. If a template needs different shapes for different cases (e.g., `multi-bundle` vs `single-bundle`), those are *separate template directories*, not branches in one template.
+Built-in templates in `templates/` are *static directory trees plus a small `template.yml`*. The CLI's `render.ts` reads `template.yml` to learn the parameter list, walks `files/` recursively, and writes each file out with `{{placeholder}}` substitution. There is no template engine logic in the templates themselves — no conditionals, no loops, no logic. When a project needs specialized shapes, each is a separate project-local template directory rather than a conditional branch inside another template.
 
 A project template carries two kinds of content: `files/` is copied wholesale at `init` time; `snippets/` holds single-file stubs rendered on demand later (the advisor, install-time-skill, and payload-skill SKILL.md stubs that `… advisor add` / `… installer-skills add` / `… skills add` emit in their scaffold branch). Both use the same `render.ts` substitution; they differ only in *when* the CLI reaches for them. Keeping snippets in the template (rather than hard-coding the stub text in the CLI) is the same structure-not-content discipline that governs everything else: the stub's shape is template-author content, and the CLI only fills variables.
 
@@ -306,9 +346,10 @@ npm i -g <installer-package-name>
 # (Optional) install the agent skill
 installer skill install      # copies agent-skills/installer-builder/ into the user's scope
 
-# Create their first bundle-project
-wpm init my-installer --template multi-bundle
+# Create their first bundle-project, then add the bundles it needs
+wpm init my-installer --template minimal
 cd my-installer
+wpm bundle new core --no-advisor
 
 # Their agent (Claude Code, Codex, etc.) takes over from here, working through the
 # authoring-backlog that init populated

@@ -24,7 +24,7 @@ export function bundleIds(ctx: CompletionContext): string[] {
   if (!context.found) {
     return [];
   }
-  const manifest = parseManifest(parseYaml(ctx.fs.read(`${context.root}/manifest.yml`)));
+  const manifest = parseManifest(parseYaml(ctx.fs.read(`${context.deliverableRoot}/manifest.yml`)));
   if (!manifest.ok) {
     return [];
   }

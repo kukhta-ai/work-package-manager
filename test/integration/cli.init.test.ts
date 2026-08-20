@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { existsSync, lstatSync, readdirSync, readFileSync } from "node:fs";
+import { existsSync, lstatSync, readdirSync, readFileSync, readlinkSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { execaSync } from "execa";
@@ -14,6 +14,7 @@ import { parseManifest } from "../../src/core/services/schema/index.js";
 import type { CliIo, OutputSink } from "../../src/util/exit.js";
 import { parseYaml } from "../../src/util/yaml.js";
 import { withTempDir } from "../helpers/tmpdir.js";
+import { initWorkspace } from "../helpers/workspace.js";
 
 /**
  * Through-the-edges (integration) test for the FULL `wpm init <name>` command (task-34): one real invocation
@@ -53,11 +54,16 @@ function realDeps(): CliDeps {
   };
 }
 
-/** Assert the FULL produced project on REAL DISK (via `node:fs`) under project root `proj`. */
+/**
+ * Assert the FULL produced authoring WORKSPACE on REAL DISK (via `node:fs`) under workspace root `proj`
+ * (task-87): the authoring surface at the root, the deliverable skeleton under `wip/`, the empty `builds/`.
+ */
 function assertProjectOnDisk(proj: string, name: string): void {
-  // manifest.yml — parses, name substituted, empty bundles/targets (minimal declares neither):
-  expect(existsSync(join(proj, "manifest.yml"))).toBe(true);
-  const manifest = parseManifest(parseYaml(readFileSync(join(proj, "manifest.yml"), "utf8")));
+  const wip = join(proj, "wip");
+
+  // The DELIVERABLE manifest lives under wip/ — parses, name substituted, empty bundles/targets:
+  expect(existsSync(join(wip, "manifest.yml"))).toBe(true);
+  const manifest = parseManifest(parseYaml(readFileSync(join(wip, "manifest.yml"), "utf8")));
   expect(manifest.ok).toBe(true);
   if (manifest.ok) {
     expect(manifest.value.meta.name).toBe(name);
@@ -65,43 +71,68 @@ function assertProjectOnDisk(proj: string, name: string): void {
     expect(manifest.value.targets).toEqual([]);
   }
 
-  // the front-door (rendered from the SNIPPET), with the substituted name + the doc-07 recognition line:
+  // AC#4 — the WORKSPACE-ROOT authoring front door addresses the AUTHORING agent (+ a CLAUDE.md alias):
   expect(existsSync(join(proj, "AGENTS.md"))).toBe(true);
-  const frontDoor = readFileSync(join(proj, "AGENTS.md"), "utf8");
-  expect(frontDoor).toContain(name);
-  expect(frontDoor.toLowerCase()).toContain("install");
+  const authoring = readFileSync(join(proj, "AGENTS.md"), "utf8");
+  expect(authoring).toContain(name);
+  expect(authoring.toLowerCase()).toContain("authoring agent");
+  expect(authoring.toLowerCase()).not.toContain("executing agent");
+  expect(existsSync(join(proj, "CLAUDE.md"))).toBe(true);
 
-  // the orchestrator + its static journaling reference:
-  expect(existsSync(join(proj, "installer-skills", `${name}-installer`, "SKILL.md"))).toBe(true);
+  // AC#8 — the DELIVERABLE executor front door is author-owned under the reserved prefix (NOT the canonical name):
+  expect(existsSync(join(wip, "_AGENTS.md"))).toBe(true);
+  expect(existsSync(join(wip, "AGENTS.md"))).toBe(false);
+  const executor = readFileSync(join(wip, "_AGENTS.md"), "utf8");
+  expect(executor).toContain(name);
+  expect(executor.toLowerCase()).toContain("install");
+
+  // AC#8 — the orchestrator + its static journaling reference, under wip/:
+  expect(existsSync(join(wip, "installer-skills", `${name}-installer`, "SKILL.md"))).toBe(true);
   expect(
-    existsSync(join(proj, "installer-skills", `${name}-installer`, "references", "journaling.md")),
+    existsSync(join(wip, "installer-skills", `${name}-installer`, "references", "journaling.md")),
   ).toBe(true);
 
-  // the remaining copied files:
-  expect(existsSync(join(proj, "README.md"))).toBe(true);
-  expect(existsSync(join(proj, "RALPH-LOOP.md"))).toBe(true);
+  // the remaining copied files, under wip/:
+  expect(existsSync(join(wip, "README.md"))).toBe(true);
+  expect(existsSync(join(wip, "RALPH-LOOP.md"))).toBe(true);
 
-  // AC#1 — the default bundle template materialised at bundles/bundle-template/ (placeholders KEPT):
-  expect(existsSync(join(proj, "bundles", "bundle-template", "AGENTS.md.tmpl"))).toBe(true);
-  expect(readFileSync(join(proj, "bundles", "bundle-template", "AGENTS.md.tmpl"), "utf8")).toMatch(
+  // AC#1 — the default bundle template materialised at wip/bundles/bundle-template/ (placeholders KEPT):
+  expect(existsSync(join(wip, "bundles", "bundle-template", "_AGENTS.md.tmpl"))).toBe(true);
+  expect(readFileSync(join(wip, "bundles", "bundle-template", "_AGENTS.md.tmpl"), "utf8")).toMatch(
     /\{\{bundle-id\}\}/,
   );
 
-  // AC#1 — the empty registries exist as directories:
-  expect(existsSync(join(proj, "installer-skills"))).toBe(true);
-  expect(existsSync(join(proj, "templates"))).toBe(true);
+  // TASK-102 — the bundle-template scaffold ships a `backlog → install-backlog` alias so the Backlog.md CLI
+  // resolves its recipe. Present on every platform (a real symlink on POSIX; the Windows adapter copies); on
+  // POSIX assert it is a RELATIVE link to install-backlog (archive-portable).
+  const tmplBacklog = join(wip, "bundles", "bundle-template", "backlog");
+  expect(existsSync(tmplBacklog)).toBe(true);
+  if (process.platform !== "win32") {
+    expect(lstatSync(tmplBacklog).isSymbolicLink()).toBe(true);
+    expect(readlinkSync(tmplBacklog)).toBe("install-backlog");
+  }
+
+  // AC#1 — the empty registries exist as directories under wip/; the authoring backlog at the workspace root:
+  expect(existsSync(join(wip, "installer-skills"))).toBe(true);
+  expect(existsSync(join(wip, "templates"))).toBe(true);
   expect(existsSync(join(proj, ".authoring-backlog"))).toBe(true);
 
-  // AC#7 — .gitignore records .authoring-backlog/:
-  expect(existsSync(join(proj, ".gitignore"))).toBe(true);
-  expect(readFileSync(join(proj, ".gitignore"), "utf8")).toMatch(/^\.authoring-backlog\/$/m);
+  // AC#2 — the empty build-output directory exists at the workspace root:
+  expect(existsSync(join(proj, "builds"))).toBe(true);
+  expect(readdirSync(join(proj, "builds"))).toEqual([]);
 
-  // AC#3 — minimal declares no targets ⇒ NO scope-aliases:
-  expect(existsSync(join(proj, ".claude", "skills"))).toBe(false);
+  // AC#3 — the workspace .gitignore records BOTH the authoring backlog AND builds/:
+  expect(existsSync(join(proj, ".gitignore"))).toBe(true);
+  const gitignore = readFileSync(join(proj, ".gitignore"), "utf8");
+  expect(gitignore).toMatch(/^\.authoring-backlog\/$/m);
+  expect(gitignore).toMatch(/^builds\/$/m);
+
+  // AC#1 — minimal declares no targets ⇒ NO scope-aliases under wip/:
+  expect(existsSync(join(wip, ".claude", "skills"))).toBe(false);
 
   // NO unresolved {{…}} marker in any produced file EXCEPT the bundle-template scaffold (a template-of-a-template
   // that deliberately keeps its placeholders for `bundle new` to fill):
-  const scaffold = join(proj, "bundles", "bundle-template");
+  const scaffold = join(wip, "bundles", "bundle-template");
   const walk = (dir: string): void => {
     for (const entry of readdirSync(dir, { withFileTypes: true })) {
       const child = join(dir, entry.name);
@@ -123,7 +154,7 @@ describe("`wpm init` FULL — drives a real change through every layer (task-34)
       const i = io();
       const code = await run(["init", "hermes-handoff", "--at", proj], realDeps(), i);
       expect(code).toBe(0);
-      expect(i.out.text).toContain("created project hermes-handoff");
+      expect(i.out.text).toContain("created authoring workspace hermes-handoff");
       // AC#7 — the summary names the materialised-task count (8 project-wide tasks):
       expect(i.out.text).toMatch(/materialised: 8 authoring task/);
       // `--at <proj>` ⇒ the project root IS <proj> (doc 10 line 194):
@@ -135,14 +166,14 @@ describe("`wpm init` FULL — drives a real change through every layer (task-34)
     await withTempDir(async (dir) => {
       const proj = join(dir, "proj");
       expect(await run(["init", "hermes-handoff", "--at", proj], realDeps(), io())).toBe(0);
-      const manifestBefore = readFileSync(join(proj, "manifest.yml"), "utf8");
+      const manifestBefore = readFileSync(join(proj, "wip", "manifest.yml"), "utf8");
 
       // <proj> now exists, so a second init at the SAME path is refused (AC#5) — exit 1, nothing changed:
       const i = io();
       const code = await run(["init", "other", "--at", proj], realDeps(), i);
       expect(code).toBe(1); // ConflictError → exit 1
       expect(i.err.text).toMatch(/^error: /);
-      expect(readFileSync(join(proj, "manifest.yml"), "utf8")).toBe(manifestBefore); // unchanged
+      expect(readFileSync(join(proj, "wip", "manifest.yml"), "utf8")).toBe(manifestBefore); // unchanged
     });
   });
 
@@ -183,7 +214,7 @@ describe("`wpm init` FULL — drives a real change through every layer (task-34)
       const code = await run(["init", "demo", "--at", proj, "--param", "bogus"], realDeps(), i);
       expect(code).toBe(2);
       expect(i.err.text).toMatch(/--param/);
-      expect(existsSync(join(proj, "manifest.yml"))).toBe(false);
+      expect(existsSync(join(proj, "wip", "manifest.yml"))).toBe(false);
     });
   });
 
@@ -214,8 +245,8 @@ describe("`wpm init` FULL — drives a real change through every layer (task-34)
 describeIfBuilt(
   "`wpm init` FULL — through the built `dist/cli.js` binary (the fullest real path)",
   () => {
-    it("`init <name>` with default cwd creates the full <cwd>/<name>/ on disk", () => {
-      withTempDir((dir) => {
+    it("`init <name>` with default cwd creates the full <cwd>/<name>/ on disk", async () => {
+      await withTempDir((dir) => {
         execFileSync(process.execPath, [builtCli, "init", "hermes-handoff"], {
           cwd: dir,
           encoding: "utf8",
@@ -224,13 +255,13 @@ describeIfBuilt(
       });
     });
 
-    it("`init <name> --at <dir>` creates the project at <dir> on disk", () => {
-      withTempDir((dir) => {
+    it("`init <name> --at <dir>` creates the project at <dir> on disk", async () => {
+      await withTempDir((dir) => {
         const proj = join(dir, "proj");
         const out = execFileSync(process.execPath, [builtCli, "init", "demo-proj", "--at", proj], {
           encoding: "utf8",
         });
-        expect(out).toContain("created project demo-proj");
+        expect(out).toContain("created authoring workspace demo-proj");
         assertProjectOnDisk(proj, "demo-proj");
       });
     });
@@ -297,15 +328,15 @@ describeIfBacklog(
   },
 );
 
-describeIfBuilt("`wpm init` FULL — scope aliases on real disk (AC#3, through dist/cli.js)", () => {
-  it("init then `project targets add claude-code` creates a real scope-alias symlink at .claude/skills", () => {
-    withTempDir((dir) => {
-      const proj = join(dir, "demo");
-      execFileSync(process.execPath, [builtCli, "init", "demo", "--at", proj], {
-        encoding: "utf8",
-      });
-      // A freshly-init'd minimal project has NO aliases (no targets) — AC#3 negative case on real disk:
-      expect(existsSync(join(proj, ".claude", "skills"))).toBe(false);
+describeIfBuilt("`wpm init` FULL — scope aliases on real disk (AC#1, through dist/cli.js)", () => {
+  it("init then `project targets add claude-code` creates the platform-contract scope alias", async () => {
+    await withTempDir((dir) => {
+      // `project targets add` is project-bound: it resolves the authoring WORKSPACE (task-88) and operates on
+      // the deliverable under `wip/`, with the authoring backlog at the workspace root. So we init a real
+      // workspace and target it via `-C <workspace>`; the alias lands under the deliverable `wip/`.
+      const proj = initWorkspace(builtCli, dir);
+      // A freshly-init'd minimal project has NO aliases (no targets) — negative case on real disk:
+      expect(existsSync(join(proj, "wip", ".claude", "skills"))).toBe(false);
 
       // Adding a target creates the alias (the same alias plan init would have applied for a declared target):
       execFileSync(
@@ -315,10 +346,14 @@ describeIfBuilt("`wpm init` FULL — scope aliases on real disk (AC#3, through d
           encoding: "utf8",
         },
       );
-      const alias = join(proj, ".claude", "skills");
+      const alias = join(proj, "wip", ".claude", "skills");
       expect(existsSync(alias)).toBe(true);
-      // It is a symlink pointing at installer-skills/ (POSIX); the real adapter uses a symlink on this platform:
-      expect(lstatSync(alias).isSymbolicLink()).toBe(true);
+      // The contract is unconditional: POSIX creates a symlink; Windows creates a readable directory copy
+      // without probing runner privileges. Both mechanisms expose the installer skill content.
+      expect(lstatSync(alias).isSymbolicLink()).toBe(process.platform !== "win32");
+      expect(readFileSync(join(alias, "demo-installer", "SKILL.md"), "utf8")).toContain(
+        "name: demo-installer",
+      );
     });
   });
 });

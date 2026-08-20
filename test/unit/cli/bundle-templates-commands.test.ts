@@ -16,7 +16,7 @@ import { parseYaml } from "../../../src/util/yaml.js";
  * `TEMPLATES_DESCRIPTOR` (a PURE REUSE of Family L). Driven through `run()` in-process over in-memory ports,
  * against a project at `/proj` with bundle `a` whose `bundle.yml` carries a leading COMMENT + a known key order
  * (so comment+order preservation across an `editYaml` write is testable). REAL files are placed under
- * `${PROJ}/bundles/a/payload/templates/` in the MemoryFileSystem so the on-disk existence check + the
+ * `${PROJ}/wip/bundles/a/payload/templates/` in the MemoryFileSystem so the on-disk existence check + the
  * registration / deregistration are exercisable. Template snippets are seeded so ④ RERENDER resolves. Mirrors
  * `bundle-files-commands.test.ts`.
  */
@@ -63,17 +63,17 @@ function seed(opts: { placed?: string[]; placedFiles?: string[]; aYml?: string }
   const backlog = new FakeBacklog();
 
   fs.write(
-    `${PROJ}/manifest.yml`,
+    `${PROJ}/wip/manifest.yml`,
     "project:\n  name: demo\n  version: 1.0.0\ntargets:\n  - claude-code\nbundles:\n  - a\n",
   );
-  fs.write(`${PROJ}/bundles/a/bundle.yml`, opts.aYml ?? bundleYmlFor("a"));
+  fs.write(`${PROJ}/wip/bundles/a/bundle.yml`, opts.aYml ?? bundleYmlFor("a"));
   for (const rel of opts.placed ?? []) {
-    fs.write(`${PROJ}/bundles/a/payload/templates/${rel}`, `template ${rel}\n`);
+    fs.write(`${PROJ}/wip/bundles/a/payload/templates/${rel}`, `template ${rel}\n`);
   }
   for (const rel of opts.placedFiles ?? []) {
-    fs.write(`${PROJ}/bundles/a/payload/files/${rel}`, `content of ${rel}\n`);
+    fs.write(`${PROJ}/wip/bundles/a/payload/files/${rel}`, `content of ${rel}\n`);
   }
-  fs.makeDirectories(`${PROJ}/installer-skills`);
+  fs.makeDirectories(`${PROJ}/wip/installer-skills`);
   // Every mutation rides the ⑤ MATERIALISE beat (which lists the authoring backlog), so it must be initialised
   // even though the templates family materialises NO task — exactly as `wpm init` creates `.authoring-backlog`.
   backlog.init(AUTHORING, { taskPrefix: "authoring" });
@@ -104,14 +104,14 @@ function deps(fs: MemoryFileSystem, backlog: FakeBacklog, cwd = "/elsewhere"): C
 
 /** The parsed `payload.templates` list of `<id>`'s bundle.yml on disk. */
 function payloadTemplatesOf(fs: MemoryFileSystem, id: string): readonly string[] {
-  const parsed = parseBundleManifest(parseYaml(fs.read(`${PROJ}/bundles/${id}/bundle.yml`)));
+  const parsed = parseBundleManifest(parseYaml(fs.read(`${PROJ}/wip/bundles/${id}/bundle.yml`)));
   if (!parsed.ok) throw new Error(`bundle ${id} did not parse`);
   return parsed.value.payload.templates;
 }
 
 /** The parsed `payload.files` list of `<id>`'s bundle.yml on disk (for the cross-category isolation case). */
 function payloadFilesOf(fs: MemoryFileSystem, id: string): readonly string[] {
-  const parsed = parseBundleManifest(parseYaml(fs.read(`${PROJ}/bundles/${id}/bundle.yml`)));
+  const parsed = parseBundleManifest(parseYaml(fs.read(`${PROJ}/wip/bundles/${id}/bundle.yml`)));
   if (!parsed.ok) throw new Error(`bundle ${id} did not parse`);
   return parsed.value.payload.files;
 }
@@ -122,7 +122,7 @@ function payloadFilesOf(fs: MemoryFileSystem, id: string): readonly string[] {
 describe("bundle <id> templates add (task-68)", () => {
   it("AC#1 — registers an existing path; NO file content written; comment + key order preserved; exit 0", async () => {
     const { fs, backlog } = seed({ placed: ["agents.md.tmpl"] });
-    const fileBefore = fs.read(`${PROJ}/bundles/a/payload/templates/agents.md.tmpl`);
+    const fileBefore = fs.read(`${PROJ}/wip/bundles/a/payload/templates/agents.md.tmpl`);
     const i = io();
     expect(
       await run(
@@ -133,8 +133,8 @@ describe("bundle <id> templates add (task-68)", () => {
     ).toBe(0);
     expect(payloadTemplatesOf(fs, "a")).toEqual(["agents.md.tmpl"]);
     // structure-not-content: the placed file's bytes are unchanged.
-    expect(fs.read(`${PROJ}/bundles/a/payload/templates/agents.md.tmpl`)).toBe(fileBefore);
-    const text = fs.read(`${PROJ}/bundles/a/bundle.yml`);
+    expect(fs.read(`${PROJ}/wip/bundles/a/payload/templates/agents.md.tmpl`)).toBe(fileBefore);
+    const text = fs.read(`${PROJ}/wip/bundles/a/bundle.yml`);
     expect(text).toContain("# bundle a —"); // comment survived
     const keyOrder = text
       .split("\n")
@@ -169,7 +169,7 @@ describe("bundle <id> templates add (task-68)", () => {
 
   it("AC#2 — registering a path NOT on disk fails (exit 1), registering nothing", async () => {
     const { fs, backlog } = seed(); // no templates placed
-    const before = fs.read(`${PROJ}/bundles/a/bundle.yml`);
+    const before = fs.read(`${PROJ}/wip/bundles/a/bundle.yml`);
     const i = io();
     expect(
       await run(
@@ -180,7 +180,7 @@ describe("bundle <id> templates add (task-68)", () => {
     ).toBe(1);
     expect(i.err.text).toContain("ghost.tmpl"); // names the missing path
     expect(i.err.text).toContain("payload/templates"); // names the right directory
-    expect(fs.read(`${PROJ}/bundles/a/bundle.yml`)).toBe(before); // nothing registered (byte-identical)
+    expect(fs.read(`${PROJ}/wip/bundles/a/bundle.yml`)).toBe(before); // nothing registered (byte-identical)
   });
 
   it("AC#3 — outside any project, exits 1 naming manifest.yml and suggesting init", async () => {
@@ -226,16 +226,16 @@ describe("bundle <id> templates list (task-69)", () => {
     const { fs, backlog } = seed({
       aYml: "# bundle a comment\nid: a\nversion: 0.1.0\nsummary: bundle a\nconfirmation: safe\nrequires: {}\npayload:\n  templates:\n    - agents.md.tmpl\n    - sub/x.json.tmpl\n",
     });
-    const manifestBefore = fs.read(`${PROJ}/manifest.yml`);
-    const aBefore = fs.read(`${PROJ}/bundles/a/bundle.yml`);
+    const manifestBefore = fs.read(`${PROJ}/wip/manifest.yml`);
+    const aBefore = fs.read(`${PROJ}/wip/bundles/a/bundle.yml`);
     const i = io();
     expect(await run(["bundle", "a", "templates", "list", "-C", PROJ], deps(fs, backlog), i)).toBe(
       0,
     );
     expect(i.out.text).toBe("agents.md.tmpl\nsub/x.json.tmpl\n");
     // read-only — nothing on disk changed:
-    expect(fs.read(`${PROJ}/manifest.yml`)).toBe(manifestBefore);
-    expect(fs.read(`${PROJ}/bundles/a/bundle.yml`)).toBe(aBefore);
+    expect(fs.read(`${PROJ}/wip/manifest.yml`)).toBe(manifestBefore);
+    expect(fs.read(`${PROJ}/wip/bundles/a/bundle.yml`)).toBe(aBefore);
   });
 
   it("AC#1 — an empty/absent payload prints a clear marker, exit 0", async () => {
@@ -309,7 +309,7 @@ describe("bundle <id> templates remove (task-70)", () => {
       placed: ["agents.md.tmpl", "sub/x.json.tmpl"],
       aYml: A_YML_WITH_REFS,
     });
-    const contentBefore = fs.read(`${PROJ}/bundles/a/payload/templates/agents.md.tmpl`);
+    const contentBefore = fs.read(`${PROJ}/wip/bundles/a/payload/templates/agents.md.tmpl`);
     expect(
       await run(
         ["bundle", "a", "templates", "remove", "agents.md.tmpl", "-C", PROJ],
@@ -318,13 +318,13 @@ describe("bundle <id> templates remove (task-70)", () => {
       ),
     ).toBe(0);
     // the file is still on disk with its content unchanged:
-    expect(fs.exists(`${PROJ}/bundles/a/payload/templates/agents.md.tmpl`)).toBe(true);
-    expect(fs.read(`${PROJ}/bundles/a/payload/templates/agents.md.tmpl`)).toBe(contentBefore);
+    expect(fs.exists(`${PROJ}/wip/bundles/a/payload/templates/agents.md.tmpl`)).toBe(true);
+    expect(fs.read(`${PROJ}/wip/bundles/a/payload/templates/agents.md.tmpl`)).toBe(contentBefore);
   });
 
   it("AC#3 — deregistering a path NOT registered fails with NotFound (exit 1), nothing changed", async () => {
     const { fs, backlog } = seed({ placed: ["agents.md.tmpl"], aYml: A_YML_WITH_REFS });
-    const before = fs.read(`${PROJ}/bundles/a/bundle.yml`);
+    const before = fs.read(`${PROJ}/wip/bundles/a/bundle.yml`);
     const i = io();
     expect(
       await run(
@@ -334,7 +334,7 @@ describe("bundle <id> templates remove (task-70)", () => {
       ),
     ).toBe(1);
     expect(i.err.text).toContain("not-there.tmpl");
-    expect(fs.read(`${PROJ}/bundles/a/bundle.yml`)).toBe(before); // unchanged
+    expect(fs.read(`${PROJ}/wip/bundles/a/bundle.yml`)).toBe(before); // unchanged
   });
 
   it("AC#4 — outside any project, exits 1 naming manifest.yml", async () => {
@@ -400,8 +400,8 @@ describe("bundle <id> templates — end-to-end author workflow", () => {
     expect(i.out.text).toBe("(no templates)\n");
 
     // the file is still on disk (deregister-not-delete) and the author's comment survived every write:
-    expect(fs.exists(`${PROJ}/bundles/a/payload/templates/agents.md.tmpl`)).toBe(true);
-    expect(fs.read(`${PROJ}/bundles/a/bundle.yml`)).toContain("# bundle a —");
+    expect(fs.exists(`${PROJ}/wip/bundles/a/payload/templates/agents.md.tmpl`)).toBe(true);
+    expect(fs.read(`${PROJ}/wip/bundles/a/bundle.yml`)).toContain("# bundle a —");
   });
 
   it("rerender — after add, the front-door is re-rendered (it exists)", async () => {
@@ -413,7 +413,7 @@ describe("bundle <id> templates — end-to-end author workflow", () => {
         io(),
       ),
     ).toBe(0);
-    expect(fs.exists(`${PROJ}/AGENTS.md`)).toBe(true);
+    expect(fs.exists(`${PROJ}/wip/installer-skills/demo-installer/SKILL.md`)).toBe(true);
   });
 
   it("the templates group help lists the add/list/remove subcommands", async () => {

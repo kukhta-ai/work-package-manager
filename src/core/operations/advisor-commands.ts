@@ -115,7 +115,7 @@ export function advisorRemoveSpec(): OperationSpec<AdvisorInput> {
     check: (project, { id }) => requireEnabledBundle(project, id),
 
     /** ③ APPLY — delete the advisor dir if present + archive its open content task; no-op-with-message if absent. */
-    apply: ({ fs, backlog, root }: ApplyContext, _project, { id }): ApplyOutcome => {
+    apply: ({ fs, backlog, root, workspaceRoot }: ApplyContext, _project, { id }): ApplyOutcome => {
       const dirAbs = join(root, advisorSkillDir(id));
       if (!fs.exists(dirAbs)) {
         // AC81#3: no advisor → make NO change (do not delete, do not touch the task); report "nothing to remove".
@@ -126,9 +126,10 @@ export function advisorRemoveSpec(): OperationSpec<AdvisorInput> {
       fs.remove(dirAbs);
 
       // AC81#2: archive the "Write advisor content for <id>" task if it is still OPEN (not Done/archived). The
-      // authoring backlog is the project's own Backlog.md root at `<root>/.authoring-backlog` (the SAME root the
-      // harness materialises into); `listTasks` already excludes archived tasks, so this is idempotent.
-      const authoringRoot = join(root, AUTHORING_BACKLOG_DIR);
+      // authoring backlog is the workspace's own Backlog.md root at `<workspace>/.authoring-backlog` — at the
+      // WORKSPACE root, beside `wip/`, the SAME root the harness materialises into (task-88); `listTasks` already
+      // excludes archived tasks, so this is idempotent.
+      const authoringRoot = join(workspaceRoot, AUTHORING_BACKLOG_DIR);
       const title = advisorContentTaskTitle(id);
       const open = backlog
         .listTasks(authoringRoot)

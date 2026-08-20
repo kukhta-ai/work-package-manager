@@ -47,7 +47,7 @@ function seedDeps(): CliDeps {
   const backlog = new FakeBacklog();
 
   fs.write(
-    `${ROOT}/manifest.yml`,
+    `${ROOT}/wip/manifest.yml`,
     [
       "project:",
       "  name: demo",
@@ -59,7 +59,7 @@ function seedDeps(): CliDeps {
     ].join("\n"),
   );
   backlog.init(AUTHORING, { taskPrefix: "authoring" });
-  fs.makeDirectories(`${ROOT}/installer-skills`);
+  fs.makeDirectories(`${ROOT}/wip/installer-skills`);
 
   fs.write(
     `${BUILTIN}/project/minimal/template.yml`,
@@ -113,7 +113,7 @@ describe("wpm CLI — acceptance (task-27 composition root, doc 10/12/13)", () =
       // ...and dispatch reaches the registered leaf — `bundle new` actually creates the bundle:
       const runIo = io();
       expect(await run(["bundle", "new", "web", "-C", ROOT], deps, runIo)).toBe(0);
-      const manifest = parseManifest(parseYaml(deps.fs.read(`${ROOT}/manifest.yml`)));
+      const manifest = parseManifest(parseYaml(deps.fs.read(`${ROOT}/wip/manifest.yml`)));
       expect(manifest.ok).toBe(true);
       if (manifest.ok) expect(manifest.value.bundles).toContain("web");
     });
@@ -127,7 +127,7 @@ describe("wpm CLI — acceptance (task-27 composition root, doc 10/12/13)", () =
       expect(await run(["bundle", "new", "web", "-C", ROOT], deps, i)).toBe(0);
 
       // The effects landed in the SAME injected instances — proving they were supplied, not re-constructed:
-      expect(deps.fs.exists(`${ROOT}/bundles/web/bundle.yml`)).toBe(true);
+      expect(deps.fs.exists(`${ROOT}/wip/bundles/web/bundle.yml`)).toBe(true);
       expect(deps.backlog.listTasks(AUTHORING).length).toBeGreaterThan(0);
       // ...and output was formatted on the injected sink (output lives in the shell, not core):
       expect(i.out.text).toContain("created bundle web");
@@ -202,7 +202,7 @@ describe("wpm CLI — acceptance (task-27 composition root, doc 10/12/13)", () =
     it("a normal id keeps bundle <id> unambiguous and succeeds", async () => {
       const deps = seedDeps();
       expect(await run(["bundle", "new", "web", "-C", ROOT], deps, io())).toBe(0);
-      expect(deps.fs.exists(`${ROOT}/bundles/web/bundle.yml`)).toBe(true);
+      expect(deps.fs.exists(`${ROOT}/wip/bundles/web/bundle.yml`)).toBe(true);
     });
   });
 });

@@ -1,8 +1,13 @@
 import { join } from "node:path";
 import { editYaml } from "../../util/yaml.js";
-import { NotFoundError } from "../errors.js";
+import { ConstraintError, NotFoundError, ValidationError } from "../errors.js";
 import type { AuthoringTaskSpec, BundleManifest, Project, SkillRef } from "../model/index.js";
 import { validateSkillFrontmatter } from "../services/frontmatter.js";
+import {
+  PAYLOAD_SKILL_PATH_REQUIREMENT,
+  payloadSkillPackageRoot,
+  skillPackageRootsOverlap,
+} from "../services/skill-ref-path.js";
 import type { ApplyContext, ApplyOutcome, OperationSpec, ReadSpec } from "./lifecycle.js";
 import { renderSkillStub, type SkillStubDeps } from "./scaffold-skill.js";
 
@@ -11,14 +16,14 @@ import { renderSkillStub, type SkillStubDeps } from "./scaffold-skill.js";
  * rows 170–172) — and the seam the two later installer-skill families reuse: `bundle <id> installer-skills`
  * (P, tasks 77–79) and `project installer-skills` (F, tasks 45–47). It is the skill-shaped analogue of
  * `payload-refs.ts`: a bundle's `bundle.yml` carries a `payload.skills` REGISTRY of {@link SkillRef} (`{name,
- * path}`) entries; `add` REGISTERS a reference (after either ATTACHing an author-placed SKILL.md — validating
- * its frontmatter — or SCAFFOLDing a structural stub and queuing the writing) and `remove` DEREGISTERS it,
- * leaving the SKILL.md on disk (doc 10 row 172).
+ * path}`) entries; `add` REGISTERS a reference (after either ATTACHing an author-placed skill document —
+ * validating its frontmatter — or SCAFFOLDing a structural stub and queuing the writing) and `remove`
+ * DEREGISTERS it, leaving the source package on disk (doc 10 row 172).
  *
  * **Why a registry of `{name, path}` and not bare strings (like files/templates/scripts):** a skill is
  * identified by its `name` (the registry key, the `remove <name>` deregister key, the menu line `list` prints)
- * AND located by its `path` (the bundle-relative `SKILL.md` path, which `--path` can move off the conventional
- * `payload/agent-skills/<name>/SKILL.md`). `list` and the downstream "Verify skill registration" authoring task
+ * AND located by its `path` (the bundle-relative skill document, which `--path` can move off the conventional
+ * `payload/agent-skills/<name>/SKILL.md` and may give any basename). `list` and the downstream authoring task
  * (doc 11) must LOCATE each registered skill, so the path is carried. Payload skills are inert until install
  * (doc 06), so this registry — not a directory scan — is authoritative (O's `list` is registry-based; P/F's
  * `list` is doc-spec'd as a directory scan, so {@link listSkillRefsSpec} is the one piece P/F replace).
@@ -143,7 +148,7 @@ function bundleManifestPath(root: string, id: string): string {
 /**
  * Register a {@link SkillRef} into the descriptor's registry sequence in `bundles/<id>/bundle.yml`, set-like on
  * `name` (an already-registered name is a no-op — never duplicated), comment-preservingly. Shared by the attach
- * and scaffold apply beats. Writes only the YAML registry; never any SKILL.md content.
+ * and scaffold apply beats. Writes only the YAML registry; never any skill-document content.
  *
  * @param ctx - The apply context (fs port + root).
  * @param descriptor - The skill category descriptor.
@@ -164,6 +169,17 @@ function registerSkillRef(
     // Set-like on name: already registered ⇒ no registry change.
     return undefined;
   }
+  if (descriptor === PAYLOAD_SKILLS_DESCRIPTOR) {
+    const packageRoot = requirePayloadSkillPackageRoot(ref.path);
+    for (const existing of current) {
+      const existingRoot = requirePayloadSkillPackageRoot(existing.path);
+      if (skillPackageRootsOverlap(existingRoot, packageRoot)) {
+        throw new ConstraintError(
+          `${descriptor.noun} "${ref.name}" package "${packageRoot}" overlaps registered ${descriptor.noun} "${existing.name}" package "${existingRoot}"`,
+        );
+      }
+    }
+  }
   const next = [...current, { name: ref.name, path: ref.path }];
   const ymlPath = bundleManifestPath(ctx.root, id);
   const text = editYaml(ctx.fs.read(ymlPath), (doc) => {
@@ -175,13 +191,13 @@ function registerSkillRef(
   return ymlPath;
 }
 
-/** The input to {@link attachSkillRefSpec}: the host id, the skill name, and the bundle-relative SKILL.md path. */
+/** The input to {@link attachSkillRefSpec}: host id, skill name, and bundle-relative skill-document path. */
 export interface AttachSkillRefInput {
   /** The host bundle (selected + enabled-guarded by the `bundle <id>` routing). */
   readonly id: string;
   /** The skill name to register (the registry key). */
   readonly name: string;
-  /** The bundle-relative path to the existing SKILL.md (the conventional path, or the `--path` location). */
+  /** The bundle-relative path to the existing skill document (conventional or explicit `--path`). */
   readonly path: string;
 }
 
@@ -197,7 +213,7 @@ export interface ScaffoldSkillRefInput {
 export interface RemoveSkillRefInput {
   /** The host bundle (selected + enabled-guarded by the `bundle <id>` routing). */
   readonly id: string;
-  /** The registered skill name to deregister (the SKILL.md is left on disk). */
+  /** The registered skill name to deregister (its source package is left on disk). */
   readonly name: string;
 }
 
@@ -209,13 +225,13 @@ export interface SkillListInput {
 
 /**
  * `bundle <id> skills add <name>` — the ATTACH branch (doc 10 row 170 step 2), a mutation. ② CHECK re-asserts
- * the host bundle. ③ APPLY READS the SKILL.md at the resolved `path` through the fs port, validates its
+ * the host bundle. ③ APPLY READS the skill document at the resolved `path` through the fs port, validates its
  * frontmatter (must have `name` + `description`, else a {@link ValidationError} from {@link
  * validateSkillFrontmatter} — exit 1, registering nothing), then registers `{name, path}` in the registry
  * (set-like on name), writing NO content (structure-not-content, 74#1). ④ RERENDER (the harness) runs. NO
  * `materialise` (doc 10 row 170 step 2 / doc 11 line 91: attach queues no writing).
  *
- * The CLI dispatches here only when the SKILL.md already exists at the resolved path (it owns the disk probe).
+ * The CLI dispatches here only when the skill document exists at the resolved path (it owns the disk probe).
  *
  * @param descriptor - The skill category descriptor.
  * @returns The attach operation spec.
@@ -233,7 +249,8 @@ export function attachSkillRefSpec(
 
     apply: (ctx: ApplyContext, project, { id, name, path }): ApplyOutcome => {
       const host = requireBundle(project, id);
-      // Validate the author-placed SKILL.md's frontmatter (read via the fs port; the pure validator takes the
+      if (descriptor === PAYLOAD_SKILLS_DESCRIPTOR) requirePayloadSkillPackageRoot(path);
+      // Validate the author-placed skill document's frontmatter (read via the fs port; the validator takes the
       // content as data). A malformed head throws ValidationError BEFORE any registry write — nothing registered.
       const skillAbs = join(ctx.root, "bundles", id, path);
       validateSkillFrontmatter(ctx.fs.read(skillAbs), `bundles/${id}/${path}`);
@@ -242,6 +259,18 @@ export function attachSkillRefSpec(
       return { changedPaths: changed !== undefined ? [changed] : [] };
     },
   };
+}
+
+/** Resolve a safe, non-conflicting payload package root or reject malformed operation input. */
+function requirePayloadSkillPackageRoot(path: string): string {
+  const root = payloadSkillPackageRoot(path);
+  if (root === undefined) {
+    throw new ValidationError(
+      `payload skill reference path "${path}" ${PAYLOAD_SKILL_PATH_REQUIREMENT}`,
+      { field: "path" },
+    );
+  }
+  return root;
 }
 
 /**
@@ -313,7 +342,7 @@ export function scaffoldSkillRefSpec(
 /**
  * `bundle <id> skills remove <name>` (doc 10 row 172), a mutation. ② CHECK the name IS registered (else a {@link
  * NotFoundError} — 76#3, nothing changed). ③ APPLY deletes that entry from the registry sequence by index,
- * comment-preservingly; it does NOT touch the SKILL.md on disk (deregister-not-delete, 76#2). ④ RERENDER (the
+ * comment-preservingly; it does NOT touch the source package on disk (deregister-not-delete, 76#2). ④ RERENDER (the
  * harness) runs. The `summary` carries the doc-10-row-172 "left at …" message the command prints (76#1), built
  * from the REGISTERED ref's path directory (so a `--path`-relocated skill names its real location). No
  * `materialise`.
@@ -324,8 +353,8 @@ export function scaffoldSkillRefSpec(
 export function removeSkillRefSpec(
   descriptor: SkillRefDescriptor,
 ): OperationSpec<RemoveSkillRefInput> {
-  // The directory the deregistered SKILL.md was left in, captured during ② CHECK (which sees the registry BEFORE
-  // ③ APPLY removes the entry) so the ⑥ summary — computed by the harness on the POST-apply project, where the
+  // The directory the deregistered source package was left in, captured during ② CHECK before ③ APPLY removes
+  // the entry, so the ⑥ summary — computed by the harness on the POST-apply project, where the
   // entry is already gone — can still name a `--path`-relocated skill's real location. A fresh spec per
   // `runMutation` call, so this per-invocation closure is safe.
   let removedDir = "";
@@ -333,7 +362,7 @@ export function removeSkillRefSpec(
   return {
     summary: (_project, { name }) => {
       const dir = removedDir !== "" ? removedDir : `${descriptor.onDiskDir}/${name}/`;
-      return `deregistered; SKILL.md left at ${dir} — delete it yourself if you meant to`;
+      return `deregistered; skill source left at ${dir} — delete it yourself if you meant to`;
     },
 
     check: (project, { id, name }) => {
@@ -353,12 +382,77 @@ export function removeSkillRefSpec(
       const index = current.findIndex((s) => s.name === name); // present (CHECK validated)
       const ymlPath = bundleManifestPath(ctx.root, id);
       const text = editYaml(ctx.fs.read(ymlPath), (doc) => {
-        // Remove only that index from the registry sequence; the SKILL.md on disk is left in place — we never
+        // Remove only that index from the registry sequence; the source package is left in place — we never
         // call `ctx.fs.remove`.
         doc.deleteIn([...descriptor.registryPath, index]);
       });
       ctx.fs.write(ymlPath, text);
       return { changedPaths: [ymlPath] };
+    },
+  };
+}
+
+/** The input to {@link removeUnregisteredSkillStubSpec}: the host id and the on-disk-but-unregistered skill name. */
+export interface RemoveUnregisteredSkillInput {
+  /** The host bundle (selected + enabled-guarded by the `bundle <id>` routing). */
+  readonly id: string;
+  /** The unregistered skill name whose stray on-disk stub directory is removed. */
+  readonly name: string;
+}
+
+/**
+ * `bundle <id> skills remove <name>` — the ORPHAN-CLEANUP branch (TASK-103), a mutation. The companion of {@link
+ * removeSkillRefSpec}: where that DEREGISTERS a REGISTERED skill and leaves its source package on disk
+ * (deregister-not-delete, 76#1/#2), THIS removes a skill that is present on disk but NOT registered — a stray
+ * scaffold (an old `bundle new` payload-skill stub, or a hand-placed stub never `skills add`-registered). Because
+ * nothing is registered there is nothing to deregister, so the sensible `remove` is to delete the stray scaffold
+ * DIRECTORY `<onDiskDir>/<name>/` through the fs port. This NEVER deletes registered content: the registry is
+ * authoritative for payload skills (inert until install, doc 06), so an unregistered on-disk skill was never
+ * committed through `add` and is debris — and ② CHECK guards that `<name>` is genuinely unregistered before any
+ * delete, so the deregister-not-delete contract for committed skills is preserved.
+ *
+ * The CLI dispatches here only when the name is NOT registered (it owns the registry probe — the registered-vs-
+ * orphan split is the COMMAND-layer's, mirroring the `add` 3-way: a pure `check` has no port to probe disk).
+ * ② CHECK re-asserts the host bundle and that `<name>` is unregistered (defense-in-depth). ③ APPLY probes the
+ * conventional on-disk directory through the fs port; if present it removes it (recursively), else it raises a
+ * {@link NotFoundError} (nothing registered, nothing on disk — nothing to remove), so a name matching neither
+ * exits 1 with nothing changed. No `materialise`.
+ *
+ * @param descriptor - The skill category descriptor.
+ * @returns The orphan-cleanup operation spec.
+ */
+export function removeUnregisteredSkillStubSpec(
+  descriptor: SkillRefDescriptor,
+): OperationSpec<RemoveUnregisteredSkillInput> {
+  const stubDirRel = (name: string): string => `${descriptor.onDiskDir}/${name}`;
+
+  return {
+    summary: (_project, { name }) =>
+      `removed unregistered ${descriptor.noun} ${name} (deleted the stray stub at ${stubDirRel(name)}/)`,
+
+    check: (project, { id, name }) => {
+      const current = descriptor.select(requireBundle(project, id));
+      if (current.some((existing) => existing.name === name)) {
+        // A registered skill is removed by DEREGISTER, which LEAVES its complete source package on disk;
+        // this delete path must never touch author-committed content (76#1/#2). Guard against a mis-dispatch.
+        throw new ConstraintError(
+          `${descriptor.noun} "${name}" is registered in "${id}" — deregister it (its source package is left on disk), not stub removal`,
+        );
+      }
+    },
+
+    apply: (ctx: ApplyContext, _project, { id, name }): ApplyOutcome => {
+      const dirRel = stubDirRel(name);
+      const dirAbs = join(ctx.root, "bundles", id, dirRel);
+      if (!ctx.fs.exists(dirAbs)) {
+        throw new NotFoundError(
+          `${descriptor.noun} "${name}" is not registered in "${id}" and no stub exists at ${dirRel}/ — nothing to remove`,
+        );
+      }
+      // Remove only the stray scaffold's own directory (recursively via the port); the parent `<onDiskDir>/` and
+      // any sibling skills are left untouched.
+      ctx.fs.remove(dirAbs);
+      return { changedPaths: [dirAbs] };
     },
   };
 }
@@ -381,10 +475,10 @@ export function listSkillRefsSpec(
   };
 }
 
-/** The directory portion of a bundle-relative SKILL.md path (everything up to and including the last `/`). */
-function skillDir(skillMdPath: string): string {
-  const slash = skillMdPath.lastIndexOf("/");
-  return slash >= 0 ? skillMdPath.slice(0, slash + 1) : "";
+/** The directory portion of a bundle-relative skill-document path (including the last `/`). */
+function skillDir(documentPath: string): string {
+  const slash = documentPath.lastIndexOf("/");
+  return slash >= 0 ? documentPath.slice(0, slash + 1) : "";
 }
 
 /**

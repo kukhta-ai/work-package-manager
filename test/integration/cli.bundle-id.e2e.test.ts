@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import { execaSync } from "execa";
 import { describe, expect, it } from "vitest";
 import { withTempDir } from "../helpers/tmpdir.js";
+import { initWorkspace } from "../helpers/workspace.js";
 
 /**
  * End-to-end (through-the-binary) tests for the per-bundle subcommand space — `bundle <id> show` / `bundle <id>
@@ -39,10 +40,12 @@ function wpm(proj: string, args: readonly string[]): { stdout: string; status: n
   return cli([...args, "-C", proj]);
 }
 
-/** init a real project at <dir>/demo + create the bundle `web`; return the project path. */
+/**
+ * Build a flat project at <dir>/demo (from the real `init`, flattened for the pre-87 shape — task-88 follow-up)
+ * + create the bundle `web`; return the project root.
+ */
 function projectWithWeb(dir: string): string {
-  const proj = join(dir, "demo");
-  execFileSync(process.execPath, [builtCli, "init", "demo", "--at", proj], { encoding: "utf8" });
+  const proj = initWorkspace(builtCli, dir);
   execFileSync(process.execPath, [builtCli, "bundle", "new", "web", "-C", proj], {
     encoding: "utf8",
   });
@@ -77,7 +80,7 @@ describeIfBuilt("bundle <id> routing + show/meta E2E via dist/cli.js (tasks 57/5
         "dangerous",
       ]);
       expect(meta.status).toBe(0);
-      const bundleYml = readFileSync(join(proj, "bundles", "web", "bundle.yml"), "utf8");
+      const bundleYml = readFileSync(join(proj, "wip", "bundles", "web", "bundle.yml"), "utf8");
       expect(bundleYml).toMatch(/summary:\s*web handoff installer/);
       expect(bundleYml).toMatch(/confirmation:\s*dangerous/);
       // omitted fields untouched:
@@ -86,7 +89,7 @@ describeIfBuilt("bundle <id> routing + show/meta E2E via dist/cli.js (tasks 57/5
 
       // a FIXED verb still routes (the dynamic routing did not swallow it):
       expect(wpm(proj, ["bundle", "new", "doc"]).status).toBe(0);
-      expect(existsSync(join(proj, "bundles", "doc", "bundle.yml"))).toBe(true);
+      expect(existsSync(join(proj, "wip", "bundles", "doc", "bundle.yml"))).toBe(true);
     });
   });
 
@@ -94,7 +97,7 @@ describeIfBuilt("bundle <id> routing + show/meta E2E via dist/cli.js (tasks 57/5
     await withTempDir((dir) => {
       const proj = projectWithWeb(dir);
       expect(wpm(proj, ["bundle", "web", "meta", "--version", "2.5.0"]).status).toBe(0);
-      expect(readFileSync(join(proj, "bundles", "web", "bundle.yml"), "utf8")).toMatch(
+      expect(readFileSync(join(proj, "wip", "bundles", "web", "bundle.yml"), "utf8")).toMatch(
         /version:\s*2\.5\.0/,
       );
     });
@@ -192,7 +195,7 @@ describeIfBuilt("bundle <id> routing + show/meta E2E via dist/cli.js (tasks 57/5
   it("meta preserves the canonical key order of the REAL bundle.yml across the eemeli/yaml round-trip", async () => {
     await withTempDir((dir) => {
       const proj = projectWithWeb(dir);
-      const path = join(proj, "bundles", "web", "bundle.yml");
+      const path = join(proj, "wip", "bundles", "web", "bundle.yml");
 
       const orderOf = (text: string): string[] =>
         text
@@ -227,7 +230,7 @@ describeIfBuilt("bundle <id> routing + show/meta E2E via dist/cli.js (tasks 57/5
   it("meta with no flags exits 2; a non-semver --version exits 2 (boundary validation, real binary)", async () => {
     await withTempDir((dir) => {
       const proj = projectWithWeb(dir);
-      const path = join(proj, "bundles", "web", "bundle.yml");
+      const path = join(proj, "wip", "bundles", "web", "bundle.yml");
       const before = readFileSync(path, "utf8");
 
       expect(wpm(proj, ["bundle", "web", "meta"]).status).toBe(2); // no flags
@@ -297,10 +300,12 @@ function authoringTaskTitles(proj: string): string {
   }).stdout as string;
 }
 
-/** init a real project at <dir>/demo + create bundles `a` and `b`, where `b` requires `a`; return the path. */
+/**
+ * Build a flat project at <dir>/demo (from the real `init`, flattened for the pre-87 shape — task-88 follow-up)
+ * + create bundles `a` and `b`, where `b` requires `a`; return the path.
+ */
 function projectWithRequirer(dir: string): string {
-  const proj = join(dir, "demo");
-  execFileSync(process.execPath, [builtCli, "init", "demo", "--at", proj], { encoding: "utf8" });
+  const proj = initWorkspace(builtCli, dir);
   for (const id of ["a", "b"]) {
     execFileSync(process.execPath, [builtCli, "bundle", "new", id, "-C", proj], {
       encoding: "utf8",
@@ -309,7 +314,7 @@ function projectWithRequirer(dir: string): string {
   // FIXTURE: make bundle `b` REQUIRE bundle `a` by hand. `bundle <id> requires add` (family K) is NOT built yet,
   // so the test sets the `requires` map directly on disk — replacing b's canonical empty `requires: {}` with a
   // constraint naming `a`. This makes the cross-bundle requirer-constraint task materialise when `a` is bumped.
-  const bYmlPath = join(proj, "bundles", "b", "bundle.yml");
+  const bYmlPath = join(proj, "wip", "bundles", "b", "bundle.yml");
   const bYml = readFileSync(bYmlPath, "utf8");
   writeFileSync(bYmlPath, bYml.replace(/^requires:\s*\{\}\s*$/m, "requires:\n  a: ^0.1.0"), "utf8");
   return proj;
@@ -336,7 +341,7 @@ describeIfBuilt("bundle <id> version / bump / set E2E via dist/cli.js (tasks 59/
       expect(bump.stdout).toMatch(/materialised: \d+ authoring task\(s\)/);
 
       // bundles/a/bundle.yml advanced to 0.2.0; the canonical bundle.yml structure is intact:
-      const aYml = readFileSync(join(proj, "bundles", "a", "bundle.yml"), "utf8");
+      const aYml = readFileSync(join(proj, "wip", "bundles", "a", "bundle.yml"), "utf8");
       expect(aYml).toMatch(/version:\s*0\.2\.0/);
       expect(aYml).toMatch(/id:\s*a/); // untouched key survives
 
@@ -353,7 +358,7 @@ describeIfBuilt("bundle <id> version / bump / set E2E via dist/cli.js (tasks 59/
   it("`bundle <id> version set 2.0.0` writes the explicit version; a bad level/version exits 2 unchanged", async () => {
     await withTempDir((dir) => {
       const proj = projectWithWeb(dir);
-      const path = join(proj, "bundles", "web", "bundle.yml");
+      const path = join(proj, "wip", "bundles", "web", "bundle.yml");
 
       expect(wpm(proj, ["bundle", "web", "version", "set", "2.0.0"]).status).toBe(0);
       expect(readFileSync(path, "utf8")).toMatch(/version:\s*2\.0\.0/);
@@ -413,10 +418,12 @@ function wpmFull(
   };
 }
 
-/** init a real project at <dir>/demo + bundles `a` and `b`, BOTH with the canonical empty requires (no edges). */
+/**
+ * Build a flat project at <dir>/demo (from the real `init`, flattened for the pre-87 shape — task-88 follow-up)
+ * + bundles `a` and `b`, BOTH with the canonical empty requires (no edges).
+ */
 function projectWithAB(dir: string): string {
-  const proj = join(dir, "demo");
-  execFileSync(process.execPath, [builtCli, "init", "demo", "--at", proj], { encoding: "utf8" });
+  const proj = initWorkspace(builtCli, dir);
   for (const id of ["a", "b"]) {
     execFileSync(process.execPath, [builtCli, "bundle", "new", id, "-C", proj], {
       encoding: "utf8",
@@ -434,7 +441,7 @@ describeIfBuilt(
         const add = wpm(proj, ["bundle", "a", "requires", "add", "b", "^0.1.0"]);
         expect(add.status).toBe(0);
 
-        const aYml = readFileSync(join(proj, "bundles", "a", "bundle.yml"), "utf8");
+        const aYml = readFileSync(join(proj, "wip", "bundles", "a", "bundle.yml"), "utf8");
         // the RAW caret survived the real eemeli/yaml round-trip (NOT a normalized comparator like >=0.1.0).
         // `bundle new` scaffolds `requires: {}` as an INLINE flow map, so the edit lands as `requires: { b:
         // ^0.1.0 }` — the literal caret is what matters, not flow-vs-block layout.
@@ -448,7 +455,7 @@ describeIfBuilt(
       await withTempDir((dir) => {
         const proj = projectWithAB(dir);
         expect(wpm(proj, ["bundle", "a", "requires", "add", "b"]).status).toBe(0);
-        const aYml = readFileSync(join(proj, "bundles", "a", "bundle.yml"), "utf8");
+        const aYml = readFileSync(join(proj, "wip", "bundles", "a", "bundle.yml"), "utf8");
         expect(aYml).toMatch(/b:\s*\^0\.1\.0/);
       });
     });
@@ -479,7 +486,7 @@ describeIfBuilt(
         expect(combined).toContain("b");
 
         // the edge WAS written despite the cycle:
-        const aYml = readFileSync(join(proj, "bundles", "a", "bundle.yml"), "utf8");
+        const aYml = readFileSync(join(proj, "wip", "bundles", "a", "bundle.yml"), "utf8");
         expect(aYml).toMatch(/b:\s*\^0\.1\.0/);
       });
     });
@@ -487,7 +494,7 @@ describeIfBuilt(
     it("62#4 — `requires add ghost` (not enabled) exits 1; a's bundle.yml unchanged", async () => {
       await withTempDir((dir) => {
         const proj = projectWithAB(dir);
-        const path = join(proj, "bundles", "a", "bundle.yml");
+        const path = join(proj, "wip", "bundles", "a", "bundle.yml");
         const before = readFileSync(path, "utf8");
         expect(wpm(proj, ["bundle", "a", "requires", "add", "ghost"]).status).toBe(1);
         expect(readFileSync(path, "utf8")).toBe(before); // nothing written
@@ -515,7 +522,7 @@ describeIfBuilt(
         const remove = wpm(proj, ["bundle", "a", "requires", "remove", "b"]);
         expect(remove.status).toBe(0);
         // the b key is gone from bundle.yml:
-        const aYml = readFileSync(join(proj, "bundles", "a", "bundle.yml"), "utf8");
+        const aYml = readFileSync(join(proj, "wip", "bundles", "a", "bundle.yml"), "utf8");
         expect(aYml).not.toMatch(/^\s*b:/m);
         // the verify task landed in the real authoring backlog:
         expect(authoringTaskTitles(proj)).toContain("Verify a no longer references b");
@@ -526,7 +533,7 @@ describeIfBuilt(
       await withTempDir((dir) => {
         const proj = projectWithAB(dir);
         expect(wpm(proj, ["bundle", "a", "requires", "add", "b", "^0.1.0"]).status).toBe(0);
-        const path = join(proj, "bundles", "a", "bundle.yml");
+        const path = join(proj, "wip", "bundles", "a", "bundle.yml");
         const before = readFileSync(path, "utf8");
         expect(wpm(proj, ["bundle", "a", "requires", "remove", "ghost"]).status).toBe(1);
         expect(readFileSync(path, "utf8")).toBe(before);
@@ -580,7 +587,7 @@ describeIfBuilt(
 
 /** Place a real file at bundles/<bundle>/payload/files/<rel> under <proj> (creating parent dirs). */
 function placePayloadFile(proj: string, bundle: string, rel: string, content: string): string {
-  const abs = join(proj, "bundles", bundle, "payload", "files", rel);
+  const abs = join(proj, "wip", "bundles", bundle, "payload", "files", rel);
   mkdirSync(dirname(abs), { recursive: true });
   writeFileSync(abs, content, "utf8");
   return abs;
@@ -589,15 +596,15 @@ function placePayloadFile(proj: string, bundle: string, rel: string, content: st
 describeIfBuilt(
   "bundle <id> files add / list / remove E2E via dist/cli.js (tasks 65/66/67)",
   () => {
-    it("65#1 — `files add` registers a placed file in bundle.yml payload; file content is unchanged (structure-not-content)", () => {
-      withTempDir((dir) => {
+    it("65#1 — `files add` registers a placed file in bundle.yml payload; file content is unchanged (structure-not-content)", async () => {
+      await withTempDir((dir) => {
         const proj = projectWithWeb(dir);
         const filePath = placePayloadFile(proj, "web", "agents.md", "# hi");
 
         const add = wpm(proj, ["bundle", "web", "files", "add", "agents.md"]);
         expect(add.status).toBe(0);
 
-        const ymlText = readFileSync(join(proj, "bundles", "web", "bundle.yml"), "utf8");
+        const ymlText = readFileSync(join(proj, "wip", "bundles", "web", "bundle.yml"), "utf8");
         // the real eemeli/yaml round-trip lists `agents.md` under the `payload:` registry (tolerant of layout):
         expect(ymlText).toContain("payload:");
         expect(ymlText).toMatch(/payload:[\s\S]*agents\.md/);
@@ -606,18 +613,18 @@ describeIfBuilt(
       });
     });
 
-    it("65#2 — `files add` for a path NOT on disk exits 1; bundle.yml unchanged", () => {
-      withTempDir((dir) => {
+    it("65#2 — `files add` for a path NOT on disk exits 1; bundle.yml unchanged", async () => {
+      await withTempDir((dir) => {
         const proj = projectWithWeb(dir);
-        const path = join(proj, "bundles", "web", "bundle.yml");
+        const path = join(proj, "wip", "bundles", "web", "bundle.yml");
         const before = readFileSync(path, "utf8");
         expect(wpm(proj, ["bundle", "web", "files", "add", "ghost.md"]).status).toBe(1);
         expect(readFileSync(path, "utf8")).toBe(before); // nothing registered
       });
     });
 
-    it("66#1 — `files list` shows the registered file; a fresh bundle prints (no files)", () => {
-      withTempDir((dir) => {
+    it("66#1 — `files list` shows the registered file; a fresh bundle prints (no files)", async () => {
+      await withTempDir((dir) => {
         const proj = projectWithWeb(dir);
         // fresh bundle (createBundle inits payload.files: []): list prints the empty marker.
         expect(wpm(proj, ["bundle", "web", "files", "list"]).stdout.trim()).toBe("(no files)");
@@ -630,8 +637,8 @@ describeIfBuilt(
       });
     });
 
-    it("67#1/67#2 — `files remove` deregisters AND leaves the file on disk (deregister, not delete)", () => {
-      withTempDir((dir) => {
+    it("67#1/67#2 — `files remove` deregisters AND leaves the file on disk (deregister, not delete)", async () => {
+      await withTempDir((dir) => {
         const proj = projectWithWeb(dir);
         const filePath = placePayloadFile(proj, "web", "agents.md", "# hi");
         expect(wpm(proj, ["bundle", "web", "files", "add", "agents.md"]).status).toBe(0);
@@ -641,7 +648,7 @@ describeIfBuilt(
         expect(remove.stdout).toContain("left at payload/files/agents.md"); // doc-10:167 message
 
         // the entry is gone from bundle.yml:
-        const ymlText = readFileSync(join(proj, "bundles", "web", "bundle.yml"), "utf8");
+        const ymlText = readFileSync(join(proj, "wip", "bundles", "web", "bundle.yml"), "utf8");
         expect(ymlText).not.toMatch(/^\s*-\s*agents\.md/m);
         // BUT the file is left on disk with its content intact:
         expect(existsSync(filePath)).toBe(true);
@@ -649,18 +656,18 @@ describeIfBuilt(
       });
     });
 
-    it("67#3 — `files remove` for a path NOT registered exits 1; bundle.yml unchanged", () => {
-      withTempDir((dir) => {
+    it("67#3 — `files remove` for a path NOT registered exits 1; bundle.yml unchanged", async () => {
+      await withTempDir((dir) => {
         const proj = projectWithWeb(dir);
-        const path = join(proj, "bundles", "web", "bundle.yml");
+        const path = join(proj, "wip", "bundles", "web", "bundle.yml");
         const before = readFileSync(path, "utf8");
         expect(wpm(proj, ["bundle", "web", "files", "remove", "nope.md"]).status).toBe(1);
         expect(readFileSync(path, "utf8")).toBe(before);
       });
     });
 
-    it("completion: `files add` lists placed files; `files remove` lists registered files", () => {
-      withTempDir((dir) => {
+    it("completion: `files add` lists placed files; `files remove` lists registered files", async () => {
+      await withTempDir((dir) => {
         const proj = projectWithWeb(dir);
         placePayloadFile(proj, "web", "agents.md", "# hi");
 
@@ -679,8 +686,8 @@ describeIfBuilt(
       });
     });
 
-    it("help: `bundle <id> files add --help` reaches the leaf and documents the path positional + an example", () => {
-      withTempDir((dir) => {
+    it("help: `bundle <id> files add --help` reaches the leaf and documents the path positional + an example", async () => {
+      await withTempDir((dir) => {
         const proj = projectWithWeb(dir);
         const help = wpm(proj, ["bundle", "web", "files", "add", "--help"]);
         expect(help.status).toBe(0);
@@ -690,11 +697,11 @@ describeIfBuilt(
       });
     });
 
-    it("OLD bundle.yml WITHOUT a payload key still drives list (no files) AND add (adds the field) — absent ⇒ empty", () => {
-      withTempDir((dir) => {
+    it("OLD bundle.yml WITHOUT a payload key still drives list (no files) AND add (adds the field) — absent ⇒ empty", async () => {
+      await withTempDir((dir) => {
         const proj = projectWithWeb(dir);
         // OVERWRITE web's bundle.yml with a pre-L shape (NO `payload:` key), as an older project would have on disk.
-        const ymlPath = join(proj, "bundles", "web", "bundle.yml");
+        const ymlPath = join(proj, "wip", "bundles", "web", "bundle.yml");
         writeFileSync(
           ymlPath,
           "id: web\nversion: 0.1.0\nsummary: web bundle\nconfirmation: safe\nrequires: {}\n",
@@ -719,7 +726,7 @@ describeIfBuilt(
 
 /** Place a real file at bundles/<bundle>/payload/templates/<rel> under <proj> (creating parent dirs). */
 function placePayloadTemplate(proj: string, bundle: string, rel: string, content: string): string {
-  const abs = join(proj, "bundles", bundle, "payload", "templates", rel);
+  const abs = join(proj, "wip", "bundles", bundle, "payload", "templates", rel);
   mkdirSync(dirname(abs), { recursive: true });
   writeFileSync(abs, content, "utf8");
   return abs;
@@ -728,15 +735,15 @@ function placePayloadTemplate(proj: string, bundle: string, rel: string, content
 describeIfBuilt(
   "bundle <id> templates add / list / remove E2E via dist/cli.js (tasks 68/69/70)",
   () => {
-    it("68#1 — `templates add` registers a placed template in bundle.yml payload; content unchanged (structure-not-content)", () => {
-      withTempDir((dir) => {
+    it("68#1 — `templates add` registers a placed template in bundle.yml payload; content unchanged (structure-not-content)", async () => {
+      await withTempDir((dir) => {
         const proj = projectWithWeb(dir);
         const filePath = placePayloadTemplate(proj, "web", "agents.md.tmpl", "# {{x}}");
 
         const add = wpm(proj, ["bundle", "web", "templates", "add", "agents.md.tmpl"]);
         expect(add.status).toBe(0);
 
-        const ymlText = readFileSync(join(proj, "bundles", "web", "bundle.yml"), "utf8");
+        const ymlText = readFileSync(join(proj, "wip", "bundles", "web", "bundle.yml"), "utf8");
         // the real eemeli/yaml round-trip lists `agents.md.tmpl` under the `payload:` registry (tolerant of layout):
         expect(ymlText).toContain("payload:");
         expect(ymlText).toMatch(/payload:[\s\S]*templates:[\s\S]*agents\.md\.tmpl/);
@@ -745,18 +752,18 @@ describeIfBuilt(
       });
     });
 
-    it("68#2 — `templates add` for a path NOT on disk exits 1; bundle.yml unchanged", () => {
-      withTempDir((dir) => {
+    it("68#2 — `templates add` for a path NOT on disk exits 1; bundle.yml unchanged", async () => {
+      await withTempDir((dir) => {
         const proj = projectWithWeb(dir);
-        const path = join(proj, "bundles", "web", "bundle.yml");
+        const path = join(proj, "wip", "bundles", "web", "bundle.yml");
         const before = readFileSync(path, "utf8");
         expect(wpm(proj, ["bundle", "web", "templates", "add", "ghost.tmpl"]).status).toBe(1);
         expect(readFileSync(path, "utf8")).toBe(before); // nothing registered
       });
     });
 
-    it("69#1 — `templates list` shows the registered template; a fresh bundle prints (no templates)", () => {
-      withTempDir((dir) => {
+    it("69#1 — `templates list` shows the registered template; a fresh bundle prints (no templates)", async () => {
+      await withTempDir((dir) => {
         const proj = projectWithWeb(dir);
         // fresh bundle (createBundle inits payload.templates: []): list prints the empty marker.
         expect(wpm(proj, ["bundle", "web", "templates", "list"]).stdout.trim()).toBe(
@@ -771,8 +778,8 @@ describeIfBuilt(
       });
     });
 
-    it("70#1/70#2 — `templates remove` deregisters AND leaves the file on disk (deregister, not delete)", () => {
-      withTempDir((dir) => {
+    it("70#1/70#2 — `templates remove` deregisters AND leaves the file on disk (deregister, not delete)", async () => {
+      await withTempDir((dir) => {
         const proj = projectWithWeb(dir);
         const filePath = placePayloadTemplate(proj, "web", "agents.md.tmpl", "# t");
         expect(wpm(proj, ["bundle", "web", "templates", "add", "agents.md.tmpl"]).status).toBe(0);
@@ -782,7 +789,7 @@ describeIfBuilt(
         expect(remove.stdout).toContain("left at payload/templates/agents.md.tmpl"); // doc-10:168→167 message
 
         // the entry is gone from bundle.yml:
-        const ymlText = readFileSync(join(proj, "bundles", "web", "bundle.yml"), "utf8");
+        const ymlText = readFileSync(join(proj, "wip", "bundles", "web", "bundle.yml"), "utf8");
         expect(ymlText).not.toMatch(/^\s*-\s*agents\.md\.tmpl/m);
         // BUT the file is left on disk with its content intact:
         expect(existsSync(filePath)).toBe(true);
@@ -790,18 +797,18 @@ describeIfBuilt(
       });
     });
 
-    it("70#3 — `templates remove` for a path NOT registered exits 1; bundle.yml unchanged", () => {
-      withTempDir((dir) => {
+    it("70#3 — `templates remove` for a path NOT registered exits 1; bundle.yml unchanged", async () => {
+      await withTempDir((dir) => {
         const proj = projectWithWeb(dir);
-        const path = join(proj, "bundles", "web", "bundle.yml");
+        const path = join(proj, "wip", "bundles", "web", "bundle.yml");
         const before = readFileSync(path, "utf8");
         expect(wpm(proj, ["bundle", "web", "templates", "remove", "nope.tmpl"]).status).toBe(1);
         expect(readFileSync(path, "utf8")).toBe(before);
       });
     });
 
-    it("completion: `templates add` lists placed templates; `templates remove` lists registered templates", () => {
-      withTempDir((dir) => {
+    it("completion: `templates add` lists placed templates; `templates remove` lists registered templates", async () => {
+      await withTempDir((dir) => {
         const proj = projectWithWeb(dir);
         placePayloadTemplate(proj, "web", "agents.md.tmpl", "# t");
 
@@ -822,8 +829,8 @@ describeIfBuilt(
       });
     });
 
-    it("help: `bundle <id> templates add --help` reaches the leaf and documents the path positional + an example", () => {
-      withTempDir((dir) => {
+    it("help: `bundle <id> templates add --help` reaches the leaf and documents the path positional + an example", async () => {
+      await withTempDir((dir) => {
         const proj = projectWithWeb(dir);
         const help = wpm(proj, ["bundle", "web", "templates", "add", "--help"]);
         expect(help.status).toBe(0);
@@ -833,11 +840,11 @@ describeIfBuilt(
       });
     });
 
-    it("OLD bundle.yml WITHOUT a payload key still drives list (no templates) AND add (adds the field) — absent ⇒ empty", () => {
-      withTempDir((dir) => {
+    it("OLD bundle.yml WITHOUT a payload key still drives list (no templates) AND add (adds the field) — absent ⇒ empty", async () => {
+      await withTempDir((dir) => {
         const proj = projectWithWeb(dir);
         // OVERWRITE web's bundle.yml with a pre-L shape (NO `payload:` key), as an older project would have on disk.
-        const ymlPath = join(proj, "bundles", "web", "bundle.yml");
+        const ymlPath = join(proj, "wip", "bundles", "web", "bundle.yml");
         writeFileSync(
           ymlPath,
           "id: web\nversion: 0.1.0\nsummary: web bundle\nconfirmation: safe\nrequires: {}\n",
@@ -865,7 +872,7 @@ describeIfBuilt(
  * `installer-scripts/` is a SIBLING of `payload/` (doc 06:96), NOT under it.
  */
 function placeInstallerScript(proj: string, bundle: string, rel: string, content: string): string {
-  const abs = join(proj, "bundles", bundle, "installer-scripts", rel);
+  const abs = join(proj, "wip", "bundles", bundle, "installer-scripts", rel);
   mkdirSync(dirname(abs), { recursive: true });
   writeFileSync(abs, content, "utf8");
   return abs;
@@ -874,22 +881,22 @@ function placeInstallerScript(proj: string, bundle: string, rel: string, content
 describeIfBuilt(
   "bundle <id> scripts add / list / remove E2E via dist/cli.js (tasks 71/72/73)",
   () => {
-    it("71#1 — `scripts add` registers a placed installer-script in bundle.yml payload; content unchanged (structure-not-content)", () => {
-      withTempDir((dir) => {
+    it("71#1 — `scripts add` registers a placed installer-script in bundle.yml payload; content unchanged (structure-not-content)", async () => {
+      await withTempDir((dir) => {
         const proj = projectWithWeb(dir);
         const filePath = placeInstallerScript(proj, "web", "probe.sh", "#!/bin/sh\necho hi\n");
         // the script lives under installer-scripts/, a SIBLING of payload/ (NOT under payload/):
-        expect(existsSync(join(proj, "bundles", "web", "installer-scripts", "probe.sh"))).toBe(
-          true,
-        );
-        expect(existsSync(join(proj, "bundles", "web", "payload", "installer-scripts"))).toBe(
-          false,
-        );
+        expect(
+          existsSync(join(proj, "wip", "bundles", "web", "installer-scripts", "probe.sh")),
+        ).toBe(true);
+        expect(
+          existsSync(join(proj, "wip", "bundles", "web", "payload", "installer-scripts")),
+        ).toBe(false);
 
         const add = wpm(proj, ["bundle", "web", "scripts", "add", "probe.sh"]);
         expect(add.status).toBe(0);
 
-        const ymlText = readFileSync(join(proj, "bundles", "web", "bundle.yml"), "utf8");
+        const ymlText = readFileSync(join(proj, "wip", "bundles", "web", "bundle.yml"), "utf8");
         // the real eemeli/yaml round-trip lists `probe.sh` under the `payload:` registry (tolerant of layout):
         expect(ymlText).toContain("payload:");
         expect(ymlText).toMatch(/payload:[\s\S]*scripts:[\s\S]*probe\.sh/);
@@ -898,18 +905,18 @@ describeIfBuilt(
       });
     });
 
-    it("71#2 — `scripts add` for a path NOT on disk exits 1; bundle.yml unchanged", () => {
-      withTempDir((dir) => {
+    it("71#2 — `scripts add` for a path NOT on disk exits 1; bundle.yml unchanged", async () => {
+      await withTempDir((dir) => {
         const proj = projectWithWeb(dir);
-        const path = join(proj, "bundles", "web", "bundle.yml");
+        const path = join(proj, "wip", "bundles", "web", "bundle.yml");
         const before = readFileSync(path, "utf8");
         expect(wpm(proj, ["bundle", "web", "scripts", "add", "ghost.sh"]).status).toBe(1);
         expect(readFileSync(path, "utf8")).toBe(before); // nothing registered
       });
     });
 
-    it("72#1 — `scripts list` shows the registered installer-script; a fresh bundle prints (no scripts)", () => {
-      withTempDir((dir) => {
+    it("72#1 — `scripts list` shows the registered installer-script; a fresh bundle prints (no scripts)", async () => {
+      await withTempDir((dir) => {
         const proj = projectWithWeb(dir);
         // fresh bundle (createBundle inits payload.scripts: []): list prints the empty marker.
         expect(wpm(proj, ["bundle", "web", "scripts", "list"]).stdout.trim()).toBe("(no scripts)");
@@ -922,8 +929,8 @@ describeIfBuilt(
       });
     });
 
-    it("73#1/73#2 — `scripts remove` deregisters AND leaves the file on disk (deregister, not delete)", () => {
-      withTempDir((dir) => {
+    it("73#1/73#2 — `scripts remove` deregisters AND leaves the file on disk (deregister, not delete)", async () => {
+      await withTempDir((dir) => {
         const proj = projectWithWeb(dir);
         const filePath = placeInstallerScript(proj, "web", "probe.sh", "#!/bin/sh\n");
         expect(wpm(proj, ["bundle", "web", "scripts", "add", "probe.sh"]).status).toBe(0);
@@ -933,7 +940,7 @@ describeIfBuilt(
         expect(remove.stdout).toContain("left at installer-scripts/probe.sh"); // doc-10:169→167 message
 
         // the entry is gone from bundle.yml:
-        const ymlText = readFileSync(join(proj, "bundles", "web", "bundle.yml"), "utf8");
+        const ymlText = readFileSync(join(proj, "wip", "bundles", "web", "bundle.yml"), "utf8");
         expect(ymlText).not.toMatch(/^\s*-\s*probe\.sh/m);
         // BUT the file is left on disk with its content intact:
         expect(existsSync(filePath)).toBe(true);
@@ -941,18 +948,18 @@ describeIfBuilt(
       });
     });
 
-    it("73#3 — `scripts remove` for a path NOT registered exits 1; bundle.yml unchanged", () => {
-      withTempDir((dir) => {
+    it("73#3 — `scripts remove` for a path NOT registered exits 1; bundle.yml unchanged", async () => {
+      await withTempDir((dir) => {
         const proj = projectWithWeb(dir);
-        const path = join(proj, "bundles", "web", "bundle.yml");
+        const path = join(proj, "wip", "bundles", "web", "bundle.yml");
         const before = readFileSync(path, "utf8");
         expect(wpm(proj, ["bundle", "web", "scripts", "remove", "nope.sh"]).status).toBe(1);
         expect(readFileSync(path, "utf8")).toBe(before);
       });
     });
 
-    it("completion: `scripts add` lists placed installer-scripts; `scripts remove` lists registered scripts", () => {
-      withTempDir((dir) => {
+    it("completion: `scripts add` lists placed installer-scripts; `scripts remove` lists registered scripts", async () => {
+      await withTempDir((dir) => {
         const proj = projectWithWeb(dir);
         placeInstallerScript(proj, "web", "probe.sh", "#!/bin/sh\n");
 
@@ -973,8 +980,8 @@ describeIfBuilt(
       });
     });
 
-    it("help: `bundle <id> scripts add --help` reaches the leaf and documents the path positional + an example", () => {
-      withTempDir((dir) => {
+    it("help: `bundle <id> scripts add --help` reaches the leaf and documents the path positional + an example", async () => {
+      await withTempDir((dir) => {
         const proj = projectWithWeb(dir);
         const help = wpm(proj, ["bundle", "web", "scripts", "add", "--help"]);
         expect(help.status).toBe(0);
@@ -984,11 +991,11 @@ describeIfBuilt(
       });
     });
 
-    it("OLD bundle.yml WITHOUT a payload key still drives list (no scripts) AND add (adds the field) — absent ⇒ empty", () => {
-      withTempDir((dir) => {
+    it("OLD bundle.yml WITHOUT a payload key still drives list (no scripts) AND add (adds the field) — absent ⇒ empty", async () => {
+      await withTempDir((dir) => {
         const proj = projectWithWeb(dir);
         // OVERWRITE web's bundle.yml with a pre-L shape (NO `payload:` key), as an older project would have on disk.
-        const ymlPath = join(proj, "bundles", "web", "bundle.yml");
+        const ymlPath = join(proj, "wip", "bundles", "web", "bundle.yml");
         writeFileSync(
           ymlPath,
           "id: web\nversion: 0.1.0\nsummary: web bundle\nconfirmation: safe\nrequires: {}\n",
@@ -1016,7 +1023,7 @@ describeIfBuilt(
  * returning its absolute path. `content` is the full file (frontmatter + body). Mirrors `placeInstallerScript`.
  */
 function placeSkill(proj: string, bundle: string, name: string, content: string): string {
-  const abs = join(proj, "bundles", bundle, "payload", "agent-skills", name, "SKILL.md");
+  const abs = join(proj, "wip", "bundles", bundle, "payload", "agent-skills", name, "SKILL.md");
   mkdirSync(dirname(abs), { recursive: true });
   writeFileSync(abs, content, "utf8");
   return abs;
@@ -1030,19 +1037,11 @@ function validSkillMd(name: string): string {
 describeIfBuilt(
   "bundle <id> skills add / list / remove E2E via dist/cli.js (tasks 74/75/76)",
   () => {
-    it("74#1 ATTACH — `skills add <id>-skill` attaches the shipped sample; registers {name,path}; content unchanged; NO materialised line", () => {
-      withTempDir((dir) => {
+    it("74#1 ATTACH — `skills add <id>-skill` attaches an author-placed SKILL.md; registers {name,path}; content unchanged; NO materialised line", async () => {
+      await withTempDir((dir) => {
         const proj = projectWithWeb(dir);
-        // A fresh `bundle new web` ships payload/agent-skills/web-skill/SKILL.md (the default template's sample).
-        const samplePath = join(
-          proj,
-          "bundles",
-          "web",
-          "payload",
-          "agent-skills",
-          "web-skill",
-          "SKILL.md",
-        );
+        // A fresh `bundle new web` no longer ships a payload-skill sample (TASK-103); place one so `add` ATTACHES it.
+        const samplePath = placeSkill(proj, "web", "web-skill", validSkillMd("web-skill"));
         expect(existsSync(samplePath)).toBe(true);
         const sampleBefore = readFileSync(samplePath, "utf8");
 
@@ -1051,7 +1050,7 @@ describeIfBuilt(
         expect(add.stdout).toContain("attached");
         expect(add.stdout).not.toContain("materialised"); // attach queues no writing
 
-        const ymlText = readFileSync(join(proj, "bundles", "web", "bundle.yml"), "utf8");
+        const ymlText = readFileSync(join(proj, "wip", "bundles", "web", "bundle.yml"), "utf8");
         // the real eemeli/yaml round-trip records the {name, path} registry entry under `payload.skills`:
         expect(ymlText).toMatch(/payload:[\s\S]*skills:[\s\S]*name:\s*web-skill/);
         expect(ymlText).toMatch(
@@ -1062,8 +1061,8 @@ describeIfBuilt(
       });
     });
 
-    it("74#2 SCAFFOLD — `skills add <new>` renders a stub (name + placeholder runtime-trigger desc, no authored prose), registers it, AND materialises the writing task (loop-closure, cold)", () => {
-      withTempDir((dir) => {
+    it("74#2 SCAFFOLD — `skills add <new>` renders a stub (name + placeholder runtime-trigger desc, no authored prose), registers it, AND materialises the writing task (loop-closure, cold)", async () => {
+      await withTempDir((dir) => {
         const proj = projectWithWeb(dir);
         const add = wpm(proj, ["bundle", "web", "skills", "add", "fresh-skill"]);
         expect(add.status).toBe(0);
@@ -1073,6 +1072,7 @@ describeIfBuilt(
         // the structural stub exists at the conventional path with the substituted name + the placeholder desc:
         const stubPath = join(
           proj,
+          "wip",
           "bundles",
           "web",
           "payload",
@@ -1086,7 +1086,7 @@ describeIfBuilt(
         expect(stub).toContain("TODO"); // a placeholder, NOT invented prose
 
         // it is registered:
-        const ymlText = readFileSync(join(proj, "bundles", "web", "bundle.yml"), "utf8");
+        const ymlText = readFileSync(join(proj, "wip", "bundles", "web", "bundle.yml"), "utf8");
         expect(ymlText).toMatch(/skills:[\s\S]*name:\s*fresh-skill/);
 
         // the doc-11 authoring task is materialised in the REAL .authoring-backlog (the materialise path ran cold):
@@ -1094,10 +1094,10 @@ describeIfBuilt(
       });
     });
 
-    it("74#3 ERROR — `skills add <name> --path <missing>` exits non-zero; bundle.yml unchanged; no stub written", () => {
-      withTempDir((dir) => {
+    it("74#3 ERROR — `skills add <name> --path <missing>` exits non-zero; bundle.yml unchanged; no stub written", async () => {
+      await withTempDir((dir) => {
         const proj = projectWithWeb(dir);
-        const ymlPath = join(proj, "bundles", "web", "bundle.yml");
+        const ymlPath = join(proj, "wip", "bundles", "web", "bundle.yml");
         const before = readFileSync(ymlPath, "utf8");
         const res = wpm(proj, [
           "bundle",
@@ -1111,20 +1111,22 @@ describeIfBuilt(
         expect(res.status).not.toBe(0);
         expect(readFileSync(ymlPath, "utf8")).toBe(before); // nothing registered
         expect(
-          existsSync(join(proj, "bundles", "web", "payload", "agent-skills", "ghost", "SKILL.md")),
+          existsSync(
+            join(proj, "wip", "bundles", "web", "payload", "agent-skills", "ghost", "SKILL.md"),
+          ),
         ).toBe(false); // no stub written
       });
     });
 
-    it("75#1 LIST — after attach + scaffold, `skills list` shows both names; a fresh bundle prints (no payload skills)", () => {
-      withTempDir((dir) => {
+    it("75#1 LIST — after attach + scaffold, `skills list` shows both names; a fresh bundle prints (no payload skills)", async () => {
+      await withTempDir((dir) => {
         const proj = projectWithWeb(dir);
         // a fresh bundle (createBundle inits payload.skills: []) prints the empty marker:
         expect(wpm(proj, ["bundle", "web", "skills", "list"]).stdout.trim()).toBe(
           "(no payload skills)",
         );
 
-        expect(wpm(proj, ["bundle", "web", "skills", "add", "web-skill"]).status).toBe(0); // attach the sample
+        expect(wpm(proj, ["bundle", "web", "skills", "add", "web-skill"]).status).toBe(0); // scaffold (no sample ships now — TASK-103)
         expect(wpm(proj, ["bundle", "web", "skills", "add", "fresh-skill"]).status).toBe(0); // scaffold a new one
         const list = wpm(proj, ["bundle", "web", "skills", "list"]);
         expect(list.status).toBe(0);
@@ -1133,11 +1135,12 @@ describeIfBuilt(
       });
     });
 
-    it("76#1/76#2 REMOVE — `skills remove` deregisters AND leaves the SKILL.md on disk (deregister, not delete)", () => {
-      withTempDir((dir) => {
+    it("76#1/76#2 REMOVE — `skills remove` deregisters AND leaves the SKILL.md on disk (deregister, not delete)", async () => {
+      await withTempDir((dir) => {
         const proj = projectWithWeb(dir);
         const samplePath = join(
           proj,
+          "wip",
           "bundles",
           "web",
           "payload",
@@ -1152,33 +1155,60 @@ describeIfBuilt(
         expect(remove.stdout).toContain("left at payload/agent-skills/web-skill/"); // doc-10:172 message
 
         // the entry is gone from bundle.yml:
-        const ymlText = readFileSync(join(proj, "bundles", "web", "bundle.yml"), "utf8");
+        const ymlText = readFileSync(join(proj, "wip", "bundles", "web", "bundle.yml"), "utf8");
         expect(ymlText).not.toMatch(/name:\s*web-skill/);
         // BUT the SKILL.md is left on disk:
         expect(existsSync(samplePath)).toBe(true);
       });
     });
 
-    it("76#3 — `skills remove` for a name NOT registered exits non-zero; bundle.yml unchanged", () => {
-      withTempDir((dir) => {
+    it("76#3 — `skills remove` for a name NEITHER registered NOR on disk exits non-zero; bundle.yml unchanged", async () => {
+      await withTempDir((dir) => {
         const proj = projectWithWeb(dir);
-        const ymlPath = join(proj, "bundles", "web", "bundle.yml");
+        const ymlPath = join(proj, "wip", "bundles", "web", "bundle.yml");
         const before = readFileSync(ymlPath, "utf8");
         expect(wpm(proj, ["bundle", "web", "skills", "remove", "not-there"]).status).not.toBe(0);
         expect(readFileSync(ymlPath, "utf8")).toBe(before);
       });
     });
 
-    it("completion: `skills add` lists on-disk skill folders; `skills remove` lists registered names", () => {
-      withTempDir((dir) => {
+    it("TASK-103 AC#2 — an UNREGISTERED on-disk payload-skill stub is REMOVED through the CLI (orphan cleanup)", async () => {
+      await withTempDir((dir) => {
         const proj = projectWithWeb(dir);
-        // a fresh bundle ships the web-skill folder on disk → add completes from the folder names:
+        // place a stub on disk that is NEVER registered (models an old `bundle new` stub / a hand-placed scaffold):
+        const stubDir = join(proj, "wip", "bundles", "web", "payload", "agent-skills", "stray");
+        placeSkill(proj, "web", "stray", validSkillMd("stray"));
+        expect(existsSync(join(stubDir, "SKILL.md"))).toBe(true);
+        // it is NOT registered:
+        expect(wpm(proj, ["bundle", "web", "skills", "list"]).stdout).not.toContain("stray");
+
+        const remove = wpm(proj, ["bundle", "web", "skills", "remove", "stray"]);
+        expect(remove.status).toBe(0);
+        expect(remove.stdout).toContain("removed unregistered payload skill stray");
+        // the stray scaffold directory is gone (the build can no longer ship it):
+        expect(existsSync(stubDir)).toBe(false);
+      });
+    });
+
+    it("completion: `skills add` lists on-disk skill folders; `skills remove` lists removable (registered ∪ on-disk) names", async () => {
+      await withTempDir((dir) => {
+        const proj = projectWithWeb(dir);
+        // a fresh bundle ships NO sample skill (TASK-103); place an on-disk folder so `add` completes it:
+        placeSkill(proj, "web", "web-skill", validSkillMd("web-skill"));
         const addPos = cli(["__complete", "bundle", "web", "skills", "add", ""], { cwd: proj })
           .stdout.split("\n")
           .filter(Boolean);
         expect(addPos).toContain("web-skill");
 
-        // register it, then remove → completes from the REGISTERED names:
+        // an UNREGISTERED on-disk stub already completes for `remove` (the removable union — TASK-103):
+        const removeOrphan = cli(["__complete", "bundle", "web", "skills", "remove", ""], {
+          cwd: proj,
+        })
+          .stdout.split("\n")
+          .filter(Boolean);
+        expect(removeOrphan).toContain("web-skill");
+
+        // register it, then remove → still completes (now from the REGISTERED side of the union):
         expect(wpm(proj, ["bundle", "web", "skills", "add", "web-skill"]).status).toBe(0);
         const removePos = cli(["__complete", "bundle", "web", "skills", "remove", ""], {
           cwd: proj,
@@ -1189,8 +1219,8 @@ describeIfBuilt(
       });
     });
 
-    it("help: `bundle <id> skills add --help` reaches the leaf and documents <name>, --path, an example", () => {
-      withTempDir((dir) => {
+    it("help: `bundle <id> skills add --help` reaches the leaf and documents <name>, --path, an example", async () => {
+      await withTempDir((dir) => {
         const proj = projectWithWeb(dir);
         const help = wpm(proj, ["bundle", "web", "skills", "add", "--help"]);
         expect(help.status).toBe(0);
@@ -1201,11 +1231,11 @@ describeIfBuilt(
       });
     });
 
-    it("OLD bundle.yml WITHOUT a payload key still drives list (no payload skills) AND add (adds the field) — absent ⇒ empty", () => {
-      withTempDir((dir) => {
+    it("OLD bundle.yml WITHOUT a payload key still drives list (no payload skills) AND add (adds the field) — absent ⇒ empty", async () => {
+      await withTempDir((dir) => {
         const proj = projectWithWeb(dir);
         // OVERWRITE web's bundle.yml with a pre-payload shape (NO `payload:` key), as an older project would have.
-        const ymlPath = join(proj, "bundles", "web", "bundle.yml");
+        const ymlPath = join(proj, "wip", "bundles", "web", "bundle.yml");
         writeFileSync(
           ymlPath,
           "id: web\nversion: 0.1.0\nsummary: web bundle\nconfirmation: safe\nrequires: {}\n",
@@ -1234,7 +1264,7 @@ describeIfBuilt(
  * (frontmatter + body). Mirrors `placeSkill` but against the bundle's `installer-skills/` (a sibling of `payload/`).
  */
 function placeInstallerSkill(proj: string, bundle: string, name: string, content: string): string {
-  const abs = join(proj, "bundles", bundle, "installer-skills", name, "SKILL.md");
+  const abs = join(proj, "wip", "bundles", bundle, "installer-skills", name, "SKILL.md");
   mkdirSync(dirname(abs), { recursive: true });
   writeFileSync(abs, content, "utf8");
   return abs;
@@ -1243,8 +1273,8 @@ function placeInstallerSkill(proj: string, bundle: string, name: string, content
 describeIfBuilt(
   "bundle <id> installer-skills add / list / remove E2E via dist/cli.js (tasks 77/78/79)",
   () => {
-    it("77#1 ATTACH — `installer-skills add detect` attaches a placed helper; registers {name,path} in bundle.yml installerSkills; content unchanged; NO materialised line", () => {
-      withTempDir((dir) => {
+    it("77#1 ATTACH — `installer-skills add detect` attaches a placed helper; registers {name,path} in bundle.yml installerSkills; content unchanged; NO materialised line", async () => {
+      await withTempDir((dir) => {
         const proj = projectWithWeb(dir);
         const helperPath = placeInstallerSkill(proj, "web", "detect", validSkillMd("detect"));
         const before = readFileSync(helperPath, "utf8");
@@ -1254,7 +1284,7 @@ describeIfBuilt(
         expect(add.stdout).toContain("attached");
         expect(add.stdout).not.toContain("materialised"); // attach queues no writing
 
-        const ymlText = readFileSync(join(proj, "bundles", "web", "bundle.yml"), "utf8");
+        const ymlText = readFileSync(join(proj, "wip", "bundles", "web", "bundle.yml"), "utf8");
         // the real eemeli/yaml round-trip records the {name, path} entry under the top-level `installerSkills`
         // registry (a SIBLING of `payload`, NOT under it — installer-skills are not delivered payload):
         expect(ymlText).toMatch(/installerSkills:[\s\S]*name:\s*detect/);
@@ -1266,8 +1296,8 @@ describeIfBuilt(
       });
     });
 
-    it("77#2 SCAFFOLD — `installer-skills add fresh` renders a stub (name + placeholder desc, no authored prose), registers it, AND materialises the bundle-named writing task (loop-closure, cold)", () => {
-      withTempDir((dir) => {
+    it("77#2 SCAFFOLD — `installer-skills add fresh` renders a stub (name + placeholder desc, no authored prose), registers it, AND materialises the bundle-named writing task (loop-closure, cold)", async () => {
+      await withTempDir((dir) => {
         const proj = projectWithWeb(dir);
         const add = wpm(proj, ["bundle", "web", "installer-skills", "add", "fresh"]);
         expect(add.status).toBe(0);
@@ -1275,14 +1305,22 @@ describeIfBuilt(
         expect(add.stdout).toContain("materialised");
 
         // the structural stub exists at the conventional path with the substituted name + a placeholder marker:
-        const stubPath = join(proj, "bundles", "web", "installer-skills", "fresh", "SKILL.md");
+        const stubPath = join(
+          proj,
+          "wip",
+          "bundles",
+          "web",
+          "installer-skills",
+          "fresh",
+          "SKILL.md",
+        );
         expect(existsSync(stubPath)).toBe(true);
         const stub = readFileSync(stubPath, "utf8");
         expect(stub).toContain("name: fresh"); // frontmatter name substituted
         expect(stub).toContain("TODO"); // a placeholder, NOT invented prose
 
         // it is registered in the installerSkills registry:
-        const ymlText = readFileSync(join(proj, "bundles", "web", "bundle.yml"), "utf8");
+        const ymlText = readFileSync(join(proj, "wip", "bundles", "web", "bundle.yml"), "utf8");
         expect(ymlText).toMatch(/installerSkills:[\s\S]*name:\s*fresh/);
 
         // the doc-11 authoring task NAMING THE BUNDLE is materialised in the REAL .authoring-backlog (cold):
@@ -1292,10 +1330,10 @@ describeIfBuilt(
       });
     });
 
-    it("77#3 ERROR — `installer-skills add ghost --path <missing>` exits non-zero; bundle.yml unchanged; no stub written", () => {
-      withTempDir((dir) => {
+    it("77#3 ERROR — `installer-skills add ghost --path <missing>` exits non-zero; bundle.yml unchanged; no stub written", async () => {
+      await withTempDir((dir) => {
         const proj = projectWithWeb(dir);
-        const ymlPath = join(proj, "bundles", "web", "bundle.yml");
+        const ymlPath = join(proj, "wip", "bundles", "web", "bundle.yml");
         const before = readFileSync(ymlPath, "utf8");
         const res = wpm(proj, [
           "bundle",
@@ -1309,13 +1347,13 @@ describeIfBuilt(
         expect(res.status).not.toBe(0);
         expect(readFileSync(ymlPath, "utf8")).toBe(before); // nothing registered
         expect(
-          existsSync(join(proj, "bundles", "web", "installer-skills", "ghost", "SKILL.md")),
+          existsSync(join(proj, "wip", "bundles", "web", "installer-skills", "ghost", "SKILL.md")),
         ).toBe(false); // no stub written
       });
     });
 
-    it("77#4 ALIAS-ENSURE — after `installer-skills add` on a target-bearing project, the bundle's scope alias exists (delivered by ④ RERENDER's scopePlan)", () => {
-      withTempDir((dir) => {
+    it("77#4 ALIAS-ENSURE — after `installer-skills add` on a target-bearing project, the bundle's scope alias exists (delivered by ④ RERENDER's scopePlan)", async () => {
+      await withTempDir((dir) => {
         const proj = projectWithWeb(dir);
         // init seeds `targets: []`, so declare a target first; its scope-alias path is `.claude/skills`.
         expect(wpm(proj, ["project", "targets", "add", "claude-code"]).status).toBe(0);
@@ -1323,12 +1361,12 @@ describeIfBuilt(
         expect(wpm(proj, ["bundle", "web", "installer-skills", "add", "fresh"]).status).toBe(0);
         // scopePlan plans a per-bundle alias bundles/web/.claude/skills → bundles/web/installer-skills; ④ RERENDER
         // creates it via the FileSystem port's ensureAlias (a real symlink on POSIX).
-        expect(existsSync(join(proj, "bundles", "web", ".claude", "skills"))).toBe(true);
+        expect(existsSync(join(proj, "wip", "bundles", "web", ".claude", "skills"))).toBe(true);
       });
     });
 
-    it("78#1 LIST (SCAN) — a manually-placed helper shows WITHOUT `add` (scan, not registry); a fresh bundle prints (no installer skills)", () => {
-      withTempDir((dir) => {
+    it("78#1 LIST (SCAN) — a manually-placed helper shows WITHOUT `add` (scan, not registry); a fresh bundle prints (no installer skills)", async () => {
+      await withTempDir((dir) => {
         const proj = projectWithWeb(dir);
         // a fresh bundle has no installer-skills dir → the empty marker:
         expect(wpm(proj, ["bundle", "web", "installer-skills", "list"]).stdout.trim()).toBe(
@@ -1343,8 +1381,8 @@ describeIfBuilt(
       });
     });
 
-    it("79#1/79#2 REMOVE — deregisters AND leaves the SKILL.md on disk; the SCAN-based list STILL shows it (scan ≠ registry)", () => {
-      withTempDir((dir) => {
+    it("79#1/79#2 REMOVE — deregisters AND leaves the SKILL.md on disk; the SCAN-based list STILL shows it (scan ≠ registry)", async () => {
+      await withTempDir((dir) => {
         const proj = projectWithWeb(dir);
         const helperPath = placeInstallerSkill(proj, "web", "detect", validSkillMd("detect"));
         expect(wpm(proj, ["bundle", "web", "installer-skills", "add", "detect"]).status).toBe(0);
@@ -1354,7 +1392,7 @@ describeIfBuilt(
         expect(remove.stdout).toContain("left at installer-skills/detect/"); // doc-10:175 message
 
         // the entry is gone from the registry in bundle.yml:
-        const ymlText = readFileSync(join(proj, "bundles", "web", "bundle.yml"), "utf8");
+        const ymlText = readFileSync(join(proj, "wip", "bundles", "web", "bundle.yml"), "utf8");
         expect(ymlText).not.toMatch(/installerSkills:[\s\S]*name:\s*detect/);
         // BUT the SKILL.md is left on disk (deregister-not-delete) …
         expect(existsSync(helperPath)).toBe(true);
@@ -1363,10 +1401,10 @@ describeIfBuilt(
       });
     });
 
-    it("79#3 — `installer-skills remove` for a name NOT registered exits non-zero; bundle.yml unchanged", () => {
-      withTempDir((dir) => {
+    it("79#3 — `installer-skills remove` for a name NOT registered exits non-zero; bundle.yml unchanged", async () => {
+      await withTempDir((dir) => {
         const proj = projectWithWeb(dir);
-        const ymlPath = join(proj, "bundles", "web", "bundle.yml");
+        const ymlPath = join(proj, "wip", "bundles", "web", "bundle.yml");
         const before = readFileSync(ymlPath, "utf8");
         expect(
           wpm(proj, ["bundle", "web", "installer-skills", "remove", "not-there"]).status,
@@ -1375,8 +1413,8 @@ describeIfBuilt(
       });
     });
 
-    it("completion: `installer-skills add` lists on-disk helper folders; `installer-skills remove` lists registered names", () => {
-      withTempDir((dir) => {
+    it("completion: `installer-skills add` lists on-disk helper folders; `installer-skills remove` lists registered names", async () => {
+      await withTempDir((dir) => {
         const proj = projectWithWeb(dir);
         placeInstallerSkill(proj, "web", "detect", validSkillMd("detect"));
 
@@ -1399,8 +1437,8 @@ describeIfBuilt(
       });
     });
 
-    it("help: `bundle <id> installer-skills add --help` reaches the leaf and documents <name>, --path, an example", () => {
-      withTempDir((dir) => {
+    it("help: `bundle <id> installer-skills add --help` reaches the leaf and documents <name>, --path, an example", async () => {
+      await withTempDir((dir) => {
         const proj = projectWithWeb(dir);
         const help = wpm(proj, ["bundle", "web", "installer-skills", "add", "--help"]);
         expect(help.status).toBe(0);
@@ -1411,11 +1449,11 @@ describeIfBuilt(
       });
     });
 
-    it("OLD bundle.yml WITHOUT an installerSkills key still drives list (no installer skills) AND add (adds the field) — absent ⇒ empty", () => {
-      withTempDir((dir) => {
+    it("OLD bundle.yml WITHOUT an installerSkills key still drives list (no installer skills) AND add (adds the field) — absent ⇒ empty", async () => {
+      await withTempDir((dir) => {
         const proj = projectWithWeb(dir);
         // OVERWRITE web's bundle.yml with a pre-P shape (NO `installerSkills` key), as an older project would have.
-        const ymlPath = join(proj, "bundles", "web", "bundle.yml");
+        const ymlPath = join(proj, "wip", "bundles", "web", "bundle.yml");
         writeFileSync(
           ymlPath,
           "id: web\nversion: 0.1.0\nsummary: web bundle\nconfirmation: safe\nrequires: {}\n",
@@ -1440,7 +1478,7 @@ describeIfBuilt(
 
 /** The project-root advisor stub path for bundle `<bundle>` under `<proj>` (doc 10: installer-skills/<id>-advisor/). */
 function advisorSkillMd(proj: string, bundle: string): string {
-  return join(proj, "installer-skills", `${bundle}-advisor`, "SKILL.md");
+  return join(proj, "wip", "installer-skills", `${bundle}-advisor`, "SKILL.md");
 }
 
 /** Create bundle `<id>` under `<proj>` WITHOUT the auto-advisor (`--no-advisor`), returning the run result. */
@@ -1515,7 +1553,7 @@ describeIfBuilt("bundle <id> advisor add / remove E2E via dist/cli.js (tasks 80/
       expect(remove.status).toBe(0);
       // the advisor DIRECTORY is gone (81#1):
       expect(existsSync(advisorSkillMd(proj, "doc"))).toBe(false);
-      expect(existsSync(join(proj, "installer-skills", "doc-advisor"))).toBe(false);
+      expect(existsSync(join(proj, "wip", "installer-skills", "doc-advisor"))).toBe(false);
       // the content task is archived — gone from the ACTIVE `backlog task list --plain` (81#2):
       expect(authoringTaskTitles(proj)).not.toContain("Write advisor content for doc");
     });
@@ -1531,7 +1569,7 @@ describeIfBuilt("bundle <id> advisor add / remove E2E via dist/cli.js (tasks 80/
       expect(remove.status).toBe(0);
       expect(remove.stdout).toContain("nothing to remove"); // (81#3)
       // no advisor directory was created, and the authoring backlog is unchanged:
-      expect(existsSync(join(proj, "installer-skills", "doc2-advisor"))).toBe(false);
+      expect(existsSync(join(proj, "wip", "installer-skills", "doc2-advisor"))).toBe(false);
       expect(authoringTaskTitles(proj)).toBe(backlogBefore);
     });
   });

@@ -1,4 +1,6 @@
+import { posix, win32 } from "node:path";
 import type { AliasResult, DirEntry, FileSystem } from "../core/ports/filesystem.js";
+import { toPosix } from "../util/posix-path.js";
 
 /**
  * An in-memory {@link FileSystem} (doc 13 §1) — the fake that lets the pure core's logic run entirely in
@@ -16,6 +18,11 @@ export class MemoryFileSystem implements FileSystem {
   private readonly directories = new Set<string>(["/"]);
   /** Recorded aliases (linkPath → target), so tests can assert what was aliased. */
   private readonly aliases = new Map<string, string>();
+
+  /** Recognize both supported absolute-path dialects without depending on the test runner's host platform. */
+  private isAbsolute(path: string): boolean {
+    return posix.isAbsolute(path) || win32.isAbsolute(path);
+  }
 
   /**
    * Normalize a path to a POSIX-style absolute path: forward slashes, a leading `/`, `.`/`..` resolved, and
@@ -96,7 +103,21 @@ export class MemoryFileSystem implements FileSystem {
     if (target === undefined) return false;
     if (visited.has(p)) return false; // alias cycle → ELOOP-equivalent
     visited.add(p);
-    return this.existsResolved(target, visited);
+    return this.existsResolved(this.resolveAliasTarget(p, target), visited);
+  }
+
+  /**
+   * Resolve an alias's stored (raw) target to an absolute path the way a real symlink resolves: an absolute
+   * target is taken as-is; a **relative** target is resolved against the link's PARENT directory (POSIX
+   * symlink semantics), not the cwd. This is what lets the fake faithfully model a *relative* alias such as
+   * the per-bundle `backlog → install-backlog` link (TASK-102): the raw `install-backlog` is preserved for
+   * inspection (see {@link aliasTarget}) yet still resolves under the bundle dir for {@link exists}.
+   */
+  private resolveAliasTarget(link: string, rawTarget: string): string {
+    const t = toPosix(rawTarget);
+    return this.isAbsolute(rawTarget)
+      ? this.normalize(t)
+      : this.normalize(`${this.parentOf(link)}/${t}`);
   }
 
   /** @inheritdoc */
@@ -188,22 +209,30 @@ export class MemoryFileSystem implements FileSystem {
   /**
    * Record an alias and report it as a symlink. The in-memory fake has no real platform, so it always uses
    * the symlink kind (the Windows-copy fallback is the real adapter's concern, exercised via
-   * `src/util/symlink.ts`).
+   * `src/util/symlink.ts`). A relative target is stored **verbatim** (raw), exactly as a real symlink keeps it;
+   * an absolute target is normalized to this fake's POSIX observation dialect. Thus the portable
+   * `backlog → install-backlog` link (TASK-102) stays byte-for-byte relative, while a Win32 absolute target is
+   * exposed with `/` separators. Resolution for {@link exists} happens in {@link resolveAliasTarget}.
    *
    * @inheritdoc
    */
   ensureAlias(target: string, linkPath: string): AliasResult {
     const link = this.normalize(linkPath);
-    this.aliases.set(link, this.normalize(target));
+    // This fake exposes a POSIX namespace. Normalize an OS-native ABSOLUTE target only at the observation
+    // boundary where it is recorded, while preserving a relative symlink target byte-for-byte (archive
+    // portability relies on values such as `install-backlog` remaining exactly relative).
+    this.aliases.set(link, this.isAbsolute(target) ? toPosix(target) : target);
     this.recordDir(this.parentOf(link));
     return { kind: "symlink" };
   }
 
   /**
-   * Test-only accessor: the target an alias points at, or `undefined` if no alias exists at `linkPath`.
+   * Test-only accessor: the observed target an alias points at, or `undefined` if no alias exists at
+   * `linkPath`. An absolute target reads back in POSIX form; a relative target reads back verbatim (so a test
+   * can assert a link is RELATIVE, e.g. `backlog → install-backlog`).
    *
    * @param linkPath - The alias location to look up.
-   * @returns The normalized target path, or `undefined`.
+   * @returns The observed target path the link stores, or `undefined`.
    */
   aliasTarget(linkPath: string): string | undefined {
     return this.aliases.get(this.normalize(linkPath));

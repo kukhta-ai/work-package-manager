@@ -11,6 +11,11 @@ import {
   type SkillRef,
   type VersionRange,
 } from "../../model/index.js";
+import {
+  PAYLOAD_SKILL_PATH_REQUIREMENT,
+  payloadSkillPackageRoot,
+  skillPackageRootsOverlap,
+} from "../skill-ref-path.js";
 import { isPlainObject, requireString } from "./problems.js";
 
 /** The valid `confirmation` values, kept in one place for the parser's check and the error message. */
@@ -209,10 +214,11 @@ function parsePayload(raw: unknown, ctx: string): Parsed<BundlePayload> {
 /**
  * Parse an optional skill-reference registry into a {@link SkillRef} list (doc 10 rows 170 + 173) — shared by the
  * `payload.skills` payload-skill registry AND the top-level `installerSkills` installer-skill registry, which have
- * the IDENTICAL `{name, path}` shape (a skill is identified by its name and located by its relocatable `SKILL.md`
- * path — unlike the bare-string `payload.files`/etc). The `fieldBase` parameter labels the registry in error
- * messages (`payload.skills` vs `installerSkills`), so the two call sites share one validator without confusing
- * the author about which list is malformed. Absent ⇒ `[]` (old/partial-bundle compatibility, like the other
+ * the IDENTICAL `{name, path}` shape (a skill is identified by its name and located by a relocatable skill
+ * document path — unlike the bare-string `payload.files`/etc). Payload skill documents may use any basename;
+ * their containing directory is the package. The `fieldBase` parameter labels the registry in error messages
+ * (`payload.skills` vs `installerSkills`), so the two call sites share one validator without confusing the
+ * author about which list is malformed. Absent ⇒ `[]` (old/partial-bundle compatibility, like the other
  * registries); present ⇒ must be a list of mappings each with a string `name` AND a string `path` (else a
  * field-precise {@link ValidationProblem} naming `<fieldBase>[i].…`). Pure and total.
  *
@@ -239,6 +245,8 @@ export function parseSkillRefs(
     };
   }
   const skills: SkillRef[] = [];
+  const packageRoots: Array<{ readonly root: string; readonly field: string }> = [];
+  const payloadSkillNames = new Map<string, string>();
   for (let i = 0; i < raw.length; i++) {
     const entry = raw[i];
     const field = `${fieldBase}[${i}]`;
@@ -265,6 +273,42 @@ export function parseSkillRefs(
           field: `${field}.path`,
         },
       };
+    }
+    if (fieldBase === "payload.skills") {
+      const priorNameField = payloadSkillNames.get(entry.name);
+      if (priorNameField !== undefined) {
+        return {
+          ok: false,
+          problem: {
+            message: `${ctx}: "${field}.name" duplicates ${priorNameField}; payload skill names must be unique because name is the deregistration key`,
+            field: `${field}.name`,
+          },
+        };
+      }
+      const packageRoot = payloadSkillPackageRoot(entry.path);
+      if (packageRoot === undefined) {
+        return {
+          ok: false,
+          problem: {
+            message: `${ctx}: "${field}.path" ${PAYLOAD_SKILL_PATH_REQUIREMENT}`,
+            field: `${field}.path`,
+          },
+        };
+      }
+      const overlap = packageRoots.find((candidate) =>
+        skillPackageRootsOverlap(candidate.root, packageRoot),
+      );
+      if (overlap !== undefined) {
+        return {
+          ok: false,
+          problem: {
+            message: `${ctx}: "${field}.path" resolves to package "${packageRoot}", which overlaps ${overlap.field} package "${overlap.root}"`,
+            field: `${field}.path`,
+          },
+        };
+      }
+      payloadSkillNames.set(entry.name, `${field}.name`);
+      packageRoots.push({ root: packageRoot, field: `${field}.path` });
     }
     skills.push({ name: entry.name, path: entry.path });
   }

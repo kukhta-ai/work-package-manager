@@ -9,13 +9,15 @@ import {
   type BundleManifest,
   type OperationResult,
   type Project,
+  type TemplateFile,
 } from "../model/index.js";
 import type { BacklogMd, FileSystem } from "../ports/index.js";
+import { EXECUTOR_FRONT_DOOR_PATH } from "../services/derived-artefacts.js";
 import { materialiseAuthoringTasks } from "../services/materialisation.js";
-import { renderTree } from "../services/render.js";
+import { renderSnippet, renderTree } from "../services/render.js";
 import { parseBundleManifest, parseManifest } from "../services/schema/index.js";
 import { resolveTemplate } from "../services/template-resolver.js";
-import { perBundleAuthoringTasks } from "./create-bundle.js";
+import { ensureBundleBacklogAlias, perBundleAuthoringTasks } from "./create-bundle.js";
 import { makeArtefactDeriver } from "./derive-artefacts-capability.js";
 
 /**
@@ -31,14 +33,19 @@ import { makeArtefactDeriver } from "./derive-artefacts-capability.js";
  * only those + the model + `node:path` — never `node:fs`/`commander`/`omelette`. Failures are raised as typed
  * task-23 `DomainError`s.
  *
- * This is the COMPLETE `init` (task-34), extending the task-33 walking-skeleton slice. It performs all 12 steps of
- * doc-10:137's `init` row: resolve the chosen project template (default `minimal`); refuse if the target path
- * already exists; copy the template `files/` with `{{placeholder}}` substitution; materialise the default bundle
- * template at `bundles/bundle-template/`; create the empty `installer-skills/`, `templates/`, and
- * `.authoring-backlog/` (a Backlog.md root, `task_prefix=authoring`); create one scope-alias per declared target;
- * render the derived `AGENTS.md` + `<project>-installer/SKILL.md`; materialise the project-wide authoring task set
- * (doc 11) plus a per-bundle set for every bundle the template pre-includes; record `.authoring-backlog/` in
- * `.gitignore`; and return a summary with the count of materialised tasks.
+ * This is `init` rebuilt to scaffold an **authoring workspace** (task-87; docs 06, 10, 11, 12), not a deliverable
+ * at the project root. `input.targetDir` is now the **workspace root**; the shipped bundle-project skeleton nests
+ * under the deliverable subdirectory `wip/` (the deliverable root is exactly `<workspace>/wip`), build output is
+ * isolated in `builds/`, and the workspace root keeps only the authoring surface. It performs doc-10:137's `init`
+ * steps: resolve the chosen project template (default `minimal`); refuse if the target path exists; render the
+ * template `files/` into `wip/`; materialise the default bundle template at `wip/bundles/bundle-template/`; create
+ * the empty `wip/installer-skills/`, `wip/templates/`, the `.authoring-backlog/` (a Backlog.md root,
+ * `task_prefix=authoring`, at the workspace root), and the empty `builds/`; create one scope-alias per declared
+ * target under `wip/`; render the derived `<project>-installer/SKILL.md` and the author-owned executor front door
+ * to `wip/_AGENTS.md` (the reserved build-stripped prefix); render the **authoring** front door + a `CLAUDE.md`
+ * alias at the workspace root from a template snippet; materialise the project-wide authoring task set (doc 11)
+ * plus a per-bundle set for every bundle the template pre-includes; record `.authoring-backlog/` and `builds/` in
+ * the workspace `.gitignore`; and return a summary with the count of materialised tasks.
  */
 
 /** The default project template `init` instantiates when `--template` is not given (doc 10: `init`'s default). */
@@ -48,6 +55,47 @@ const DEFAULT_BUNDLE_TEMPLATE = "default";
 /** The project's default bundle scaffold directory, under `bundles/` (doc 10:150 step 2; `bundle template`). */
 const BUNDLE_TEMPLATE_DIR = "bundle-template";
 /**
+ * The deliverable subdirectory of the authoring workspace (docs 06, 12). The whole shipped bundle-project
+ * skeleton (manifest, bundles, installer-skills, templates, scope aliases, the executor front door) nests
+ * under `<workspace>/wip` — the deliverable root is exactly this, with NO extra deliverable-id subdir — while
+ * the workspace root keeps only the authoring surface (the authoring front door + `.authoring-backlog/`).
+ */
+const DELIVERABLE_DIR = "wip";
+/**
+ * The empty build-output directory (docs 06, 12): where `wpm build` later writes archives, isolated from both
+ * the authoring surface and the deliverable. `init` creates it empty (AC#2).
+ */
+const BUILDS_DIR = "builds";
+/**
+ * The reserved leading-underscore name the deliverable's **executor front door** is authored under (doc 12
+ * §"reserved-prefix transform"; AC#8). Kept `.md` so it stays author-editable, but never matched by any
+ * agent's front-door basename during authoring; the build (task-90) strips the prefix to `AGENTS.md`. It is
+ * **author-owned** — written once here and NOT re-derived on later mutations (doc 10).
+ */
+const EXECUTOR_FRONT_DOOR = "_AGENTS.md";
+/**
+ * The rendered path the artefact deriver gives the executor front door (its snippet lives at `snippets/AGENTS.md`).
+ * `init` recognises this file in the derived set and relocates it to {@link EXECUTOR_FRONT_DOOR} under `wip/`,
+ * rather than writing a canonical `wip/AGENTS.md` (which an authoring agent would read as a directive). It is the
+ * shared {@link EXECUTOR_FRONT_DOOR_PATH} constant so `init`'s relocation and the lifecycle's re-render exclusion
+ * can never disagree about which derived file is the author-owned front door.
+ */
+const DERIVED_EXECUTOR_FRONT_DOOR_PATH = EXECUTOR_FRONT_DOOR_PATH;
+/**
+ * The canonical name of the workspace-root **authoring front door** (docs 04, 12) and its symlink alias.
+ * The authoring front door addresses the *authoring* agent (AC#4); it ships nothing and is distinct from the
+ * deliverable's executor front door.
+ */
+const AUTHORING_FRONT_DOOR = "AGENTS.md";
+/** The symlink alias for the authoring front door (Claude Code reads `CLAUDE.md`; doc 12). */
+const AUTHORING_FRONT_DOOR_ALIAS = "CLAUDE.md";
+/**
+ * The project-template snippet the authoring front door is rendered from (doc 10/12: front-door content is
+ * builder-provided template content, mechanically substituted — never prose invented in the pure core). The
+ * snippet path is matched tolerating a trailing `.tmpl` (the repo's template-content convention).
+ */
+const AUTHORING_FRONT_DOOR_SNIPPET = "authoring-front-door.md";
+/**
  * The hidden authoring-backlog root + its task-prefix (doc 10 step 6; doc 11) come from the shared model
  * constants ({@link AUTHORING_BACKLOG_DIR}, {@link AUTHORING_TASK_PREFIX}) so `init` (which creates the root)
  * and the task-25 lifecycle (which materialises into it) can never disagree about where it lives — the
@@ -56,7 +104,7 @@ const BUNDLE_TEMPLATE_DIR = "bundle-template";
 
 /** The input to {@link initProject}: where to create the project, its name, the chosen template, and extra params. */
 export interface InitProjectInput {
-  /** The directory that becomes the project root (the CLI resolves it from `--at`/cwd; doc 10). */
+  /** The directory that becomes the **authoring workspace root** (the CLI resolves it from `--at`/cwd; doc 10). */
   readonly targetDir: string;
   /** The project name (kebab-case); written into the manifest and the installer-skill name. */
   readonly name: string;
@@ -178,21 +226,51 @@ function buildProjection(fs: FileSystem, targetDir: string): Project {
 }
 
 /**
- * Create a new project at `input.targetDir` from the chosen built-in project template (default `minimal`).
+ * Select the **authoring front-door** snippet from a resolved project template's `snippets/` tree (doc 12: the
+ * workspace-root front door that flips an agent into authoring mode). Matched by its conventional path,
+ * tolerating a trailing `.tmpl`. A missing snippet is a template-authoring bug → a thrown {@link NotFoundError}.
+ * Keeping the front-door PROSE in the template (not the core) is what keeps `init` pure (doc 13 §1): the core
+ * only selects and substitutes, it never authors content.
  *
- * Steps (doc 10 §"Per-command actions" `init` row, lines 137 / all 12):
+ * @param template - The resolved project template.
+ * @returns The authoring front-door snippet (its `{{project-name}}` placeholder is substituted by the caller).
+ * @throws {NotFoundError} If the template ships no authoring front-door snippet.
+ */
+function selectAuthoringFrontDoorSnippet(template: {
+  snippets: readonly TemplateFile[];
+}): TemplateFile {
+  const snippet = template.snippets.find(
+    (s) =>
+      s.path === AUTHORING_FRONT_DOOR_SNIPPET || s.path === `${AUTHORING_FRONT_DOOR_SNIPPET}.tmpl`,
+  );
+  if (snippet === undefined) {
+    throw new NotFoundError(
+      `project template is missing the authoring front-door snippet ("${AUTHORING_FRONT_DOOR_SNIPPET}")`,
+    );
+  }
+  return snippet;
+}
+
+/**
+ * Create a new **authoring workspace** at `input.targetDir` from the chosen built-in project template (default
+ * `minimal`). The shipped bundle-project skeleton nests under the deliverable subdirectory `wip/`.
+ *
+ * Steps (doc 10 §"Per-command actions" `init` row; docs 06/12 for the workspace layout):
  * 1. Resolve the chosen project template (→ {@link NotFoundError} if it is missing).
  * 2. Refuse if the target path already exists (→ {@link ConflictError}), creating nothing.
- * 3. Copy the template's `files/` into the target, substituting `{{project-name}}` + any `--param` pairs.
+ * 3. Render the template's `files/` into the deliverable subdir `wip/`, substituting `{{project-name}}` + `--param`.
  * 4. (manifest) The template's `manifest.yml` snippet is part of `files/`, so it is instantiated by step 3.
- * 5. Materialise the default bundle template at `bundles/bundle-template/` (its `files/` tree, verbatim).
- * 6. Create the empty `installer-skills/` + `templates/` dirs and the `.authoring-backlog/` Backlog.md root.
- * 7. Create one scope-alias per declared target (none for `minimal`), via the deriver's alias plan.
- * 8. Render the front-door `AGENTS.md` and the `<name>-installer/SKILL.md` orchestrator and write them.
- * 9. Materialise the project-wide authoring task set (doc 11).
- * 10. For each bundle the template pre-includes, materialise its per-bundle authoring set (idempotent by title).
- * 11. Record `.authoring-backlog/` in `.gitignore`.
- * 12. Return a summary naming the path and the number of materialised tasks.
+ * 5. Materialise the default bundle template at `wip/bundles/bundle-template/` (its `files/` tree, verbatim).
+ * 6. Create the empty `wip/installer-skills/` + `wip/templates/` dirs, the `.authoring-backlog/` Backlog.md root
+ *    (at the workspace root), and the empty `builds/` build-output directory.
+ * 7. Create one scope-alias per declared target (none for `minimal`) under `wip/`, via the deriver's alias plan.
+ * 8. Render the `<name>-installer/SKILL.md` orchestrator under `wip/`, and the author-owned executor front door
+ *    to `wip/_AGENTS.md` (the reserved build-stripped prefix — written once, not re-derived later).
+ * 9. Render the **authoring** front door + its `CLAUDE.md` alias at the workspace root from a template snippet.
+ * 10. Materialise the project-wide authoring task set (doc 11) into the workspace-root authoring backlog, plus a
+ *     per-bundle set for every bundle the template pre-includes (idempotent by title).
+ * 11. Record `.authoring-backlog/` and `builds/` in the workspace `.gitignore`.
+ * 12. Return a summary naming the workspace path and the number of materialised tasks.
  *
  * @param deps - The filesystem + backlog ports and the built-in templates root.
  * @param input - The target directory, the project name, the chosen template, and extra `--param` substitutions.
@@ -223,18 +301,21 @@ export function initProject(deps: InitProjectDeps, input: InitProjectInput): Ope
 
   const changedPaths: string[] = [];
 
-  // 3. Copy the template files/ into the target, substituting {{project-name}} + any --param pairs.
+  // The deliverable subdir: everything the shipped skeleton needs nests under `<workspace>/wip` (docs 06/12).
+  const wip = join(targetDir, DELIVERABLE_DIR);
+
+  // 3. Render the template files/ into the DELIVERABLE subdir (`wip/`), substituting {{project-name}} + --param.
   const params = new Map<string, string>([["project-name", name]]);
   for (const [key, value] of input.params ?? []) {
     params.set(key, value);
   }
   for (const file of renderTree(resolution.template.files, params)) {
-    const abs = join(targetDir, file.path);
+    const abs = join(wip, file.path);
     fs.write(abs, file.content);
     changedPaths.push(abs);
   }
 
-  // 5. Materialise the default bundle template at bundles/bundle-template/ (doc 10:137 step 5). Copy the default
+  // 5. Materialise the default bundle template at wip/bundles/bundle-template/ (doc 10 step 5). Copy the default
   // bundle template's files/ tree VERBATIM (no substitution — the scaffold keeps its placeholders for `bundle
   // new` to fill). This is the live default `bundle new` clones (closing the create-bundle divergence).
   const bundleTemplate = resolveTemplate(DEFAULT_BUNDLE_TEMPLATE, "bundle", {
@@ -246,44 +327,84 @@ export function initProject(deps: InitProjectDeps, input: InitProjectInput): Ope
       `bundle template "${DEFAULT_BUNDLE_TEMPLATE}" not found (searched: ${bundleTemplate.searched.join(", ")})`,
     );
   }
-  const bundleTemplateDir = join(targetDir, "bundles", BUNDLE_TEMPLATE_DIR);
+  const bundleTemplateDir = join(wip, "bundles", BUNDLE_TEMPLATE_DIR);
   for (const file of bundleTemplate.template.files) {
     const abs = join(bundleTemplateDir, file.path);
     fs.write(abs, file.content);
     changedPaths.push(abs);
   }
-  changedPaths.push(join(targetDir, "bundles"));
+  // The bundle-template scaffold ships an install-backlog too, so it carries the same `backlog →
+  // install-backlog` relative alias every bundle does (TASK-102): a `bundle new` clone inherits a working link
+  // and the always-shipped scaffold itself resolves under the Backlog.md CLI.
+  changedPaths.push(ensureBundleBacklogAlias(fs, bundleTemplateDir));
+  changedPaths.push(join(wip, "bundles"));
 
-  // 6. Create the empty installer-skills/ + templates/ dirs (the manifest's empty registries; the
-  // .authoring-backlog/ root is created in step 9). makeDirectories is a no-op if a file already placed them.
-  fs.makeDirectories(join(targetDir, "installer-skills"));
-  fs.makeDirectories(join(targetDir, "templates"));
-  changedPaths.push(join(targetDir, "installer-skills"), join(targetDir, "templates"));
+  // 6. Create the empty installer-skills/ + templates/ dirs under wip/ (the manifest's empty registries; the
+  // .authoring-backlog/ root is created in step 10). makeDirectories is a no-op if a file already placed them.
+  fs.makeDirectories(join(wip, "installer-skills"));
+  fs.makeDirectories(join(wip, "templates"));
+  changedPaths.push(join(wip, "installer-skills"), join(wip, "templates"));
 
-  // 7 + 8. Build the project projection, then derive the front-door + orchestrator (step 8 / AC#2) AND the scope
-  // aliases (step 7 / AC#3) from ONE deriver call — keeping the derived artefacts byte-identical to every later
-  // mutation (the single-source discipline) and the alias creation identical to the lifecycle's RERENDER.
-  const projection = buildProjection(fs, targetDir);
+  // 6. Create the empty build-output directory `builds/` at the workspace root (AC#2; docs 06/12). It stays
+  // empty until `wpm build` writes archives into it — isolated from both the authoring surface and `wip/`.
+  const buildsDir = join(targetDir, BUILDS_DIR);
+  fs.makeDirectories(buildsDir);
+  changedPaths.push(buildsDir);
+
+  // 7 + 8. Build the project projection FROM `wip/` (its rendered manifest.yml lives there), then derive the
+  // orchestrator + executor front door (step 8) AND the scope aliases (step 7) from ONE deriver call — keeping
+  // the derived skill byte-identical to every later mutation (the single-source discipline). The deriver still
+  // yields the executor front door at the canonical path `AGENTS.md`; init RELOCATES it to the reserved
+  // `wip/_AGENTS.md` (author-owned, build-stripped; AC#8) so an authoring agent never reads it as a directive
+  // (doc 12). Every other derived file (the orchestrator skill) is written under `wip/` as-is.
+  const projection = buildProjection(fs, wip);
   const deriveArtefacts = makeArtefactDeriver({
     fs,
     builtinTemplatesRoot,
-    projectTemplatesRoot: join(targetDir, "templates"),
+    projectTemplatesRoot: join(wip, "templates"),
     projectTemplateName: templateName,
   });
   const desired = deriveArtefacts(projection);
   for (const file of desired.files) {
-    const abs = join(targetDir, file.path);
+    const abs =
+      file.path === DERIVED_EXECUTOR_FRONT_DOOR_PATH
+        ? join(wip, EXECUTOR_FRONT_DOOR)
+        : join(wip, file.path);
     fs.write(abs, file.content);
     if (!changedPaths.includes(abs)) {
       changedPaths.push(abs);
     }
   }
   for (const alias of desired.aliasPlan.aliases) {
-    fs.ensureAlias(join(targetDir, alias.aliasTo), join(targetDir, alias.linkPath));
-    changedPaths.push(join(targetDir, alias.linkPath));
+    fs.ensureAlias(join(wip, alias.aliasTo), join(wip, alias.linkPath));
+    changedPaths.push(join(wip, alias.linkPath));
   }
 
-  // 9. Initialise the .authoring-backlog/ Backlog.md root (task_prefix=authoring). The directory must exist
+  // Per-bundle `backlog → install-backlog` relative alias for every bundle the template pre-includes (TASK-102;
+  // `minimal` pre-includes none, so this is empty for it). Each bundle's dir + install-backlog were rendered
+  // from the template's files/ in step 3; the bundle-template scaffold's link is created in step 5 above.
+  for (const id of projection.manifest.bundles) {
+    changedPaths.push(ensureBundleBacklogAlias(fs, join(wip, "bundles", id)));
+  }
+
+  // 9. Render the AUTHORING front door (+ a CLAUDE.md symlink alias) at the WORKSPACE ROOT from the template's
+  // authoring front-door snippet (AC#1/#4). Distinct from the deliverable's executor front door: it addresses
+  // the AUTHORING agent (author the deliverable under wip/, not install it). Content is builder-provided
+  // template prose substituted with {{project-name}} — the core authors nothing (doc 13 §1).
+  const authoringFrontDoor = renderSnippet(
+    selectAuthoringFrontDoorSnippet(resolution.template),
+    params,
+  );
+  const authoringFrontDoorPath = join(targetDir, AUTHORING_FRONT_DOOR);
+  fs.write(authoringFrontDoorPath, authoringFrontDoor.content);
+  changedPaths.push(authoringFrontDoorPath);
+  const authoringAliasPath = join(targetDir, AUTHORING_FRONT_DOOR_ALIAS);
+  fs.ensureAlias(authoringFrontDoorPath, authoringAliasPath);
+  changedPaths.push(authoringAliasPath);
+
+  // 10. Initialise the .authoring-backlog/ Backlog.md root (task_prefix=authoring) at the WORKSPACE ROOT — it is
+  // the authoring surface, never part of the deliverable, so it stays beside the authoring front door, not under
+  // wip/ (docs 06/11). The directory must exist
   // before the backlog is initialised in it (the real adapter shells out to `backlog init` with the root as
   // cwd), so create it through the FileSystem port first.
   const authoringRoot = join(targetDir, AUTHORING_BACKLOG_DIR);
@@ -302,18 +423,23 @@ export function initProject(deps: InitProjectDeps, input: InitProjectInput): Ope
   const materialised = materialiseAuthoringTasks(backlog, authoringRoot, specs);
   const materialisedTitles = materialised.created.map((task) => task.title);
 
-  // 11. Record .authoring-backlog/ in .gitignore (AC#7). Append the entry if a template-shipped .gitignore exists
-  // (minimal ships none); otherwise create it. Idempotent: a .gitignore that already ignores the dir is left
-  // alone, so the entry can never be duplicated.
+  // 11. Record the builder-time regions in the workspace .gitignore (AC#3): both the authoring backlog AND the
+  // build-output directory `builds/` — neither is part of what the deliverable ships (docs 06/12). Append any
+  // missing entry to a template-shipped .gitignore (minimal ships none) or create it. Idempotent per line: a
+  // .gitignore that already ignores an entry is left alone, so no entry can ever be duplicated.
   const gitignorePath = join(targetDir, ".gitignore");
-  const ignoreLine = `${AUTHORING_BACKLOG_DIR}/`;
-  const existing = fs.exists(gitignorePath) ? fs.read(gitignorePath) : undefined;
-  if (existing === undefined) {
-    fs.write(gitignorePath, `${ignoreLine}\n`);
-    changedPaths.push(gitignorePath);
-  } else if (!existing.split("\n").some((l) => l.trim() === ignoreLine)) {
-    const sep = existing.endsWith("\n") || existing === "" ? "" : "\n";
-    fs.write(gitignorePath, `${existing}${sep}${ignoreLine}\n`);
+  const ignoreLines = [`${AUTHORING_BACKLOG_DIR}/`, `${BUILDS_DIR}/`];
+  let gitignore = fs.exists(gitignorePath) ? fs.read(gitignorePath) : undefined;
+  for (const ignoreLine of ignoreLines) {
+    if (gitignore === undefined) {
+      gitignore = `${ignoreLine}\n`;
+    } else if (!gitignore.split("\n").some((l) => l.trim() === ignoreLine)) {
+      const sep = gitignore.endsWith("\n") || gitignore === "" ? "" : "\n";
+      gitignore = `${gitignore}${sep}${ignoreLine}\n`;
+    }
+  }
+  if (gitignore !== undefined) {
+    fs.write(gitignorePath, gitignore);
     if (!changedPaths.includes(gitignorePath)) {
       changedPaths.push(gitignorePath);
     }
@@ -325,7 +451,7 @@ export function initProject(deps: InitProjectDeps, input: InitProjectInput): Ope
   // RECORD them, so each is POSIX-normalized to read with `/` on every OS (a no-op on Linux/macOS). This matches
   // how the six-beat lifecycle normalizes its own `changedPaths`.
   return {
-    summary: `created project ${name} at ${targetDir}`,
+    summary: `created authoring workspace ${name} at ${targetDir} (deliverable under ${DELIVERABLE_DIR}/)`,
     changedPaths: changedPaths.map(toPosix),
     materialisedTaskTitles: materialisedTitles,
   };

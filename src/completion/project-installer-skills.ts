@@ -45,9 +45,9 @@ export const projectInstallerSkillNamesOnDisk: CompletionSource = (
   }
   // The project name (for the reserved-name exclusion) comes from the manifest; if it cannot be parsed, fall back
   // to no project name (only the `*-advisor` reservation then applies — completion degrades gracefully).
-  const manifest = parseManifest(parseYaml(ctx.fs.read(`${context.root}/manifest.yml`)));
+  const manifest = parseManifest(parseYaml(ctx.fs.read(`${context.deliverableRoot}/manifest.yml`)));
   const projectName = manifest.ok ? manifest.value.meta.name : "";
-  const names = helperNames(ctx.fs, `${context.root}/${INSTALLER_SKILLS_DIR}`).filter(
+  const names = helperNames(ctx.fs, `${context.deliverableRoot}/${INSTALLER_SKILLS_DIR}`).filter(
     (name) => !isReservedInstallerSkillName(name, projectName),
   );
   return prefixFilter(names, ctx.partial);
@@ -69,7 +69,7 @@ export const projectInstallerSkillNamesRegistered: CompletionSource = (
   if (!context.found) {
     return [];
   }
-  const manifest = parseManifest(parseYaml(ctx.fs.read(`${context.root}/manifest.yml`)));
+  const manifest = parseManifest(parseYaml(ctx.fs.read(`${context.deliverableRoot}/manifest.yml`)));
   if (!manifest.ok) {
     return [];
   }

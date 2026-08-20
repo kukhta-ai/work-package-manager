@@ -7,6 +7,7 @@ import { NodeFileSystem } from "../../src/adapters/node-fs.js";
 import { ProcessEnvironment } from "../../src/adapters/process-env.js";
 import { type CliDeps, run } from "../../src/cli.js";
 import type { CliIo, OutputSink } from "../../src/util/exit.js";
+import { toPosix } from "../../src/util/posix-path.js";
 import { withTempDir } from "../helpers/tmpdir.js";
 
 /**
@@ -30,8 +31,9 @@ function io(): CliIo & { out: ReturnType<typeof collector>; err: ReturnType<type
 
 /** Write a coherent fixture project (manifest + one enabled bundle's bundle.yml) into `dir` on the real disk. */
 function seedOnDisk(dir: string): void {
+  mkdirSync(join(dir, "wip"), { recursive: true });
   writeFileSync(
-    join(dir, "manifest.yml"),
+    join(dir, "wip", "manifest.yml"),
     [
       "project:",
       "  name: demo",
@@ -44,12 +46,12 @@ function seedOnDisk(dir: string): void {
       "",
     ].join("\n"),
   );
-  mkdirSync(join(dir, "bundles", "web"), { recursive: true });
+  mkdirSync(join(dir, "wip", "bundles", "web"), { recursive: true });
   writeFileSync(
-    join(dir, "bundles", "web", "bundle.yml"),
+    join(dir, "wip", "bundles", "web", "bundle.yml"),
     "id: web\nversion: 0.5.0\nsummary: the web bundle\nconfirmation: safe\nrequires: {}\n",
   );
-  mkdirSync(join(dir, "installer-skills"), { recursive: true });
+  mkdirSync(join(dir, "wip", "installer-skills"), { recursive: true });
 }
 
 function realDeps(): CliDeps {
@@ -86,10 +88,10 @@ describe("cli `project` reads over a real filesystem (tasks 37/49/48)", () => {
         summary: "the web bundle",
       });
 
-      // root (49): the bare resolved path on a single line.
+      // root (49): the bare resolved DELIVERABLE path (the workspace's wip/) on a single line.
       const rootIo = io();
       expect(await run(["project", "root", "-C", dir], realDeps(), rootIo)).toBe(0);
-      expect(rootIo.out.text).toBe(`${dir}\n`);
+      expect(rootIo.out.text).toBe(`${toPosix(join(dir, "wip"))}\n`);
     });
   });
 
@@ -103,14 +105,14 @@ describe("cli `project` reads over a real filesystem (tasks 37/49/48)", () => {
       expect(okIo.out.text.toLowerCase()).toContain("coherent");
 
       // introduce an orphan bundles/stray dir → a finding + exit 1, and the manifest is untouched.
-      mkdirSync(join(dir, "bundles", "stray"), { recursive: true });
-      writeFileSync(join(dir, "bundles", "stray", "x.txt"), "orphan");
-      const before = readFileSync(join(dir, "manifest.yml"), "utf8");
+      mkdirSync(join(dir, "wip", "bundles", "stray"), { recursive: true });
+      writeFileSync(join(dir, "wip", "bundles", "stray", "x.txt"), "orphan");
+      const before = readFileSync(join(dir, "wip", "manifest.yml"), "utf8");
 
       const badIo = io();
       expect(await run(["project", "validate", "-C", dir], realDeps(), badIo)).toBe(1);
       expect(badIo.out.text).toContain('bundle directory "stray"');
-      expect(readFileSync(join(dir, "manifest.yml"), "utf8")).toBe(before); // no side effects
+      expect(readFileSync(join(dir, "wip", "manifest.yml"), "utf8")).toBe(before); // no side effects
     });
   });
 });

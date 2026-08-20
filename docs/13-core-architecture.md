@@ -60,7 +60,7 @@ The model's nouns:
 - **Manifest** (from `manifest.yml`) — the project's release identity (name, version, and optional description / license / repository), the **flat list of enabled bundle ids**, and the **target agents**. A bundle directory not listed here is disabled (`06`); the targets are the peer-dependency agents (`00`).
 - **BundleManifest** (from each `bundles/<id>/bundle.yml`) — the bundle's stable `id`, its `version`, the user-facing `summary` (the menu line, `02`), its confirmation level, and the `requires` map of `BundleId → VersionRange` (the dependency contract, `08`).
 - **Template** — a template as *data*: its name, scope (project or bundle), declared parameters, the file tree copied at init (with substitution), and the snippet set rendered on demand by add-commands (`06`).
-- **Project** — the loaded aggregate: the project root, the parsed manifest, and every bundle's parsed `BundleManifest`. This is an in-memory *projection* of a project on disk.
+- **Project** — the loaded aggregate: the deliverable root (the workspace's `wip/`), the parsed manifest, and every bundle's parsed `BundleManifest`. This is an in-memory *projection* of a project on disk.
 - **Value objects** produced by services and consumed by commands — an authoring-task spec (title + acceptance criteria), a validation report (ok flag + problems), and an operation result (a human summary, the paths that changed, and the titles of any authoring tasks materialised).
 
 `Project` is the keystone: most operations begin by loading it and reason against it, rather than re-reading individual files ad hoc. It is a *projection* — loaded fresh per operation, never a long-lived mutable singleton — so there is no cache to invalidate.
@@ -97,7 +97,7 @@ These are `12`'s `core/` modules, recast as the layer beneath operations. Each i
 
 ## 5 · Operations (`core/operations/`) — the use-case tier
 
-One operation per command intent. Each composes services and ports to fulfil exactly what a command means, and returns a structured result. This is the orchestration `12` left unplaced. Every operation has the same shape: it takes a typed **input** (the command's arguments, already parsed and validated into domain values), a **context** (the located project root plus the environment, from `resolveContext` in §7), and the **ports** (filesystem, backlog, clock, environment — injected once at the CLI boundary), and returns an operation result. Because the signature is uniform, the lifecycle below applies to all of them.
+One operation per command intent. Each composes services and ports to fulfil exactly what a command means, and returns a structured result. This is the orchestration `12` left unplaced. Every operation has the same shape: it takes a typed **input** (the command's arguments, already parsed and validated into domain values), a **context** (the located deliverable root plus the environment, from `resolveContext` in §7), and the **ports** (filesystem, backlog, clock, environment — injected once at the CLI boundary), and returns an operation result. Because the signature is uniform, the lifecycle below applies to all of them.
 
 Representative operations (the full set tracks `10`'s command tree): init-project, create-bundle, enable-bundle, disable-bundle, remove-bundle, set-project-meta, bump-version, add-target, remove-target, add-require, remove-require, register-file, register-skill, add-installer-skill, add-advisor, validate-project, build.
 
@@ -127,7 +127,7 @@ The `--help` content contract and tab-completion (`10`'s discoverability princip
 
 ## 7 · Cross-cutting: context, errors, exit codes
 
-**Context resolution** (task-24) is a service used before any project-bound operation: walk the working directory upward (via the environment and filesystem ports) until a `manifest.yml` is found, git-style; honour a `-C/--project` override; and yield either a located project context or an explicit *no-project* result (which `template list`/`show` tolerate by falling back to built-ins).
+**Context resolution** (task-24) is a service used before any project-bound operation: walk the working directory upward (via the environment and filesystem ports) until the workspace marker `wip/manifest.yml` is found, git-style (`10`), treating that marker's parent as the **workspace root** and `<workspace>/wip` as the **deliverable root** the operation reads and writes; honour a `-C/--project` override; and yield either a located deliverable context or an explicit *no-project* result (which `template list`/`show` tolerate by falling back to built-ins).
 
 **Error model.** The core raises a small set of typed domain errors and never terminates the process or writes to stderr itself. Each error category carries a fixed meaning and exit code:
 
@@ -148,7 +148,7 @@ A single top-level handler at the CLI boundary catches these, maps each to its e
 ```
 argv
  → command layer:  parse argv → typed input (id = web-handoff, advisor on, …)
- → resolve context (locate the project root)
+ → resolve context (locate the deliverable root)
  → create-bundle operation:
      ① LOAD       read the project: manifest + every bundle.yml
      ② CHECK      validate the id (kebab + reserved-word) and that it isn't already enabled

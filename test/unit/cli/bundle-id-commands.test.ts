@@ -56,22 +56,22 @@ function seed(opts: { enabled?: readonly string[]; webYml?: string } = {}): {
   const enabled = opts.enabled ?? ["web"];
 
   fs.write(
-    `${PROJ}/manifest.yml`,
+    `${PROJ}/wip/manifest.yml`,
     `project:\n  name: demo\n  version: 1.0.0\ntargets:\n  - claude-code\nbundles:\n${enabled
       .map((b) => `  - ${b}`)
       .join("\n")}\n`,
   );
   for (const id of enabled) {
     if (id === "web") {
-      fs.write(`${PROJ}/bundles/web/bundle.yml`, opts.webYml ?? WEB_BUNDLE_YML);
+      fs.write(`${PROJ}/wip/bundles/web/bundle.yml`, opts.webYml ?? WEB_BUNDLE_YML);
     } else {
       fs.write(
-        `${PROJ}/bundles/${id}/bundle.yml`,
+        `${PROJ}/wip/bundles/${id}/bundle.yml`,
         `id: ${id}\nversion: 0.1.0\nsummary: ${id} bundle\nconfirmation: safe\nrequires: {}\n`,
       );
     }
   }
-  fs.makeDirectories(`${PROJ}/installer-skills`);
+  fs.makeDirectories(`${PROJ}/wip/installer-skills`);
   backlog.init(AUTHORING, { taskPrefix: "authoring" });
 
   fs.write(`${BUILTIN}/project/minimal/template.yml`, "name: minimal\nscope: project\n");
@@ -99,7 +99,7 @@ function deps(fs: MemoryFileSystem, backlog: FakeBacklog, cwd = "/elsewhere"): C
 
 /** The parsed `bundle.yml` of `<id>` on disk. */
 function bundleYml(fs: MemoryFileSystem, id: string) {
-  return parseBundleManifest(parseYaml(fs.read(`${PROJ}/bundles/${id}/bundle.yml`)));
+  return parseBundleManifest(parseYaml(fs.read(`${PROJ}/wip/bundles/${id}/bundle.yml`)));
 }
 
 /** Resolve completions against /proj via the REAL specs (cwd = PROJ so the sources resolve the project). */
@@ -130,7 +130,7 @@ describe("bundle <id> routing (tasks 57/58 — the pattern-setter)", () => {
     const { fs, backlog } = seed();
     expect(await run(["bundle", "disable", "web", "-C", PROJ], deps(fs, backlog), io())).toBe(0);
     // disable routed correctly: web is no longer enabled.
-    const m = parseYaml(fs.read(`${PROJ}/manifest.yml`)) as { bundles?: unknown };
+    const m = parseYaml(fs.read(`${PROJ}/wip/manifest.yml`)) as { bundles?: unknown };
     expect(JSON.stringify(m.bundles)).not.toContain("web");
   });
 
@@ -162,7 +162,7 @@ describe("bundle <id> routing (tasks 57/58 — the pattern-setter)", () => {
     const { fs, backlog } = seed({ enabled: ["web"] });
     // stage a disabled bundle dir on disk (present, but not in manifest.bundles):
     fs.write(
-      `${PROJ}/bundles/draft/bundle.yml`,
+      `${PROJ}/wip/bundles/draft/bundle.yml`,
       "id: draft\nversion: 0.1.0\nsummary: draft\nconfirmation: safe\nrequires: {}\n",
     );
     const i = io();
@@ -178,7 +178,7 @@ describe("bundle <id> show (task-57)", () => {
   it("AC#1 — prints bundle.yml metadata and a tree summary of the bundle", async () => {
     const { fs, backlog } = seed();
     // an extra file under the bundle so the tree summary lists it:
-    fs.write(`${PROJ}/bundles/web/payload/files/x.txt`, "hello");
+    fs.write(`${PROJ}/wip/bundles/web/payload/files/x.txt`, "hello");
     const i = io();
     expect(await run(["bundle", "web", "show", "-C", PROJ], deps(fs, backlog), i)).toBe(0);
     const out = i.out.text;
@@ -199,11 +199,11 @@ describe("bundle <id> show (task-57)", () => {
 
   it("AC#3 — read-only: the manifest and bundle.yml are unchanged after show", async () => {
     const { fs, backlog } = seed();
-    const manifestBefore = fs.read(`${PROJ}/manifest.yml`);
-    const bundleBefore = fs.read(`${PROJ}/bundles/web/bundle.yml`);
+    const manifestBefore = fs.read(`${PROJ}/wip/manifest.yml`);
+    const bundleBefore = fs.read(`${PROJ}/wip/bundles/web/bundle.yml`);
     expect(await run(["bundle", "web", "show", "-C", PROJ], deps(fs, backlog), io())).toBe(0);
-    expect(fs.read(`${PROJ}/manifest.yml`)).toBe(manifestBefore);
-    expect(fs.read(`${PROJ}/bundles/web/bundle.yml`)).toBe(bundleBefore);
+    expect(fs.read(`${PROJ}/wip/manifest.yml`)).toBe(manifestBefore);
+    expect(fs.read(`${PROJ}/wip/bundles/web/bundle.yml`)).toBe(bundleBefore);
   });
 
   it("AC#4 — outside any project it exits 1 naming manifest.yml + init", async () => {
@@ -305,7 +305,7 @@ describe("bundle <id> meta (task-58)", () => {
 
   it("AC#2 — a bad --confirmation-level value is a usage error (exit 2), bundle.yml unchanged", async () => {
     const { fs, backlog } = seed();
-    const before = fs.read(`${PROJ}/bundles/web/bundle.yml`);
+    const before = fs.read(`${PROJ}/wip/bundles/web/bundle.yml`);
     const i = io();
     expect(
       await run(
@@ -314,7 +314,7 @@ describe("bundle <id> meta (task-58)", () => {
         i,
       ),
     ).toBe(2);
-    expect(fs.read(`${PROJ}/bundles/web/bundle.yml`)).toBe(before);
+    expect(fs.read(`${PROJ}/wip/bundles/web/bundle.yml`)).toBe(before);
   });
 
   it("a bad --version is a usage error (exit 2)", async () => {
@@ -330,10 +330,10 @@ describe("bundle <id> meta (task-58)", () => {
 
   it("no flags is a usage error (exit 2), nothing changed", async () => {
     const { fs, backlog } = seed();
-    const before = fs.read(`${PROJ}/bundles/web/bundle.yml`);
+    const before = fs.read(`${PROJ}/wip/bundles/web/bundle.yml`);
     const i = io();
     expect(await run(["bundle", "web", "meta", "-C", PROJ], deps(fs, backlog), i)).toBe(2);
-    expect(fs.read(`${PROJ}/bundles/web/bundle.yml`)).toBe(before);
+    expect(fs.read(`${PROJ}/wip/bundles/web/bundle.yml`)).toBe(before);
   });
 
   it("AC#3 — existing comments and key order are preserved across the edit", async () => {
@@ -345,7 +345,7 @@ describe("bundle <id> meta (task-58)", () => {
         io(),
       ),
     ).toBe(0);
-    const text = fs.read(`${PROJ}/bundles/web/bundle.yml`);
+    const text = fs.read(`${PROJ}/wip/bundles/web/bundle.yml`);
     // the leading comment survived:
     expect(text).toContain("# web bundle — edit via `wpm bundle web meta`");
     // the key ORDER is unchanged (id, version, summary, confirmation, requires):
@@ -360,7 +360,7 @@ describe("bundle <id> meta (task-58)", () => {
     expect(text).toContain("confirmation: safe");
   });
 
-  it("rerender: a changed summary flows to the front-door menu", async () => {
+  it("rerender: a meta change re-derives the orchestrator; the executor front door stays author-owned", async () => {
     const { fs, backlog } = seed();
     expect(
       await run(
@@ -369,8 +369,11 @@ describe("bundle <id> meta (task-58)", () => {
         io(),
       ),
     ).toBe(0);
-    // ④ RERENDER re-derived AGENTS.md from the post-apply project (whose bundle now has the new summary).
-    expect(fs.read(`${PROJ}/AGENTS.md`)).toContain("fresh menu line");
+    // The new summary is recorded in the bundle's bundle.yml; ④ RERENDER re-derived the orchestrator. The
+    // executor front door is author-owned and is NOT re-rendered on a mutation (task-88).
+    expect(fs.read(`${PROJ}/wip/bundles/web/bundle.yml`)).toContain("fresh menu line");
+    expect(fs.exists(`${PROJ}/wip/installer-skills/demo-installer/SKILL.md`)).toBe(true);
+    expect(fs.exists(`${PROJ}/wip/AGENTS.md`)).toBe(false);
   });
 
   it("AC#4 — outside any project it exits 1 naming manifest.yml", async () => {

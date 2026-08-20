@@ -1,9 +1,10 @@
 import { execFileSync } from "node:child_process";
-import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, readlinkSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { withTempDir } from "../helpers/tmpdir.js";
+import { initWorkspace } from "../helpers/workspace.js";
 
 /**
  * End-to-end (through-the-binary) tests for the `bundle template` fixed subgroup — `bundle template show`
@@ -40,11 +41,12 @@ function wpm(proj: string, args: readonly string[]): { stdout: string; status: n
   return cli([...args, "-C", proj]);
 }
 
-/** init a real project at <dir>/demo and return its path. */
+/**
+ * Create a real authoring workspace at <dir>/demo via `wpm init` (deliverable under `wip/`, authoring backlog
+ * at the workspace root) and return the workspace root; project-bound commands resolve it via `-C` (task-88).
+ */
 function initProjectAt(dir: string): string {
-  const proj = join(dir, "demo");
-  execFileSync(process.execPath, [builtCli, "init", "demo", "--at", proj], { encoding: "utf8" });
-  return proj;
+  return initWorkspace(builtCli, dir);
 }
 
 describeIfBuilt("bundle template show / set E2E via dist/cli.js (tasks 55/56)", () => {
@@ -53,11 +55,11 @@ describeIfBuilt("bundle template show / set E2E via dist/cli.js (tasks 55/56)", 
       const proj = initProjectAt(dir);
       // task-34: the FULL `init` materialises the default bundle template at bundles/bundle-template/, so it is
       // PRESENT in a freshly-init'd project (this supersedes the skeleton-era "init ships no bundles/" assertion).
-      expect(existsSync(join(proj, "bundles", "bundle-template"))).toBe(true);
+      expect(existsSync(join(proj, "wip", "bundles", "bundle-template"))).toBe(true);
       const out = wpm(proj, ["bundle", "template", "show"]);
       expect(out.status).toBe(0);
       expect(out.stdout).toContain("Bundle template: bundles/bundle-template/");
-      expect(out.stdout).toContain("AGENTS.md.tmpl");
+      expect(out.stdout).toContain("_AGENTS.md.tmpl");
     });
   });
 
@@ -69,13 +71,17 @@ describeIfBuilt("bundle template show / set E2E via dist/cli.js (tasks 55/56)", 
       expect(out.stdout).toMatch(/set bundle template from "default"/);
 
       // the built-in default's files/ tree landed (AGENTS.md.tmpl + the install-backlog config + payload slots):
-      expect(existsSync(join(proj, "bundles", "bundle-template", "AGENTS.md.tmpl"))).toBe(true);
+      expect(existsSync(join(proj, "wip", "bundles", "bundle-template", "_AGENTS.md.tmpl"))).toBe(
+        true,
+      );
       expect(
-        existsSync(join(proj, "bundles", "bundle-template", "install-backlog", "config.yml.tmpl")),
+        existsSync(
+          join(proj, "wip", "bundles", "bundle-template", "install-backlog", "config.yml.tmpl"),
+        ),
       ).toBe(true);
       // verbatim copy — the {{placeholders}} are NOT substituted (the scaffold keeps them for `bundle new`):
       expect(
-        readFileSync(join(proj, "bundles", "bundle-template", "AGENTS.md.tmpl"), "utf8"),
+        readFileSync(join(proj, "wip", "bundles", "bundle-template", "_AGENTS.md.tmpl"), "utf8"),
       ).toMatch(/\{\{bundle-id\}\}/);
     });
   });
@@ -89,7 +95,7 @@ describeIfBuilt("bundle template show / set E2E via dist/cli.js (tasks 55/56)", 
       expect(out.status).toBe(0);
       expect(out.stdout).toContain("Bundle template: bundles/bundle-template/");
       expect(out.stdout).toContain("Files:");
-      expect(out.stdout).toContain("AGENTS.md.tmpl");
+      expect(out.stdout).toContain("_AGENTS.md.tmpl");
     });
   });
 
@@ -98,13 +104,16 @@ describeIfBuilt("bundle template show / set E2E via dist/cli.js (tasks 55/56)", 
       const proj = initProjectAt(dir);
       // task-34: init now materialises bundles/bundle-template/, so "changing nothing" is asserted by snapshotting
       // the scaffold tree BEFORE the failed `set` and confirming it is byte-identical AFTER (not by its absence).
-      const scaffold = join(proj, "bundles", "bundle-template");
+      const scaffold = join(proj, "wip", "bundles", "bundle-template");
       const snapshot = (): Record<string, string> => {
         const out: Record<string, string> = {};
         const walk = (d: string): void => {
           for (const e of readdirSync(d, { withFileTypes: true })) {
             const child = join(d, e.name);
-            if (e.isDirectory()) walk(child);
+            // The `backlog -> install-backlog` alias (task-102) is a symlink: record its target, never
+            // recurse/readFileSync it (which would EISDIR on the linked directory).
+            if (e.isSymbolicLink()) out[child.slice(scaffold.length)] = `-> ${readlinkSync(child)}`;
+            else if (e.isDirectory()) walk(child);
             else out[child.slice(scaffold.length)] = readFileSync(child, "utf8");
           }
         };

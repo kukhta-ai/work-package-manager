@@ -1,5 +1,13 @@
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  lstatSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  readlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
@@ -11,6 +19,7 @@ import { ProcessEnvironment } from "../../src/adapters/process-env.js";
 import { type CliDeps, run } from "../../src/cli.js";
 import type { CliIo, OutputSink } from "../../src/util/exit.js";
 import { withTempDir } from "../helpers/tmpdir.js";
+import { initWorkspace } from "../helpers/workspace.js";
 
 /**
  * Through-the-edges (integration) test for task-27's proof leaf: drives `run(["bundle","new",…])` against a
@@ -35,10 +44,11 @@ function io(): CliIo & { out: ReturnType<typeof collector>; err: ReturnType<type
 
 /** Write a fixture project + project/bundle templates into `dir` on the real filesystem. */
 function seedOnDisk(dir: string): void {
+  mkdirSync(join(dir, "wip"), { recursive: true });
   const builtin = join(dir, "builtin-templates");
 
   writeFileSync(
-    join(dir, "manifest.yml"),
+    join(dir, "wip", "manifest.yml"),
     [
       "project:",
       "  name: demo",
@@ -49,7 +59,7 @@ function seedOnDisk(dir: string): void {
       "",
     ].join("\n"),
   );
-  mkdirSync(join(dir, "installer-skills"), { recursive: true });
+  mkdirSync(join(dir, "wip", "installer-skills"), { recursive: true });
 
   // Project template.
   mkdirSync(
@@ -131,12 +141,16 @@ describe("cli `bundle new` over a real filesystem (task-27 proof leaf)", () => {
 
       expect(code).toBe(0);
       // The scaffold landed on the real disk:
-      const bundleYml = readFileSync(join(dir, "bundles", "web", "bundle.yml"), "utf8");
+      const bundleYml = readFileSync(join(dir, "wip", "bundles", "web", "bundle.yml"), "utf8");
       expect(bundleYml).toContain("id: web");
       // The manifest on disk now lists the bundle:
-      expect(readFileSync(join(dir, "manifest.yml"), "utf8")).toContain("web");
-      // The front-door was re-derived on disk:
-      expect(readFileSync(join(dir, "AGENTS.md"), "utf8")).toContain("# demo");
+      expect(readFileSync(join(dir, "wip", "manifest.yml"), "utf8")).toContain("web");
+      // The orchestrator was re-derived on disk; the executor front door is author-owned and is NOT
+      // re-rendered on a mutation (task-88):
+      expect(
+        readFileSync(join(dir, "wip", "installer-skills", "demo-installer", "SKILL.md"), "utf8"),
+      ).toContain("Install demo.");
+      expect(existsSync(join(dir, "wip", "AGENTS.md"))).toBe(false);
       expect(i.out.text).toContain("created bundle web");
     });
   });
@@ -168,19 +182,19 @@ function wpm(projectDir: string, args: readonly string[]): { stdout: string; sta
 describeIfBuilt("bundle lifecycle via the built dist/cli.js (task-50/51/52 — real binary)", () => {
   it("`bundle new <id> --version 1.2.3` sets the BUNDLE version (not the program version); `wpm --version` still works", async () => {
     await withTempDir((dir) => {
-      const proj = join(dir, "demo");
-      execFileSync(process.execPath, [builtCli, "init", "demo", "--at", proj], {
-        encoding: "utf8",
-      });
+      // A real authoring workspace; project-bound commands resolve it via -C and operate on wip/ (task-88).
+      const proj = initWorkspace(builtCli, dir);
 
       const out = wpm(proj, ["bundle", "new", "web", "--version", "1.2.3"]);
       expect(out.status).toBe(0);
       // The bug printed the PROGRAM version and created nothing; the fix creates the bundle at 1.2.3:
       expect(out.stdout).toContain("created bundle web");
-      const bundleYml = readFileSync(join(proj, "bundles", "web", "bundle.yml"), "utf8");
+      const bundleYml = readFileSync(join(proj, "wip", "bundles", "web", "bundle.yml"), "utf8");
       expect(bundleYml).toMatch(/version:\s*1\.2\.3/);
       // The advisor stub rendered to the conventional path:
-      expect(existsSync(join(proj, "installer-skills", "web-advisor", "SKILL.md"))).toBe(true);
+      expect(existsSync(join(proj, "wip", "installer-skills", "web-advisor", "SKILL.md"))).toBe(
+        true,
+      );
 
       // The program's OWN --version still prints the program version (kept working by the fix):
       const ver = execFileSync(process.execPath, [builtCli, "--version"], { encoding: "utf8" });
@@ -188,23 +202,93 @@ describeIfBuilt("bundle lifecycle via the built dist/cli.js (task-50/51/52 — r
     });
   });
 
-  it("`bundle disable` then `bundle enable` round-trips manifest membership over the real backlog", async () => {
+  it("TASK-102 — `backlog` inside a fresh bundle resolves its install-backlog WITHOUT a manual symlink; tasks land in install-backlog/tasks/ (AC#1/#2)", async () => {
+    // The fix is a relative POSIX symlink; on Windows the adapter copies install-backlog → backlog, so a write
+    // through `backlog/` does NOT reach install-backlog (the known copy-fallback degradation). Prove the
+    // designed-for POSIX behaviour.
+    if (process.platform === "win32") return;
     await withTempDir((dir) => {
-      const proj = join(dir, "demo");
-      execFileSync(process.execPath, [builtCli, "init", "demo", "--at", proj], {
+      const proj = initWorkspace(builtCli, dir);
+      expect(wpm(proj, ["bundle", "new", "web"]).status).toBe(0);
+
+      const bundleDir = join(proj, "wip", "bundles", "web");
+      // wpm shipped the link — it is a RELATIVE symlink to install-backlog (archive-portable):
+      const link = join(bundleDir, "backlog");
+      expect(lstatSync(link).isSymbolicLink()).toBe(true);
+      expect(readlinkSync(link)).toBe("install-backlog");
+
+      // Run the REAL Backlog.md CLI with the bundle as cwd — NO `ln -sfn install-backlog backlog` workaround.
+      // It must resolve the bundle's install-backlog (the executor's flow) and create the recipe task there.
+      execFileSync(
+        "backlog",
+        [
+          "task",
+          "create",
+          "ensure thing",
+          "-l",
+          "kind:state,step:ensure-thing",
+          "-m",
+          "0.1.0",
+          "--ac",
+          "it is present",
+        ],
+        { cwd: bundleDir, encoding: "utf8" },
+      );
+
+      // AC#1/#2 — the task persisted to THIS bundle's install-backlog/tasks/ (resolved through the link), not a
+      // stray real `backlog/` dir and not the workspace authoring backlog. The bundle scaffold ships the
+      // detect→setup→verify trio, so assert by the unique step slug we just created (the new task landed HERE):
+      const tasksDir = join(bundleDir, "install-backlog", "tasks");
+      const created = readdirSync(tasksDir)
+        .filter((f) => f.endsWith(".md"))
+        .filter((f) => readFileSync(join(tasksDir, f), "utf8").includes("step:ensure-thing"));
+      expect(created).toHaveLength(1);
+
+      // …and `backlog task list` resolves from within the bundle (AC#1):
+      const listed = execFileSync("backlog", ["task", "list", "--plain"], {
+        cwd: bundleDir,
         encoding: "utf8",
       });
+      expect(listed).toContain("ensure thing");
+    });
+  });
+
+  it("`bundle disable` then `bundle enable` round-trips manifest membership over the real backlog", async () => {
+    await withTempDir((dir) => {
+      // A real authoring workspace; project-bound commands resolve it via -C and operate on wip/ (task-88).
+      const proj = initWorkspace(builtCli, dir);
       expect(wpm(proj, ["bundle", "new", "web"]).status).toBe(0);
 
       // disable: drops from the manifest, dir stays on disk.
       expect(wpm(proj, ["bundle", "disable", "web"]).status).toBe(0);
-      expect(readFileSync(join(proj, "manifest.yml"), "utf8")).not.toMatch(/bundles:.*web/s);
-      expect(existsSync(join(proj, "bundles", "web", "bundle.yml"))).toBe(true);
+      expect(readFileSync(join(proj, "wip", "manifest.yml"), "utf8")).not.toMatch(/bundles:.*web/s);
+      expect(existsSync(join(proj, "wip", "bundles", "web", "bundle.yml"))).toBe(true);
 
       // enable: re-appends idempotently (the per-bundle tasks already exist → a no-op materialise).
       const enabled = wpm(proj, ["bundle", "enable", "web"]);
       expect(enabled.status).toBe(0);
-      expect(readFileSync(join(proj, "manifest.yml"), "utf8")).toMatch(/web/);
+      expect(readFileSync(join(proj, "wip", "manifest.yml"), "utf8")).toMatch(/web/);
+    });
+  });
+
+  it("TASK-103 AC#1 — `bundle new <id>` leaves NO payload-skill stub on disk and registers no payload skill", async () => {
+    await withTempDir((dir) => {
+      const proj = initWorkspace(builtCli, dir);
+      expect(wpm(proj, ["bundle", "new", "web"]).status).toBe(0);
+
+      // the payload-skills slot exists (the template `.keep`) but ships NO skill subdirectory:
+      const agentSkills = join(proj, "wip", "bundles", "web", "payload", "agent-skills");
+      expect(existsSync(agentSkills)).toBe(true);
+      const subdirs = readdirSync(agentSkills, { withFileTypes: true }).filter((e) =>
+        e.isDirectory(),
+      );
+      expect(subdirs).toEqual([]); // no `<id>-skill/` stub the old template shipped
+      expect(existsSync(join(agentSkills, "web-skill", "SKILL.md"))).toBe(false);
+
+      // the registry is empty — `skills list` prints the empty marker (payload.skills == []):
+      expect(wpm(proj, ["bundle", "web", "skills", "list"]).stdout.trim()).toBe(
+        "(no payload skills)",
+      );
     });
   });
 });
@@ -219,23 +303,31 @@ describeIfBuilt(
   () => {
     it("after init, an edit to bundles/bundle-template/ is reflected in the next `bundle new` scaffold", async () => {
       await withTempDir((dir) => {
-        const proj = join(dir, "demo");
-        execFileSync(process.execPath, [builtCli, "init", "demo", "--at", proj], {
-          encoding: "utf8",
-        });
+        // A real authoring workspace; project-bound commands resolve it via -C and operate on wip/ (task-88).
+        const proj = initWorkspace(builtCli, dir);
         // init materialised the project default bundle scaffold:
-        expect(existsSync(join(proj, "bundles", "bundle-template", "AGENTS.md.tmpl"))).toBe(true);
+        expect(existsSync(join(proj, "wip", "bundles", "bundle-template", "_AGENTS.md.tmpl"))).toBe(
+          true,
+        );
 
         // Edit the scaffold: drop a NEW marker file in it (an author refining their default bundle shape). The
         // file name carries a placeholder so we also prove substitution runs over the cloned tree.
         writeFileSync(
-          join(proj, "bundles", "bundle-template", "payload", "files", "MARKER-{{bundle-id}}.txt"),
+          join(
+            proj,
+            "wip",
+            "bundles",
+            "bundle-template",
+            "payload",
+            "files",
+            "MARKER-{{bundle-id}}.txt",
+          ),
           "default for {{bundle-id}}\n",
         );
 
         // `bundle new web` (no --template) now clones the EDITED bundles/bundle-template/:
         expect(wpm(proj, ["bundle", "new", "web"]).status).toBe(0);
-        const marker = join(proj, "bundles", "web", "payload", "files", "MARKER-web.txt");
+        const marker = join(proj, "wip", "bundles", "web", "payload", "files", "MARKER-web.txt");
         expect(existsSync(marker)).toBe(true); // the edit is reflected (set is LIVE), with the id substituted
         expect(readFileSync(marker, "utf8")).toBe("default for web\n");
       });
@@ -243,15 +335,13 @@ describeIfBuilt(
 
     it("after `bundle template set default`, `bundle new` still scaffolds a working bundle", async () => {
       await withTempDir((dir) => {
-        const proj = join(dir, "demo");
-        execFileSync(process.execPath, [builtCli, "init", "demo", "--at", proj], {
-          encoding: "utf8",
-        });
+        // A real authoring workspace; project-bound commands resolve it via -C and operate on wip/ (task-88).
+        const proj = initWorkspace(builtCli, dir);
         // Reset the scaffold from the built-in default (the H command), then clone it:
         expect(wpm(proj, ["bundle", "template", "set", "default"]).status).toBe(0);
         expect(wpm(proj, ["bundle", "new", "web"]).status).toBe(0);
-        expect(existsSync(join(proj, "bundles", "web", "bundle.yml"))).toBe(true);
-        expect(readFileSync(join(proj, "bundles", "web", "bundle.yml"), "utf8")).toMatch(
+        expect(existsSync(join(proj, "wip", "bundles", "web", "bundle.yml"))).toBe(true);
+        expect(readFileSync(join(proj, "wip", "bundles", "web", "bundle.yml"), "utf8")).toMatch(
           /id:\s*web/,
         );
       });

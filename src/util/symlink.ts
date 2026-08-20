@@ -1,5 +1,5 @@
 import { cpSync, mkdirSync, symlinkSync } from "node:fs";
-import { dirname } from "node:path";
+import { dirname, isAbsolute, resolve } from "node:path";
 import type { AliasResult } from "../core/ports/filesystem.js";
 
 /**
@@ -64,7 +64,12 @@ export function ensureSymlinkOrCopy(
   const platform = options.platform ?? process.platform;
   if (platform === "win32") {
     const copy = options.copy ?? defaultCopy;
-    copy(target, linkPath);
+    // A RELATIVE target (e.g. the per-bundle `backlog → install-backlog` link, TASK-102) is resolved against
+    // the link's PARENT directory — POSIX symlink semantics — so the copy duplicates the SAME tree the
+    // symlink would have pointed at, not a cwd-relative path. Absolute targets (the scope aliases) are copied
+    // verbatim, so this is a no-op for every pre-existing caller.
+    const copyFrom = isAbsolute(target) ? target : resolve(dirname(linkPath), target);
+    copy(copyFrom, linkPath);
     return {
       kind: "copy",
       warning: `Copied "${target}" to "${linkPath}" instead of symlinking (symlinks need elevation on Windows). Re-run to refresh the copy after the source changes.`,

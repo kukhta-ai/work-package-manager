@@ -1,33 +1,54 @@
-import { dirname, join, resolve } from "node:path";
+import { posix, win32 } from "node:path";
 import type { Environment, FileSystem } from "../ports/index.js";
 
 /**
  * The `context` service (doc 13 §7) — *project context resolution*, the step that runs **before any
- * project-bound operation** to locate the project the command should act on. It answers one question: given
- * where the command was invoked (and an optional `-C/--project` override), *which directory is the project
- * root*, or is there no project at all?
+ * project-bound operation** to locate the **authoring workspace** the command should act on, and the nested
+ * **deliverable** subdirectory it operates within. It answers one question: given where the command was invoked
+ * (and an optional `-C/--project` override), *which directory is the workspace root* (and therefore which
+ * `<workspace>/wip` is the deliverable root), or is there no workspace at all?
  *
  * It is pure **over the Environment + FileSystem ports** (doc 13 §3/§5): it reads the working directory from
- * {@link Environment.cwd} and probes for the project marker through {@link FileSystem.exists}, and so resolves
- * deterministically against the in-memory fakes in tests. It uses `node:path` (`join`/`dirname`/`resolve`) —
- * pure string operations the import-boundary rule permits in the core — but never `node:fs`: every disk touch
- * goes through the port.
+ * {@link Environment.cwd} and probes for the workspace marker through {@link FileSystem.exists}, and so resolves
+ * deterministically against the in-memory fakes in tests. It selects `node:path.posix` or `node:path.win32`
+ * from the injected {@link Environment.platform} and uses that dialect's pure string operations — permitted
+ * by the core import-boundary rule — but never `node:fs`: every disk touch goes through the port.
  *
- * doc 10 ("Project context is explicit"): every command except `init` and the project-agnostic `template`
- * subcommands operates on a project identified by **walking up from the working directory until a
- * `manifest.yml` is found**, git-style; a global `-C/--project <path>` **overrides** that search and points
- * straight at a project root. The outcome is a discriminated {@link ProjectContext}: a *located* root, or an
- * explicit *no-project* result. Crucially, no-project is **data, not an exception** — the project-agnostic
+ * doc 10 ("Project context is explicit" + "Project context resolution"): every command except `init`, the
+ * project-agnostic `template` subcommands, and the machine-level installers operates on an authoring workspace,
+ * resolved by **walking up from the working directory until the workspace marker is found** — a directory holding
+ * the deliverable subdirectory `wip/` with a `wip/manifest.yml`, beside the authoring front door. The resolved
+ * workspace root is the directory that directly contains `wip/manifest.yml`, and the deliverable root is exactly
+ * `<workspace>/wip` (where the manifest, bundles, installer-skills, templates, and executor front door live).
+ * Because the walk keys on `wip/manifest.yml` at the *parent* of the deliverable, a command run anywhere within
+ * the workspace — the root, inside `wip/`, or inside a bundle at `wip/bundles/<id>/…` — resolves the **same**
+ * deliverable root. A global `-C/--project <path>` **overrides** that search and points straight at a workspace
+ * root elsewhere (the marker is checked at `<path>/wip/manifest.yml`, no walk-up). A bare directory that holds a
+ * `manifest.yml` directly (not under `wip/`) is **not** a workspace — only `wip/manifest.yml` identifies one.
+ * The outcome is a discriminated {@link ProjectContext}: a *located* workspace (both roots), or an explicit
+ * *no-workspace* result. Crucially, no-workspace is **data, not an exception** — the project-agnostic
  * `template list`/`show` tolerate it by falling back to built-ins, while a project-bound command maps it to a
  * Not-found domain error (task-23) at the command layer (naming the marker and suggesting `init`/`-C`). This
  * service itself never throws and never prints; it only *computes the context* and hands it back.
  */
 
-/** The project marker filename: a directory is a project root iff it directly contains this (doc 00/06). */
-export const PROJECT_MARKER = "manifest.yml";
+/** The deliverable subdirectory of an authoring workspace (docs 06/12): the workspace's `wip/` directory. */
+export const DELIVERABLE_DIR = "wip";
+
+/** The manifest filename inside the deliverable subdirectory — the leaf of the workspace marker (doc 10/06). */
+export const WORKSPACE_MANIFEST = "manifest.yml";
 
 /**
- * The result of {@link resolveContext}: either a located project root, or an explicit *no-project* outcome.
+ * The workspace marker, relative to a candidate directory: a directory is a workspace root iff it directly
+ * contains this `wip/manifest.yml` (doc 10 "Project context resolution"). The marker is `wip/manifest.yml`
+ * rather than a bare `manifest.yml` (whose presence at a directory would make an unwrapped deliverable look like
+ * a workspace) or the gitignored `.authoring-backlog/` (absent after a fresh clone).
+ */
+export const WORKSPACE_MARKER = posix.join(DELIVERABLE_DIR, WORKSPACE_MANIFEST);
+
+/**
+ * The result of {@link resolveContext}: either a located workspace (its workspace root and the nested
+ * deliverable root), or an explicit *no-workspace* outcome.
  *
  * A discriminated union on `found` so callers must handle both arms. `{ found: false }` is a normal,
  * inspectable value — **never a thrown error** (doc 13 §7): project-agnostic callers (`template list`/`show`)
@@ -35,7 +56,13 @@ export const PROJECT_MARKER = "manifest.yml";
  * command layer.
  */
 export type ProjectContext =
-  | { readonly found: true; readonly root: string }
+  | {
+      readonly found: true;
+      /** The authoring workspace root: the directory that directly contains `wip/manifest.yml`. */
+      readonly workspaceRoot: string;
+      /** The deliverable root — exactly `<workspaceRoot>/wip` — every project-bound command reads and writes. */
+      readonly deliverableRoot: string;
+    }
   | { readonly found: false };
 
 /** The injected dependencies a resolution needs: the environment and filesystem ports (doc 13 §3). */
@@ -49,49 +76,68 @@ export interface ResolveDeps {
 /** Options that steer a resolution. */
 export interface ResolveOptions {
   /**
-   * The `-C/--project <path>` override (doc 10). When present it **replaces** the upward search: it points at
-   * a project root directly, the marker is checked at *that* directory only (no walk-up), and a relative value
-   * is resolved against the working directory ({@link Environment.cwd}).
+   * The `-C/--project <path>` override (doc 10). When present it **replaces** the upward search: it points at a
+   * workspace root directly, the marker `wip/manifest.yml` is checked at *that* directory only (no walk-up), and
+   * a relative value is resolved against the working directory ({@link Environment.cwd}).
    */
   readonly projectOverride?: string;
+}
+
+/** The pure path operations context resolution uses after selecting a platform dialect. */
+type PathDialect = typeof posix;
+
+/** Build the located-workspace context for a confirmed workspace root: its root plus the nested deliverable. */
+function located(workspaceRoot: string, path: PathDialect): ProjectContext {
+  return {
+    found: true,
+    workspaceRoot,
+    deliverableRoot: path.join(workspaceRoot, DELIVERABLE_DIR),
+  };
 }
 
 /**
  * Resolve the project context for a command (doc 13 §7).
  *
  * - **With an override** (`opts.projectOverride`): resolve it against the working directory (so both absolute
- *   and relative overrides work), then check the marker at *exactly* that directory — no upward walk. Present
- *   → that directory is the root; absent → no-project.
+ *   and relative overrides work) to a candidate workspace root, then check the marker `wip/manifest.yml` at
+ *   *exactly* that directory — no upward walk. Present → that directory is the workspace root (and `<dir>/wip`
+ *   the deliverable root); absent → no-workspace.
  * - **Without an override**: walk upward from {@link Environment.cwd}, git-style, returning the **nearest**
- *   ancestor that directly contains {@link PROJECT_MARKER}. If the filesystem root is reached without a hit,
- *   the result is no-project. The walk always terminates: it stops the moment a directory's parent equals
+ *   ancestor that directly contains the marker `wip/manifest.yml`. If the filesystem root is reached without a
+ *   hit, the result is no-workspace. The walk always terminates: it stops the moment a directory's parent equals
  *   itself (`dirname(dir) === dir`, the filesystem root), so it can neither loop forever nor step past root.
  *
- * Never throws and never performs output — a missing project is reported as `{ found: false }` (the command
+ * Never throws and never performs output — a missing workspace is reported as `{ found: false }` (the command
  * layer decides whether that is fatal).
  *
  * @param deps - The injected environment + filesystem ports.
  * @param opts - Optional resolution options (the `-C/--project` override).
- * @returns The located project root, or an explicit no-project result.
+ * @returns The located workspace (workspace + deliverable roots), or an explicit no-workspace result.
  */
 export function resolveContext(deps: ResolveDeps, opts?: ResolveOptions): ProjectContext {
   const { fs, env } = deps;
+  // The environment port—not the host running this JavaScript process—is authoritative. This keeps the
+  // default Linux/POSIX fake deterministic on a Windows test runner while a real or fake Win32 environment
+  // still receives native drive-rooted path semantics.
+  const path: PathDialect = env.platform() === "win32" ? win32 : posix;
 
   const override = opts?.projectOverride;
   if (override !== undefined) {
-    // The override points AT a project root: resolve it against cwd (absolute overrides resolve to
-    // themselves), then check the marker there and only there — never walk up from an override.
-    const root = resolve(env.cwd(), override);
-    return fs.exists(join(root, PROJECT_MARKER)) ? { found: true, root } : { found: false };
+    // The override points AT a workspace root: resolve it against cwd (absolute overrides resolve to
+    // themselves), then check `wip/manifest.yml` there and only there — never walk up from an override.
+    const workspaceRoot = path.resolve(env.cwd(), override);
+    return fs.exists(path.join(workspaceRoot, WORKSPACE_MARKER))
+      ? located(workspaceRoot, path)
+      : { found: false };
   }
 
   // No override: walk upward from cwd until the marker is found or the filesystem root is passed.
   let dir = env.cwd();
   while (true) {
-    if (fs.exists(join(dir, PROJECT_MARKER))) {
-      return { found: true, root: dir };
+    if (fs.exists(path.join(dir, WORKSPACE_MARKER))) {
+      return located(dir, path);
     }
-    const parent = dirname(dir);
+    const parent = path.dirname(dir);
     if (parent === dir) {
       // `dirname` of the filesystem root is the root itself — we have checked it and found nothing.
       return { found: false };

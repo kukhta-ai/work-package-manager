@@ -1,7 +1,7 @@
-import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { execaSync } from "execa";
 import { afterAll, describe, expect, it } from "vitest";
 
 /**
@@ -18,7 +18,6 @@ import { afterAll, describe, expect, it } from "vitest";
 
 const repoRoot = resolve(fileURLToPath(new URL("../..", import.meta.url)));
 const coreDir = join(repoRoot, "src", "core");
-const biomeBin = join(repoRoot, "node_modules", ".bin", "biome");
 
 /**
  * Absolute paths of every fixture we may create. Names are suffixed with the process id so that two
@@ -39,24 +38,34 @@ let createdCoreDir = false;
 /**
  * Run `biome check` on a single file and return its exit code and combined output.
  *
- * Biome exits non-zero when it reports any diagnostic, so {@link execFileSync} would throw; we catch that
- * and read `status` / `stdout` / `stderr` off the error instead, giving a uniform result either way.
+ * Biome exits non-zero when it reports a diagnostic. Execa resolves the local npm binary cross-platform and,
+ * with rejection disabled, preserves stdout/stderr plus an explicit launch diagnostic when no process starts.
  *
  * @param filePath - Absolute path of the file to check.
  * @returns The process exit `code` (non-null) and the combined stdout+stderr `output`.
  */
 function biomeCheck(filePath: string): { code: number; output: string } {
-  try {
-    const stdout = execFileSync(biomeBin, ["check", filePath], {
-      cwd: repoRoot,
-      encoding: "utf8",
-      stdio: ["ignore", "pipe", "pipe"],
-    });
-    return { code: 0, output: stdout };
-  } catch (err) {
-    const e = err as { status?: number | null; stdout?: string; stderr?: string };
-    return { code: e.status ?? 1, output: `${e.stdout ?? ""}${e.stderr ?? ""}` };
-  }
+  const result = execaSync("biome", ["check", filePath], {
+    cwd: repoRoot,
+    preferLocal: true,
+    localDir: repoRoot,
+    reject: false,
+    stdin: "ignore",
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+  const stdout = typeof result.stdout === "string" ? result.stdout : "";
+  const stderr = typeof result.stderr === "string" ? result.stderr : "";
+  const launchDiagnostic =
+    result.exitCode === undefined
+      ? ([result.shortMessage, result.originalMessage, result.message].find(
+          (value): value is string => typeof value === "string" && value.length > 0,
+        ) ?? "Biome process did not launch")
+      : "";
+  return {
+    code: result.exitCode ?? -1,
+    output: [stdout, stderr, launchDiagnostic].filter((value) => value.length > 0).join("\n"),
+  };
 }
 
 /**

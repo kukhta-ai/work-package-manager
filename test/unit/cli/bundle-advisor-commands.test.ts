@@ -55,11 +55,11 @@ function seed(): { fs: MemoryFileSystem; backlog: FakeBacklog } {
   const backlog = new FakeBacklog();
 
   fs.write(
-    `${PROJ}/manifest.yml`,
+    `${PROJ}/wip/manifest.yml`,
     "project:\n  name: demo\n  version: 1.0.0\ntargets:\n  - claude-code\nbundles:\n  - a\n",
   );
-  fs.write(`${PROJ}/bundles/a/bundle.yml`, A_BUNDLE_YML);
-  fs.makeDirectories(`${PROJ}/installer-skills`);
+  fs.write(`${PROJ}/wip/bundles/a/bundle.yml`, A_BUNDLE_YML);
+  fs.makeDirectories(`${PROJ}/wip/installer-skills`);
   backlog.init(AUTHORING, { taskPrefix: "authoring" });
 
   // Project template snippets: the front-door + orchestrator the ④ RERENDER needs, PLUS the advisor snippet the
@@ -89,7 +89,7 @@ function deps(fs: MemoryFileSystem, backlog: FakeBacklog, cwd = "/elsewhere"): C
 
 /** The advisor stub path for bundle `<id>` under /proj. */
 function advisorPath(id: string): string {
-  return `${PROJ}/installer-skills/${id}-advisor/SKILL.md`;
+  return `${PROJ}/wip/installer-skills/${id}-advisor/SKILL.md`;
 }
 
 /** The titles of the (active, non-archived) tasks the FakeBacklog holds in the authoring backlog. */
@@ -195,7 +195,7 @@ describe("bundle <id> advisor add (task-80 — a MUTATION)", () => {
     expect(await run(["bundle", "a", "advisor", "add", "-C", PROJ], deps(fs, backlog), io())).toBe(
       0,
     );
-    expect(fs.exists(`${PROJ}/AGENTS.md`)).toBe(true);
+    expect(fs.exists(`${PROJ}/wip/installer-skills/demo-installer/SKILL.md`)).toBe(true);
   });
 });
 
@@ -217,7 +217,7 @@ describe("bundle <id> advisor remove (task-81 — a MUTATION)", () => {
     );
     // the directory (and its SKILL.md) is gone:
     expect(fs.exists(advisorPath("a"))).toBe(false);
-    expect(fs.exists(`${PROJ}/installer-skills/a-advisor`)).toBe(false);
+    expect(fs.exists(`${PROJ}/wip/installer-skills/a-advisor`)).toBe(false);
     expect(i.out.text).toMatch(/changed: \d+ path/);
   });
 
@@ -264,8 +264,8 @@ describe("bundle <id> advisor remove (task-81 — a MUTATION)", () => {
   it("81#3 — removing an advisor that does not exist reports nothing to remove and makes no change; exit 0", async () => {
     const { fs, backlog } = seed();
     // no advisor was added.
-    const manifestBefore = fs.read(`${PROJ}/manifest.yml`);
-    const bundleBefore = fs.read(`${PROJ}/bundles/a/bundle.yml`);
+    const manifestBefore = fs.read(`${PROJ}/wip/manifest.yml`);
+    const bundleBefore = fs.read(`${PROJ}/wip/bundles/a/bundle.yml`);
 
     const i = io();
     expect(await run(["bundle", "a", "advisor", "remove", "-C", PROJ], deps(fs, backlog), i)).toBe(
@@ -273,9 +273,9 @@ describe("bundle <id> advisor remove (task-81 — a MUTATION)", () => {
     );
     // a "nothing to remove" message; NO directory created; manifest + bundle.yml untouched.
     expect(`${i.out.text}${i.err.text}`).toMatch(/nothing to remove/);
-    expect(fs.exists(`${PROJ}/installer-skills/a-advisor`)).toBe(false);
-    expect(fs.read(`${PROJ}/manifest.yml`)).toBe(manifestBefore);
-    expect(fs.read(`${PROJ}/bundles/a/bundle.yml`)).toBe(bundleBefore);
+    expect(fs.exists(`${PROJ}/wip/installer-skills/a-advisor`)).toBe(false);
+    expect(fs.read(`${PROJ}/wip/manifest.yml`)).toBe(manifestBefore);
+    expect(fs.read(`${PROJ}/wip/bundles/a/bundle.yml`)).toBe(bundleBefore);
   });
 
   it("81#3 — absence short-circuits BEFORE the task lookup (a stray content task is NOT touched)", async () => {
@@ -337,7 +337,7 @@ describe("bundle <id> advisor — end-to-end (add → remove → add round-trip)
     expect(authoringTitles(backlog)).toContain("Write advisor content for a");
     expect(i.out.text).toMatch(/materialised: 1 authoring task\(s\)/);
     // the author's hand-written bundle.yml comment survived every operation (the load path is undisturbed):
-    expect(fs.read(`${PROJ}/bundles/a/bundle.yml`)).toContain("# bundle a —");
+    expect(fs.read(`${PROJ}/wip/bundles/a/bundle.yml`)).toContain("# bundle a —");
   });
 
   it("the advisor group help lists add and remove", async () => {

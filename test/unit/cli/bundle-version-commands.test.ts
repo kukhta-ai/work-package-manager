@@ -62,20 +62,20 @@ function seed(opts: { requirers?: boolean; aYml?: string } = {}): {
   const enabled = withRequirer ? ["a", "b"] : ["a"];
 
   fs.write(
-    `${PROJ}/manifest.yml`,
+    `${PROJ}/wip/manifest.yml`,
     `project:\n  name: demo\n  version: 1.0.0\ntargets:\n  - claude-code\nbundles:\n${enabled
       .map((b) => `  - ${b}`)
       .join("\n")}\n`,
   );
-  fs.write(`${PROJ}/bundles/a/bundle.yml`, opts.aYml ?? A_BUNDLE_YML);
+  fs.write(`${PROJ}/wip/bundles/a/bundle.yml`, opts.aYml ?? A_BUNDLE_YML);
   if (withRequirer) {
     // bundle `b` REQUIRES `a` — so bumping `a` materialises the requirer-constraint task FOR `b`.
     fs.write(
-      `${PROJ}/bundles/b/bundle.yml`,
+      `${PROJ}/wip/bundles/b/bundle.yml`,
       "id: b\nversion: 0.1.0\nsummary: bundle b\nconfirmation: safe\nrequires:\n  a: ^0.1.0\n",
     );
   }
-  fs.makeDirectories(`${PROJ}/installer-skills`);
+  fs.makeDirectories(`${PROJ}/wip/installer-skills`);
   backlog.init(AUTHORING, { taskPrefix: "authoring" });
 
   fs.write(`${BUILTIN}/project/minimal/template.yml`, "name: minimal\nscope: project\n");
@@ -103,7 +103,7 @@ function deps(fs: MemoryFileSystem, backlog: FakeBacklog, cwd = "/elsewhere"): C
 
 /** The parsed `bundle.yml` of `<id>` on disk. */
 function bundleYml(fs: MemoryFileSystem, id: string) {
-  return parseBundleManifest(parseYaml(fs.read(`${PROJ}/bundles/${id}/bundle.yml`)));
+  return parseBundleManifest(parseYaml(fs.read(`${PROJ}/wip/bundles/${id}/bundle.yml`)));
 }
 
 /** The `version` field of `<id>`'s bundle.yml on disk. */
@@ -124,14 +124,14 @@ function authoringTitles(backlog: FakeBacklog): string[] {
 describe("bundle <id> version (task-59 — a READ)", () => {
   it("AC#1/#2 — prints the bundle's bundle.yml version to stdout, read-only, exit 0", async () => {
     const { fs, backlog } = seed();
-    const manifestBefore = fs.read(`${PROJ}/manifest.yml`);
-    const aBefore = fs.read(`${PROJ}/bundles/a/bundle.yml`);
+    const manifestBefore = fs.read(`${PROJ}/wip/manifest.yml`);
+    const aBefore = fs.read(`${PROJ}/wip/bundles/a/bundle.yml`);
     const i = io();
     expect(await run(["bundle", "a", "version", "-C", PROJ], deps(fs, backlog), i)).toBe(0);
     expect(i.out.text.trim()).toBe("0.1.0");
     // read-only: nothing on disk changed.
-    expect(fs.read(`${PROJ}/manifest.yml`)).toBe(manifestBefore);
-    expect(fs.read(`${PROJ}/bundles/a/bundle.yml`)).toBe(aBefore);
+    expect(fs.read(`${PROJ}/wip/manifest.yml`)).toBe(manifestBefore);
+    expect(fs.read(`${PROJ}/wip/bundles/a/bundle.yml`)).toBe(aBefore);
   });
 
   it("AC#3 — outside any project, exits 1 naming manifest.yml and suggesting init", async () => {
@@ -193,7 +193,7 @@ describe("bundle <id> version bump (task-60 — a MUTATION)", () => {
     // written to the bundle.yml on disk:
     expect(bundleVersion(fs, "a")).toBe(expected);
     // the leading comment SURVIVED (task-13 comment preservation):
-    expect(fs.read(`${PROJ}/bundles/a/bundle.yml`)).toContain("# bundle a comment");
+    expect(fs.read(`${PROJ}/wip/bundles/a/bundle.yml`)).toContain("# bundle a comment");
   });
 
   it("AC#1 — comment AND key order are preserved across the bump", async () => {
@@ -201,7 +201,7 @@ describe("bundle <id> version bump (task-60 — a MUTATION)", () => {
     expect(
       await run(["bundle", "a", "version", "bump", "minor", "-C", PROJ], deps(fs, backlog), io()),
     ).toBe(0);
-    const text = fs.read(`${PROJ}/bundles/a/bundle.yml`);
+    const text = fs.read(`${PROJ}/wip/bundles/a/bundle.yml`);
     expect(text).toContain("# bundle a — version is bumped via `wpm bundle a version bump`");
     const keyOrder = text
       .split("\n")
@@ -275,21 +275,21 @@ describe("bundle <id> version bump (task-60 — a MUTATION)", () => {
 
   it("AC#3 — an INVALID level is a usage error (exit 2) changing nothing", async () => {
     const { fs, backlog } = seed();
-    const before = fs.read(`${PROJ}/bundles/a/bundle.yml`);
+    const before = fs.read(`${PROJ}/wip/bundles/a/bundle.yml`);
     const i = io();
     expect(
       await run(["bundle", "a", "version", "bump", "sideways", "-C", PROJ], deps(fs, backlog), i),
     ).toBe(2);
-    expect(fs.read(`${PROJ}/bundles/a/bundle.yml`)).toBe(before);
+    expect(fs.read(`${PROJ}/wip/bundles/a/bundle.yml`)).toBe(before);
   });
 
   it("AC#3 — a MISSING level is a usage error (exit 2) changing nothing", async () => {
     const { fs, backlog } = seed();
-    const before = fs.read(`${PROJ}/bundles/a/bundle.yml`);
+    const before = fs.read(`${PROJ}/wip/bundles/a/bundle.yml`);
     expect(await run(["bundle", "a", "version", "bump", "-C", PROJ], deps(fs, backlog), io())).toBe(
       2,
     );
-    expect(fs.read(`${PROJ}/bundles/a/bundle.yml`)).toBe(before);
+    expect(fs.read(`${PROJ}/wip/bundles/a/bundle.yml`)).toBe(before);
   });
 
   it("AC#4 — outside any project, exits 1 naming manifest.yml", async () => {
@@ -306,7 +306,7 @@ describe("bundle <id> version bump (task-60 — a MUTATION)", () => {
     expect(
       await run(["bundle", "a", "version", "bump", "minor", "-C", PROJ], deps(fs, backlog), io()),
     ).toBe(0);
-    expect(fs.exists(`${PROJ}/AGENTS.md`)).toBe(true);
+    expect(fs.exists(`${PROJ}/wip/installer-skills/demo-installer/SKILL.md`)).toBe(true);
   });
 
   it("AC#5 — help is substantive (usage, the level positional + its values, an example)", async () => {
@@ -335,8 +335,8 @@ describe("bundle <id> version set (task-61 — a MUTATION)", () => {
     ).toBe(0);
     expect(i.out.text).toContain("2.5.0");
     expect(bundleVersion(fs, "a")).toBe("2.5.0");
-    expect(fs.read(`${PROJ}/bundles/a/bundle.yml`)).toContain("# bundle a —");
-    expect(fs.exists(`${PROJ}/AGENTS.md`)).toBe(true); // ④ re-rendered
+    expect(fs.read(`${PROJ}/wip/bundles/a/bundle.yml`)).toContain("# bundle a —");
+    expect(fs.exists(`${PROJ}/wip/installer-skills/demo-installer/SKILL.md`)).toBe(true); // ④ re-rendered
   });
 
   it("AC#1 — set does NOT materialise authoring tasks", async () => {
@@ -349,7 +349,7 @@ describe("bundle <id> version set (task-61 — a MUTATION)", () => {
 
   it("AC#2 — a NON-semver value is a usage error (exit 2) changing nothing", async () => {
     const { fs, backlog } = seed();
-    const before = fs.read(`${PROJ}/bundles/a/bundle.yml`);
+    const before = fs.read(`${PROJ}/wip/bundles/a/bundle.yml`);
     const i = io();
     expect(
       await run(
@@ -359,16 +359,16 @@ describe("bundle <id> version set (task-61 — a MUTATION)", () => {
       ),
     ).toBe(2);
     expect(i.err.text).toMatch(/semantic version/i);
-    expect(fs.read(`${PROJ}/bundles/a/bundle.yml`)).toBe(before);
+    expect(fs.read(`${PROJ}/wip/bundles/a/bundle.yml`)).toBe(before);
   });
 
   it("AC#2 — a PARTIAL version (1.2) is rejected as a usage error (exit 2) changing nothing", async () => {
     const { fs, backlog } = seed();
-    const before = fs.read(`${PROJ}/bundles/a/bundle.yml`);
+    const before = fs.read(`${PROJ}/wip/bundles/a/bundle.yml`);
     expect(
       await run(["bundle", "a", "version", "set", "1.2", "-C", PROJ], deps(fs, backlog), io()),
     ).toBe(2);
-    expect(fs.read(`${PROJ}/bundles/a/bundle.yml`)).toBe(before);
+    expect(fs.read(`${PROJ}/wip/bundles/a/bundle.yml`)).toBe(before);
   });
 
   it("AC#3 — outside any project, exits 1 naming manifest.yml", async () => {
@@ -414,7 +414,7 @@ describe("bundle <id> version — end-to-end author workflow (read → bump → 
     expect(i.out.text.trim()).toBe("5.6.7");
 
     // the author's hand-written comment survived every write:
-    expect(fs.read(`${PROJ}/bundles/a/bundle.yml`)).toContain("# bundle a —");
+    expect(fs.read(`${PROJ}/wip/bundles/a/bundle.yml`)).toContain("# bundle a —");
     // bundle b (the requirer) was never touched:
     expect(bundleVersion(fs, "b")).toBe("0.1.0");
   });

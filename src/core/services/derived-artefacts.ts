@@ -18,6 +18,16 @@ import { type RenderedFile, type RenderParams, renderSnippet } from "./render.js
 /** The canonical directory each scope alias points at, relative to the project (or bundle) root. */
 const INSTALLER_SKILLS_DIR = "installer-skills";
 
+/**
+ * The rendered path of the deliverable's **executor front door** within {@link DesiredArtefacts.files} (doc 12).
+ * The deriver always emits the front door at this canonical path. It is **author-owned** (doc 10): `init`
+ * relocates this one file to the reserved `wip/_AGENTS.md` and writes it ONCE, and the mutation lifecycle's
+ * re-render step (doc 13 §5 ④) **excludes** it — only the `<project>-installer/SKILL.md` orchestrator and the
+ * scope aliases stay auto-derived on every mutation, so an authoring agent never finds a regenerated
+ * `wip/AGENTS.md` directive. (task-90 finalizes the build-time strip + per-bundle front doors.)
+ */
+export const EXECUTOR_FRONT_DOOR_PATH = "AGENTS.md";
+
 /** One scope alias to create: a symlink at `linkPath` pointing at the `aliasTo` `installer-skills/` dir. */
 export interface AliasPlanEntry {
   /** The target agent this alias serves. */

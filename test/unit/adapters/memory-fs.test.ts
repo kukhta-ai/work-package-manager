@@ -146,10 +146,49 @@ describe("MemoryFileSystem (the in-memory FileSystem fake — AC#1)", () => {
     expect(cyc.exists("/x")).toBe(false);
   });
 
+  it("a RELATIVE alias reads back relative (readlink parity) and resolves against the link's parent dir (TASK-102)", () => {
+    const fs = new MemoryFileSystem();
+    // Model the per-bundle `backlog → install-backlog` link: relative target, created beside install-backlog.
+    fs.write("/bundles/web/install-backlog/config.yml", "task_prefix: web\n");
+    fs.ensureAlias("install-backlog", "/bundles/web/backlog");
+
+    // The stored target is the RAW relative string (what `readlinkSync` would return) — never absolutized:
+    expect(fs.aliasTarget("/bundles/web/backlog")).toBe("install-backlog");
+    // …yet `exists` resolves it against the LINK's parent (POSIX symlink semantics), so it points at the real
+    // install-backlog dir — not `/install-backlog`:
+    expect(fs.exists("/bundles/web/backlog")).toBe(true);
+    expect(fs.exists("/install-backlog")).toBe(false);
+
+    // A relative link whose target is absent resolves to false (dangling), like a real symlink:
+    fs.ensureAlias("install-backlog", "/bundles/empty/backlog");
+    expect(fs.exists("/bundles/empty/backlog")).toBe(false);
+  });
+
   it("normalizes paths (trailing slash, '.', '..') consistently", () => {
     const fs = new MemoryFileSystem();
     fs.write("/a/b/../c.txt", "v");
     expect(fs.read("/a/c.txt")).toBe("v");
     expect(fs.exists("/a/c.txt/")).toBe(true);
+  });
+});
+
+describe("MemoryFileSystem alias observations", () => {
+  it("records an absolute Win32 target as POSIX and resolves it in the fake namespace", () => {
+    const fs = new MemoryFileSystem();
+    fs.write("C:\\work\\proj\\installer-skills\\demo\\SKILL.md", "# demo\n");
+
+    fs.ensureAlias("C:\\work\\proj\\installer-skills", "C:\\work\\proj\\.claude\\skills");
+
+    expect(fs.aliasTarget("C:\\work\\proj\\.claude\\skills")).toBe("C:/work/proj/installer-skills");
+    expect(fs.exists("C:\\work\\proj\\.claude\\skills")).toBe(true);
+  });
+
+  it("preserves relative alias targets byte-for-byte", () => {
+    const fs = new MemoryFileSystem();
+    fs.ensureAlias("install-backlog", "/proj/bundles/web/backlog");
+    fs.ensureAlias("nested\\relative-target", "/proj/other-alias");
+
+    expect(fs.aliasTarget("/proj/bundles/web/backlog")).toBe("install-backlog");
+    expect(fs.aliasTarget("/proj/other-alias")).toBe("nested\\relative-target");
   });
 });

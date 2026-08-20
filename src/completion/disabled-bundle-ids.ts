@@ -27,13 +27,13 @@ export function disabledBundleIds(ctx: CompletionContext): string[] {
   if (!context.found) {
     return [];
   }
-  const manifest = parseManifest(parseYaml(ctx.fs.read(`${context.root}/manifest.yml`)));
+  const manifest = parseManifest(parseYaml(ctx.fs.read(`${context.deliverableRoot}/manifest.yml`)));
   if (!manifest.ok) {
     return [];
   }
   const enabled = new Set<string>(manifest.value.bundles as readonly string[]);
 
-  const bundlesDir = `${context.root}/bundles`;
+  const bundlesDir = `${context.deliverableRoot}/bundles`;
   if (!ctx.fs.exists(bundlesDir)) {
     return [];
   }

@@ -2,6 +2,16 @@
 
 The current, settled structure of a ready-to-install bundle-project, using `hermes-handoff` as the worked example (a plugin that lets an agent hand the interface back to the human, organised as several independent bundles with `requires` dependencies between them). Names are kebab-case throughout; the only exceptions are externally-standardized filenames (`AGENTS.md`, `CLAUDE.md`, `README.md`, `SKILL.md`, `LICENSE.txt`, Backlog.md's `config.yml`), which their specs fix. Run-time state and the uninstall receipt live inside the bundle backlogs' task records — not in a separate store; the field-level templates are in `07`.
 
+## Authoring workspace vs. shipped artifact
+
+The structure below is the **shipped artifact** — what the end user receives and the executing agent installs. During authoring it does not sit bare at the project root; the builder generates an **authoring workspace** that wraps it, so the deliverable's executor-facing front door never collides with the authoring agent's own surface. The workspace has three regions, named the same way across the design set:
+
+- **authoring workspace root** (the *workspace root*) — the authoring surface: the authoring front door and the authoring backlog (`.authoring-backlog/`, gitignored and builder-time only; `11`). This is where the authoring agent works.
+- **deliverable subdirectory `wip/`** — the bundle-project skeleton below (manifest, bundles, installer-skills, the executor front door — author-owned content the build promotes to the live front door at the archive root — and scope-alias symlinks) lives **under `wip/`** while it is being authored.
+- **build-output directory `builds/`** — where the build writes its archives, isolated from both the authoring surface and the deliverable.
+
+The **built archive is the release ship set derived from the `wip/` deliverable and un-nested to the archive root**. The build excludes authoring-only inputs (`bundles/bundle-template/`, disabled or orphaned direct children of `bundles/`, payload-skill packages not registered in their enabled bundle's `bundle.yml`, and unresolved builder-source `*.tmpl` files). A payload-skill registry path may name an arbitrary document basename (for example `custom/two.md`); its containing directory is the complete registered package and its nested `*.tmpl` assets remain runtime product content. To keep deregistration deterministic, payload-skill registry names are unique, paths are portable contained `/`-separated paths, and package roots may neither overlap one another nor reserved non-payload surfaces such as `payload/files`, `payload/templates`, installer skills/scripts, docs, the `install-backlog`/`backlog` recipe aliases, the optional `uninstall-backlog`, or agent scope aliases. A missing or invalid registered document fails build validation rather than widening the ship set. Runtime `*.tmpl` files under an enabled bundle's `payload/templates/` tree likewise remain product content. The build also rewrites the executor front door's reserved prefix (`_AGENTS.md` → `AGENTS.md`, plus the build-created `CLAUDE.md`/`GEMINI.md` aliases per targets; `12`). The workspace wrapper — the authoring front door, `.authoring-backlog/`, and `builds/` — is **never part of any shipped artifact**. So this document's contract is untouched by the workspace; only the deliverable's *location during authoring* moves under `wip/`. Everything below describes the releasable deliverable as it appears at the built archive's root after those exclusions and transforms. The workspace's own layout is in `11` (the authoring backlog) and `12` (the generated scaffold).
+
 ```
 LEGEND  [REQ] required   [OPT] optional
         Only AGENTS.md is live without registration; every skill in the repo is INERT
@@ -9,7 +19,7 @@ LEGEND  [REQ] required   [OPT] optional
         Run-time state (progress + the uninstall receipt) accumulates inside each
         install-backlog's task records — there is no separate state directory.
 
-hermes-handoff/                       one repo = one installable bundle-project
+hermes-handoff/                       the deliverable (= contents of wip/ during authoring; the archive root once built)
 │
 ├── AGENTS.md                  [REQ]  always-live front door: recognition + kickoff + the install shape +
 │                                     standing rules (contents in 07; full file-content catalogue below).
@@ -75,6 +85,9 @@ hermes-handoff/                       one repo = one installable bundle-project
     │   │       └── handoff-core/       name; inert until install copies them into the agent's scope.
     │   │           └── SKILL.md        Namespaced; descriptions written for RUNTIME triggers, not install.
     │   ├── installer-scripts/ [OPT]  install-time TOOLING — runs DURING install (probes, smoke tests); not delivered
+    │   ├── backlog → install-backlog  [REQ]  relative symlink so the Backlog.md CLI resolves the recipe from
+    │   │                                     inside the bundle (at authoring time AND when the executor works it)
+    │   ├── uninstall-backlog/ [OPT] authored reverse recipe for complex uninstall logic; independent of payload skills
     │   └── install-backlog/   [REQ]  THE RECIPE — shipped, versioned, replaced wholesale on update; holds NO receipt.
     │       │                         The agent stamps a persistent working copy elsewhere (the var/lib analog) and
     │       │                         fills THAT in — the filled-in copy is the receipt; its done migration tasks

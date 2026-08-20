@@ -44,7 +44,7 @@ function seed(version = "1.2.3"): { fs: MemoryFileSystem; backlog: FakeBacklog }
   const backlog = new FakeBacklog();
 
   fs.write(
-    `${PROJ}/manifest.yml`,
+    `${PROJ}/wip/manifest.yml`,
     [
       "project:",
       "  name: demo",
@@ -59,11 +59,11 @@ function seed(version = "1.2.3"): { fs: MemoryFileSystem; backlog: FakeBacklog }
   );
   // an enabled bundle so loadProject succeeds (full schema):
   fs.write(
-    `${PROJ}/bundles/web/bundle.yml`,
+    `${PROJ}/wip/bundles/web/bundle.yml`,
     "id: web\nversion: 0.1.0\nsummary: web bundle\nconfirmation: safe\nrequires: {}\n",
   );
   // the root alias TARGET dir exists, so a created scope alias is non-broken:
-  fs.makeDirectories(`${PROJ}/installer-skills`);
+  fs.makeDirectories(`${PROJ}/wip/installer-skills`);
   // the authoring backlog the lifecycle lists in ⑤ (version bump/set materialise nothing, but ④/⑤ still run):
   backlog.init(`${PROJ}/.authoring-backlog`, { taskPrefix: "authoring" });
 
@@ -91,7 +91,7 @@ function deps(fs: MemoryFileSystem, backlog: FakeBacklog, cwd = "/elsewhere"): C
 
 /** The `project.version` parsed from the manifest on disk. */
 function manifestVersion(fs: MemoryFileSystem): string {
-  const m = parseManifest(parseYaml(fs.read(`${PROJ}/manifest.yml`)));
+  const m = parseManifest(parseYaml(fs.read(`${PROJ}/wip/manifest.yml`)));
   if (!m.ok) throw new Error("manifest did not parse");
   return m.value.meta.version;
 }
@@ -99,12 +99,12 @@ function manifestVersion(fs: MemoryFileSystem): string {
 describe("project version (task-39 — a READ)", () => {
   it("AC#1/#2 — prints manifest.project.version to stdout, read-only, exit 0", async () => {
     const { fs, backlog } = seed("1.2.3");
-    const before = fs.read(`${PROJ}/manifest.yml`);
+    const before = fs.read(`${PROJ}/wip/manifest.yml`);
     const i = io();
     expect(await run(["project", "version", "-C", PROJ], deps(fs, backlog), i)).toBe(0);
     expect(i.out.text.trim()).toBe("1.2.3");
     // read-only: the manifest on disk is byte-identical:
-    expect(fs.read(`${PROJ}/manifest.yml`)).toBe(before);
+    expect(fs.read(`${PROJ}/wip/manifest.yml`)).toBe(before);
   });
 
   it("AC#3 — outside any project, exits non-zero naming manifest.yml and suggesting init", async () => {
@@ -146,7 +146,7 @@ describe("project version bump (task-40 — a MUTATION)", () => {
     // written to the manifest on disk:
     expect(manifestVersion(fs)).toBe(expected);
     // the hand-written comment SURVIVED (task-13 comment preservation):
-    expect(fs.read(`${PROJ}/manifest.yml`)).toContain(MANIFEST_COMMENT);
+    expect(fs.read(`${PROJ}/wip/manifest.yml`)).toContain(MANIFEST_COMMENT);
   });
 
   it("AC#3 — the derived front-door is re-rendered (it exists after the bump)", async () => {
@@ -154,12 +154,12 @@ describe("project version bump (task-40 — a MUTATION)", () => {
     expect(
       await run(["project", "version", "bump", "minor", "-C", PROJ], deps(fs, backlog), io()),
     ).toBe(0);
-    expect(fs.exists(`${PROJ}/AGENTS.md`)).toBe(true);
+    expect(fs.exists(`${PROJ}/wip/installer-skills/demo-installer/SKILL.md`)).toBe(true);
   });
 
   it("AC#2 — an INVALID level is a usage error (exit 2) changing nothing", async () => {
     const { fs, backlog } = seed("1.2.3");
-    const before = fs.read(`${PROJ}/manifest.yml`);
+    const before = fs.read(`${PROJ}/wip/manifest.yml`);
     const i = io();
     const code = await run(
       ["project", "version", "bump", "sideways", "-C", PROJ],
@@ -167,15 +167,15 @@ describe("project version bump (task-40 — a MUTATION)", () => {
       i,
     );
     expect(code).toBe(2);
-    expect(fs.read(`${PROJ}/manifest.yml`)).toBe(before); // unchanged
+    expect(fs.read(`${PROJ}/wip/manifest.yml`)).toBe(before); // unchanged
   });
 
   it("AC#2 — a MISSING level is a usage error (exit 2) changing nothing", async () => {
     const { fs, backlog } = seed("1.2.3");
-    const before = fs.read(`${PROJ}/manifest.yml`);
+    const before = fs.read(`${PROJ}/wip/manifest.yml`);
     const code = await run(["project", "version", "bump", "-C", PROJ], deps(fs, backlog), io());
     expect(code).toBe(2);
-    expect(fs.read(`${PROJ}/manifest.yml`)).toBe(before);
+    expect(fs.read(`${PROJ}/wip/manifest.yml`)).toBe(before);
   });
 
   it("AC#4 — outside any project, exits non-zero naming manifest.yml", async () => {
@@ -210,14 +210,14 @@ describe("project version set (task-41 — a MUTATION)", () => {
     ).toBe(0);
     expect(i.out.text).toContain("2.5.0");
     expect(manifestVersion(fs)).toBe("2.5.0");
-    expect(fs.read(`${PROJ}/manifest.yml`)).toContain(MANIFEST_COMMENT);
+    expect(fs.read(`${PROJ}/wip/manifest.yml`)).toContain(MANIFEST_COMMENT);
     // AC#3: the front-door was re-rendered:
-    expect(fs.exists(`${PROJ}/AGENTS.md`)).toBe(true);
+    expect(fs.exists(`${PROJ}/wip/installer-skills/demo-installer/SKILL.md`)).toBe(true);
   });
 
   it("AC#2 — a NON-semver value is a usage error (exit 2) changing nothing", async () => {
     const { fs, backlog } = seed("1.2.3");
-    const before = fs.read(`${PROJ}/manifest.yml`);
+    const before = fs.read(`${PROJ}/wip/manifest.yml`);
     const i = io();
     const code = await run(
       ["project", "version", "set", "not-a-version", "-C", PROJ],
@@ -226,19 +226,19 @@ describe("project version set (task-41 — a MUTATION)", () => {
     );
     expect(code).toBe(2);
     expect(i.err.text).toMatch(/semantic version/i);
-    expect(fs.read(`${PROJ}/manifest.yml`)).toBe(before); // unchanged
+    expect(fs.read(`${PROJ}/wip/manifest.yml`)).toBe(before); // unchanged
   });
 
   it("AC#2 — a PARTIAL version (1.2) is rejected as a usage error (exit 2) changing nothing", async () => {
     const { fs, backlog } = seed("1.2.3");
-    const before = fs.read(`${PROJ}/manifest.yml`);
+    const before = fs.read(`${PROJ}/wip/manifest.yml`);
     const code = await run(
       ["project", "version", "set", "1.2", "-C", PROJ],
       deps(fs, backlog),
       io(),
     );
     expect(code).toBe(2);
-    expect(fs.read(`${PROJ}/manifest.yml`)).toBe(before);
+    expect(fs.read(`${PROJ}/wip/manifest.yml`)).toBe(before);
   });
 
   it("AC#4 — outside any project, exits non-zero naming manifest.yml", async () => {
@@ -292,7 +292,7 @@ describe("project version — end-to-end author workflow (39 → 40 → 39 → 4
     expect(i.out.text.trim()).toBe("5.6.7");
 
     // the author's hand-written comment survived every write:
-    expect(fs.read(`${PROJ}/manifest.yml`)).toContain(MANIFEST_COMMENT);
+    expect(fs.read(`${PROJ}/wip/manifest.yml`)).toContain(MANIFEST_COMMENT);
   });
 });
 

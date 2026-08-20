@@ -43,7 +43,7 @@ function writeBundle(
       ? "requires: {}"
       : ["requires:", ...Object.entries(requires).map(([k, v]) => `  ${k}: ${v}`)].join("\n");
   fs.write(
-    `${PROJ}/bundles/${id}/bundle.yml`,
+    `${PROJ}/wip/bundles/${id}/bundle.yml`,
     `id: ${id}\nversion: ${version}\nsummary: ${summary}\nconfirmation: safe\n${requiresBlock}\n`,
   );
 }
@@ -58,7 +58,7 @@ function seed(): { fs: MemoryFileSystem; backlog: FakeBacklog } {
   const backlog = new FakeBacklog();
 
   fs.write(
-    `${PROJ}/manifest.yml`,
+    `${PROJ}/wip/manifest.yml`,
     [
       "project:",
       "  name: demo",
@@ -75,7 +75,7 @@ function seed(): { fs: MemoryFileSystem; backlog: FakeBacklog } {
   );
   writeBundle(fs, "web", "0.5.0", "the web onboarding bundle");
   writeBundle(fs, "docs", "1.0.0", "the docs bundle", { web: "^0.5.0" });
-  fs.makeDirectories(`${PROJ}/installer-skills`);
+  fs.makeDirectories(`${PROJ}/wip/installer-skills`);
   backlog.init(`${PROJ}/.authoring-backlog`, { taskPrefix: "authoring" });
 
   fs.write(`${BUILTIN}/project/minimal/template.yml`, "name: minimal\nscope: project\n");
@@ -128,7 +128,7 @@ describe("project show (task-37 — a READ)", () => {
     expect(parsed.name).toBe("demo");
     expect(parsed.version).toBe("1.2.0");
     expect(parsed.description).toBe("a demo installer project");
-    expect(parsed.root).toBe(PROJ);
+    expect(parsed.root).toBe(`${PROJ}/wip`); // the DELIVERABLE root (doc 10: project show/root print wip/)
     expect(parsed.targets).toEqual(["claude-code", "codex"]);
     // the bundle versions are read from each bundle.yml and present in the JSON:
     expect(parsed.bundles).toEqual([
@@ -139,10 +139,10 @@ describe("project show (task-37 — a READ)", () => {
 
   it("AC#3 — reads only, no change on disk, exit 0", async () => {
     const { fs, backlog } = seed();
-    const before = fs.read(`${PROJ}/manifest.yml`);
+    const before = fs.read(`${PROJ}/wip/manifest.yml`);
     const i = io();
     expect(await run(["project", "show", "-C", PROJ], deps(fs, backlog), i)).toBe(0);
-    expect(fs.read(`${PROJ}/manifest.yml`)).toBe(before);
+    expect(fs.read(`${PROJ}/wip/manifest.yml`)).toBe(before);
   });
 
   it("AC#4 — outside any project, exits 1 naming manifest.yml + init; a -C path is honoured", async () => {
@@ -198,20 +198,21 @@ describe("project show — text and --json render the SAME orientation (one proj
 describe("project root (task-49 — a READ)", () => {
   it("AC#1/#2 — prints the resolved root on a single line with NO padding, read-only, exit 0", async () => {
     const { fs, backlog } = seed();
-    const before = fs.read(`${PROJ}/manifest.yml`);
+    const before = fs.read(`${PROJ}/wip/manifest.yml`);
     const i = io();
     expect(await run(["project", "root", "-C", PROJ], deps(fs, backlog), i)).toBe(0);
-    // exactly the path + a single trailing newline — composable in $(...): no decoration, no padding.
-    expect(i.out.text).toBe(`${PROJ}\n`);
-    expect(fs.read(`${PROJ}/manifest.yml`)).toBe(before); // read-only
+    // exactly the DELIVERABLE path (the workspace's wip/) + a single trailing newline — composable in $(...):
+    // no decoration, no padding (doc 10: `project root` prints the wip/ path).
+    expect(i.out.text).toBe(`${PROJ}/wip\n`);
+    expect(fs.read(`${PROJ}/wip/manifest.yml`)).toBe(before); // read-only
   });
 
-  it("AC#1 — walks up from cwd INSIDE the project (no -C) and prints the nearest root", async () => {
+  it("AC#1 — walks up from cwd INSIDE the workspace (no -C) and prints the deliverable root", async () => {
     const { fs, backlog } = seed();
-    // cwd is a nested dir under the project; resolveContext walks up to /proj.
+    // cwd is a nested dir inside the deliverable; resolveContext walks up to the workspace /proj.
     const i = io();
-    expect(await run(["project", "root"], deps(fs, backlog, `${PROJ}/bundles/web`), i)).toBe(0);
-    expect(i.out.text).toBe(`${PROJ}\n`);
+    expect(await run(["project", "root"], deps(fs, backlog, `${PROJ}/wip/bundles/web`), i)).toBe(0);
+    expect(i.out.text).toBe(`${PROJ}/wip\n`);
   });
 
   it("AC#3 — outside any project, exits 1 naming manifest.yml", async () => {
@@ -229,16 +230,33 @@ describe("project root (task-49 — a READ)", () => {
     expect(help).toMatch(/Usage:/);
     expect(help).toContain("Example:");
   });
+
+  it("prints a Win32 resolved root as a portable logical path while context remains native", async () => {
+    const fs = new MemoryFileSystem();
+    const backlog = new FakeBacklog();
+    fs.write("C:\\work\\demo\\wip\\manifest.yml", "project:\n  name: demo\n  version: 0.1.0\n");
+    const i = io();
+    const winDeps: CliDeps = {
+      fs,
+      backlog,
+      clock: new FixedClock("2026-01-01T00:00:00.000Z"),
+      env: new FakeEnvironment({ cwd: "C:\\elsewhere", platform: "win32" }),
+      builtinTemplatesRoot: BUILTIN,
+    };
+
+    expect(await run(["project", "root", "-C", "C:\\work\\demo"], winDeps, i)).toBe(0);
+    expect(i.out.text).toBe("C:/work/demo/wip\n");
+  });
 });
 
 describe("project validate (task-48 — a READ that reports)", () => {
   it("AC#1/#4 — a coherent project reports a pass and exits 0, changing nothing", async () => {
     const { fs, backlog } = seed();
-    const before = fs.read(`${PROJ}/manifest.yml`);
+    const before = fs.read(`${PROJ}/wip/manifest.yml`);
     const i = io();
     expect(await run(["project", "validate", "-C", PROJ], deps(fs, backlog), i)).toBe(0);
     expect(i.out.text.toLowerCase()).toContain("coherent");
-    expect(fs.read(`${PROJ}/manifest.yml`)).toBe(before); // AC#3: no side effects
+    expect(fs.read(`${PROJ}/wip/manifest.yml`)).toBe(before); // AC#3: no side effects
   });
 
   it("AC#2/#4 — an incoherent project reports ALL findings in one pass and exits 1", async () => {
@@ -246,7 +264,7 @@ describe("project validate (task-48 — a READ that reports)", () => {
     // Make it incoherent in THREE distinct ways at once:
     //  (a) empty targets, (b) web requires a missing bundle 'core', (c) an orphan bundles/stray dir.
     fs.write(
-      `${PROJ}/manifest.yml`,
+      `${PROJ}/wip/manifest.yml`,
       [
         "project:",
         "  name: demo",
@@ -259,7 +277,7 @@ describe("project validate (task-48 — a READ that reports)", () => {
       ].join("\n"),
     );
     writeBundle(fs, "web", "0.5.0", "web", { core: "^2.0.0" }); // requires missing 'core'
-    fs.write(`${PROJ}/bundles/stray/note.txt`, "orphan dir, not a bundle"); // orphan directory
+    fs.write(`${PROJ}/wip/bundles/stray/note.txt`, "orphan dir, not a bundle"); // orphan directory
 
     const i = io();
     const code = await run(["project", "validate", "-C", PROJ], deps(fs, backlog), i);
@@ -277,19 +295,19 @@ describe("project validate (task-48 — a READ that reports)", () => {
   it("AC#3 — changes nothing even when it finds problems", async () => {
     const { fs, backlog } = seed();
     // a single, simple incoherence (orphan dir); assert the manifest + bundle.yml are untouched after validate.
-    fs.write(`${PROJ}/bundles/stray/note.txt`, "orphan");
-    const manifestBefore = fs.read(`${PROJ}/manifest.yml`);
-    const webBefore = fs.read(`${PROJ}/bundles/web/bundle.yml`);
+    fs.write(`${PROJ}/wip/bundles/stray/note.txt`, "orphan");
+    const manifestBefore = fs.read(`${PROJ}/wip/manifest.yml`);
+    const webBefore = fs.read(`${PROJ}/wip/bundles/web/bundle.yml`);
 
     const code = await run(["project", "validate", "-C", PROJ], deps(fs, backlog), io());
     expect(code).toBe(1);
-    expect(fs.read(`${PROJ}/manifest.yml`)).toBe(manifestBefore);
-    expect(fs.read(`${PROJ}/bundles/web/bundle.yml`)).toBe(webBefore);
+    expect(fs.read(`${PROJ}/wip/manifest.yml`)).toBe(manifestBefore);
+    expect(fs.read(`${PROJ}/wip/bundles/web/bundle.yml`)).toBe(webBefore);
   });
 
   it("AC#4 — the error message is a clean domain error (no stack frames)", async () => {
     const { fs, backlog } = seed();
-    fs.write(`${PROJ}/bundles/stray/note.txt`, "orphan");
+    fs.write(`${PROJ}/wip/bundles/stray/note.txt`, "orphan");
     const i = io();
     expect(await run(["project", "validate", "-C", PROJ], deps(fs, backlog), i)).toBe(1);
     expect(i.err.text).toMatch(/^error: /);
@@ -318,7 +336,7 @@ describe("project validate (task-48 — a READ that reports)", () => {
     const backlog = new FakeBacklog();
     const fs2 = new MemoryFileSystem();
     fs2.write(
-      `${PROJ}/manifest.yml`,
+      `${PROJ}/wip/manifest.yml`,
       [
         "project:",
         "  name: solo",

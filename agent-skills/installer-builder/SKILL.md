@@ -8,7 +8,12 @@ description: Author a bundle-project — a wpm agentic-installer that another pe
 You are helping a human author a **bundle-project**: a repository they hand to someone else, whose own AI agent
 then *installs* it. You drive the `wpm` CLI to scaffold and shape the project; you write the content; the
 recipient's agent does the actual install later. This skill is the when-to-use and the workflow shape — the
-depth lives in the three files under `references/`, which you read on demand.
+depth lives in the six files under `references/`, which you read on demand.
+
+**The bet you author into** (doc `00`): *intent plus verification, executed by a reasoning agent, beats fixed
+steps* — because the install runs on a machine you never see. So a recipe task states an **outcome to verify, not
+steps to replay**; the recipient's agent adapts the *how* to its environment, and the acceptance criteria prove
+it worked. This is the why behind the what-not-how AC contract (`references/task-conventions.md`) and all below.
 
 > The CLI binary is `wpm` (its `installer` alias is the same program). All examples below use `wpm`.
 
@@ -27,18 +32,18 @@ receipt, front-door, payload, authoring-backlog, target agent) is fixed.
 
 ## Two principles you operate under
 
-These decide who does what — keep them in mind the whole time.
+These decide who does what — hold them the whole time.
 
-- **Thin builder, fat agent.** `wpm` is a *thin builder*: it authors and packages instructions and **never runs
-  an install itself** — it never installs anything, embeds no runtime, and never reaches onto a target machine.
-  The CLI does mechanical structure (scaffold directories, edit YAML, register references) and materialises
-  *authoring tasks* for you; **you** are the *fat agent* — you do the authoring thinking and write every piece
-  of content (task bodies, SKILL.md bodies, payload files); the recipient's agent does the install. Don't wait
-  for the CLI to "do the install" or to invent prose — neither is its job.
+- **Thin builder, fat agent.** `wpm` is a *thin builder*: it authors and packages instructions but **never runs
+  an install itself** — it never installs anything, embeds no runtime, never reaches onto a target machine. The
+  CLI does mechanical structure (scaffold dirs, edit YAML, register references) and materialises *authoring
+  tasks*; **you** are the *fat agent* — you do the authoring thinking and write every piece of content (task
+  bodies, SKILL.md bodies, payload files); the recipient's agent does the install. Don't wait for the CLI to "do
+  the install" or to invent prose — neither is its job.
 - **SDLC-agnostic.** The product models **no particular development process**. If a project wants a disciplined
-  or unattended install — a Ralph-style loop, a review gate, spec-driven phases — the author **vendors** an
-  existing skill or loop-runner into the project's `installer-skills/`; it is *content*, never something built
-  into `wpm`. There is no built-in "workflow" mode to reach for, by design: `wpm` is and stays SDLC-agnostic.
+  or unattended install (a Ralph-style loop, a review gate, spec-driven phases), the author **vendors** an
+  existing skill or loop-runner into `installer-skills/` as *content* — there is no built-in "workflow" mode in
+  `wpm`, by design.
 
 ## The workflow, end to end
 
@@ -47,22 +52,24 @@ Drive it in this arc; the per-phase detail and the exact authoring-task list are
 
 1. **Elicit the author's intent** in your own words (what capability, for which agents, split into which
    bundles). There is no CLI command for this — it is your judgment.
-2. **Scaffold** with `wpm init <name> [--template minimal|single-bundle|multi-bundle]`. This creates the project
-   and materialises the project-wide authoring tasks into the hidden `.authoring-backlog/`.
+2. **Scaffold** with `wpm init <name> [--template minimal]` (`minimal` is the only project template that ships
+   today). This creates the **authoring workspace** — the deliverable wrapped in `wip/`, an empty `builds/`, and
+   the hidden `.authoring-backlog/` — and materialises the project-wide authoring tasks.
 3. **Add a bundle per capability** with `wpm bundle new <id>`. Each one materialises that bundle's authoring
    task set (plan / fill install-backlog / payload / review …).
 4. **Work the authoring-backlog task by task.** List it with Backlog.md, pick a task by title, set it In
    Progress, do the work, then self-attest it Done — the CLI never auto-closes a task. For each bundle:
    - set its metadata and dependencies: `wpm bundle <id> meta …`, `wpm bundle <id> requires add <dep> "^x.y.z"`;
-   - **fill its install-backlog by calling Backlog.md directly inside the bundle** — `cd bundles/<id> &&
-     backlog task create "…" -l "kind:state,step:<slug>" -m <version> --ac "…" --dod "…"` — building the
-     detect→setup→verify trio with the V2 tags (see `references/conventions.md`);
+   - **fill its install-backlog by calling Backlog.md directly inside the bundle** —
+     `backlog task create "…" -l "kind:state,step:<slug>" -m <version> --ac "…"` — building the
+     detect→setup→verify trio with the V2 tags (see `references/conventions.md` for the exact invocation);
    - author payload content with your editor, then **register** it: `wpm bundle <id> files add …`,
      `wpm bundle <id> skills add <name>`.
 5. **Validate and build.** `wpm build dry-run` (runs `project validate`), then `wpm build package`.
 
-`AGENTS.md` and the project's installer skill re-render automatically on every mutating command — there is no
-separate regenerate step.
+The `<project>-installer` orchestrator skill and the scope aliases re-render automatically on every mutating
+command (no separate regenerate step). Your **author-owned** executor front door `wip/_AGENTS.md` is *not*
+re-rendered — it is written once at `init` and you edit it by hand thereafter (see `references/conventions.md`).
 
 ## Which surface does what
 
@@ -80,5 +87,11 @@ separate regenerate step.
   doc `11`.
 - `references/conventions.md` — the V2 recipe-task tagging (`kind:` / `step:` / version milestone), the
   Backlog.md flag rules, and the structure-not-content / no-mirror rules, from doc `08`.
+- `references/quality-protocol.md` — the authoring quality discipline: the three author decisions, simulate the
+  executor, the leaked-coupling check, and the must-nots, from doc `04`.
+- `references/task-conventions.md` — the acceptance-criteria *what-not-how* contract for every recipe task you
+  write (observable outcomes, the seam-vs-stuffing rule, the fast classifier), from `docs/task-writing-conventions.md`.
+- `references/native-surfaces.md` — the native agent surfaces, the five skill roles (where each lives and what
+  triggers it), scoped skill discovery, and the executor front-door / per-target alias mechanic, from doc `05`.
 
 Keep this page in context; pull a reference in only when you reach for what it covers.

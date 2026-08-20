@@ -113,7 +113,7 @@ export function removeBundleSpec(): OperationSpec<RemoveBundleInput> {
      * present; step 3 deletes the dir regardless). The CLI shell already guards the "nothing to remove at all"
      * case (neither enabled nor on disk) and the confirmation; this beat assumes the bundle exists and is confirmed.
      */
-    apply: ({ fs, backlog, root }: ApplyContext, project, { id }): ApplyOutcome => {
+    apply: ({ fs, backlog, root, workspaceRoot }: ApplyContext, project, { id }): ApplyOutcome => {
       const changedPaths: string[] = [];
 
       // Step 2 — drop <id> from manifest.yml.bundles IF PRESENT (the SAME edit `disableBundleSpec` performs:
@@ -147,12 +147,13 @@ export function removeBundleSpec(): OperationSpec<RemoveBundleInput> {
       }
 
       // Step 5 — archive the bundle's authoring tasks whose titles NAME <id> (doc 10 row 153 step 5). The
-      // authoring backlog is the project's own Backlog.md root at <root>/.authoring-backlog (the SAME root the
-      // harness materialises into). `listTasks` already excludes archived tasks, so a re-run finds nothing to
-      // re-archive (idempotent). Prefix-collision-safe via `titleNamesBundle` (web must NOT match web-extra).
-      // The bundle is being destroyed, so its authoring tasks are tombstones — archive ALL that name it,
-      // regardless of status (a Done task is just as defunct as an open one once the bundle is gone).
-      const authoringRoot = join(root, AUTHORING_BACKLOG_DIR);
+      // authoring backlog is the workspace's own Backlog.md root at <workspace>/.authoring-backlog — at the
+      // WORKSPACE root, beside `wip/`, the SAME root the harness materialises into (task-88), NOT under the
+      // deliverable. `listTasks` already excludes archived tasks, so a re-run finds nothing to re-archive
+      // (idempotent). Prefix-collision-safe via `titleNamesBundle` (web must NOT match web-extra). The bundle is
+      // being destroyed, so its authoring tasks are tombstones — archive ALL that name it, regardless of status
+      // (a Done task is just as defunct as an open one once the bundle is gone).
+      const authoringRoot = join(workspaceRoot, AUTHORING_BACKLOG_DIR);
       for (const task of backlog.listTasks(authoringRoot)) {
         if (titleNamesBundle(task.title, id)) {
           backlog.archiveTask(authoringRoot, task.id);

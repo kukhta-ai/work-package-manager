@@ -48,7 +48,7 @@ function io(input?: string): CliIo & {
 /** Write one bundle's bundle.yml (the full schema). */
 function writeBundleYml(fs: MemoryFileSystem, id: string): void {
   fs.write(
-    `${PROJ}/bundles/${id}/bundle.yml`,
+    `${PROJ}/wip/bundles/${id}/bundle.yml`,
     `id: ${id}\nversion: 0.1.0\nsummary: ${id} bundle\nconfirmation: safe\nrequires: {}\n`,
   );
 }
@@ -69,7 +69,7 @@ function seed(opts: SeedOptions = {}): { fs: MemoryFileSystem; backlog: FakeBack
       ? `bundles:\n${enabled.map((b) => `  - ${b}`).join("\n")}\n`
       : "bundles: []\n";
   fs.write(
-    `${PROJ}/manifest.yml`,
+    `${PROJ}/wip/manifest.yml`,
     `project:\n  name: demo\n  version: 1.0.0\ntargets:\n  - claude-code\n${bundleLines}`,
   );
   for (const id of enabled) {
@@ -78,7 +78,7 @@ function seed(opts: SeedOptions = {}): { fs: MemoryFileSystem; backlog: FakeBack
   for (const id of opts.disabledDirs ?? []) {
     writeBundleYml(fs, id);
   }
-  fs.makeDirectories(`${PROJ}/installer-skills`);
+  fs.makeDirectories(`${PROJ}/wip/installer-skills`);
   backlog.init(AUTHORING, { taskPrefix: "authoring" });
 
   // Built-in minimal project template snippets the deriver resolves on ④ RERENDER.
@@ -108,7 +108,7 @@ function deps(fs: MemoryFileSystem, backlog: FakeBacklog, cwd = "/elsewhere"): C
 }
 
 function manifestBundles(fs: MemoryFileSystem): readonly string[] {
-  const m = parseManifest(parseYaml(fs.read(`${PROJ}/manifest.yml`)));
+  const m = parseManifest(parseYaml(fs.read(`${PROJ}/wip/manifest.yml`)));
   if (!m.ok) throw new Error("manifest did not parse");
   return m.value.bundles;
 }
@@ -131,7 +131,10 @@ function complete(
 /** Seed a project with `web` enabled, its advisor stub, and a couple of authoring tasks naming it. */
 function seedWebWithTasks(): { fs: MemoryFileSystem; backlog: FakeBacklog } {
   const { fs, backlog } = seed({ enabled: ["web"] });
-  fs.write(`${PROJ}/installer-skills/web-advisor/SKILL.md`, "---\nname: web-advisor\n---\nbody\n");
+  fs.write(
+    `${PROJ}/wip/installer-skills/web-advisor/SKILL.md`,
+    "---\nname: web-advisor\n---\nbody\n",
+  );
   backlog.createTask(AUTHORING, { title: "Plan bundle web" });
   backlog.createTask(AUTHORING, { title: "Write advisor content for web" });
   return { fs, backlog };
@@ -146,10 +149,10 @@ describe("bundle remove (task-53)", () => {
     );
 
     expect(manifestBundles(fs)).not.toContain("web"); // dropped from the manifest (AC#2)
-    expect(fs.exists(`${PROJ}/bundles/web`)).toBe(false); // dir deleted (AC#2)
-    expect(fs.exists(`${PROJ}/installer-skills/web-advisor`)).toBe(false); // advisor deleted (AC#2)
+    expect(fs.exists(`${PROJ}/wip/bundles/web`)).toBe(false); // dir deleted (AC#2)
+    expect(fs.exists(`${PROJ}/wip/installer-skills/web-advisor`)).toBe(false); // advisor deleted (AC#2)
     expect(backlog.listTasks(AUTHORING)).toHaveLength(0); // tasks archived (AC#2)
-    expect(fs.read(`${PROJ}/AGENTS.md`)).not.toContain("web"); // re-rendered out of the menu (AC#3)
+    expect(fs.exists(`${PROJ}/wip/AGENTS.md`)).toBe(false); // executor front door author-owned, not re-rendered (task-88)
     expect(i.out.text).toContain("removed bundle web"); // a summary is printed (AC#3)
     expect(i.out.text).toContain("+ advisor");
     expect(i.out.text).toContain("archived 2 authoring task(s)");
@@ -159,19 +162,19 @@ describe("bundle remove (task-53)", () => {
     const { fs, backlog } = seedWebWithTasks();
     const i = io("y\n"); // pipe an affirmative answer to stdin
     expect(await run(["bundle", "remove", "web", "-C", PROJ], deps(fs, backlog), i)).toBe(0);
-    expect(fs.exists(`${PROJ}/bundles/web`)).toBe(false);
+    expect(fs.exists(`${PROJ}/wip/bundles/web`)).toBe(false);
     expect(i.err.text).toMatch(/remove bundle "web"\?/); // the prompt was shown on stderr
   });
 
   it("AC#4 — declining (`n`) makes NO change and exits 0", async () => {
     const { fs, backlog } = seedWebWithTasks();
-    const before = fs.read(`${PROJ}/manifest.yml`);
+    const before = fs.read(`${PROJ}/wip/manifest.yml`);
     const i = io("n\n");
     expect(await run(["bundle", "remove", "web", "-C", PROJ], deps(fs, backlog), i)).toBe(0); // exit 0, NOT an error
     // nothing changed:
-    expect(fs.read(`${PROJ}/manifest.yml`)).toBe(before);
-    expect(fs.exists(`${PROJ}/bundles/web`)).toBe(true);
-    expect(fs.exists(`${PROJ}/installer-skills/web-advisor`)).toBe(true);
+    expect(fs.read(`${PROJ}/wip/manifest.yml`)).toBe(before);
+    expect(fs.exists(`${PROJ}/wip/bundles/web`)).toBe(true);
+    expect(fs.exists(`${PROJ}/wip/installer-skills/web-advisor`)).toBe(true);
     expect(backlog.listTasks(AUTHORING)).toHaveLength(2); // tasks untouched
     expect(i.out.text).toMatch(/aborted/i);
   });
@@ -180,7 +183,7 @@ describe("bundle remove (task-53)", () => {
     const { fs, backlog } = seedWebWithTasks();
     const i = io(""); // EOF with no input
     expect(await run(["bundle", "remove", "web", "-C", PROJ], deps(fs, backlog), i)).toBe(0);
-    expect(fs.exists(`${PROJ}/bundles/web`)).toBe(true); // unchanged
+    expect(fs.exists(`${PROJ}/wip/bundles/web`)).toBe(true); // unchanged
     expect(i.out.text).toMatch(/aborted/i);
   });
 
@@ -188,7 +191,7 @@ describe("bundle remove (task-53)", () => {
     const { fs, backlog } = seedWebWithTasks();
     const i = io(); // no `in` stream at all
     expect(await run(["bundle", "remove", "web", "-C", PROJ], deps(fs, backlog), i)).toBe(0);
-    expect(fs.exists(`${PROJ}/bundles/web`)).toBe(true); // unchanged
+    expect(fs.exists(`${PROJ}/wip/bundles/web`)).toBe(true); // unchanged
     expect(i.out.text).toMatch(/aborted/i);
   });
 
@@ -197,7 +200,7 @@ describe("bundle remove (task-53)", () => {
     expect(
       await run(["bundle", "remove", "draft", "--yes", "-C", PROJ], deps(fs, backlog), io()),
     ).toBe(0);
-    expect(fs.exists(`${PROJ}/bundles/draft`)).toBe(false);
+    expect(fs.exists(`${PROJ}/wip/bundles/draft`)).toBe(false);
     expect(manifestBundles(fs)).toContain("web"); // the enabled bundle is untouched
   });
 
@@ -210,17 +213,17 @@ describe("bundle remove (task-53)", () => {
       await run(["bundle", "remove", "web", "--yes", "-C", PROJ], deps(fs, backlog), io()),
     ).toBe(0);
     expect(backlog.listTasks(AUTHORING).map((t) => t.title)).toEqual(["Plan bundle web-extra"]);
-    expect(fs.exists(`${PROJ}/bundles/web-extra`)).toBe(true); // web-extra survives
+    expect(fs.exists(`${PROJ}/wip/bundles/web-extra`)).toBe(true); // web-extra survives
   });
 
   it("a non-existent bundle (neither enabled nor on disk) exits 1, changing nothing, BEFORE any prompt", async () => {
     const { fs, backlog } = seed({ enabled: ["web"] });
-    const before = fs.read(`${PROJ}/manifest.yml`);
+    const before = fs.read(`${PROJ}/wip/manifest.yml`);
     const i = io("y\n"); // even an affirmative answer must not matter — the probe fires first
     expect(await run(["bundle", "remove", "ghost", "-C", PROJ], deps(fs, backlog), i)).toBe(1);
     expect(i.err.text).toMatch(/not found/i);
-    expect(fs.read(`${PROJ}/manifest.yml`)).toBe(before);
-    expect(fs.exists(`${PROJ}/bundles/web`)).toBe(true);
+    expect(fs.read(`${PROJ}/wip/manifest.yml`)).toBe(before);
+    expect(fs.exists(`${PROJ}/wip/bundles/web`)).toBe(true);
   });
 
   it("AC#5 — outside any project it exits 1 naming manifest.yml + init", async () => {

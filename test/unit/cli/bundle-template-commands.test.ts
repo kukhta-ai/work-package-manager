@@ -37,7 +37,7 @@ function seed(): MemoryFileSystem {
   const fs = new MemoryFileSystem();
 
   fs.write(
-    `${PROJ}/manifest.yml`,
+    `${PROJ}/wip/manifest.yml`,
     "project:\n  name: demo\n  version: 1.0.0\ntargets: []\nbundles: []\n",
   );
 
@@ -91,7 +91,7 @@ function complete(fs: MemoryFileSystem, words: readonly string[]): readonly stri
 
 /** The relative file paths present under bundles/bundle-template/ in the project. */
 function scaffoldFiles(fs: MemoryFileSystem): string[] {
-  const base = `${PROJ}/bundles/bundle-template`;
+  const base = `${PROJ}/wip/bundles/bundle-template`;
   const out: string[] = [];
   const walk = (dir: string): void => {
     if (!fs.exists(dir)) return;
@@ -118,18 +118,18 @@ describe("bundle template set (task-56)", () => {
       "payload/files/.keep",
     ]);
     // verbatim copy — the {{placeholders}} are NOT substituted (the scaffold keeps them for `bundle new`):
-    expect(fs.read(`${PROJ}/bundles/bundle-template/AGENTS.md.tmpl`)).toBe("# {{bundle-id}}\n");
+    expect(fs.read(`${PROJ}/wip/bundles/bundle-template/AGENTS.md.tmpl`)).toBe("# {{bundle-id}}\n");
     expect(i.out.text).toMatch(/set bundle template from "default"/);
   });
 
   it("AC#1 — `set` REPLACES (not merges) the existing scaffold contents", async () => {
     const fs = seed();
     // a stale file already in the scaffold that is NOT part of the template:
-    fs.write(`${PROJ}/bundles/bundle-template/STALE.md`, "old\n");
+    fs.write(`${PROJ}/wip/bundles/bundle-template/STALE.md`, "old\n");
     expect(await run(["bundle", "template", "set", "default", "-C", PROJ], deps(fs), io())).toBe(0);
     // the stale file is gone (clear-then-copy = a true replace):
-    expect(fs.exists(`${PROJ}/bundles/bundle-template/STALE.md`)).toBe(false);
-    expect(fs.exists(`${PROJ}/bundles/bundle-template/AGENTS.md.tmpl`)).toBe(true);
+    expect(fs.exists(`${PROJ}/wip/bundles/bundle-template/STALE.md`)).toBe(false);
+    expect(fs.exists(`${PROJ}/wip/bundles/bundle-template/AGENTS.md.tmpl`)).toBe(true);
   });
 
   it("AC#2 — an UNRESOLVED name fails (exit 1) changing nothing", async () => {
@@ -138,7 +138,7 @@ describe("bundle template set (task-56)", () => {
     expect(await run(["bundle", "template", "set", "ghost", "-C", PROJ], deps(fs), i)).toBe(1);
     expect(i.err.text).toMatch(/not found/i);
     // nothing was written:
-    expect(fs.exists(`${PROJ}/bundles/bundle-template`)).toBe(false);
+    expect(fs.exists(`${PROJ}/wip/bundles/bundle-template`)).toBe(false);
   });
 
   it("AC#2 — a PROJECT-scope name (wrong scope) fails (exit 1) changing nothing", async () => {
@@ -147,16 +147,16 @@ describe("bundle template set (task-56)", () => {
     // `minimal` is a project template; resolving it as a BUNDLE template must not find it.
     expect(await run(["bundle", "template", "set", "minimal", "-C", PROJ], deps(fs), i)).toBe(1);
     expect(i.err.text).toMatch(/not found/i);
-    expect(fs.exists(`${PROJ}/bundles/bundle-template`)).toBe(false);
+    expect(fs.exists(`${PROJ}/wip/bundles/bundle-template`)).toBe(false);
   });
 
   it("AC#2 — a wrong-name does not delete an EXISTING scaffold (changes nothing on failure)", async () => {
     const fs = seed();
     // an existing scaffold:
-    fs.write(`${PROJ}/bundles/bundle-template/EXISTING.md`, "keep\n");
+    fs.write(`${PROJ}/wip/bundles/bundle-template/EXISTING.md`, "keep\n");
     expect(await run(["bundle", "template", "set", "ghost", "-C", PROJ], deps(fs), io())).toBe(1);
     // the resolve fails BEFORE the clear, so the existing scaffold is intact:
-    expect(fs.read(`${PROJ}/bundles/bundle-template/EXISTING.md`)).toBe("keep\n");
+    expect(fs.read(`${PROJ}/wip/bundles/bundle-template/EXISTING.md`)).toBe("keep\n");
   });
 
   it("AC#3 — outside any project it exits 1 naming manifest.yml + init", async () => {
@@ -207,10 +207,10 @@ describe("bundle template show (task-55)", () => {
     const fs = seed();
     // place a descriptor in the scaffold dir (an author may do this):
     fs.write(
-      `${PROJ}/bundles/bundle-template/template.yml`,
+      `${PROJ}/wip/bundles/bundle-template/template.yml`,
       "name: custom\nscope: bundle\ndescription: My custom scaffold.\nparameters:\n  - name: bundle-id\n    description: the id\n",
     );
-    fs.write(`${PROJ}/bundles/bundle-template/AGENTS.md.tmpl`, "# x\n");
+    fs.write(`${PROJ}/wip/bundles/bundle-template/AGENTS.md.tmpl`, "# x\n");
     const i = io();
     expect(await run(["bundle", "template", "show", "-C", PROJ], deps(fs), i)).toBe(0);
     expect(i.out.text).toContain("Description: My custom scaffold.");

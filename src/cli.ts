@@ -56,6 +56,12 @@ import { createBundleSpec } from "./core/operations/create-bundle.js";
 import { makeArtefactDeriver } from "./core/operations/derive-artefacts-capability.js";
 import { initProject } from "./core/operations/init-project.js";
 import {
+  AUTHORING_SKILL_NAME,
+  authoringSkillPresent,
+  type InstallAuthoringSkillResult,
+  installAuthoringSkill,
+} from "./core/operations/install-authoring-skill.js";
+import {
   attachProjectInstallerSkillSpec,
   conventionalProjectSkillPath,
   isReservedInstallerSkillName,
@@ -65,6 +71,7 @@ import {
 import {
   type LifecycleDeps,
   loadProject,
+  type OperationContext,
   runMutation,
   runRead,
 } from "./core/operations/lifecycle.js";
@@ -89,6 +96,7 @@ import {
   listSkillRefsSpec,
   PAYLOAD_SKILLS_DESCRIPTOR,
   removeSkillRefSpec,
+  removeUnregisteredSkillStubSpec,
   scaffoldSkillRefSpec,
   scanInstallerSkillsSpec,
 } from "./core/operations/skill-refs.js";
@@ -97,6 +105,10 @@ import { bumpVersionSpec, readVersionSpec, setVersionSpec } from "./core/operati
 import type { BacklogMd, Clock, Environment, FileSystem } from "./core/ports/index.js";
 import { resolveContext } from "./core/services/context.js";
 import { parseManifest, parseTemplateDescriptor } from "./core/services/schema/index.js";
+import {
+  PAYLOAD_SKILL_PATH_REQUIREMENT,
+  payloadSkillPackageRoot,
+} from "./core/services/skill-ref-path.js";
 import {
   listTemplates,
   resolveTemplate,
@@ -137,6 +149,13 @@ export interface CliDeps {
   readonly env: Environment;
   /** The built-in templates root shipped with the package (project-local templates shadow these). */
   readonly builtinTemplatesRoot: string;
+  /**
+   * The bundled `agent-skills/` root shipped with the package — the source `wpm skill install` copies the
+   * `installer-builder/` authoring skill from (doc 12). Threaded exactly like {@link builtinTemplatesRoot} and
+   * always populated by {@link makeRealDeps}; OPTIONAL only so the many existing test deps-literals that never
+   * exercise `skill install` need not all supply it (the command raises a clear internal error if it is absent).
+   */
+  readonly bundledSkillsRoot?: string;
 }
 
 /** The context handed to each command module's `register`: the injected deps + the I/O bundle. */
@@ -195,21 +214,29 @@ function formatOrientation(o: ProjectOrientation): string {
   return `${lines.join("\n")}\n`;
 }
 
-/** The canonical "no project resolved" message — shared by every project-bound command (doc 13 §7). */
+/** The canonical "no workspace resolved" message — shared by every project-bound command (doc 10/13 §7). */
 const NO_PROJECT_MESSAGE =
-  "no manifest.yml found in the working directory or any parent — run `wpm init <project-name>` to create a project, or pass `-C <path>` to target one elsewhere";
+  "not inside a wpm authoring workspace — no workspace marker (a wip/ deliverable with a manifest.yml, beside the authoring front door) found in the working directory or any parent — run `wpm init <project-name>` to create a workspace, or pass `-C <path>` to target one elsewhere";
 
 /**
- * Resolve the project root a project-BOUND command operates on, or raise the canonical {@link NotFoundError}
- * (exit 1) when none resolves. Honours the global `-C/--project` override. The shared entry point every
- * project-bound leaf (and the 7 list-management families) calls before `runMutation`/`runRead`.
+ * The two roots a project-bound command operates with, resolved from the authoring workspace (doc 10 "Project
+ * context resolution"): the **deliverable root** (`<workspace>/wip`) every operation reads and writes, and the
+ * **workspace root** that holds the `.authoring-backlog/` the lifecycle materialises into. This is exactly the
+ * harness's {@link OperationContext}, so the resolved value is passed straight to `runMutation`/`runRead`.
+ */
+type WorkspaceRoots = OperationContext;
+
+/**
+ * Resolve the authoring workspace a project-BOUND command operates on, or raise the canonical
+ * {@link NotFoundError} (exit 1) when none resolves. Honours the global `-C/--project` override. The shared entry
+ * point every project-bound leaf (and the 7 list-management families) calls before `runMutation`/`runRead`.
  *
  * @param ctx - The command context (ports).
  * @param parent - The command's parent (for the global `-C` flag).
- * @returns The absolute project root.
- * @throws {NotFoundError} When no project is resolved.
+ * @returns The resolved deliverable + workspace roots.
+ * @throws {NotFoundError} When no workspace is resolved.
  */
-function requireProject(ctx: CommandContext, parent: Command): string {
+function requireProject(ctx: CommandContext, parent: Command): WorkspaceRoots {
   const projectOverride = parent.opts().project as string | undefined;
   const context = resolveContext(
     { fs: ctx.deps.fs, env: ctx.deps.env },
@@ -218,10 +245,13 @@ function requireProject(ctx: CommandContext, parent: Command): string {
   if (!context.found) {
     throw new NotFoundError(NO_PROJECT_MESSAGE);
   }
-  return context.root;
+  return { deliverableRoot: context.deliverableRoot, workspaceRoot: context.workspaceRoot };
 }
 
-/** Build the task-25 {@link LifecycleDeps} for a mutation rooted at `root` (the deriver wired as in `bundle new`). */
+/**
+ * Build the task-25 {@link LifecycleDeps} for a mutation rooted at the deliverable `root` (`<workspace>/wip`) —
+ * the deriver resolves project-local templates from `<root>/templates`, wired as in `bundle new`.
+ */
 function lifecycleDepsFor(ctx: CommandContext, root: string): LifecycleDeps {
   return {
     fs: ctx.deps.fs,
@@ -271,10 +301,18 @@ interface PerBundleCommandModule {
    *
    * @param sub - The per-bundle sub-program (its `name` is `bundle <id>`).
    * @param ctx - The command context (ports + I/O).
-   * @param root - The already-resolved project root.
+   * @param root - The already-resolved deliverable root (`<workspace>/wip`).
    * @param id - The already-validated enabled bundle id.
+   * @param workspaceRoot - The already-resolved workspace root (parent of `wip/`), for the lifecycle's
+   *   authoring-backlog materialisation.
    */
-  register(sub: Command, ctx: CommandContext, root: string, id: string): void;
+  register(
+    sub: Command,
+    ctx: CommandContext,
+    root: string,
+    id: string,
+    workspaceRoot: string,
+  ): void;
 }
 
 /** The project marker / manifest filename at the project root (shared by the per-bundle guard). */
@@ -576,13 +614,18 @@ function formatBundleView(view: BundleView): string {
  * stays defensive (its projection raises {@link NotFoundError} too).
  */
 const bundleShowModule: PerBundleCommandModule = {
-  register(sub, ctx, root, id) {
+  register(sub, ctx, root, id, workspaceRoot) {
     const leaf = sub
       .command("show")
       .description("print this bundle's bundle.yml metadata and a tree summary (doc 10)")
       .action(() => {
         const tree = bundleFileTree(ctx.deps.fs, root, id);
-        const { value } = runRead(ctx.deps.fs, { root }, showBundleSpec(), { id, tree });
+        const { value } = runRead(
+          ctx.deps.fs,
+          { deliverableRoot: root, workspaceRoot },
+          showBundleSpec(),
+          { id, tree },
+        );
         ctx.io.out.write(formatBundleView(value));
       });
     withExamples(leaf, [
@@ -598,7 +641,7 @@ const bundleShowModule: PerBundleCommandModule = {
  * comment-and-key-order-preserving and ④ RERENDER reflects a changed summary in the menu.
  */
 const bundleMetaModule: PerBundleCommandModule = {
-  register(sub, ctx, root, id) {
+  register(sub, ctx, root, id, workspaceRoot) {
     const leaf = sub
       .command("meta")
       .description(
@@ -637,14 +680,19 @@ const bundleMetaModule: PerBundleCommandModule = {
             version = parsed.value;
           }
 
-          const result = runMutation(lifecycleDepsFor(ctx, root), { root }, editBundleMetaSpec(), {
-            id,
-            ...(version !== undefined ? { version } : {}),
-            ...(opts.summary !== undefined ? { summary: opts.summary } : {}),
-            ...(opts.confirmationLevel !== undefined
-              ? { confirmation: opts.confirmationLevel }
-              : {}),
-          });
+          const result = runMutation(
+            lifecycleDepsFor(ctx, root),
+            { deliverableRoot: root, workspaceRoot },
+            editBundleMetaSpec(),
+            {
+              id,
+              ...(version !== undefined ? { version } : {}),
+              ...(opts.summary !== undefined ? { summary: opts.summary } : {}),
+              ...(opts.confirmationLevel !== undefined
+                ? { confirmation: opts.confirmationLevel }
+                : {}),
+            },
+          );
           ctx.io.out.write(formatResult(result));
         },
       );
@@ -667,7 +715,7 @@ const bundleMetaModule: PerBundleCommandModule = {
  * `set` subcommands), but operates on `bundles/<id>/bundle.yml`'s `version`.
  */
 const bundleVersionModule: PerBundleCommandModule = {
-  register(sub, ctx, root, id) {
+  register(sub, ctx, root, id, workspaceRoot) {
     // ── bundle <id> version (bare = READ) ──────────────────────────────────────────────────────────────────
     // A command WITH subcommands AND its own action: bare `version` runs this read; `bump`/`set` dispatch to
     // their own leaves (commander lists them under "Commands:" in help — 59#4 documents bump+set). Prints the
@@ -676,7 +724,12 @@ const bundleVersionModule: PerBundleCommandModule = {
       .command("version")
       .description("this bundle's version: print it, or bump/set it (doc 10)")
       .action(() => {
-        const { value } = runRead(ctx.deps.fs, { root }, readBundleVersionSpec(), { id });
+        const { value } = runRead(
+          ctx.deps.fs,
+          { deliverableRoot: root, workspaceRoot },
+          readBundleVersionSpec(),
+          { id },
+        );
         ctx.io.out.write(`${value}\n`);
       });
     withExamples(version, [
@@ -699,10 +752,15 @@ const bundleVersionModule: PerBundleCommandModule = {
         "advance this bundle's version by a semver level (major, minor, or patch) (doc 10)",
       )
       .action((level: (typeof BUMP_LEVELS)[number]) => {
-        const result = runMutation(lifecycleDepsFor(ctx, root), { root }, bumpBundleVersionSpec(), {
-          id,
-          level,
-        });
+        const result = runMutation(
+          lifecycleDepsFor(ctx, root),
+          { deliverableRoot: root, workspaceRoot },
+          bumpBundleVersionSpec(),
+          {
+            id,
+            level,
+          },
+        );
         ctx.io.out.write(formatResult(result));
       });
     withExamples(bumpLeaf, [
@@ -725,10 +783,15 @@ const bundleVersionModule: PerBundleCommandModule = {
         if (!parsed.ok) {
           throw new UsageError(parsed.problem.message);
         }
-        const result = runMutation(lifecycleDepsFor(ctx, root), { root }, setBundleVersionSpec(), {
-          id,
-          version: parsed.value,
-        });
+        const result = runMutation(
+          lifecycleDepsFor(ctx, root),
+          { deliverableRoot: root, workspaceRoot },
+          setBundleVersionSpec(),
+          {
+            id,
+            version: parsed.value,
+          },
+        );
         ctx.io.out.write(formatResult(result));
       });
     withExamples(setLeaf, [
@@ -756,7 +819,7 @@ function formatRequires(entries: readonly RequiresEntry[]): string {
  * author's chosen syntax (e.g. `^0.3.0`) is written verbatim to the human-readable bundle.yml.
  */
 const bundleRequiresModule: PerBundleCommandModule = {
-  register(sub, ctx, root, id) {
+  register(sub, ctx, root, id, workspaceRoot) {
     const requires = sub
       .command("requires")
       .description("declare or inspect this bundle's dependencies on other bundles (doc 10)");
@@ -789,11 +852,16 @@ const bundleRequiresModule: PerBundleCommandModule = {
             throw new UsageError(parsed.problem.message);
           }
         }
-        const result = runMutation(lifecycleDepsFor(ctx, root), { root }, addRequiresSpec(), {
-          id,
-          dep,
-          ...(constraintRaw !== undefined ? { constraint: constraintRaw } : {}),
-        });
+        const result = runMutation(
+          lifecycleDepsFor(ctx, root),
+          { deliverableRoot: root, workspaceRoot },
+          addRequiresSpec(),
+          {
+            id,
+            dep,
+            ...(constraintRaw !== undefined ? { constraint: constraintRaw } : {}),
+          },
+        );
         ctx.io.out.write(formatResult(result));
         writeWarnings(ctx, result.warnings);
       });
@@ -815,7 +883,12 @@ const bundleRequiresModule: PerBundleCommandModule = {
         "print this bundle's requires map (one dependency id + constraint per line) (doc 10)",
       )
       .action(() => {
-        const { value } = runRead(ctx.deps.fs, { root }, listRequiresSpec(), { id });
+        const { value } = runRead(
+          ctx.deps.fs,
+          { deliverableRoot: root, workspaceRoot },
+          listRequiresSpec(),
+          { id },
+        );
         ctx.io.out.write(formatRequires(value));
       });
     withExamples(listLeaf, [
@@ -829,10 +902,15 @@ const bundleRequiresModule: PerBundleCommandModule = {
       .argument("<dep-bundle-id>", "the dependency id to remove from this bundle's requires map")
       .description("remove a dependency entry from this bundle's requires map (doc 10)")
       .action((dep: string) => {
-        const result = runMutation(lifecycleDepsFor(ctx, root), { root }, removeRequiresSpec(), {
-          id,
-          dep,
-        });
+        const result = runMutation(
+          lifecycleDepsFor(ctx, root),
+          { deliverableRoot: root, workspaceRoot },
+          removeRequiresSpec(),
+          {
+            id,
+            dep,
+          },
+        );
         ctx.io.out.write(formatResult(result));
       });
     withExamples(removeLeaf, [
@@ -897,7 +975,7 @@ function formatInstallerSkillList(names: readonly string[]): string {
  * non-existent path registers nothing (65#2).
  */
 const bundleFilesModule: PerBundleCommandModule = {
-  register(sub, ctx, root, id) {
+  register(sub, ctx, root, id, workspaceRoot) {
     const files = sub
       .command("files")
       .description("register or inspect this bundle's payload/files reference files (doc 10)");
@@ -923,7 +1001,7 @@ const bundleFilesModule: PerBundleCommandModule = {
         }
         const result = runMutation(
           lifecycleDepsFor(ctx, root),
-          { root },
+          { deliverableRoot: root, workspaceRoot },
           addPayloadRefSpec(FILES_DESCRIPTOR),
           { id, path },
         );
@@ -941,9 +1019,14 @@ const bundleFilesModule: PerBundleCommandModule = {
       .command("list")
       .description("list this bundle's registered payload/files references (doc 10)")
       .action(() => {
-        const { value } = runRead(ctx.deps.fs, { root }, listPayloadRefsSpec(FILES_DESCRIPTOR), {
-          id,
-        });
+        const { value } = runRead(
+          ctx.deps.fs,
+          { deliverableRoot: root, workspaceRoot },
+          listPayloadRefsSpec(FILES_DESCRIPTOR),
+          {
+            id,
+          },
+        );
         ctx.io.out.write(formatPayloadList(value, FILES_DESCRIPTOR.noun));
       });
     withExamples(listLeaf, [
@@ -963,7 +1046,7 @@ const bundleFilesModule: PerBundleCommandModule = {
       .action((path: string) => {
         const result = runMutation(
           lifecycleDepsFor(ctx, root),
-          { root },
+          { deliverableRoot: root, workspaceRoot },
           removePayloadRefSpec(FILES_DESCRIPTOR),
           { id, path },
         );
@@ -989,7 +1072,7 @@ const bundleFilesModule: PerBundleCommandModule = {
  * per-bundle routing and threaded in.
  */
 const bundleTemplatesModule: PerBundleCommandModule = {
-  register(sub, ctx, root, id) {
+  register(sub, ctx, root, id, workspaceRoot) {
     const templates = sub
       .command("templates")
       .description("register or inspect this bundle's payload/templates reference files (doc 10)");
@@ -1015,7 +1098,7 @@ const bundleTemplatesModule: PerBundleCommandModule = {
         }
         const result = runMutation(
           lifecycleDepsFor(ctx, root),
-          { root },
+          { deliverableRoot: root, workspaceRoot },
           addPayloadRefSpec(TEMPLATES_DESCRIPTOR),
           { id, path },
         );
@@ -1035,7 +1118,7 @@ const bundleTemplatesModule: PerBundleCommandModule = {
       .action(() => {
         const { value } = runRead(
           ctx.deps.fs,
-          { root },
+          { deliverableRoot: root, workspaceRoot },
           listPayloadRefsSpec(TEMPLATES_DESCRIPTOR),
           {
             id,
@@ -1060,7 +1143,7 @@ const bundleTemplatesModule: PerBundleCommandModule = {
       .action((path: string) => {
         const result = runMutation(
           lifecycleDepsFor(ctx, root),
-          { root },
+          { deliverableRoot: root, workspaceRoot },
           removePayloadRefSpec(TEMPLATES_DESCRIPTOR),
           { id, path },
         );
@@ -1089,7 +1172,7 @@ const bundleTemplatesModule: PerBundleCommandModule = {
  * per-bundle routing and threaded in.
  */
 const bundleScriptsModule: PerBundleCommandModule = {
-  register(sub, ctx, root, id) {
+  register(sub, ctx, root, id, workspaceRoot) {
     const scripts = sub
       .command("scripts")
       .description(
@@ -1119,7 +1202,7 @@ const bundleScriptsModule: PerBundleCommandModule = {
         }
         const result = runMutation(
           lifecycleDepsFor(ctx, root),
-          { root },
+          { deliverableRoot: root, workspaceRoot },
           addPayloadRefSpec(SCRIPTS_DESCRIPTOR),
           { id, path },
         );
@@ -1137,9 +1220,14 @@ const bundleScriptsModule: PerBundleCommandModule = {
       .command("list")
       .description("list this bundle's registered installer-scripts references (doc 10)")
       .action(() => {
-        const { value } = runRead(ctx.deps.fs, { root }, listPayloadRefsSpec(SCRIPTS_DESCRIPTOR), {
-          id,
-        });
+        const { value } = runRead(
+          ctx.deps.fs,
+          { deliverableRoot: root, workspaceRoot },
+          listPayloadRefsSpec(SCRIPTS_DESCRIPTOR),
+          {
+            id,
+          },
+        );
         ctx.io.out.write(formatPayloadList(value, SCRIPTS_DESCRIPTOR.noun));
       });
     withExamples(listLeaf, [
@@ -1159,7 +1247,7 @@ const bundleScriptsModule: PerBundleCommandModule = {
       .action((path: string) => {
         const result = runMutation(
           lifecycleDepsFor(ctx, root),
-          { root },
+          { deliverableRoot: root, workspaceRoot },
           removePayloadRefSpec(SCRIPTS_DESCRIPTOR),
           { id, path },
         );
@@ -1194,11 +1282,13 @@ const bundleScriptsModule: PerBundleCommandModule = {
  * This keeps the 3-way decision a thin CLI branch (the existence-probe-in-CLI pattern of `bundleFilesModule`)
  * and the two core specs single-purpose + reusable. Structure-not-content: `add` never authors the SKILL.md body
  * (scaffold renders a structural stub from the snippet; attach validates+registers what the author placed);
- * `remove` deregisters and leaves the SKILL.md on disk (76#1/#2). `list` is registry-based (75#1) — payload
- * skills are inert until install, so the registry is authoritative.
+ * `remove` is the symmetric 3-way (TASK-103): a REGISTERED skill deregisters and its SKILL.md stays on disk
+ * (76#1/#2), an UNREGISTERED on-disk stub is deleted (a stray scaffold — nothing to deregister), and a name that
+ * is neither errors — the CLI dispatches by a registry probe. `list` is registry-based (75#1) — payload skills
+ * are inert until install, so the registry is authoritative.
  */
 const bundleSkillsModule: PerBundleCommandModule = {
-  register(sub, ctx, root, id) {
+  register(sub, ctx, root, id, workspaceRoot) {
     const skills = sub
       .command("skills")
       .description(
@@ -1225,25 +1315,28 @@ const bundleSkillsModule: PerBundleCommandModule = {
         // (the pure operation `check` has no port — the same place `bundleFilesModule` puts its add check).
         const conventional = conventionalSkillPath(PAYLOAD_SKILLS_DESCRIPTOR, name);
         const targetRel = opts.path ?? conventional;
+        if (payloadSkillPackageRoot(targetRel) === undefined) {
+          throw new UsageError(`--path "${targetRel}" ${PAYLOAD_SKILL_PATH_REQUIREMENT}`);
+        }
         const exists = ctx.deps.fs.exists(join(root, "bundles", id, targetRel));
 
         if (opts.path !== undefined && !exists) {
           // 74#3: --path given but nothing there → typed error (exit 1), register nothing.
           throw new NotFoundError(
-            `no SKILL.md at bundles/${id}/${opts.path} — omit --path to scaffold a stub at ${conventional}, or place the file there first`,
+            `no skill document at bundles/${id}/${opts.path} — omit --path to scaffold a stub at ${conventional}, or place the file there first`,
           );
         }
 
         const result = exists
           ? runMutation(
               lifecycleDepsFor(ctx, root),
-              { root },
+              { deliverableRoot: root, workspaceRoot },
               attachSkillRefSpec(PAYLOAD_SKILLS_DESCRIPTOR),
               { id, name, path: targetRel },
             )
           : runMutation(
               lifecycleDepsFor(ctx, root),
-              { root },
+              { deliverableRoot: root, workspaceRoot },
               scaffoldSkillRefSpec(PAYLOAD_SKILLS_DESCRIPTOR, {
                 builtinTemplatesRoot: ctx.deps.builtinTemplatesRoot,
               }),
@@ -1272,7 +1365,7 @@ const bundleSkillsModule: PerBundleCommandModule = {
       .action(() => {
         const { value } = runRead(
           ctx.deps.fs,
-          { root },
+          { deliverableRoot: root, workspaceRoot },
           listSkillRefsSpec(PAYLOAD_SKILLS_DESCRIPTOR),
           {
             id,
@@ -1285,28 +1378,58 @@ const bundleSkillsModule: PerBundleCommandModule = {
     ]);
 
     // ── skills remove <name> ────────────────────────────────────────────────────────────────────────────────
-    // Deregister-not-delete: the entry leaves bundle.yml but the SKILL.md stays on disk (doc 10 row 172). A name
-    // that is not registered ⇒ the operation's NotFound (exit 1, nothing changed).
+    // A 3-WAY mirroring `skills add`'s scaffold/attach/error split — the CLI owns the probe (a pure `check` has no
+    // port, doc 13 §1):
+    //   - REGISTERED → deregister-not-delete: the entry leaves bundle.yml but the SKILL.md stays on disk (doc 10
+    //     row 175; 76#1/#2) — {@link removeSkillRefSpec}.
+    //   - UNREGISTERED but present on disk → delete the stray scaffold dir (TASK-103): nothing is registered to
+    //     deregister, so removing the orphan stub is the sensible `remove` — {@link removeUnregisteredSkillStubSpec}
+    //     (never touches registered content).
+    //   - neither → the orphan spec's NotFound (exit 1, nothing changed; 76#3).
+    // The registry probe is a pure read (`listSkillRefsSpec`) — the authoritative registered set (payload skills
+    // are inert until install, doc 06). Each branch is a COMPLETE `runMutation` (its own spec + input), mirroring
+    // the `add` leaf, so the per-branch input type is inferred independently.
     const removeLeaf = skills
       .command("remove")
       .argument(
         "<name>",
-        "the registered payload skill to deregister (the SKILL.md is left on disk)",
+        "the payload skill to remove: deregister it (source package left on disk) if registered, else delete its stray on-disk stub",
       )
-      .description("deregister a payload skill, leaving its SKILL.md on disk (doc 10)")
+      .description(
+        "deregister a registered payload skill (leaving its source package), or delete an unregistered conventional on-disk stub (doc 10; TASK-103)",
+      )
       .action((name: string) => {
-        const result = runMutation(
-          lifecycleDepsFor(ctx, root),
-          { root },
-          removeSkillRefSpec(PAYLOAD_SKILLS_DESCRIPTOR),
-          { id, name },
+        const scope = { deliverableRoot: root, workspaceRoot };
+        const { value: registered } = runRead(
+          ctx.deps.fs,
+          scope,
+          listSkillRefsSpec(PAYLOAD_SKILLS_DESCRIPTOR),
+          { id },
         );
+        const isRegistered = registered.some((skill) => skill.name === name);
+        const result = isRegistered
+          ? runMutation(
+              lifecycleDepsFor(ctx, root),
+              scope,
+              removeSkillRefSpec(PAYLOAD_SKILLS_DESCRIPTOR),
+              { id, name },
+            )
+          : runMutation(
+              lifecycleDepsFor(ctx, root),
+              scope,
+              removeUnregisteredSkillStubSpec(PAYLOAD_SKILLS_DESCRIPTOR),
+              { id, name },
+            );
         ctx.io.out.write(formatResult(result));
       });
     withExamples(removeLeaf, [
       {
         command: "wpm bundle web-handoff skills remove handoff-web",
-        note: "deregister handoff-web (its SKILL.md stays on disk)",
+        note: "deregister a registered skill (its complete source package stays on disk)",
+      },
+      {
+        command: "wpm bundle web-handoff skills remove stray-skill",
+        note: "delete an unregistered on-disk stub (e.g. an old scaffold) that was never registered",
       },
     ]);
   },
@@ -1334,7 +1457,7 @@ const bundleSkillsModule: PerBundleCommandModule = {
  * walk in the shell ({@link installerSkillNames}) threaded into the pure read.
  */
 const bundleInstallerSkillsModule: PerBundleCommandModule = {
-  register(sub, ctx, root, id) {
+  register(sub, ctx, root, id, workspaceRoot) {
     const installerSkills = sub
       .command("installer-skills")
       .description(
@@ -1375,13 +1498,13 @@ const bundleInstallerSkillsModule: PerBundleCommandModule = {
         const result = exists
           ? runMutation(
               lifecycleDepsFor(ctx, root),
-              { root },
+              { deliverableRoot: root, workspaceRoot },
               attachSkillRefSpec(BUNDLE_INSTALLER_SKILLS_DESCRIPTOR),
               { id, name, path: targetRel },
             )
           : runMutation(
               lifecycleDepsFor(ctx, root),
-              { root },
+              { deliverableRoot: root, workspaceRoot },
               scaffoldSkillRefSpec(BUNDLE_INSTALLER_SKILLS_DESCRIPTOR, {
                 builtinTemplatesRoot: ctx.deps.builtinTemplatesRoot,
               }),
@@ -1413,10 +1536,15 @@ const bundleInstallerSkillsModule: PerBundleCommandModule = {
       )
       .action(() => {
         const scannedNames = installerSkillNames(ctx.deps.fs, root, id);
-        const { value } = runRead(ctx.deps.fs, { root }, scanInstallerSkillsSpec(), {
-          id,
-          scannedNames,
-        });
+        const { value } = runRead(
+          ctx.deps.fs,
+          { deliverableRoot: root, workspaceRoot },
+          scanInstallerSkillsSpec(),
+          {
+            id,
+            scannedNames,
+          },
+        );
         ctx.io.out.write(formatInstallerSkillList(value));
       });
     withExamples(listLeaf, [
@@ -1439,7 +1567,7 @@ const bundleInstallerSkillsModule: PerBundleCommandModule = {
       .action((name: string) => {
         const result = runMutation(
           lifecycleDepsFor(ctx, root),
-          { root },
+          { deliverableRoot: root, workspaceRoot },
           removeSkillRefSpec(BUNDLE_INSTALLER_SKILLS_DESCRIPTOR),
           { id, name },
         );
@@ -1470,7 +1598,7 @@ const bundleInstallerSkillsModule: PerBundleCommandModule = {
  * `<id>` is already resolved + enabled-guarded by the per-bundle routing and threaded in.
  */
 const bundleAdvisorModule: PerBundleCommandModule = {
-  register(sub, ctx, root, id) {
+  register(sub, ctx, root, id, workspaceRoot) {
     const advisor = sub
       .command("advisor")
       .description(
@@ -1488,7 +1616,7 @@ const bundleAdvisorModule: PerBundleCommandModule = {
       .action(() => {
         const result = runMutation(
           lifecycleDepsFor(ctx, root),
-          { root },
+          { deliverableRoot: root, workspaceRoot },
           advisorAddSpec({ builtinTemplatesRoot: ctx.deps.builtinTemplatesRoot }),
           { id },
         );
@@ -1522,9 +1650,14 @@ const bundleAdvisorModule: PerBundleCommandModule = {
       .command("remove")
       .description("delete this bundle's advisor stub + archive its content-writing task (doc 10)")
       .action(() => {
-        const result = runMutation(lifecycleDepsFor(ctx, root), { root }, advisorRemoveSpec(), {
-          id,
-        });
+        const result = runMutation(
+          lifecycleDepsFor(ctx, root),
+          { deliverableRoot: root, workspaceRoot },
+          advisorRemoveSpec(),
+          {
+            id,
+          },
+        );
         // AC81#3: when no advisor exists the spec deletes nothing — report "nothing to remove". We key on the
         // advisor DIRECTORY appearing in `changedPaths` (the delete recorded it), NOT `changedPaths.length`: the
         // ④ RERENDER beat can re-render the front-door / re-ensure scope aliases on a fresh project even when the
@@ -1590,10 +1723,11 @@ const PER_BUNDLE_COMPLETION_SPECS: CompletionSpecs = {
   "scripts add": { args: ["payload-scripts-on-disk"] },
   "scripts remove": { args: ["payload-scripts-registered"] },
   // `bundle <id> skills add <name>` (Family O) — completes from the skill-folder NAMES present under
-  // payload/agent-skills/ (the attachable skills; a brand-new name yields none). `skills remove <name>`
-  // completes from the REGISTERED `payload.skills` names. Both id-aware (read the host id off the context).
+  // payload/agent-skills/ (the attachable skills; a brand-new name yields none). `skills remove <name>` completes
+  // from the REMOVABLE set — REGISTERED `payload.skills` names ∪ on-disk stub folders (TASK-103), so an orphan
+  // stub it can now delete is completable too. Both id-aware (read the host id off the context).
   "skills add": { args: ["skills-on-disk"] },
-  "skills remove": { args: ["skills-registered"] },
+  "skills remove": { args: ["skills-removable"] },
   // `bundle <id> installer-skills add <name>` (Family P) — completes from the helper-folder NAMES present under
   // installer-skills/ (the attachable helpers, matching the directory-scan `list`). `installer-skills remove
   // <name>` completes from the REGISTERED `installerSkills` names (AC79#4 — the deregister set). Both id-aware.
@@ -1605,14 +1739,21 @@ const PER_BUNDLE_COMPLETION_SPECS: CompletionSpecs = {
  * Build the per-bundle sub-program for a resolved `<id>`: a fresh commander {@link Command} (name `bundle <id>`)
  * carrying every {@link PER_BUNDLE_MODULES} leaf, with `exitOverride` so a usage/help/version outcome throws a
  * `CommanderError` the outer {@link runWithExit} maps, and its output routed to the SAME I/O sinks so help and
- * errors reach the user. The resolved `root` + `id` are threaded into each leaf (no re-resolution).
+ * errors reach the user. The resolved `root` + `workspaceRoot` + `id` are threaded into each leaf (no
+ * re-resolution).
  *
  * @param ctx - The command context (ports + I/O).
- * @param root - The resolved project root.
+ * @param root - The resolved deliverable root (`<workspace>/wip`).
+ * @param workspaceRoot - The resolved workspace root (parent of `wip/`), for authoring-backlog materialisation.
  * @param id - The validated enabled bundle id.
  * @returns The configured per-bundle sub-program.
  */
-function buildPerBundleProgram(ctx: CommandContext, root: string, id: string): Command {
+function buildPerBundleProgram(
+  ctx: CommandContext,
+  root: string,
+  workspaceRoot: string,
+  id: string,
+): Command {
   const sub = new Command();
   sub.name(`bundle ${id}`).description(`operate on bundle ${id} (doc 10)`);
   sub.exitOverride();
@@ -1623,7 +1764,7 @@ function buildPerBundleProgram(ctx: CommandContext, root: string, id: string): C
   });
   sub.showHelpAfterError();
   for (const module of PER_BUNDLE_MODULES) {
-    module.register(sub, ctx, root, id);
+    module.register(sub, ctx, root, id, workspaceRoot);
   }
   return sub;
 }
@@ -1677,11 +1818,10 @@ const bundleModule: CommandModule = {
             projectOverride !== undefined ? { projectOverride } : undefined,
           );
           if (!context.found) {
-            throw new NotFoundError(
-              "no manifest.yml found in the working directory or any parent — run `wpm init <project-name>` to create a project, or pass `-C <path>` to target one elsewhere",
-            );
+            throw new NotFoundError(NO_PROJECT_MESSAGE);
           }
-          const root = context.root;
+          const root = context.deliverableRoot;
+          const workspaceRoot = context.workspaceRoot;
 
           const result = runMutation(
             {
@@ -1693,7 +1833,7 @@ const bundleModule: CommandModule = {
                 projectTemplatesRoot: join(root, "templates"),
               }),
             },
-            { root },
+            { deliverableRoot: root, workspaceRoot },
             createBundleSpec({
               builtinTemplatesRoot: ctx.deps.builtinTemplatesRoot,
               ...(opts.template !== undefined ? { bundleTemplateName: opts.template } : {}),
@@ -1724,10 +1864,10 @@ const bundleModule: CommandModule = {
       .argument("<id>", "the disabled-but-present bundle id to enable")
       .option("--no-advisor", "skip the advisor scaffold")
       .action((id: string, opts: { advisor?: boolean }) => {
-        const root = requireProject(ctx, parent);
+        const { deliverableRoot: root, workspaceRoot } = requireProject(ctx, parent);
         const result = runMutation(
           lifecycleDepsFor(ctx, root),
-          { root },
+          { deliverableRoot: root, workspaceRoot },
           enableBundleSpec({ builtinTemplatesRoot: ctx.deps.builtinTemplatesRoot }),
           { id, advisor: opts.advisor },
         );
@@ -1746,10 +1886,15 @@ const bundleModule: CommandModule = {
       .description("remove a bundle from the manifest (its directory stays on disk) (doc 10)")
       .argument("<id>", "the enabled bundle id to disable")
       .action((id: string) => {
-        const root = requireProject(ctx, parent);
-        const result = runMutation(lifecycleDepsFor(ctx, root), { root }, disableBundleSpec(), {
-          id,
-        });
+        const { deliverableRoot: root, workspaceRoot } = requireProject(ctx, parent);
+        const result = runMutation(
+          lifecycleDepsFor(ctx, root),
+          { deliverableRoot: root, workspaceRoot },
+          disableBundleSpec(),
+          {
+            id,
+          },
+        );
         ctx.io.out.write(formatResult(result));
       });
     withExamples(disableLeaf, [
@@ -1779,7 +1924,7 @@ const bundleModule: CommandModule = {
       )
       .option("-y, --yes", "skip the destructive-action confirmation prompt")
       .action(async (id: string, opts: { yes?: boolean }) => {
-        const root = requireProject(ctx, parent);
+        const { deliverableRoot: root, workspaceRoot } = requireProject(ctx, parent);
 
         // Existence probe (the shell owns the fs port; the pure operation `check` has none): a bundle is
         // removable iff it is enabled in the manifest OR has a dir on disk. Neither ⇒ a typed NotFound (exit 1)
@@ -1806,9 +1951,14 @@ const bundleModule: CommandModule = {
           return;
         }
 
-        const result = runMutation(lifecycleDepsFor(ctx, root), { root }, removeBundleSpec(), {
-          id,
-        });
+        const result = runMutation(
+          lifecycleDepsFor(ctx, root),
+          { deliverableRoot: root, workspaceRoot },
+          removeBundleSpec(),
+          {
+            id,
+          },
+        );
         ctx.io.out.write(formatResult(result));
       });
     withExamples(removeLeaf, [
@@ -1832,13 +1982,18 @@ const bundleModule: CommandModule = {
         "list each enabled bundle with its version and its install-backlog state/migration task counts (doc 10)",
       )
       .action(() => {
-        const root = requireProject(ctx, parent);
+        const { deliverableRoot: root, workspaceRoot } = requireProject(ctx, parent);
         const manifest = parseManifest(parseYaml(ctx.deps.fs.read(join(root, MANIFEST_FILE))));
         const ids = manifest.ok ? (manifest.value.bundles as readonly string[]) : [];
         const counts = new Map(
           ids.map((id) => [id, installBacklogKindCounts(ctx.deps.fs, root, id)] as const),
         );
-        const { value: rows } = runRead(ctx.deps.fs, { root }, listBundlesSpec(), { counts });
+        const { value: rows } = runRead(
+          ctx.deps.fs,
+          { deliverableRoot: root, workspaceRoot },
+          listBundlesSpec(),
+          { counts },
+        );
         ctx.io.out.write(formatBundleList(rows));
       });
     withExamples(listLeaf, [
@@ -1868,7 +2023,7 @@ const bundleModule: CommandModule = {
         "print the project default bundle template's metadata and a tree summary of bundles/bundle-template/ (doc 10)",
       )
       .action(() => {
-        const root = requireProject(ctx, parent);
+        const { deliverableRoot: root } = requireProject(ctx, parent);
         const dir = join(root, "bundles", BUNDLE_TEMPLATE_DIR);
         if (!ctx.deps.fs.exists(dir)) {
           throw new NotFoundError(
@@ -1902,7 +2057,7 @@ const bundleModule: CommandModule = {
         "the bundle-scope template to copy from (its files/ tree replaces bundles/bundle-template/)",
       )
       .action((name: string) => {
-        const root = requireProject(ctx, parent);
+        const { deliverableRoot: root } = requireProject(ctx, parent);
         const resolution = resolveTemplate(name, "bundle", {
           fs: ctx.deps.fs,
           builtinTemplatesRoot: ctx.deps.builtinTemplatesRoot,
@@ -2005,7 +2160,7 @@ async function dispatchPerBundle(argv: readonly string[], deps: CliDeps, io: Cli
   // bundle (help is help — consistent with the named verbs' `--help`). The sub-program (built with a placeholder
   // root; no leaf action runs for a help request) handles `--help` and throws `commander.help` → exit 0.
   if (tail.includes("--help") || tail.includes("-h")) {
-    await buildPerBundleProgram(ctx, "", id).parseAsync(tail, { from: "user" });
+    await buildPerBundleProgram(ctx, "", "", id).parseAsync(tail, { from: "user" });
     return;
   }
 
@@ -2016,9 +2171,11 @@ async function dispatchPerBundle(argv: readonly string[], deps: CliDeps, io: Cli
   if (!context.found) {
     throw new NotFoundError(NO_PROJECT_MESSAGE);
   }
-  const root = context.root;
+  const root = context.deliverableRoot;
   requireEnabledBundle(ctx, root, id);
-  await buildPerBundleProgram(ctx, root, id).parseAsync(tail, { from: "user" });
+  await buildPerBundleProgram(ctx, root, context.workspaceRoot, id).parseAsync(tail, {
+    from: "user",
+  });
 }
 
 /** Extract the `-C/--project <path>` value from `argv` (the global project override), or `undefined`. */
@@ -2097,7 +2254,7 @@ const initModule: CommandModule = {
     const leaf = parent
       .command("init")
       .description(
-        "scaffold a new project root from a project template (default: minimal) (doc 10)",
+        "scaffold a new authoring workspace from a project template (default: minimal) (doc 10)",
       )
       .argument(
         "<name>",
@@ -2105,7 +2262,7 @@ const initModule: CommandModule = {
       )
       .option(
         "--at <path>",
-        "create the project at <path> (default: a <name>/ directory in the cwd)",
+        "create the workspace at <path> (default: a <name>/ directory in the cwd)",
       )
       .option("--template <name>", "the project template to scaffold from", "minimal")
       .option(
@@ -2157,6 +2314,18 @@ const initModule: CommandModule = {
             },
           );
           ctx.io.out.write(formatResult(result));
+
+          // AC#4 (task-91): point the author at how to install the authoring skill when it is absent. The
+          // workspace's authoring front door already tells the agent to *invoke* the installer-builder skill;
+          // here we surface, in init's own summary, the command that makes it available — but only when it is
+          // not already present in the detected user agent scope(s) (so a set-up machine stays quiet). Detection
+          // reads HOME via the env port; with no HOME we cannot probe, so we skip (the front door still covers it).
+          const home = ctx.deps.env.getEnv("HOME");
+          if (home !== undefined && home !== "" && !authoringSkillPresent(ctx.deps.fs, home)) {
+            ctx.io.out.write(
+              `tip: run \`wpm skill install\` to make the ${AUTHORING_SKILL_NAME} authoring skill available to your agent\n`,
+            );
+          }
         },
       );
 
@@ -2197,7 +2366,7 @@ function resolveProjectTemplatesRoot(ctx: CommandContext, parent: Command): stri
     { fs: ctx.deps.fs, env: ctx.deps.env },
     projectOverride !== undefined ? { projectOverride } : undefined,
   );
-  return context.found ? join(context.root, "templates") : undefined;
+  return context.found ? join(context.deliverableRoot, "templates") : undefined;
 }
 
 /** Render the `template list` output: built-in + project-local templates grouped by source, with shadowing. */
@@ -2393,11 +2562,16 @@ const projectModule: CommandModule = {
       .description("start supporting an agent: record it + create its scope-alias (doc 10)")
       .argument("<agent>", "the target agent to start supporting (e.g. claude-code)")
       .action((agentRaw: string) => {
-        const root = requireProject(ctx, parent);
+        const { deliverableRoot: root, workspaceRoot } = requireProject(ctx, parent);
         const agent = requireAgent(agentRaw);
-        const result = runMutation(lifecycleDepsFor(ctx, root), { root }, addTargetSpec(), {
-          agent,
-        });
+        const result = runMutation(
+          lifecycleDepsFor(ctx, root),
+          { deliverableRoot: root, workspaceRoot },
+          addTargetSpec(),
+          {
+            agent,
+          },
+        );
         ctx.io.out.write(formatResult(result));
         writeWarnings(ctx, result.warnings);
       });
@@ -2410,8 +2584,13 @@ const projectModule: CommandModule = {
       .command("list")
       .description("list the agents this installer supports (doc 10)")
       .action(() => {
-        const root = requireProject(ctx, parent);
-        const { value } = runRead(ctx.deps.fs, { root }, listTargetsSpec(), undefined);
+        const { deliverableRoot: root, workspaceRoot } = requireProject(ctx, parent);
+        const { value } = runRead(
+          ctx.deps.fs,
+          { deliverableRoot: root, workspaceRoot },
+          listTargetsSpec(),
+          undefined,
+        );
         const body =
           value.length > 0 ? value.map((t) => `  ${t}`).join("\n") : "  (no targets yet)";
         ctx.io.out.write(`Targets:\n${body}\n`);
@@ -2426,11 +2605,16 @@ const projectModule: CommandModule = {
       .description("stop supporting an agent: remove it + delete its scope-alias (doc 10)")
       .argument("<agent>", "the target agent to stop supporting")
       .action((agentRaw: string) => {
-        const root = requireProject(ctx, parent);
+        const { deliverableRoot: root, workspaceRoot } = requireProject(ctx, parent);
         const agent = requireAgent(agentRaw);
-        const result = runMutation(lifecycleDepsFor(ctx, root), { root }, removeTargetSpec(), {
-          agent,
-        });
+        const result = runMutation(
+          lifecycleDepsFor(ctx, root),
+          { deliverableRoot: root, workspaceRoot },
+          removeTargetSpec(),
+          {
+            agent,
+          },
+        );
         ctx.io.out.write(formatResult(result));
         writeWarnings(ctx, result.warnings);
       });
@@ -2466,7 +2650,7 @@ const projectModule: CommandModule = {
         "attach an existing project install-time helper skill, or scaffold a stub + queue its writing if none exists (doc 10)",
       )
       .action((name: string, opts: { path?: string }) => {
-        const root = requireProject(ctx, parent);
+        const { deliverableRoot: root, workspaceRoot } = requireProject(ctx, parent);
         // AC45#4: refuse a reserved name (ends in -advisor, or == `<project>-installer`) as a USAGE error (exit 2)
         // BEFORE the 3-way probe — a reserved name is invalid regardless of --path. The project name is read from
         // manifest.yml. (Defense-in-depth: the operation `check` re-asserts this.)
@@ -2494,13 +2678,18 @@ const projectModule: CommandModule = {
         }
 
         const result = exists
-          ? runMutation(lifecycleDepsFor(ctx, root), { root }, attachProjectInstallerSkillSpec(), {
-              name,
-              path: targetRel,
-            })
+          ? runMutation(
+              lifecycleDepsFor(ctx, root),
+              { deliverableRoot: root, workspaceRoot },
+              attachProjectInstallerSkillSpec(),
+              {
+                name,
+                path: targetRel,
+              },
+            )
           : runMutation(
               lifecycleDepsFor(ctx, root),
-              { root },
+              { deliverableRoot: root, workspaceRoot },
               scaffoldProjectInstallerSkillSpec({
                 builtinTemplatesRoot: ctx.deps.builtinTemplatesRoot,
               }),
@@ -2526,12 +2715,17 @@ const projectModule: CommandModule = {
         "list the project's install-time helper skills (scanned under installer-skills/, excluding the main installer + advisors) (doc 10)",
       )
       .action(() => {
-        const root = requireProject(ctx, parent);
+        const { deliverableRoot: root, workspaceRoot } = requireProject(ctx, parent);
         const scannedNames = projectInstallerSkillNames(ctx, root);
-        const { value } = runRead(ctx.deps.fs, { root }, scanInstallerSkillsSpec(), {
-          id: "",
-          scannedNames,
-        });
+        const { value } = runRead(
+          ctx.deps.fs,
+          { deliverableRoot: root, workspaceRoot },
+          scanInstallerSkillsSpec(),
+          {
+            id: "",
+            scannedNames,
+          },
+        );
         ctx.io.out.write(formatInstallerSkillList(value));
       });
     withExamples(isListLeaf, [
@@ -2552,10 +2746,10 @@ const projectModule: CommandModule = {
         "deregister a project install-time helper skill, leaving its SKILL.md on disk (doc 10)",
       )
       .action((name: string) => {
-        const root = requireProject(ctx, parent);
+        const { deliverableRoot: root, workspaceRoot } = requireProject(ctx, parent);
         const result = runMutation(
           lifecycleDepsFor(ctx, root),
-          { root },
+          { deliverableRoot: root, workspaceRoot },
           removeProjectInstallerSkillSpec(),
           { name },
         );
@@ -2580,7 +2774,7 @@ const projectModule: CommandModule = {
       )
       .option(
         "--name <name>",
-        "set the project name (also re-renders AGENTS.md + the installer skill)",
+        "set the project name (also re-renders the installer skill; the executor front door is author-owned, not re-rendered)",
       )
       .option("--description <description>", "set the project's one-line description")
       .option("--license <license>", "set the project's SPDX license identifier")
@@ -2594,7 +2788,7 @@ const projectModule: CommandModule = {
           repository?: string;
           author?: string;
         }) => {
-          const root = requireProject(ctx, parent);
+          const { deliverableRoot: root, workspaceRoot } = requireProject(ctx, parent);
           // AC38#3: with NO flags, make no change and report nothing was updated — exit 0, WITHOUT entering the
           // lifecycle (so ④ RERENDER does not run; nothing on disk changes, a true no-op).
           const provided =
@@ -2609,13 +2803,18 @@ const projectModule: CommandModule = {
             );
             return;
           }
-          const result = runMutation(lifecycleDepsFor(ctx, root), { root }, editProjectMetaSpec(), {
-            ...(opts.name !== undefined ? { name: opts.name } : {}),
-            ...(opts.description !== undefined ? { description: opts.description } : {}),
-            ...(opts.license !== undefined ? { license: opts.license } : {}),
-            ...(opts.repository !== undefined ? { repository: opts.repository } : {}),
-            ...(opts.author !== undefined ? { author: opts.author } : {}),
-          });
+          const result = runMutation(
+            lifecycleDepsFor(ctx, root),
+            { deliverableRoot: root, workspaceRoot },
+            editProjectMetaSpec(),
+            {
+              ...(opts.name !== undefined ? { name: opts.name } : {}),
+              ...(opts.description !== undefined ? { description: opts.description } : {}),
+              ...(opts.license !== undefined ? { license: opts.license } : {}),
+              ...(opts.repository !== undefined ? { repository: opts.repository } : {}),
+              ...(opts.author !== undefined ? { author: opts.author } : {}),
+            },
+          );
           ctx.io.out.write(formatResult(result));
         },
       );
@@ -2634,8 +2833,13 @@ const projectModule: CommandModule = {
       .command("version")
       .description("the project's release version: print it, or bump/set it (doc 10)")
       .action(() => {
-        const root = requireProject(ctx, parent);
-        const { value } = runRead(ctx.deps.fs, { root }, readVersionSpec(), undefined);
+        const { deliverableRoot: root, workspaceRoot } = requireProject(ctx, parent);
+        const { value } = runRead(
+          ctx.deps.fs,
+          { deliverableRoot: root, workspaceRoot },
+          readVersionSpec(),
+          undefined,
+        );
         ctx.io.out.write(`${value}\n`);
       });
     withExamples(version, [
@@ -2657,10 +2861,15 @@ const projectModule: CommandModule = {
         "advance the release version by a semver level (major, minor, or patch) (doc 10)",
       )
       .action((level: (typeof BUMP_LEVELS)[number]) => {
-        const root = requireProject(ctx, parent);
-        const result = runMutation(lifecycleDepsFor(ctx, root), { root }, bumpVersionSpec(), {
-          level,
-        });
+        const { deliverableRoot: root, workspaceRoot } = requireProject(ctx, parent);
+        const result = runMutation(
+          lifecycleDepsFor(ctx, root),
+          { deliverableRoot: root, workspaceRoot },
+          bumpVersionSpec(),
+          {
+            level,
+          },
+        );
         ctx.io.out.write(formatResult(result));
       });
     withExamples(bumpLeaf, [
@@ -2679,14 +2888,19 @@ const projectModule: CommandModule = {
       .argument("<version>", "the explicit semver to set as the release version")
       .description("set the release version to an explicit semver value (doc 10)")
       .action((versionRaw: string) => {
-        const root = requireProject(ctx, parent);
+        const { deliverableRoot: root, workspaceRoot } = requireProject(ctx, parent);
         const parsed = parseSemVer(versionRaw);
         if (!parsed.ok) {
           throw new UsageError(parsed.problem.message);
         }
-        const result = runMutation(lifecycleDepsFor(ctx, root), { root }, setVersionSpec(), {
-          version: parsed.value,
-        });
+        const result = runMutation(
+          lifecycleDepsFor(ctx, root),
+          { deliverableRoot: root, workspaceRoot },
+          setVersionSpec(),
+          {
+            version: parsed.value,
+          },
+        );
         ctx.io.out.write(formatResult(result));
       });
     withExamples(setLeaf, [
@@ -2703,8 +2917,13 @@ const projectModule: CommandModule = {
       )
       .option("--json", "emit the orientation as machine-readable JSON")
       .action((opts: { json?: boolean }) => {
-        const root = requireProject(ctx, parent);
-        const { value } = runRead(ctx.deps.fs, { root }, showProjectSpec(), undefined);
+        const { deliverableRoot: root, workspaceRoot } = requireProject(ctx, parent);
+        const { value } = runRead(
+          ctx.deps.fs,
+          { deliverableRoot: root, workspaceRoot },
+          showProjectSpec(),
+          undefined,
+        );
         ctx.io.out.write(
           opts.json === true ? `${JSON.stringify(value, null, 2)}\n` : formatOrientation(value),
         );
@@ -2714,17 +2933,19 @@ const projectModule: CommandModule = {
     ]);
 
     // ── project root ──────────────────────────────────────────────────────────────────────────────────────
-    // A READ that prints JUST the resolved root path on a single line (no padding/decoration) so it composes in
-    // a shell substitution: `cd "$(wpm project root)/bundles/…"` (doc 10:204). `requireProject` already resolved
-    // it; print it directly — read-only, nothing reloaded.
+    // A READ that prints JUST the resolved DELIVERABLE root (`<workspace>/wip`) on a single line (no padding/
+    // decoration) so it composes in a shell substitution: `cd "$(wpm project root)/bundles/…"` (doc 10:204).
+    // `requireProject` already resolved it; print it directly — read-only, nothing reloaded.
     const rootLeaf = group
       .command("root")
       .description(
-        "print the resolved project root path on one line (composable in $(...)) (doc 10)",
+        "print the resolved deliverable root path (the workspace's wip/) on one line (composable in $(...)) (doc 10)",
       )
       .action(() => {
-        const root = requireProject(ctx, parent);
-        ctx.io.out.write(`${root}\n`);
+        // Prints the DELIVERABLE root (`<workspace>/wip`) per doc 10 — the path commands operate on, composable
+        // as `cd "$(wpm project root)/bundles/…"`.
+        const { deliverableRoot: root } = requireProject(ctx, parent);
+        ctx.io.out.write(`${toPosix(root)}\n`);
       });
     withExamples(rootLeaf, [
       {
@@ -2744,11 +2965,11 @@ const projectModule: CommandModule = {
       .command("validate")
       .description("check project coherence and report every finding (doc 10)")
       .action(() => {
-        const root = requireProject(ctx, parent);
+        const { deliverableRoot: root, workspaceRoot } = requireProject(ctx, parent);
         const bundleDirNames = bundleDirectoryNames(ctx.deps.fs, root);
         const { value: report } = runRead(
           ctx.deps.fs,
-          { root },
+          { deliverableRoot: root, workspaceRoot },
           validateProjectSpec(),
           bundleDirNames,
         );
@@ -2805,9 +3026,28 @@ function loadBuildPlan(ctx: CommandContext, root: string): BuildPlan {
   const project = loadProject(ctx.deps.fs, root);
   return computeBuildPlan(ctx.deps.fs, root, {
     project,
-    enabledBundleIds: project.manifest.bundles,
     bundleDirectoryNames: bundleDirectoryNames(ctx.deps.fs, root),
   });
+}
+
+/** The build-output directory name under the workspace root, where `build package`/`publish` write archives (doc 12). */
+const BUILD_OUTPUT_DIR = "builds";
+
+/**
+ * Resolve (and ensure) the build-output directory `<workspaceRoot>/builds/` an archive is written into (doc 10
+ * `build package`; doc 12 §"What `wpm build` produces"). It sits at the WORKSPACE root — beside, never inside, the
+ * un-nested deliverable (`<workspace>/wip`) — so the produced archive can never contain itself nor the `builds/`
+ * directory (AC89#1/#3). `init` seeds an empty `builds/`, but it may have been removed, so the directory is created
+ * if missing (via the FileSystem port — the effect lives in the shell, the pure plan stays untouched).
+ *
+ * @param ctx - The command context (ports).
+ * @param workspaceRoot - The resolved authoring-workspace root.
+ * @returns The absolute build-output directory path.
+ */
+function buildOutputDir(ctx: CommandContext, workspaceRoot: string): string {
+  const dir = join(workspaceRoot, BUILD_OUTPUT_DIR);
+  ctx.deps.fs.makeDirectories(dir);
+  return dir;
 }
 
 /**
@@ -2891,7 +3131,7 @@ const buildModule: CommandModule = {
         "validate the project and preview the file tree that would ship, producing no artefact (doc 10)",
       )
       .action(() => {
-        const root = requireProject(ctx, parent); // AC82#5 (canonical no-project NotFound, exit 1)
+        const { deliverableRoot: root } = requireProject(ctx, parent); // AC82#5 (canonical no-project NotFound, exit 1)
         const plan = loadBuildPlan(ctx, root);
         ctx.io.out.write(formatBuildPlan(plan));
         if (!plan.ok) {
@@ -2916,7 +3156,10 @@ const buildModule: CommandModule = {
     // command prints the output path (AC83#2). `.choices([...BUILD_FORMATS])` makes an unsupported `--format` VALUE
     // a commander usage error → exit 2 (AC83#3); a missing archiving TOOL for a VALID format is an environment
     // failure the adapter raises as a ValidationError → exit 1 (distinct from the bad-value exit 2). The archive is
-    // written to the cwd (never the project root, so a re-run cannot pollute the ship set).
+    // written into the workspace's `builds/` output directory (AC89#1) — beside, never inside, the un-nested
+    // deliverable (`<workspace>/wip`), so the archive can never contain itself or `builds/`, and a re-run cannot
+    // pollute the ship set. Its ROOT is the deliverable, so an end user unpacking it finds `manifest.yml` at the
+    // archive root (AC89#2).
     const pkg = group
       .command("package")
       .description("produce a distributable archive of the shippable file set (doc 10)")
@@ -2926,7 +3169,7 @@ const buildModule: CommandModule = {
           .default("zip"),
       )
       .action((opts: { format: BuildFormat }) => {
-        const root = requireProject(ctx, parent); // AC83#4 (canonical no-project NotFound, exit 1)
+        const { deliverableRoot: root, workspaceRoot } = requireProject(ctx, parent); // AC83#4 (canonical no-project NotFound, exit 1)
         const plan = loadBuildPlan(ctx, root);
         if (!plan.ok) {
           // AC83#1: validate + lock must pass BEFORE producing anything. Print the findings, then exit 1.
@@ -2938,10 +3181,11 @@ const buildModule: CommandModule = {
         }
         const out = createArchive({
           root,
-          outDir: ctx.deps.env.cwd(),
+          outDir: buildOutputDir(ctx, workspaceRoot), // AC89#1: write into <workspace>/builds/, not the cwd
           baseName: `${plan.name}-${plan.version}`,
           format: opts.format,
           files: plan.shippable,
+          transforms: plan.frontDoorTransforms, // task-90: strip `_AGENTS.md` → `AGENTS.md` (+ per-target aliases)
         });
         ctx.io.out.write(`packaged ${plan.name} ${plan.version} → ${out}\n`); // AC83#2
       });
@@ -2973,7 +3217,7 @@ const buildModule: CommandModule = {
           .default("zip"),
       )
       .action((destination: string, opts: { format: BuildFormat }) => {
-        const root = requireProject(ctx, parent); // AC84#3 (canonical no-project NotFound, exit 1)
+        const { deliverableRoot: root, workspaceRoot } = requireProject(ctx, parent); // AC84#3 (canonical no-project NotFound, exit 1)
 
         // AC84#1/#2: BUILD FIRST. A non-ok plan (validate/lock) prints its findings and throws BEFORE any push.
         const plan = loadBuildPlan(ctx, root);
@@ -2986,10 +3230,11 @@ const buildModule: CommandModule = {
         }
         const archive = createArchive({
           root,
-          outDir: ctx.deps.env.cwd(),
+          outDir: buildOutputDir(ctx, workspaceRoot), // AC89#1: build into <workspace>/builds/ before pushing
           baseName: `${plan.name}-${plan.version}`,
           format: opts.format,
           files: plan.shippable,
+          transforms: plan.frontDoorTransforms, // task-90: strip `_AGENTS.md` → `AGENTS.md` (+ per-target aliases)
         });
 
         // Only now — with a successfully built archive — push it (AC84#1).
@@ -3087,6 +3332,60 @@ export const COMPLETION_SPECS: CompletionSpecs = {
  * it, through the FileSystem port (`src/util/completion-install.ts`) — no `process.exit`. `--shell` completes
  * from the `"shells"` fixed-enum source (dogfooding AC#2).
  */
+/**
+ * Render the `skill install` result (output lives in the shell, not the core — doc 13 §3). Names every scope
+ * written and whether each was a fresh install or an update (AC#2, AC#5), e.g.:
+ *
+ *   installed installer-builder into 2 agent scope(s):
+ *     installed  /home/me/.claude/skills/installer-builder  (claude-code)
+ *     updated    /home/me/.agents/skills/installer-builder  (codex)
+ */
+function formatInstallAuthoringSkill(result: InstallAuthoringSkillResult): string {
+  const lines = [`installed ${result.skillName} into ${result.installed.length} agent scope(s):`];
+  for (const record of result.installed) {
+    lines.push(`  ${record.status.padEnd(9)} ${record.destination}  (${record.agent})`);
+  }
+  return `${lines.join("\n")}\n`;
+}
+
+/**
+ * The `skill` group (doc 12 line 349: `installer skill install`) — manage the bundled `installer-builder`
+ * authoring skill. Project-independent (like {@link completionModule}): it writes to the machine-wide user
+ * agent scope under HOME, so it needs no project context and never touches a workspace deliverable (AC#6).
+ */
+const skillModule: CommandModule = {
+  register(parent, ctx) {
+    const group = parent
+      .command("skill")
+      .description("manage the bundled installer-builder authoring skill (doc 12)");
+
+    const installLeaf = group
+      .command("install")
+      .description(
+        "copy the bundled installer-builder authoring skill into the detected agents' user skill scope (doc 12)",
+      )
+      .action(() => {
+        const bundledSkillsRoot = ctx.deps.bundledSkillsRoot;
+        if (bundledSkillsRoot === undefined) {
+          // The composition root always sets this; only a mis-wired deps object reaches here.
+          throw new Error("internal: bundledSkillsRoot was not assembled");
+        }
+        const result = installAuthoringSkill(
+          { fs: ctx.deps.fs, env: ctx.deps.env },
+          { bundledSkillsRoot },
+        );
+        ctx.io.out.write(formatInstallAuthoringSkill(result));
+      });
+
+    withExamples(installLeaf, [
+      {
+        command: "wpm skill install",
+        note: "copy the installer-builder skill into your agent's user skill scope (~/.claude/skills, ~/.agents/skills, …)",
+      },
+    ]);
+  },
+};
+
 const completionModule: CommandModule = {
   register(parent, ctx) {
     const group = parent.command("completion").description("shell tab-completion (doc 12)");
@@ -3181,7 +3480,7 @@ function computeCompletions(words: readonly string[], deps: CliDeps, io: CliIo):
     // The per-bundle sub-program is the SAME tree dispatch builds; for completion only its shape matters, so a
     // placeholder root is fine (no leaf action runs during completion). Recurse over the post-id tail of the
     // STRIPPED words (the global flags are not part of the per-bundle subcommand line).
-    const sub = buildPerBundleProgram(ctx, "", id);
+    const sub = buildPerBundleProgram(ctx, "", "", id);
     // Thread the resolved host id onto the completion context so id-scoped per-bundle sources (e.g. `requires
     // remove <dep>` → this bundle's current requires keys) can resolve it — the sub-program is built with a
     // placeholder root and only the post-id tail, so the id is otherwise invisible to a source.
@@ -3274,6 +3573,7 @@ const TOP_LEVEL_MODULES: readonly CommandModule[] = [
   projectModule,
   bundleModule,
   buildModule,
+  skillModule,
   completionModule,
 ];
 
@@ -3378,12 +3678,14 @@ export async function run(argv: readonly string[], deps: CliDeps, io: CliIo): Pr
 /** Assemble the REAL ports exactly once (doc 12 §"Layered architecture": DI at the entry point). */
 function makeRealDeps(): CliDeps {
   const builtinTemplatesRoot = fileURLToPath(new URL("../templates", import.meta.url));
+  const bundledSkillsRoot = fileURLToPath(new URL("../agent-skills", import.meta.url));
   return {
     fs: new NodeFileSystem(),
     backlog: new BacklogCli(),
     clock: new SystemClock(),
     env: new ProcessEnvironment(),
     builtinTemplatesRoot,
+    bundledSkillsRoot,
   };
 }
 

@@ -39,25 +39,42 @@ These trip people up — get them right:
 Example (a state task, then a dependent one):
 
 ```
-cd bundles/web-handoff
-backlog task create "ensure Chromium present" \
-  -l "kind:state,step:ensure-chromium" -m 0.1.0 \
-  --ac "chromium --version prints" --dod "ownership recorded"
-backlog task create "place launcher config" \
-  -l "kind:state,step:place-launcher-config" -m 0.1.0 --dep web-handoff-1 \
-  --ac "launcher reachable from agent scope"
+# Each bundle ships a `backlog → install-backlog` symlink, so the Backlog.md CLI resolves the recipe from
+# inside the bundle — just cd in and use it directly:
+(cd wip/bundles/web-handoff && \
+  backlog task create "ensure Chromium present" \
+    -l "kind:state,step:ensure-chromium" -m 0.1.0 \
+    --ac "chromium --version prints" --dod "ownership recorded" && \
+  backlog task create "place launcher config" \
+    -l "kind:state,step:place-launcher-config" -m 0.1.0 --dep web-handoff-1 \
+    --ac "launcher reachable from agent scope")
 ```
 
 ## The two cross-cutting rules
 
-- **Structure, not content** (doc `10`). The `wpm` CLI manages structure — projects, bundles, manifest entries,
-  the registered references to payload files and skills. The user-facing **content** — task descriptions,
-  SKILL.md bodies, payload file contents — you write directly via the filesystem (your editor, write tools,
-  `cat > … << EOF`). The CLI's role is to register, list, and validate what you placed, never to author prose.
-- **No-mirror / above Backlog.md** (doc `10`, `11`). The CLI does **not** wrap Backlog.md task operations —
-  not reads (list, view, search) and not writes (create, edit, reorder, archive). You operate every
-  install-backlog task and the authoring-backlog with **Backlog.md directly**, inside the relevant backlog
-  root. The CLI contributes to the authoring-backlog only by *materialising tasks when scope changes elsewhere*.
+- **Structure, not content** (doc `10`). The CLI manages structure (projects, bundles, manifest entries,
+  registered file/skill references); you write all **content** (task bodies, SKILL.md bodies, payload files) via
+  the filesystem. The CLI registers/lists/validates what you placed — it never authors prose.
+- **No-mirror** (doc `10`, `11`). The CLI does **not** wrap Backlog.md task ops; operate every install-backlog
+  and the authoring-backlog with **Backlog.md directly** (it only *materialises* authoring tasks as scope changes).
+
+## The deliverable executor front door is `_AGENTS.md` (doc `06`, `12`)
+
+The shipped artifact's executor front door — the `AGENTS.md` that, once installed, recognises an *end user's*
+agent and runs the install — is **author-owned content you may edit**, but it lives under a **reserved
+leading-underscore name**: `wip/_AGENTS.md` at the project root, and `wip/bundles/<id>/_AGENTS.md` per bundle.
+This is deliberate, not a stray file: under its canonical name (`AGENTS.md`) your *authoring* agent would
+auto-discover it by exact basename and follow it as a directive (closest-wins), contradicting the authoring
+front door. The leading underscore keeps it `.md` and editable while no agent auto-loads it.
+
+- **Edit the `_AGENTS.md` directly** (your editor / write tools — the same "structure, not content" rule). Do
+  **not** rename it to `AGENTS.md`/`CLAUDE.md`/`GEMINI.md`, and do **not** give it a `.tmpl` suffix — those are
+  reserved (auto-discovered names, and the placeholder-template convention, respectively).
+- **The build strips the prefix for you.** `wpm build` renames each `_AGENTS.md` → `AGENTS.md` in the archive
+  (root and per bundle) and creates the per-target alias front doors beside it (`CLAUDE.md` for `claude-code`,
+  `GEMINI.md` for `gemini`; agents that read `AGENTS.md` natively get none — from `manifest.targets`). Your bytes
+  are copied **verbatim** — the build never regenerates the content. The reserved `_AGENTS.md` never appears in
+  the archive.
 
 ## Recipe vs receipt (doc `00`, `08`)
 

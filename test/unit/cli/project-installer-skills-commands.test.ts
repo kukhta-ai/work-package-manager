@@ -72,12 +72,12 @@ function seed(
   const fs = new MemoryFileSystem();
   const backlog = new FakeBacklog();
 
-  fs.write(`${PROJ}/manifest.yml`, opts.manifestYml ?? manifestYml());
+  fs.write(`${PROJ}/wip/manifest.yml`, opts.manifestYml ?? manifestYml());
   for (const name of opts.placedHelpers ?? []) {
-    fs.write(`${PROJ}/${INSTALLER_SKILLS}/${name}/SKILL.md`, skillMd(name));
+    fs.write(`${PROJ}/wip/${INSTALLER_SKILLS}/${name}/SKILL.md`, skillMd(name));
   }
   for (const [rel, content] of Object.entries(opts.placedAt ?? {})) {
-    fs.write(`${PROJ}/${rel}`, content);
+    fs.write(`${PROJ}/wip/${rel}`, content);
   }
   backlog.init(AUTHORING, { taskPrefix: "authoring" });
 
@@ -107,7 +107,7 @@ function deps(fs: MemoryFileSystem, backlog: FakeBacklog, cwd = "/elsewhere"): C
 
 /** The parsed `installerSkills` registry of the project's manifest.yml on disk. */
 function installerSkillsOf(fs: MemoryFileSystem): readonly SkillRef[] {
-  const parsed = parseManifest(parseYaml(fs.read(`${PROJ}/manifest.yml`)));
+  const parsed = parseManifest(parseYaml(fs.read(`${PROJ}/wip/manifest.yml`)));
   if (!parsed.ok) throw new Error(`manifest did not parse: ${parsed.problem.message}`);
   return parsed.value.installerSkills;
 }
@@ -118,7 +118,7 @@ function installerSkillsOf(fs: MemoryFileSystem): readonly SkillRef[] {
 describe("project installer-skills add — ATTACH branch (task-45 #1)", () => {
   it("attaches a SKILL.md present at the conventional root path: validates frontmatter, registers {name, path}, leaves the file, NO task", async () => {
     const { fs, backlog } = seed({ placedHelpers: ["detect"] });
-    const before = fs.read(`${PROJ}/${INSTALLER_SKILLS}/detect/SKILL.md`);
+    const before = fs.read(`${PROJ}/wip/${INSTALLER_SKILLS}/detect/SKILL.md`);
     const i = io();
     expect(
       await run(["project", "installer-skills", "add", "detect", "-C", PROJ], deps(fs, backlog), i),
@@ -126,36 +126,36 @@ describe("project installer-skills add — ATTACH branch (task-45 #1)", () => {
     expect(installerSkillsOf(fs)).toEqual([
       { name: "detect", path: `${INSTALLER_SKILLS}/detect/SKILL.md` },
     ]);
-    expect(fs.read(`${PROJ}/${INSTALLER_SKILLS}/detect/SKILL.md`)).toBe(before); // structure-not-content
+    expect(fs.read(`${PROJ}/wip/${INSTALLER_SKILLS}/detect/SKILL.md`)).toBe(before); // structure-not-content
     expect(i.out.text).toContain("attached"); // 45#6: prints what it did
     expect(i.out.text).not.toContain("materialised"); // attach queues no writing
-    expect(fs.read(`${PROJ}/manifest.yml`)).toContain("# demo project —"); // comment preserved
+    expect(fs.read(`${PROJ}/wip/manifest.yml`)).toContain("# demo project —"); // comment preserved
   });
 
   it("attaches via --path: registers the explicit (relocated) path", async () => {
-    const { fs, backlog } = seed({ placedAt: { "elsewhere/SKILL.md": skillMd("d2") } });
+    const { fs, backlog } = seed({ placedAt: { "custom/helper.md": skillMd("d2") } });
     const i = io();
     expect(
       await run(
-        ["project", "installer-skills", "add", "d2", "--path", "elsewhere/SKILL.md", "-C", PROJ],
+        ["project", "installer-skills", "add", "d2", "--path", "custom/helper.md", "-C", PROJ],
         deps(fs, backlog),
         i,
       ),
     ).toBe(0);
-    expect(installerSkillsOf(fs)).toEqual([{ name: "d2", path: "elsewhere/SKILL.md" }]);
+    expect(installerSkillsOf(fs)).toEqual([{ name: "d2", path: "custom/helper.md" }]);
   });
 
   it("rejects an attach whose SKILL.md has invalid frontmatter (no description): exit 1, nothing registered", async () => {
     const { fs, backlog } = seed({
       placedAt: { [`${INSTALLER_SKILLS}/bad/SKILL.md`]: "---\nname: bad\n---\nno description\n" },
     });
-    const before = fs.read(`${PROJ}/manifest.yml`);
+    const before = fs.read(`${PROJ}/wip/manifest.yml`);
     const i = io();
     expect(
       await run(["project", "installer-skills", "add", "bad", "-C", PROJ], deps(fs, backlog), i),
     ).toBe(1);
     expect(i.err.text).toContain("description");
-    expect(fs.read(`${PROJ}/manifest.yml`)).toBe(before); // byte-identical
+    expect(fs.read(`${PROJ}/wip/manifest.yml`)).toBe(before); // byte-identical
   });
 });
 
@@ -167,7 +167,7 @@ describe("project installer-skills add — SCAFFOLD branch (task-45 #2)", () => 
       await run(["project", "installer-skills", "add", "fresh", "-C", PROJ], deps(fs, backlog), i),
     ).toBe(0);
 
-    const stubPath = `${PROJ}/${INSTALLER_SKILLS}/fresh/SKILL.md`;
+    const stubPath = `${PROJ}/wip/${INSTALLER_SKILLS}/fresh/SKILL.md`;
     expect(fs.exists(stubPath)).toBe(true);
     const stub = fs.read(stubPath);
     expect(stub).toContain("name: fresh");
@@ -189,7 +189,7 @@ describe("project installer-skills add — SCAFFOLD branch (task-45 #2)", () => 
 describe("project installer-skills add — ERROR + reserved-name refusal + standard reqs (task-45 #3/#4/#5/#6)", () => {
   it("AC#3 — --path given but nothing there: typed error (exit 1), nothing registered, no stub written", async () => {
     const { fs, backlog } = seed();
-    const before = fs.read(`${PROJ}/manifest.yml`);
+    const before = fs.read(`${PROJ}/wip/manifest.yml`);
     const i = io();
     expect(
       await run(
@@ -209,13 +209,13 @@ describe("project installer-skills add — ERROR + reserved-name refusal + stand
     ).toBe(1);
     expect(i.err.text).toContain(`${INSTALLER_SKILLS}/ghost/SKILL.md`);
     expect(i.err.text).toContain("omit --path");
-    expect(fs.read(`${PROJ}/manifest.yml`)).toBe(before);
-    expect(fs.exists(`${PROJ}/${INSTALLER_SKILLS}/ghost/SKILL.md`)).toBe(false);
+    expect(fs.read(`${PROJ}/wip/manifest.yml`)).toBe(before);
+    expect(fs.exists(`${PROJ}/wip/${INSTALLER_SKILLS}/ghost/SKILL.md`)).toBe(false);
   });
 
   it("AC#4 — a name ending in -advisor is REFUSED as reserved (exit 2); nothing registered/scaffolded", async () => {
     const { fs, backlog } = seed();
-    const before = fs.read(`${PROJ}/manifest.yml`);
+    const before = fs.read(`${PROJ}/wip/manifest.yml`);
     const i = io();
     expect(
       await run(
@@ -226,13 +226,13 @@ describe("project installer-skills add — ERROR + reserved-name refusal + stand
     ).toBe(2); // UsageError → exit 2 (distinct from the exit-1 missing-resource errors)
     expect(i.err.text).toContain("reserved");
     expect(i.err.text).toContain("advisor");
-    expect(fs.read(`${PROJ}/manifest.yml`)).toBe(before); // nothing registered
-    expect(fs.exists(`${PROJ}/${INSTALLER_SKILLS}/web-advisor/SKILL.md`)).toBe(false); // no stub
+    expect(fs.read(`${PROJ}/wip/manifest.yml`)).toBe(before); // nothing registered
+    expect(fs.exists(`${PROJ}/wip/${INSTALLER_SKILLS}/web-advisor/SKILL.md`)).toBe(false); // no stub
   });
 
   it("AC#4 — a name matching the main <project>-installer (demo-installer) is REFUSED as reserved (exit 2)", async () => {
     const { fs, backlog } = seed();
-    const before = fs.read(`${PROJ}/manifest.yml`);
+    const before = fs.read(`${PROJ}/wip/manifest.yml`);
     const i = io();
     expect(
       await run(
@@ -243,8 +243,8 @@ describe("project installer-skills add — ERROR + reserved-name refusal + stand
     ).toBe(2);
     expect(i.err.text).toContain("reserved");
     expect(i.err.text).toContain("main installer");
-    expect(fs.read(`${PROJ}/manifest.yml`)).toBe(before);
-    expect(fs.exists(`${PROJ}/${INSTALLER_SKILLS}/demo-installer/SKILL.md`)).toBe(false);
+    expect(fs.read(`${PROJ}/wip/manifest.yml`)).toBe(before);
+    expect(fs.exists(`${PROJ}/wip/${INSTALLER_SKILLS}/demo-installer/SKILL.md`)).toBe(false);
   });
 
   it("AC#5 — outside any project, exits 1 naming manifest.yml and suggesting init", async () => {
@@ -305,7 +305,7 @@ describe("project installer-skills list (task-46 — SCAN + EXCLUSION)", () => {
 
   it("AC#1 — a directory with a non-helper entry (no SKILL.md) is ignored", async () => {
     const { fs, backlog } = seed({ placedHelpers: ["real"] });
-    fs.write(`${PROJ}/${INSTALLER_SKILLS}/not-a-helper/notes.md`, "stray");
+    fs.write(`${PROJ}/wip/${INSTALLER_SKILLS}/not-a-helper/notes.md`, "stray");
     const i = io();
     expect(
       await run(["project", "installer-skills", "list", "-C", PROJ], deps(fs, backlog), i),
@@ -324,11 +324,11 @@ describe("project installer-skills list (task-46 — SCAN + EXCLUSION)", () => {
 
   it("AC#2 — read-only: manifest unchanged after list", async () => {
     const { fs, backlog } = seed({ placedHelpers: ["helper-one"] });
-    const before = fs.read(`${PROJ}/manifest.yml`);
+    const before = fs.read(`${PROJ}/wip/manifest.yml`);
     expect(
       await run(["project", "installer-skills", "list", "-C", PROJ], deps(fs, backlog), io()),
     ).toBe(0);
-    expect(fs.read(`${PROJ}/manifest.yml`)).toBe(before);
+    expect(fs.read(`${PROJ}/wip/manifest.yml`)).toBe(before);
   });
 
   it("AC#3 — outside any project, exits 1 naming manifest.yml", async () => {
@@ -391,7 +391,7 @@ describe("project installer-skills remove (task-47)", () => {
       manifestYml: M_WITH_REFS,
       placedAt: { [`${INSTALLER_SKILLS}/one/SKILL.md`]: skillMd("one") },
     });
-    const contentBefore = fs.read(`${PROJ}/${INSTALLER_SKILLS}/one/SKILL.md`);
+    const contentBefore = fs.read(`${PROJ}/wip/${INSTALLER_SKILLS}/one/SKILL.md`);
     expect(
       await run(
         ["project", "installer-skills", "remove", "one", "-C", PROJ],
@@ -399,13 +399,13 @@ describe("project installer-skills remove (task-47)", () => {
         io(),
       ),
     ).toBe(0);
-    expect(fs.exists(`${PROJ}/${INSTALLER_SKILLS}/one/SKILL.md`)).toBe(true);
-    expect(fs.read(`${PROJ}/${INSTALLER_SKILLS}/one/SKILL.md`)).toBe(contentBefore);
+    expect(fs.exists(`${PROJ}/wip/${INSTALLER_SKILLS}/one/SKILL.md`)).toBe(true);
+    expect(fs.read(`${PROJ}/wip/${INSTALLER_SKILLS}/one/SKILL.md`)).toBe(contentBefore);
   });
 
   it("AC#3 — deregistering a name NOT registered fails with NotFound (exit 1), nothing changed", async () => {
     const { fs, backlog } = seed({ manifestYml: M_WITH_REFS });
-    const before = fs.read(`${PROJ}/manifest.yml`);
+    const before = fs.read(`${PROJ}/wip/manifest.yml`);
     const i = io();
     expect(
       await run(
@@ -415,7 +415,7 @@ describe("project installer-skills remove (task-47)", () => {
       ),
     ).toBe(1);
     expect(i.err.text).toContain("not-there");
-    expect(fs.read(`${PROJ}/manifest.yml`)).toBe(before);
+    expect(fs.read(`${PROJ}/wip/manifest.yml`)).toBe(before);
   });
 
   it("AC#4 — outside any project, exits 1 naming manifest.yml", async () => {
@@ -478,12 +478,12 @@ describe("project installer-skills — end-to-end author workflow (scan-vs-regis
     i = io();
     expect(await run(["project", "installer-skills", "list", "-C", PROJ], d(), i)).toBe(0);
     expect(i.out.text).toBe("fresh\n");
-    expect(fs.exists(`${PROJ}/${INSTALLER_SKILLS}/fresh/SKILL.md`)).toBe(true);
+    expect(fs.exists(`${PROJ}/wip/${INSTALLER_SKILLS}/fresh/SKILL.md`)).toBe(true);
 
     expect(backlog.listTasks(AUTHORING).map((t) => t.title)).toContain(
       "Write content for install-time skill fresh",
     );
-    expect(fs.read(`${PROJ}/manifest.yml`)).toContain("# demo project —");
+    expect(fs.read(`${PROJ}/wip/manifest.yml`)).toContain("# demo project —");
   });
 
   it("the installer-skills group help lists the add/list/remove subcommands", async () => {
