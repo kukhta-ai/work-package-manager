@@ -4,7 +4,7 @@
 # (Distinct from _bmad/ — that is BMAD's own install dir; this dot-dir is our tracker.)
 
 phase: 6
-phase_name: "Authoring-context epic gate — cold verification"
+phase_name: "Authoring-context epic gate — external CI verification"
 branch: feature/authoring-context
 epic: authoring-context
 # USER RESUMED 2026-08-19: "finish this feature". Reopened Phase 5 for the four tracked follow-ups
@@ -18,6 +18,7 @@ epic: authoring-context
 # FOLLOW-UPS COMPLETE + merged: TASK-95 (git-format parity), TASK-101 (template/docs reconciliation), TASK-104 (filtered archive scaffold/front-door parity), TASK-105 (registered payload-skill ship policy). Cold gate passed; PR handoff in progress.
 # FOLLOW-UP COLD GATE PASS at 2398d42 from a separate clean clone: npm ci; typecheck; Biome (200 files); build; Vitest 1278/1278 across 99 files (375.88s); clean diff. npm production audit = 0 vulnerabilities; npm reported 3 high advisories only when development dependencies were included, left for dependency-maintenance scope.
 # PR #3 CI run 32355637349 exposed an Info-ZIP same-output update defect plus a pre-existing Windows test baseline failure. TASK-105 ZIP repair is review-clean (fresh exact-set output + failed-process partial cleanup; 1279/1279 local). The concluded `windows-ci-gate` investigation partitioned all 284 Windows failures into six bounded mechanisms; the worker implemented them and the separate reviewer approved with 0 open findings. Exact-final local evidence is typecheck/Biome/build plus 1286/1286 tests; external Windows Node 20/22 CI is the remaining empirical gate.
+# POST-FIX COLD GATE PASS at f59c1b5 from fresh clone: npm ci; typecheck; Biome (200 files); build; Vitest 1286/1286 across 99 files (385.62s); clean diff; production audit 0. Interim bmad-testarch-trace maps 46/46 AC FULL and has a PASS coverage base; overall CONCERNS is solely the pending external Windows Node 20/22 pair and must be re-run after CI.
 # *** EPIC-4 COMPLETE (stories 96-100 done + merged --no-ff into feature/authoring-context). GATE = PASS (content-only: agent-skills/*.md + 1 strengthened test + backlog/ledger; NO src/ changes -> fast suite is the right gate; tsc0/biome0/vitest 1076 passed). ***
 # Added 2 skill references (task-conventions.md = AC what-not-how contract; native-surfaces.md = 5 roles + scope table + front-door mechanic); named the core bet in the spine + executor loop/done-gate/how-to-use in quality-protocol; fixed 9 drift spots + the files-add example. DOGFOOD (task-100): a cold agent authored a valid bundle from only the 2 surfaces -> surfaces self-sufficient; gaps resolved-in-skill or DEFERRED.
 # DEFERRED PRODUCT DEFECTS found by the dogfood (tracked, human/product): TASK-102 (BLOCKER: a bundle's install-backlog is NOT Backlog.md-CLI-resolvable -> the documented `cd wip/bundles/<id> && backlog ...` recipe-authoring cmd FAILS; also hits the executor at install time; skill ships a self-cleaning symlink workaround meanwhile), TASK-103 (payload-skill stub limbo), TASK-104 (bundle-template ships into archive + dangling menu). Plus TASK-101 (docs/templates reconcile: missing single-bundle/multi-bundle/with-payload-skill/adopts-system-tool templates + the files-add doc bug). TASK-95 (epic-3: --format git transform).
@@ -236,7 +237,7 @@ specialists:
   pm:           {spawned: true,  id: "ad55659c67626dac3", role: "PRD conformance vs docs/00-05",        status: "P2 done — prd shim; no scope conflicts (noted wpm/installer bin placeholder)"}
   ux-designer:  {spawned: false,                          role: "UX spec",                              status: "skipped — no GUI per docs/12"}
   architect:    {spawned: true,  id: "af0958eff0e1846e5", role: "architecture conformance vs docs/12-13", status: "P3 done — architecture/epics/readiness=PASS; RESUME if a task reveals a design gap"}
-  tea:          {spawned: true,  id: "aa6e3730c6822131e", role: "test design/framework/ci/trace/nfr/gate", status: "P3 done — test-design/framework=vitest/ci=matrix; RESUME in P6 (trace/nfr/final gate)"}
+  tea:          {spawned: true,  id: "/root/phase6_tea", role: "test design/framework/ci/trace/nfr/gate", last_skill: "bmad-testarch-trace @ epic-4 authoring-context (interim CONCERNS)", status: "46/46 AC FULL; coverage base PASS; sole score-6 concern is pending external Windows Node 20/22 evidence; re-run after CI."}
   sm:           {spawned: true,  id: "a58a6182b0009cbb7", role: "sprint setup + create-story per task",  status: "P4 done — sprint-status.yaml; worker owns create-story in the P5 loop"}
   worker:       {spawned: true,  id: "/root/followup_worker2", role: "replacement persistent follow-up story worker", last_skill: "bmad-dev-story @ windows-ci-gate (review absorption)", status: "Six-mechanism remediation implemented; review fixes absorbed; focused/static/build green; reviewer exact full gate 1286/1286."}
   # CROSS-CUTTING FIX in flight (worker #3): the task-25 lifecycle ⑤ MATERIALISE used ctx.root, but the real authoring backlog is
@@ -249,7 +250,7 @@ specialists:
   investigator: {spawned: true, id: "/root/ci_investigator", role: "systematic debugging at the epic gate", last_skill: "bmad-investigate @ windows-ci-gate", status: "Concluded (Medium): all 284 Windows failures partitioned into six bounded mechanisms with exact repair/verification seams."}
   retro:        {spawned: false,                          role: "epic retrospective",                    status: "spawn after task-33 (end of P5)"}
 
-gates_pending: ["Phase-6 cold gate and external CI matrix", "Human review and merge PR #3 into feature/authoring-workspace"]
+gates_pending: ["Phase-6 external CI matrix and final testarch-trace", "Human review and merge PR #3 into feature/authoring-workspace"]
 # GOAL EXTENDED (2026-06-01): "complete to task 33 ... full SDLC; THEN merge to dev and start the same SDLC
 # from it with the CLI tasks pushed there (update from remote) and go to task 84 (to the end)." So:
 #   (1) finish the foundation epic 23-33 + the Phase-6 epic gate;
@@ -271,4 +272,4 @@ tooling:
   tool_target: "claude-code"
   claude_code_skills: ".claude/skills (56 skills)"
 
-last_updated: "2026-08-20T11:48:15Z"
+last_updated: "2026-08-20T12:24:50Z"

@@ -1,0 +1,47 @@
+{
+  "schema_version": "0.1.0",
+  "evaluated_at": "2026-08-20T12:13:30.830Z",
+  "repo": "work-package-manager",
+  "target": {
+    "type": "epic",
+    "id": "epic-4-authoring-context",
+    "label": "authoring-context feature plus Phase-6 ZIP and Windows CI remediation"
+  },
+  "collection_status": "COLLECTED",
+  "gate_basis": "priority_thresholds",
+  "gate_status": "CONCERNS",
+  "base_coverage_gate_status": "PASS",
+  "rationale": "P0 coverage is 100%, P1 coverage is 100% (target: 90%), and overall coverage is 100% (minimum: 80%). Risk-governance overlay: external Windows Node 20/22 execution remains pending (probability 2 × impact 3 = score 6, MITIGATE), so this is an interim verdict until both Windows jobs are green.",
+  "p0_status": "MET",
+  "p1_status": "MET",
+  "overall_status": "MET",
+  "critical_open": 0,
+  "high_open": 1,
+  "open_risks": [
+    {
+      "id": "R-ACX-WINDOWS-CI-EVIDENCE",
+      "category": "TECH",
+      "title": "Post-fix Windows Node 20/22 execution evidence is pending",
+      "probability": 2,
+      "impact": 3,
+      "score": 6,
+      "action": "MITIGATE",
+      "status": "OPEN",
+      "owner": "Phase-6 CI/orchestration owner",
+      "deadline": "Before final Phase-6 gate disposition",
+      "mitigation_plan": "Run the configured external matrix on exact head f59c1b570d92de89c0549cf41088042fbffc2abf, require both Windows Node jobs green, then re-run bmad-testarch-trace."
+    }
+  ],
+  "links": {
+    "trace_report_path": "_bmad-output/test-artifacts/traceability/trace-epic-4-authoring-context.md",
+    "trace_report_url": "",
+    "artifact_url": "",
+    "journey_evidence_url": ""
+  },
+  "evidence_risk_summary": {
+    "critical_open": 0,
+    "high_open": 1,
+    "medium_open": 0,
+    "low_open": 0
+  }
+}

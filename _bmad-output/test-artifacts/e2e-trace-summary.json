@@ -1,0 +1,194 @@
+{
+  "schema_version": "0.1.0",
+  "snapshot_at": "2026-08-20T12:13:30.830Z",
+  "repo": "work-package-manager",
+  "workflow": "bmad-testarch-trace",
+  "collection_mode": "contract_static",
+  "collection_status": "COLLECTED",
+  "inventory_basis": "acceptance_criteria",
+  "gate_basis": "priority_thresholds",
+  "source_sha": "f59c1b570d92de89c0549cf41088042fbffc2abf",
+  "target": {
+    "type": "epic",
+    "id": "epic-4-authoring-context",
+    "label": "authoring-context feature plus Phase-6 ZIP and Windows CI remediation"
+  },
+  "decision_mode": "deterministic",
+  "evaluator": "Root",
+  "confidence": "high",
+  "oracle": {
+    "resolution_mode": "formal_requirements",
+    "confidence": "high",
+    "sources": [
+      "Backlog.md TASK-95..TASK-105 acceptance criteria (40 criteria; read via CLI)",
+      "_bmad-output/implementation-artifacts/stories/story-phase-6-windows-ci-remediation.md (6 criteria)"
+    ],
+    "external_pointer_status": "not_used",
+    "synthetic": false
+  },
+  "coverage": {
+    "inventory": {
+      "covered": 46,
+      "total": 46,
+      "pct": 100
+    },
+    "priority_breakdown": {
+      "P0": {
+        "total": 21,
+        "covered": 21,
+        "pct": 100
+      },
+      "P1": {
+        "total": 20,
+        "covered": 20,
+        "pct": 100
+      },
+      "P2": {
+        "total": 5,
+        "covered": 5,
+        "pct": 100
+      },
+      "P3": {
+        "total": 0,
+        "covered": 0,
+        "pct": 100
+      }
+    },
+    "by_level": {
+      "e2e": {
+        "tests": 18,
+        "criteria_covered": 18
+      },
+      "api": {
+        "tests": 0,
+        "criteria_covered": 0
+      },
+      "component": {
+        "tests": 0,
+        "criteria_covered": 0
+      },
+      "unit": {
+        "tests": 26,
+        "criteria_covered": 23
+      },
+      "other": {
+        "tests": 0,
+        "criteria_covered": 0
+      }
+    }
+  },
+  "tests": {
+    "files": 23,
+    "cases": 44,
+    "skipped_cases": 0,
+    "fixme_cases": 0,
+    "pending_cases": 0
+  },
+  "risk_summary": {
+    "critical_open": 0,
+    "high_open": 0,
+    "medium_open": 0,
+    "low_open": 0
+  },
+  "open_risks": [
+    {
+      "id": "R-ACX-WINDOWS-CI-EVIDENCE",
+      "category": "TECH",
+      "title": "Post-fix Windows Node 20/22 execution evidence is pending",
+      "probability": 2,
+      "impact": 3,
+      "score": 6,
+      "action": "MITIGATE",
+      "status": "OPEN",
+      "owner": "Phase-6 CI/orchestration owner",
+      "deadline": "Before final Phase-6 gate disposition",
+      "mitigation_plan": "Run the configured external matrix on exact head f59c1b570d92de89c0549cf41088042fbffc2abf, require both Windows Node jobs green, then re-run bmad-testarch-trace."
+    }
+  ],
+  "heuristics": {
+    "endpoint_gaps": 0,
+    "auth_negative_path_status": "not_applicable",
+    "error_path_status": "present",
+    "ui_journey_status": "not_applicable",
+    "ui_state_status": "not_applicable"
+  },
+  "blockers": [],
+  "recommendations": [
+    {
+      "priority": "HIGH",
+      "action": "Execute the configured external Ubuntu/macOS/Windows Node 20/22 matrix on this exact head and retain Windows evidence.",
+      "requirements": [
+        "WIN.1",
+        "WIN.2",
+        "WIN.3",
+        "WIN.4",
+        "WIN.5",
+        "WIN.6"
+      ]
+    },
+    {
+      "priority": "HIGH",
+      "action": "Re-run bmad-testarch-trace after both Windows jobs complete to issue the final gate verdict.",
+      "requirements": [
+        "WIN.1",
+        "WIN.2",
+        "WIN.3",
+        "WIN.4",
+        "WIN.5",
+        "WIN.6"
+      ]
+    },
+    {
+      "priority": "LOW",
+      "action": "Run bmad-testarch-test-review again when the test implementation materially changes.",
+      "requirements": []
+    }
+  ],
+  "base_coverage_gate_status": "PASS",
+  "gate_status": "CONCERNS",
+  "gate_rationale": "P0 coverage is 100%, P1 coverage is 100% (target: 90%), and overall coverage is 100% (minimum: 80%). Risk-governance overlay: external Windows Node 20/22 execution remains pending (probability 2 × impact 3 = score 6, MITIGATE), so this is an interim verdict until both Windows jobs are green.",
+  "gate_criteria": {
+    "p0_coverage_required": "100%",
+    "p0_coverage_actual": "100%",
+    "p0_status": "MET",
+    "p1_coverage_target": "90%",
+    "p1_coverage_minimum": "80%",
+    "p1_coverage_actual": "100%",
+    "p1_status": "MET",
+    "overall_coverage_minimum": "80%",
+    "overall_coverage_actual": "100%",
+    "overall_status": "MET"
+  },
+  "execution_evidence": {
+    "exact_head_local": {
+      "npm_ci": "PASS",
+      "typecheck": "PASS",
+      "biome_files": 200,
+      "build": "PASS",
+      "vitest_passed": 1286,
+      "vitest_total": 1286,
+      "vitest_files": 99,
+      "duration_seconds": 385.62,
+      "clean_checkout": "PASS",
+      "production_audit_vulnerabilities": 0
+    },
+    "external_windows_node_20_22": "PENDING"
+  },
+  "nfr_baseline": {
+    "artifact": "_bmad-output/test-artifacts/nfr-assessment-epic-3-authoring-workspace.md",
+    "verdict": "PASS (with notes)",
+    "reassessed_by_this_workflow": false
+  },
+  "links": {
+    "trace_report_path": "_bmad-output/test-artifacts/traceability/trace-epic-4-authoring-context.md",
+    "trace_report_url": "",
+    "artifact_url": "",
+    "journey_evidence_url": ""
+  },
+  "evidence_risk_summary": {
+    "critical_open": 0,
+    "high_open": 1,
+    "medium_open": 0,
+    "low_open": 0
+  }
+}
