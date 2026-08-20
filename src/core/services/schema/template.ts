@@ -20,6 +20,7 @@ const TEMPLATE_SCOPES: readonly TemplateScope[] = ["project", "bundle"];
 export interface TemplateDescriptorData {
   readonly name: string;
   readonly scope: string;
+  readonly description?: string;
   readonly parameters: readonly {
     readonly name: string;
     readonly description?: string;
@@ -59,6 +60,10 @@ export function parseTemplateDescriptor(data: unknown): Parsed<Template> {
   }
   const scope = scopeStr.value as TemplateScope;
 
+  // `description` is an optional top-level one-liner (doc-10 metadata, shown by `template show`).
+  const description = optionalString(data, "description", CTX);
+  if (!description.ok) return description;
+
   // `parameters` is optional; default to none when absent, but reject a present non-array.
   let parameters: TemplateParameter[] = [];
   if ("parameters" in data && data.parameters !== undefined && data.parameters !== null) {
@@ -90,7 +95,14 @@ export function parseTemplateDescriptor(data: unknown): Parsed<Template> {
     }
   }
 
-  return ok({ name: name.value, scope, parameters, files: [], snippets: [] });
+  return ok({
+    name: name.value,
+    scope,
+    ...(description.value !== undefined ? { description: description.value } : {}),
+    parameters,
+    files: [],
+    snippets: [],
+  });
 }
 
 /**
@@ -105,6 +117,7 @@ export function serializeTemplateDescriptor(template: Template): TemplateDescrip
   return {
     name: template.name,
     scope: template.scope,
+    ...(template.description !== undefined ? { description: template.description } : {}),
     parameters: template.parameters.map((p) => ({
       name: p.name,
       ...(p.description !== undefined ? { description: p.description } : {}),

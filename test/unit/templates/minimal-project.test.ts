@@ -210,6 +210,7 @@ describe("minimal project template — instantiation (doc 06/07)", () => {
         meta: { name: "hermes-handoff", version: "1.0.0" as never },
         targets: [],
         bundles: [],
+        installerSkills: [],
       },
       bundles: new Map(),
     };

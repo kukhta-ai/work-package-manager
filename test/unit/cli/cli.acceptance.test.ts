@@ -19,6 +19,12 @@ import { parseYaml } from "../../../src/util/yaml.js";
 
 const ROOT = "/proj";
 const BUILTIN = "/builtin-templates";
+/**
+ * The authoring backlog is its own Backlog.md root at `<project>/.authoring-backlog` (doc 10 step 6), where the
+ * lifecycle materialises — NOT the project root. The fake is initialised there and materialise assertions read
+ * there (the fake-parity discipline that catches the real "No Backlog.md project found" failure).
+ */
+const AUTHORING = `${ROOT}/.authoring-backlog`;
 
 function collector(): OutputSink & { text: string } {
   return {
@@ -52,7 +58,7 @@ function seedDeps(): CliDeps {
       "",
     ].join("\n"),
   );
-  backlog.init(ROOT, { taskPrefix: "authoring" });
+  backlog.init(AUTHORING, { taskPrefix: "authoring" });
   fs.makeDirectories(`${ROOT}/installer-skills`);
 
   fs.write(
@@ -63,6 +69,11 @@ function seedDeps(): CliDeps {
   fs.write(
     `${BUILTIN}/project/minimal/snippets/installer-skills/{{project-name}}-installer/SKILL.md`,
     "---\nname: {{project-name}}-installer\n---\nInstall {{project-name}}.\n",
+  );
+  // The advisor snippet `bundle new`'s auto-advisor renders (doc 10 step 6).
+  fs.write(
+    `${BUILTIN}/project/minimal/snippets/advisor.SKILL.md.tmpl`,
+    "---\nname: {{bundle-id}}-advisor\n---\n\n# {{bundle-id}} advisor\n",
   );
   fs.write(
     `${BUILTIN}/bundle/default/template.yml`,
@@ -117,7 +128,7 @@ describe("wpm CLI — acceptance (task-27 composition root, doc 10/12/13)", () =
 
       // The effects landed in the SAME injected instances — proving they were supplied, not re-constructed:
       expect(deps.fs.exists(`${ROOT}/bundles/web/bundle.yml`)).toBe(true);
-      expect(deps.backlog.listTasks(ROOT).length).toBeGreaterThan(0);
+      expect(deps.backlog.listTasks(AUTHORING).length).toBeGreaterThan(0);
       // ...and output was formatted on the injected sink (output lives in the shell, not core):
       expect(i.out.text).toContain("created bundle web");
     });

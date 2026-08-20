@@ -8,6 +8,7 @@ import type {
   TaskStatus,
   TaskSummary,
 } from "../core/ports/backlog.js";
+import { toPosix } from "../util/posix-path.js";
 
 /** The full in-memory record of a task, including fields the real `list` does not surface. */
 interface FakeTask {
@@ -45,9 +46,19 @@ interface FakeRoot {
 export class FakeBacklog implements BacklogMd {
   private readonly roots = new Map<string, FakeRoot>();
 
+  /**
+   * The Map key for a root: its POSIX form. The real adapter resolves a single cwd regardless of how the caller
+   * spelled the separators, so the fake must too — otherwise a root `init`-ed as `/proj/.authoring-backlog` and
+   * later looked up as the OS-native `\proj\.authoring-backlog` (Windows `path.join`) would miss. Normalizing
+   * EVERY key access collapses all separator forms of one logical root to a single entry. A no-op on POSIX.
+   */
+  private key(root: string): string {
+    return toPosix(root);
+  }
+
   /** Fetch an initialised root, throwing the way the real CLI would if the backlog was never initialised. */
   private requireRoot(root: string): FakeRoot {
-    const r = this.roots.get(root);
+    const r = this.roots.get(this.key(root));
     if (r === undefined) {
       throw new Error(`No backlog initialised at '${root}' (call init first)`);
     }
@@ -69,7 +80,11 @@ export class FakeBacklog implements BacklogMd {
    * @inheritdoc
    */
   init(root: string, options: InitOptions): void {
-    this.roots.set(root, { taskPrefix: options.taskPrefix, counter: 0, tasks: new Map() });
+    this.roots.set(this.key(root), {
+      taskPrefix: options.taskPrefix,
+      counter: 0,
+      tasks: new Map(),
+    });
   }
 
   /** @inheritdoc */
@@ -160,7 +175,7 @@ export class FakeBacklog implements BacklogMd {
    * @returns A frozen snapshot of the task, or `undefined`.
    */
   taskDetail(root: string, id: TaskId): Readonly<FakeTask> | undefined {
-    const task = this.roots.get(root)?.tasks.get(id);
+    const task = this.roots.get(this.key(root))?.tasks.get(id);
     return task === undefined ? undefined : structuredClone(task);
   }
 }

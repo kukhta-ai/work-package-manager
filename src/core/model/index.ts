@@ -9,7 +9,8 @@
  */
 
 export type { Brand } from "./branded.js";
-export type { BundleManifest } from "./bundle.js";
+export type { BundleManifest, BundlePayload, SkillRef } from "./bundle.js";
+export { AUTHORING_BACKLOG_DIR, AUTHORING_TASK_PREFIX } from "./constants.js";
 export {
   type AgentName,
   type BundleId,

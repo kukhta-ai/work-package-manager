@@ -1,3 +1,4 @@
+import type { SkillRef } from "./bundle.js";
 import type { AgentName, BundleId } from "./ids.js";
 import type { SemVer } from "./version.js";
 
@@ -40,4 +41,18 @@ export interface Manifest {
   readonly bundles: readonly BundleId[];
   /** The target agent runtimes this project supports. */
   readonly targets: readonly AgentName[];
+  /**
+   * Registered PROJECT-scoped install-time helper skills (doc 10 row 178), living at the project root's
+   * `installer-skills/`. Each is a {@link SkillRef} (`{ name, path }`): the `name` is the registry/deregister key,
+   * the `path` locates the `SKILL.md` (conventional `installer-skills/<name>/SKILL.md`, or a `--path` location).
+   * **NOT delivered** — install-time HELPERS the executing agent uses *during* install (doc 06 line 77; doc 07
+   * line 51), the project-scope analogue of a bundle's `installerSkills`.
+   *
+   * This registry backs `add`/`remove`/completion; the `project installer-skills list` command instead SCANS the
+   * root `installer-skills/` directory, EXCLUDING the main `<project>-installer` skill and the `<id>-advisor`
+   * skills (doc 10 row 179) — neither of which is in this registry (they are created by `init` / `bundle <id>
+   * advisor add`, not by `installer-skills add`), which is why `list` must scan rather than read the registry.
+   * Absent in `manifest.yml` ⇒ empty (purely additive — an old/partial `manifest.yml` still parses).
+   */
+  readonly installerSkills: readonly SkillRef[];
 }

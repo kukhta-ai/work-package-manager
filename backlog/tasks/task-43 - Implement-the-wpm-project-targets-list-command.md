@@ -1,9 +1,10 @@
 ---
 id: TASK-43
 title: Implement the wpm project targets list command
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-01 02:19'
+updated_date: '2026-06-01 12:22'
 labels:
   - cli
 dependencies:
@@ -19,15 +20,21 @@ Project-bound command (doc 10): prints the target agents recorded in manifest.ym
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 The command prints the entries of manifest.yml targets.
-- [ ] #2 The command reads and reports only, with no change on disk, and exits 0 on success.
-- [ ] #3 Run outside any project it exits non-zero naming the missing manifest.yml and suggesting init or the -C override.
-- [ ] #4 Help output is substantive (description, synopsis, an example).
+- [x] #1 The command prints the entries of manifest.yml targets.
+- [x] #2 The command reads and reports only, with no change on disk, and exits 0 on success.
+- [x] #3 Run outside any project it exits non-zero naming the missing manifest.yml and suggesting init or the -C override.
+- [x] #4 Help output is substantive (description, synopsis, an example).
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+wpm project targets list (read). runRead projects manifest.targets; read-only exit 0; no-project -> typed error naming manifest.yml. Skill-driven; reviewer APPROVE. Gate green.
+<!-- SECTION:NOTES:END -->
 
 ## Definition of Done
 <!-- DOD:BEGIN -->
-- [ ] #1 Typechecks clean (tsc --noEmit) and Biome clean (biome ci)
-- [ ] #2 Tests added and green (vitest): unit for pure logic, integration where it touches ports
-- [ ] #3 Public functions documented; no dead code; the core import-boundary rule is not violated
+- [x] #1 Typechecks clean (tsc --noEmit) and Biome clean (biome ci)
+- [x] #2 Tests added and green (vitest): unit for pure logic, integration where it touches ports
+- [x] #3 Public functions documented; no dead code; the core import-boundary rule is not violated
 <!-- DOD:END -->

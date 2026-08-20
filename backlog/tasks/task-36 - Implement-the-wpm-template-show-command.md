@@ -1,9 +1,10 @@
 ---
 id: TASK-36
 title: Implement the wpm template show command
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-01 02:18'
+updated_date: '2026-06-01 11:45'
 labels:
   - cli
 dependencies:
@@ -19,16 +20,22 @@ Project-aware command (doc 10): prints the metadata and a file-tree summary of o
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Given a template name, the command resolves it with project-local priority over built-in and prints its metadata from template.yml plus a tree summary of its files tree.
-- [ ] #2 The --scope option disambiguates when a project-scope and a bundle-scope template share a name.
-- [ ] #3 A name matching no available template fails with a typed not-found error and a non-zero exit.
-- [ ] #4 The command reads and reports only, with no change on disk, and exits 0 on success.
-- [ ] #5 Help output is substantive (description, synopsis, the positional and --scope, an example); the name positional completes from available template names and --scope from project and bundle.
+- [x] #1 Given a template name, the command resolves it with project-local priority over built-in and prints its metadata from template.yml plus a tree summary of its files tree.
+- [x] #2 The --scope option disambiguates when a project-scope and a bundle-scope template share a name.
+- [x] #3 A name matching no available template fails with a typed not-found error and a non-zero exit.
+- [x] #4 The command reads and reports only, with no change on disk, and exits 0 on success.
+- [x] #5 Help output is substantive (description, synopsis, the positional and --scope, an example); the name positional completes from available template names and --scope from project and bundle.
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+wpm template show (read). Resolves name+scope project-over-builtin via resolveTemplate; prints metadata (name/scope/source + DESCRIPTION [S1 fix: added description? to the Template model + carried through schema parseTemplateDescriptor + template-resolver readTemplate -- the load-bearing drop] + parameters) + a sorted files/ tree. --scope disambiguates a both-scopes clash (UsageError exit 2); a miss -> NotFoundError exit 1; read-only exit 0; withExamples + completion (<name> from template-names). Skill-driven; reviewer APPROVE (S1 doc-10:139 metadata gap fixed). Gate: tsc 0, biome 0, vitest 548.
+<!-- SECTION:NOTES:END -->
 
 ## Definition of Done
 <!-- DOD:BEGIN -->
-- [ ] #1 Typechecks clean (tsc --noEmit) and Biome clean (biome ci)
-- [ ] #2 Tests added and green (vitest): unit for pure logic, integration where it touches ports
-- [ ] #3 Public functions documented; no dead code; the core import-boundary rule is not violated
+- [x] #1 Typechecks clean (tsc --noEmit) and Biome clean (biome ci)
+- [x] #2 Tests added and green (vitest): unit for pure logic, integration where it touches ports
+- [x] #3 Public functions documented; no dead code; the core import-boundary rule is not violated
 <!-- DOD:END -->

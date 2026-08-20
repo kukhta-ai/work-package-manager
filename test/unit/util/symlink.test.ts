@@ -54,6 +54,10 @@ describe("ensureSymlinkOrCopy — both branches forced on any OS (AC#3)", () => 
     const result = ensureSymlinkOrCopy("/installer-skills", "/.claude/skills", {
       platform: "win32",
       copy: vi.fn(),
+      // Mock the mkdir primitive: this test only inspects the warning string, and the default
+      // `defaultMakeDirectories` would `mkdirSync(dirname("/.claude/skills"))` = real `mkdir /.claude`
+      // at the filesystem root — which succeeds as root but fails (EACCES/ENOENT) for a non-root CI user.
+      makeDirectories: vi.fn(),
     });
     expect(result.kind).toBe("copy");
     if (result.kind === "copy") {

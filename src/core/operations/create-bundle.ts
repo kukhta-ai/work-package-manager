@@ -6,10 +6,13 @@ import {
   type BundleManifest,
   parseBundleId,
   parseSemVer,
+  type TemplateFile,
 } from "../model/index.js";
+import type { FileSystem } from "../ports/index.js";
 import { renderTree } from "../services/render.js";
 import { serializeBundleManifest } from "../services/schema/index.js";
 import { resolveTemplate } from "../services/template-resolver.js";
+import { advisorContentTaskTitle, scaffoldAdvisor } from "./advisor.js";
 import type { ApplyContext, OperationSpec } from "./lifecycle.js";
 
 /**
@@ -31,8 +34,41 @@ import type { ApplyContext, OperationSpec } from "./lifecycle.js";
 
 /** The default bundle template name (doc 10 §Templates: bundle templates include `default`). */
 const DEFAULT_BUNDLE_TEMPLATE = "default";
+/** The project's default bundle scaffold directory under `bundles/` (doc 10:150 step 2; `bundle template set`). */
+const BUNDLE_TEMPLATE_DIR = "bundle-template";
 /** The default new-bundle version (doc 10 row `bundle new`: `--version` defaults to `0.1.0`). */
 const DEFAULT_VERSION = "0.1.0";
+
+/**
+ * Read every file under `dir` (recursively) through the FileSystem port into relative-path
+ * {@link TemplateFile}s. Returns `[]` if `dir` does not exist. Used to scaffold from the project's
+ * `bundles/bundle-template/` directory, which is a `files/`-tree COPY carrying no `template.yml` of its own (so it
+ * cannot be read by the template-resolver). Pure over the port.
+ *
+ * @param fs - The filesystem port.
+ * @param dir - The directory whose tree is read.
+ * @returns The files under `dir`, each with a path relative to `dir`.
+ */
+function readDirTree(fs: FileSystem, dir: string): TemplateFile[] {
+  if (!fs.exists(dir)) {
+    return [];
+  }
+  const files: TemplateFile[] = [];
+  const walk = (current: string, relPrefix: string): void => {
+    for (const entry of fs.list(current)) {
+      const childAbs = join(current, entry.name);
+      const childRel = relPrefix === "" ? entry.name : `${relPrefix}/${entry.name}`;
+      if (entry.kind === "directory") {
+        walk(childAbs, childRel);
+      } else {
+        files.push({ path: childRel, content: fs.read(childAbs) });
+      }
+    }
+  };
+  walk(dir, "");
+  files.sort((a, b) => a.path.localeCompare(b.path));
+  return files;
+}
 
 /** The input to {@link createBundleSpec}'s operation: the raw bundle id plus the `bundle new` flags. */
 export interface CreateBundleInput {
@@ -52,6 +88,11 @@ export interface CreateBundleDeps {
   readonly builtinTemplatesRoot: string;
   /** The bundle template name to scaffold from (default `default`; doc 10 `--template`). */
   readonly bundleTemplateName?: string;
+  /**
+   * The project template whose advisor snippet is rendered for the auto-advisor (default `minimal`; doc 10 step
+   * 6 → the `bundle <id> advisor add` action). Only used when the advisor is scaffolded (`advisor !== false`).
+   */
+  readonly projectTemplateName?: string;
 }
 
 /**
@@ -99,7 +140,9 @@ export function perBundleAuthoringTasks(
 
   if (opts.advisor) {
     tasks.push({
-      title: `Write advisor content for ${id}`,
+      // The title is sourced from `advisorContentTaskTitle` (advisor.ts) so `bundle new`/`enable` and
+      // `bundle <id> advisor add`/`remove` all materialise/archive the IDENTICAL title (doc 11 idempotency-by-title).
+      title: advisorContentTaskTitle(id),
       acceptanceCriteria: [
         `installer-skills/${id}-advisor/SKILL.md has a real trigger description (firing on the user's need) and a recommendation body, replacing the template-rendered placeholder`,
       ],
@@ -163,10 +206,15 @@ export function perBundleAuthoringTasks(
  * @returns The operation spec.
  */
 export function createBundleSpec(deps: CreateBundleDeps): OperationSpec<CreateBundleInput> {
+  // Whether `--template` was given explicitly. When it was NOT, `bundle new` defaults to the PROJECT's
+  // `bundles/bundle-template/` scaffold if present (doc 10:150 step 2), falling back to the registry `default`;
+  // an EXPLICIT `--template <name>` always resolves from the registry (doc 10 row `bundle new` step 2).
+  const explicitTemplate = deps.bundleTemplateName !== undefined;
   const bundleTemplateName = deps.bundleTemplateName ?? DEFAULT_BUNDLE_TEMPLATE;
 
   return {
-    summary: (_project, input) => `created bundle ${input.id}`,
+    summary: (_project, input) =>
+      `created bundle ${input.id}${input.advisor !== false ? " (advisor scaffolded)" : ""}`,
 
     /**
      * ② CHECK — validate all requested input (the id AND the version) and reject a duplicate, before any
@@ -206,23 +254,34 @@ export function createBundleSpec(deps: CreateBundleDeps): OperationSpec<CreateBu
 
       const changedPaths: string[] = [];
 
-      // (a) Resolve + scaffold the bundle template (project-local shadows built-in).
-      const resolution = resolveTemplate(bundleTemplateName, "bundle", {
-        fs,
-        builtinTemplatesRoot: deps.builtinTemplatesRoot,
-        projectTemplatesRoot: join(root, "templates"),
-      });
-      if (!resolution.found) {
-        throw new NotFoundError(
-          `bundle template "${bundleTemplateName}" not found (searched: ${resolution.searched.join(", ")})`,
-        );
+      // (a) Resolve the scaffold tree. When `--template` was NOT given AND the project's
+      // `bundles/bundle-template/` scaffold exists, clone THAT directory's tree directly (doc 10:150 step 2 —
+      // the project default `bundle new` clones, which `init`/`bundle template set` materialise there). It is a
+      // `files/`-tree copy with no `template.yml`, so it is read via the port, not the resolver. Otherwise (an
+      // explicit `--template`, or no project scaffold) resolve from the registry (project-local shadows built-in).
+      const projectScaffold = join(root, "bundles", BUNDLE_TEMPLATE_DIR);
+      let scaffoldFiles: readonly TemplateFile[];
+      if (!explicitTemplate && fs.exists(projectScaffold)) {
+        scaffoldFiles = readDirTree(fs, projectScaffold);
+      } else {
+        const resolution = resolveTemplate(bundleTemplateName, "bundle", {
+          fs,
+          builtinTemplatesRoot: deps.builtinTemplatesRoot,
+          projectTemplatesRoot: join(root, "templates"),
+        });
+        if (!resolution.found) {
+          throw new NotFoundError(
+            `bundle template "${bundleTemplateName}" not found (searched: ${resolution.searched.join(", ")})`,
+          );
+        }
+        scaffoldFiles = resolution.template.files;
       }
       const params = new Map<string, string>([
         ["bundle-id", id],
         ["version", version],
         ["project-name", project.manifest.meta.name],
       ]);
-      for (const file of renderTree(resolution.template.files, params)) {
+      for (const file of renderTree(scaffoldFiles, params)) {
         const abs = join(root, "bundles", id, file.path);
         fs.write(abs, file.content);
         changedPaths.push(abs);
@@ -235,6 +294,8 @@ export function createBundleSpec(deps: CreateBundleDeps): OperationSpec<CreateBu
         summary: `${id} bundle`,
         confirmation: "safe",
         requires: new Map(),
+        payload: { files: [], templates: [], scripts: [], skills: [] },
+        installerSkills: [],
       };
       const bundleYmlPath = join(root, "bundles", id, "bundle.yml");
       fs.write(bundleYmlPath, stringifyYaml(serializeBundleManifest(manifest)));
@@ -250,6 +311,25 @@ export function createBundleSpec(deps: CreateBundleDeps): OperationSpec<CreateBu
         });
         fs.write(manifestPath, next);
         changedPaths.push(manifestPath);
+      }
+
+      // (d) Auto-advisor (doc 10 step 6): unless `--no-advisor` (`advisor === false`), render the advisor stub
+      // at installer-skills/<id>-advisor/SKILL.md via the shared scaffold (no-op if it already exists). The
+      // matching "Write advisor content for <id>" authoring task is added by ⑤ MATERIALISE below.
+      if (input.advisor !== false) {
+        for (const path of scaffoldAdvisor(
+          {
+            builtinTemplatesRoot: deps.builtinTemplatesRoot,
+            ...(deps.projectTemplateName !== undefined
+              ? { projectTemplateName: deps.projectTemplateName }
+              : {}),
+          },
+          fs,
+          root,
+          id,
+        )) {
+          changedPaths.push(path);
+        }
       }
 
       return { changedPaths };

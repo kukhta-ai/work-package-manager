@@ -1,4 +1,5 @@
 import { join } from "node:path";
+import { toPosix } from "../../util/posix-path.js";
 import { parseYaml } from "../../util/yaml.js";
 import type {
   AuthoringTaskSpec,
@@ -6,6 +7,7 @@ import type {
   OperationResult,
   Project,
 } from "../model/index.js";
+import { AUTHORING_BACKLOG_DIR } from "../model/index.js";
 import type { BacklogMd, FileSystem } from "../ports/index.js";
 import {
   type CurrentState,
@@ -79,6 +81,12 @@ export interface ApplyContext {
 export interface ApplyOutcome {
   /** The paths the structural effect changed (folded into the result alongside ④'s changes). */
   readonly changedPaths?: readonly string[];
+  /**
+   * Non-fatal warnings the structural effect produced (e.g. "the scope-alias did not exist", "the last target
+   * was removed"). The harness folds these into the result's `warnings` alongside the warnings it derives
+   * itself (e.g. the deriver's unknown-target set). Output is not a port — the command prints them.
+   */
+  readonly warnings?: readonly string[];
 }
 
 /**
@@ -129,6 +137,10 @@ export interface ReadOutcome<T> {
 /**
  * ① LOAD — read the project at `root` into a fresh {@link Project} projection (no cache; loaded per call).
  *
+ * Exported because the `build` operation (task-82) needs the same loaded projection outside the six-beat harness
+ * (it computes a read-only plan, not a mutation) — reusing this keeps build's load byte-identical to every
+ * command's, rather than re-deriving it.
+ *
  * Reads `manifest.yml` and every enabled bundle's `bundle.yml` through the FileSystem port, parsing each via
  * the task-13 yaml leaf + the task-11 schema parsers. A malformed manifest surfaces as the parser's thrown
  * error (a template-authoring bug). A *missing* project is not handled here — task-24's `resolveContext`
@@ -139,7 +151,7 @@ export interface ReadOutcome<T> {
  * @param root - The absolute project root.
  * @returns The loaded project projection.
  */
-function loadProject(fs: FileSystem, root: string): Project {
+export function loadProject(fs: FileSystem, root: string): Project {
   const manifestResult = parseManifest(parseYaml(fs.read(join(root, MANIFEST_FILE))));
   if (!manifestResult.ok) {
     throw new Error(`invalid ${MANIFEST_FILE}: ${manifestResult.problem.message}`);
@@ -261,18 +273,40 @@ export function runMutation<I = void>(
   const desired = deriveArtefacts(postApply);
   const rerenderChanged = applyRerender(fs, root, desired);
 
-  // ⑤ MATERIALISE (automatic, title-idempotent)
+  // ⑤ MATERIALISE (automatic, title-idempotent). The authoring backlog is its OWN Backlog.md root at
+  // `<project>/.authoring-backlog` (doc 10 step 6; `init` initialises it there), NOT the project root — so we
+  // materialise into `join(root, AUTHORING_BACKLOG_DIR)`. Using `root` here runs `backlog task list` at the
+  // project root, which is not a Backlog.md root, and every materialising command fails ("No Backlog.md project
+  // found"). The path is the shared model constant so it can never drift from `init`'s.
   const specs = spec.materialise?.(postApply, input) ?? [];
-  const materialised = materialiseAuthoringTasks(backlog, root, specs);
+  const materialised = materialiseAuthoringTasks(backlog, join(root, AUTHORING_BACKLOG_DIR), specs);
 
   // ⑥ RESULT
+  // `changedPaths` is a LOGICAL observability list — the command prints its count and tests compare its entries
+  // as portable strings (e.g. `<root>/.claude/skills`). The real fs writes already happened (with OS-native
+  // absolute paths) inside ③ APPLY / ④ RERENDER; here we only RECORD them, so each entry is POSIX-normalized so
+  // the reported/compared form reads with `/` on every OS (on Linux/macOS `toPosix` is a no-op). A consumer that
+  // string-matches against a changed path (e.g. the advisor add/remove no-op probe) normalizes its probe the
+  // same way.
   const changedPaths: string[] = [];
-  mergePaths(changedPaths, applied?.changedPaths ?? []);
-  mergePaths(changedPaths, rerenderChanged);
+  mergePaths(changedPaths, (applied?.changedPaths ?? []).map(toPosix));
+  mergePaths(changedPaths, rerenderChanged.map(toPosix));
+
+  // Warnings: the operation's own (③) PLUS the ones the harness derives from ④ — a declared target the deriver
+  // could not map to a scope-alias (`unknownTargets`) is surfaced here, so e.g. `targets add` of an unknown
+  // agent warns without per-operation code. The single warning channel every list-mgmt command shares.
+  const warnings: string[] = [...(applied?.warnings ?? [])];
+  for (const agent of desired.aliasPlan.unknownTargets) {
+    warnings.push(
+      `agent "${agent}" is not a built-in known agent; its scope-alias was skipped — configure it manually`,
+    );
+  }
+
   return {
     summary: resolveSummary(spec.summary, postApply, input),
     changedPaths,
     materialisedTaskTitles: materialised.created.map((task) => task.title),
+    ...(warnings.length > 0 ? { warnings } : {}),
   };
 }
 

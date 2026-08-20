@@ -37,4 +37,12 @@ export interface OperationResult {
   readonly changedPaths: readonly string[];
   /** The titles of any authoring tasks the operation materialised. */
   readonly materialisedTaskTitles: readonly string[];
+  /**
+   * Non-fatal warnings the operation surfaced (e.g. an unknown agent whose scope-alias was skipped, a removed
+   * alias that did not exist, the last target removed). A warning is NOT a failure — the command prints these
+   * (to stderr) and still exits 0; absent/empty when nothing warned. The lifecycle harness is the single
+   * source: it folds an operation's own `apply` warnings together with the warnings it derives (e.g. the
+   * deriver's unknown-target set), so every list-management command reports them uniformly.
+   */
+  readonly warnings?: readonly string[];
 }

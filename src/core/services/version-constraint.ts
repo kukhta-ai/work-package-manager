@@ -29,6 +29,32 @@ export function satisfies(version: SemVer, range: VersionRange): boolean {
   return semver.satisfies(version, range);
 }
 
+/** A semver release level for {@link bumpSemVer} (doc 10 `project|bundle version bump <level>`). */
+export type BumpLevel = "major" | "minor" | "patch";
+
+/**
+ * Compute the next {@link SemVer} from `current` by advancing one release `level` (doc 13 §4 semver logic; doc
+ * 10 `project version bump`). PURE — a thin wrapper over `semver.inc` (the pure `semver` lib already imported
+ * here). `major` zeroes minor+patch (`1.2.3` → `2.0.0`), `minor` zeroes patch (`1.2.3` → `1.3.0`), `patch`
+ * advances patch (`1.2.3` → `1.2.4`); a `0.x` line behaves the same (`0.3.1` `minor` → `0.4.0`).
+ *
+ * `current` is a branded {@link SemVer}, so it already passed {@link parseSemVer} and is a complete, normalized
+ * `MAJOR.MINOR.PATCH` — `semver.inc` therefore cannot return `null` for a known `level`. The guard below is
+ * defensive only (it keeps the result un-cast through a real check); a thrown error here would be an internal
+ * invariant violation, never reachable from a valid input.
+ *
+ * @param current - The current version (a normalized, valid {@link SemVer}).
+ * @param level - The release level to advance (`major` / `minor` / `patch`).
+ * @returns The next version as a branded {@link SemVer}.
+ */
+export function bumpSemVer(current: SemVer, level: BumpLevel): SemVer {
+  const next = semver.inc(current, level);
+  if (next === null) {
+    throw new Error(`internal: could not bump "${current}" by "${level}"`);
+  }
+  return next as SemVer;
+}
+
 /**
  * One node of the inter-bundle dependency graph — exactly the relevant fields of a `BundleManifest`: its id,
  * its declared version, and its `requires` map (dependency id → version range).

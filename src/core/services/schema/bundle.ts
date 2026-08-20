@@ -1,12 +1,14 @@
 import {
   type BundleId,
   type BundleManifest,
+  type BundlePayload,
   type ConfirmationLevel,
   ok,
   type Parsed,
   parseBundleId,
   parseSemVer,
   parseVersionRange,
+  type SkillRef,
   type VersionRange,
 } from "../../model/index.js";
 import { isPlainObject, requireString } from "./problems.js";
@@ -25,6 +27,18 @@ export interface BundleManifestData {
   readonly summary: string;
   readonly confirmation: string;
   readonly requires: Readonly<Record<string, string>>;
+  readonly payload: {
+    readonly files: readonly string[];
+    readonly templates: readonly string[];
+    readonly scripts: readonly string[];
+    readonly skills: readonly { readonly name: string; readonly path: string }[];
+  };
+  /**
+   * The bundle-scoped install-time helper-skill registry (doc 10 row 173) — a TOP-LEVEL field (sibling of
+   * `payload`, NOT inside it, because installer-skills are not delivered payload — doc 06/07). A list of `{name,
+   * path}` mappings. Absent ⇒ empty.
+   */
+  readonly installerSkills: readonly { readonly name: string; readonly path: string }[];
 }
 
 /**
@@ -121,13 +135,162 @@ export function parseBundleManifest(data: unknown): Parsed<BundleManifest> {
     requires.set(depId.value, range.value);
   }
 
+  // `payload` is OPTIONAL: absent in an OLD `bundle.yml` ⇒ every category empty (so the field is purely
+  // additive and pre-existing bundles still parse). When present it must be a mapping; each category
+  // (`payload.files`, `payload.templates`), when present, must be a list of path strings (the registered
+  // relative paths under that category's on-disk directory).
+  const payloadResult = parsePayload(data.payload, ctx);
+  if (!payloadResult.ok) {
+    return payloadResult;
+  }
+
+  // `installerSkills` is OPTIONAL and a TOP-LEVEL field (sibling of `payload`, not inside it — installer-skills
+  // are install-time HELPERS, not delivered payload — doc 06 line 77 / doc 07 line 51). Absent ⇒ `[]`, purely
+  // additive (every existing `bundle.yml` still parses). When present it must be a list of `{name, path}`
+  // mappings — the SAME structured shape as `payload.skills`, so it rides the shared `parseSkillRefs` validator
+  // (parameterised by the field label so its errors name `installerSkills[i]…`).
+  const installerSkills = parseSkillRefs(data.installerSkills, ctx, "installerSkills");
+  if (!installerSkills.ok) {
+    return installerSkills;
+  }
+
   return ok({
     id: id.value,
     version: version.value,
     summary: summary.value,
     confirmation,
     requires,
+    payload: payloadResult.value,
+    installerSkills: installerSkills.value,
   });
+}
+
+/**
+ * Parse the optional `payload` mapping into a {@link BundlePayload} (doc 10 `files`/`templates`/`scripts`/`skills`
+ * rows). Absent ⇒ every category empty (old-bundle compatibility); a PARTIAL `payload` (e.g. only `files`) ⇒ the
+ * missing categories are empty too. Validates that, when present, `payload` is a mapping, each present
+ * path-list category (`payload.files`/`templates`/`scripts`) is a list of strings, and `payload.skills` is a
+ * list of `{name, path}` mappings. Pure and total.
+ *
+ * @param raw - The `payload` value (possibly `undefined`).
+ * @param ctx - The bundle context for error messages.
+ * @returns The parsed {@link BundlePayload}, or a {@link ValidationProblem}.
+ */
+function parsePayload(raw: unknown, ctx: string): Parsed<BundlePayload> {
+  // Absent payload ⇒ every category empty. The field is purely additive: an old/partial bundle.yml still parses.
+  if (raw === undefined) {
+    return ok({ files: [], templates: [], scripts: [], skills: [] });
+  }
+  if (!isPlainObject(raw)) {
+    return {
+      ok: false,
+      problem: { message: `${ctx}: "payload" must be a mapping`, field: "payload" },
+    };
+  }
+  // Each category is independently optional (absent ⇒ empty) and, when present, must be a list of path strings.
+  const files = parsePayloadCategory(raw.files, "payload.files", ctx);
+  if (!files.ok) return files;
+  const templates = parsePayloadCategory(raw.templates, "payload.templates", ctx);
+  if (!templates.ok) return templates;
+  const scripts = parsePayloadCategory(raw.scripts, "payload.scripts", ctx);
+  if (!scripts.ok) return scripts;
+  // `skills` is a structured registry (a list of `{name, path}` mappings, not bare strings — a skill is keyed by
+  // name AND located by a relocatable path), so it has its own parser rather than `parsePayloadCategory`.
+  const skills = parseSkillRefs(raw.skills, ctx, "payload.skills");
+  if (!skills.ok) return skills;
+  return ok({
+    files: files.value,
+    templates: templates.value,
+    scripts: scripts.value,
+    skills: skills.value,
+  });
+}
+
+/**
+ * Parse an optional skill-reference registry into a {@link SkillRef} list (doc 10 rows 170 + 173) — shared by the
+ * `payload.skills` payload-skill registry AND the top-level `installerSkills` installer-skill registry, which have
+ * the IDENTICAL `{name, path}` shape (a skill is identified by its name and located by its relocatable `SKILL.md`
+ * path — unlike the bare-string `payload.files`/etc). The `fieldBase` parameter labels the registry in error
+ * messages (`payload.skills` vs `installerSkills`), so the two call sites share one validator without confusing
+ * the author about which list is malformed. Absent ⇒ `[]` (old/partial-bundle compatibility, like the other
+ * registries); present ⇒ must be a list of mappings each with a string `name` AND a string `path` (else a
+ * field-precise {@link ValidationProblem} naming `<fieldBase>[i].…`). Pure and total.
+ *
+ * @param raw - The registry value (possibly `undefined`).
+ * @param ctx - The bundle context for error messages.
+ * @param fieldBase - The registry's dotted field label (e.g. `payload.skills` or `installerSkills`).
+ * @returns The parsed {@link SkillRef} list, or a {@link ValidationProblem}.
+ */
+export function parseSkillRefs(
+  raw: unknown,
+  ctx: string,
+  fieldBase: string,
+): Parsed<readonly SkillRef[]> {
+  if (raw === undefined) {
+    return ok([]);
+  }
+  if (!Array.isArray(raw)) {
+    return {
+      ok: false,
+      problem: {
+        message: `${ctx}: "${fieldBase}" must be a list of { name, path } mappings`,
+        field: fieldBase,
+      },
+    };
+  }
+  const skills: SkillRef[] = [];
+  for (let i = 0; i < raw.length; i++) {
+    const entry = raw[i];
+    const field = `${fieldBase}[${i}]`;
+    if (!isPlainObject(entry)) {
+      return {
+        ok: false,
+        problem: { message: `${ctx}: "${field}" must be a { name, path } mapping`, field },
+      };
+    }
+    if (typeof entry.name !== "string" || entry.name.length === 0) {
+      return {
+        ok: false,
+        problem: {
+          message: `${ctx}: "${field}.name" must be a non-empty string`,
+          field: `${field}.name`,
+        },
+      };
+    }
+    if (typeof entry.path !== "string" || entry.path.length === 0) {
+      return {
+        ok: false,
+        problem: {
+          message: `${ctx}: "${field}.path" must be a non-empty string`,
+          field: `${field}.path`,
+        },
+      };
+    }
+    skills.push({ name: entry.name, path: entry.path });
+  }
+  return ok(skills);
+}
+
+/**
+ * Parse one optional `payload.<category>` sequence into a string list. Absent ⇒ `[]`; present ⇒ must be a list
+ * of path strings (else a field-precise {@link ValidationProblem} naming `payload.<category>`). Pure and total.
+ *
+ * @param raw - The category value (possibly `undefined`).
+ * @param field - The dotted field name for messages (e.g. `payload.templates`).
+ * @param ctx - The bundle context for error messages.
+ * @returns The parsed path list, or a {@link ValidationProblem}.
+ */
+function parsePayloadCategory(raw: unknown, field: string, ctx: string): Parsed<readonly string[]> {
+  if (raw === undefined) {
+    return ok([]);
+  }
+  if (!Array.isArray(raw) || raw.some((entry) => typeof entry !== "string")) {
+    return {
+      ok: false,
+      problem: { message: `${ctx}: "${field}" must be a list of path strings`, field },
+    };
+  }
+  return ok([...(raw as string[])]);
 }
 
 /**
@@ -149,5 +312,21 @@ export function serializeBundleManifest(bundle: BundleManifest): BundleManifestD
     summary: bundle.summary,
     confirmation: bundle.confirmation,
     requires,
+    // Always emit `payload` with every category (an empty list serialises as `files: []` / `templates: []` /
+    // `scripts: []` / `skills: []`) so a freshly-created bundle.yml carries the fields. Round-trips with
+    // `parseBundleManifest` (absent ⇒ empty; present ⇒ the same lists/refs). `skills` entries are `{name, path}`
+    // mappings (the structured payload-skill registry, doc 10 row 170).
+    payload: {
+      files: [...bundle.payload.files],
+      templates: [...bundle.payload.templates],
+      scripts: [...bundle.payload.scripts],
+      skills: bundle.payload.skills.map((skill) => ({ name: skill.name, path: skill.path })),
+    },
+    // Always emit `installerSkills` (empty ⇒ `[]`), a sibling of `payload` — the bundle-scoped install-time
+    // helper-skill registry (doc 10 row 173). Round-trips with `parseBundleManifest` (absent ⇒ empty).
+    installerSkills: bundle.installerSkills.map((skill) => ({
+      name: skill.name,
+      path: skill.path,
+    })),
   };
 }

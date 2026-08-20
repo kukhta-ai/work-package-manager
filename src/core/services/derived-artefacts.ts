@@ -1,4 +1,4 @@
-import { join } from "node:path";
+import { posix } from "node:path";
 import type { AgentName, BundleId, Project, TemplateFile } from "../model/index.js";
 import { aliasPathFor } from "./agent-aliases.js";
 import { type RenderedFile, type RenderParams, renderSnippet } from "./render.js";
@@ -103,13 +103,16 @@ export function scopePlan(
     }
     // Project-root alias.
     aliases.push({ target, linkPath: aliasPath, aliasTo: INSTALLER_SKILLS_DIR });
-    // Per-bundle aliases (self-similar surfaces).
+    // Per-bundle aliases (self-similar surfaces). linkPath/aliasTo are LOGICAL project-relative paths — stored
+    // in the plan, compared in `planChanges`, and shown — so they are built with `posix.join` to stay POSIX on
+    // every OS (native `join` would emit `bundles\<id>\…` on Windows; the real adapter's `ensureAlias` roots
+    // them under the project root for the actual symlink, where `/` is accepted).
     for (const id of bundleIds) {
-      const bundleDir = join("bundles", id);
+      const bundleDir = posix.join("bundles", id);
       aliases.push({
         target,
-        linkPath: join(bundleDir, aliasPath),
-        aliasTo: join(bundleDir, INSTALLER_SKILLS_DIR),
+        linkPath: posix.join(bundleDir, aliasPath),
+        aliasTo: posix.join(bundleDir, INSTALLER_SKILLS_DIR),
       });
     }
   }

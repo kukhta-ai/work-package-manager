@@ -3,10 +3,101 @@
 # Re-read on every resume; update at every phase boundary.
 # (Distinct from _bmad/ — that is BMAD's own install dir; this dot-dir is our tracker.)
 
-phase: 6
-phase_name: "Epic gate — foundation epic-1 (cold E2E + tea trace/nfr + retro)"
-branch: feature/foundation
-epic: foundation
+phase: 7
+phase_name: "CLI epic-2 — Phase 7 HANDOFF DONE: PR #1 open (feature/cli -> dev), awaiting HUMAN review+merge"
+branch: feature/cli
+epic: cli
+# *** GOAL COMPLETE: all 84 backlog tasks DONE; foundation epic on dev (e1a0fb2, pushed to origin); CLI epic gate-PASS, handed off as PR #1. ***
+# PHASE 7 (per user choice "Open a PR to dev"): pushed origin dev (fast-forward 3fd60ba->e1a0fb2, publishing the goal-authorized foundation->dev merge) +
+#   pushed feature/cli; opened PR #1 https://github.com/kukhta-ai/work-package-manager/pull/1 (feature/cli -> dev, clean 41-commit CLI-epic diff). The HUMAN reviews + merges
+#   the PR (AGENTS.md: never self-merge to dev). REMAINING HUMAN-OWNED (out of scope): merge PR #1 -> dev; promote dev -> main; any registry/npm publish; the doc-07:67 docs reconciliation.
+# *** CLI EPIC-2 PHASE-6 GATE = PASS (clean). All 84 backlog tasks DONE (foundation 1-33 + CLI 34-84). ***
+#   cold E2E from clean: npm ci 0 / tsc 0 / biome ci 0 (189 files) / build 0 / vitest 1174 passed (93 files).
+#   tea testarch-trace = PASS (250/250 ACs covered, P0/P1/overall 100%, ZERO gaps; double-covered unit+real-binary E2E).
+#   tea testarch-nfr = PASS (Maintainability/Reliability/Security/Fake-Real-Parity all PASS; Perf/Scale N/A; 0 concerns).
+#   retro = GREEN (epic-2 readiness GREEN; carry-forwards: doc-07:67 reconciliation [human doc fix, downstream], the dev merge [human gate]).
+#   Gate artifacts committed b10cf2f: _bmad-output/test-artifacts/{traceability/*-cli-epic.*, nfr-assessment-cli-epic.md} + implementation-artifacts/retrospective-epic-2.md.
+# BRANCH STATE: dev = foundation epic (e1a0fb2) + origin/dev content (3fd60ba: CLI task defs + doc fixes, an ancestor of both dev and feature/cli).
+#   feature/cli = 39 commits ahead of dev = the full CLI epic implementation, gate-PASS. origin/dev tip 3fd60ba (local dev NOT yet pushed -- deferred, outward-facing).
+# PHASE 7 = feature/cli -> dev. AGENTS.md: "Never self-merge to dev or main" (Phase 7 = human reviews PR + merges). The goal pre-authorized foundation->dev;
+#   the CLI->dev merge "to the end" is ambiguous + a human gate -> SURFACED to user (AskUserQuestion). dev->main + the origin push stay separate human decisions (out of scope).
+# *** CLI EPIC COMPLETE: all 51 tasks (34-84) DONE + merged --no-ff into feature/cli (R merge 377bf93). ALL 84 backlog tasks done. ***
+# PHASE 6 EPIC GATE IN PROGRESS: (1) cold CI-sequence E2E from clean [running]; (2) tea[aa6e3730] testarch-trace (CLI AC coverage matrix) + testarch-nfr; (3) retro retrospective-epic-2; (4) final verdict.
+# THEN PHASE 7 HANDOFF: feature/cli -> dev. AGENTS.md says never self-merge to dev (open a PR, human merges); the goal "to task 84 (to the end)" + the pre-authorized foundation->dev merge -> SURFACE to user for the dev-merge decision. dev->main stays separate.
+# CLI 14/51 merged: A(35,36) E(42,43,44) D(39,40,41) B(37,48,49) G1(50,51,52 bundle new[+--version fix]/enable/disable).
+# IN REVIEW: I(57,58 bundle <id> show/meta) on feature/cli-bundle-id -- ESTABLISHES the bundle <id> ROUTING: run()-level pre-routing
+# (isPerBundleInvocation/dispatchPerBundle, before commander, like the --version interception) + a REUSABLE registry
+# PerBundleCommandModule/PER_BUNDLE_MODULES/buildPerBundleProgram + requireEnabledBundle guard. The 21 bundle-<id> repeats (J-Q)
+# add ONE module each, no routing change. ALSO: program --version is now -V-only + a run() interception (G1 fix).
+# NEXT after I: the bundle <id> repeats flow fast -> J(59,60,61 version=reuse D), K-P(62-79 requires/files/templates/scripts/skills/
+# installer-skills = LIST-MGMT reuse E, via PerBundleCommandModule), Q(80,81 advisor=reuse scaffoldAdvisor); plus C(38 meta),
+# F(45,46,47 installer-skills scaffold-or-attach), H(55,56 bundle template), G2(53 remove[destructive],54 list), R(82,83,84 build), 34(init full).
+# WORKERS (rotate ~every 5-8 tasks; they parse-error on resume once the transcript is large): ACTIVE = (spawning #13 for R build -- THE FINALE);
+# retired: aeca9935 (#12: task-34 init-full + bundle-template divergence CLOSED), ae8d2875 (#11: G2+H), a8d85641 (#10: Q+C), a3a2eee1 (#9: P+F), ac372bf3 (#8: O), aa98d211 (#7: M+N), a73ce42b (#6: K+L), adcb88d (#5: J), a6599e9 (#4: G1+I), a2b7fcc7 (#3: materialise+D+B), a7f5ad601 (#2: 31,32,28,29,33,merge,A,E), a67b0906 (#1: 1-27,30).
+# REVIEWER a7f5a303c38f8ec6d still reliable (~24 reviews, task-34=APPROVE; SHA-diffs binaries both-paths + inspects every changed test for regression-masking. Watch for degradation -> spawn fresh reviewer if it 0-tools).
+# CLI 48/51 DONE (A,E,D,B,G1,I,J,K,L,M,N,O,P,F,Q,C,G2,H,34 = 47+1). REMAINING = 3: R(82 dry-run, 83 package, 84 publish) = THE LAST BATCH -> task 84 = the goal's end. ABSOLUTE 81/84.
+# bundle-template DIVERGENCE CLOSED in task-34 (create-bundle prefers bundles/bundle-template/ when present; bundle template set is now live for bundle new -- binary-proven both paths).
+# NEXT BATCH = task-34 (init FULL) on feature/cli-init-full -- doc-10:137, all 12 steps. Extends the task-33 SKELETON initProject (src/core/operations/init-project.ts, which deliberately does
+# manifest+bundles tree+dirs but materialisedTaskTitles:[] -- NO materialise/aliases/gitignore). task-34 ADDS: AC#1 bundles/bundle-template/ MATERIALISED (the default bundle template copied
+# there -- this is the divergence-closing step) + empty installer-skills/templates/.authoring-backlog (task_prefix=authoring); AC#2 derived AGENTS.md + installer SKILL.md via the deriver
+# (mechanical, no prose); AC#3 one scope-alias per template-declared target (aliasPathFor; none if no targets); AC#4 materialise the project-wide authoring set (doc-11 catalog) + per-bundle set
+# for each template-preincluded bundle (reuse createBundle's perBundleAuthoringTasks); AC#5 refuse if target exists (typed error, create nothing); AC#6 --list-templates (print + exit, no create)
+# + --param k=v feeds placeholder substitution; AC#7 .authoring-backlog in .gitignore + summary + exit 0. ALSO IN THIS BATCH (closes the recorded divergence): give create-bundle.ts a default that
+# PREFERS bundles/bundle-template/ when present (fall back to the registry DEFAULT_BUNDLE_TEMPLATE) so `bundle template set` becomes meaningful for `bundle new` -- a small, doc-10:150-conforming
+# create-bundle change (re-verify bundle new + the G1/H tests after). Reuse: init-project.ts (extend), derive-artefacts, create-bundle (materialise + the new default), agent-aliases, template-resolver.
+# THEN R (82 dry-run, 83 package, 84 publish) on feature/cli-build -- the FINALE, NOVEL (doc-12). Reuses validate (task-20) + integrity.ts (task-22: parseLockfile/verifyLockfile/buildLockfile EXIST
+# for the wpm.lock frozen-lockfile check). NEW infra: ARCHIVING (build package --format zip|tarball|git -- NO archiver exists; design it in the CLI-shell/adapter, NOT core: shell out to zip/tar
+# or a node lib; the pure core enumerates WHAT ships) + PUBLISH push (84: build package then push to <destination>; build failure blocks push). Investigate where wpm.lock lives + what counts as
+# vendored (empty/absent lock for a fresh project = trivial pass). After R (=task 84): CLI epic COMPLETE -> Phase-6 epic gate (cold E2E + tea trace/nfr) -> Phase-7 feature/cli->dev handoff (PR, SURFACE
+# TO USER -- the dev merge may be a user gate; the earlier foundation->dev merge was pre-authorized, confirm the CLI->dev merge). Promotion dev->main stays a separate human decision (out of scope).
+# FORWARD NOTE / DIVERGENCE (surfaced by worker11 building H; recorded, NOT fixed in H -- H is correct per AC55/56 which target bundles/bundle-template/): doc-10:150 step2 says
+# `bundle new` defaults its bundle template to the PROJECT'S bundles/bundle-template/, and doc-10:137 step5 says `init` copies the default bundle template THERE. But the CURRENT
+# create-bundle.ts (task-26, merged) resolves from the REGISTRY templates/bundle/<name> via resolveTemplate(name,"bundle") [line 219, default DEFAULT_BUNDLE_TEMPLATE] -- it does NOT
+# read bundles/bundle-template/. CONSEQUENCE: `bundle template set` (H, task-56) writes bundles/bundle-template/ but `bundle new` ignores it, so set is currently INERT for bundle new.
+# RECONCILE at task-34 (init FULL must create bundles/bundle-template/ per doc-10:137 step5) AND give create-bundle a default that PREFERS bundles/bundle-template/ when present (falling
+# back to the registry). This is a realization divergence (code vs doc-10:150), not a goal/vocab change -- record + SURFACE to user at the epic gate; not a user gate. H stays as-is.
+# CLI PROGRESS (11/51 merged into feature/cli): A(35,36 templates read), E(42,43,44 targets LIST-MGMT exemplar + the cross-cutting
+# materialise-root lifecycle fix), D(39,40,41 version), B(37,48,49 project reads). IN PROGRESS: G1(50,51,52 bundle new/enable/disable
+# -- completes bundle new + FIXES the --version bug + the advisor scaffold) on feature/cli-bundle-lifecycle.
+# Patterns established: READ (A), LIST-MGMT add/list/remove (E, warning channel + alias asymmetry), VERSION (D, reused by bundle version).
+# Remaining after G1: G2(53 remove[destructive: confirm/archive/delete],54 list[install-backlog counts]); C(38 meta); F(45,46,47 installer-skills
+# scaffold-or-attach); H(55,56 bundle template); I(57,58 bundle <id> show/meta -> establishes bundle <id> routing); J(59,60,61 bundle version=reuse D);
+# K-P(62-79 bundle <id> requires/files/templates/scripts/skills/installer-skills = LIST-MGMT reuse E); Q(80,81 advisor); R(82,83,84 build); 34(init full, after G).
+# BUG FOR GROUP G (task-50 bundle new): the real binary `bundle new <id> --version <v>` prints the PROGRAM version and creates
+# nothing -- the program's `--version` (registered via .version()) shadows the subcommand's `--version` option (an in-process-vs-binary
+# gap; run() tests pass). doc-10:149 makes `--version` a real bundle-new option. Fix when rebuilding bundle new in G (commander config:
+# scope the version flag so subcommand --version options aren't shadowed; the task-29 worker noted enablePositionalOptions broke -C, so find another way).
+# *** FOUNDATION EPIC-1 DONE + gate PASS + MERGED TO dev (e1a0fb2). *** Now epic-2 = the CLI command leaves (34-84, 51 tasks).
+# dev = foundation + the CLI epic (tasks 34-84 + doc fixes + task-conventions); local dev == origin/dev + the foundation merge (NOT yet pushed to origin -- deferred, outward-facing).
+# CLI epic branch topology: feature/cli (off dev) -> per-GROUP sub-branches -> merged back; then feature/cli -> dev at the end.
+# DEVIATION (recorded, justified): the CLI leaves are UNIFORM + independent + ride the ESTABLISHED, MECHANICALLY-GUARDED spine
+# (task-27 registration/DI/exit-codes; task-28 the help-completeness guard; task-29 the completion-source registry; task-25/26
+# the operation lifecycle; doc-10 rows are the contract). So instead of 51 one-task-per-story loops, I GROUP tightly-coupled
+# command FAMILIES that share an operation (e.g. project targets add/list/remove; project version/bump/set; the template reads)
+# into one skill-driven build + one focused review per group, closing each task in the group. This keeps the SDLC essence
+# (skill-driven create-story/dev-story/qa, separate-lane story-automator-review, the guards) while cutting per-leaf overhead.
+# Review is LIGHTER per leaf (doc-10 conformance + operation correctness + the guards catch the rest) -- calibrated to the lower,
+# uniform risk. Lessons carried from the foundation: test the real binary/loop-closure path; cold-E2E-must-build-dist; keep fake<->real parity explicit.
+#
+# CLI EPIC GROUP PLAN (34-84) -- ~6 recurring PATTERNS; establish each once, then the repeats are fast:
+#   A templates reads (35 list, 36 show) -- DONE+merged (incl S1: template description through model/schema/resolver). [read pattern established]
+#   E project targets (42,43,44) -- IN PROGRESS feature/cli-targets [LIST-MGMT exemplar]. Key nuances: add's alias falls out of ④ RERENDER (deriver scopePlan), unknown agent -> unknownTargets + warn; REMOVE must EXPLICITLY delete the orphaned alias (the deriver only ADDS); warnings (unknown/missing-alias/last-target) need a channel.
+#   B project reads (37 show, 49 root, 48 validate). [read]
+#   C project meta (38). [meta-set]
+#   D project version (39 show, 40 bump, 41 set). [version pattern -> reused by J]
+#   E project targets (42 add, 43 list, 44 remove). [LIST-MGMT pattern add/list/remove -> reused by F,K,L,M,N,O,P]
+#   F project installer-skills (45 add,46 list,47 remove). [list-mgmt]
+#   G bundle lifecycle (50 new[createBundle EXISTS],51 enable,52 disable,53 remove,54 list). [bundle ops]
+#   H bundle template (55 show,56 set).
+#   I bundle <id> show+meta (57 show,58 meta).
+#   J bundle <id> version (59,60,61). [version]
+#   K bundle <id> requires (62,63,64) [list-mgmt]; L files (65,66,67); M templates (68,69,70); N scripts (71,72,73);
+#   O skills (74,75,76); P installer-skills (77,78,79) -- all list-mgmt.
+#   Q bundle <id> advisor (80 add,81 remove).
+#   R build (82 dry-run,83 package,84 publish).
+#   34 init (FULL) -- AFTER G (deps task-50).
+# Order for max pattern-reuse: A(reads) -> E(list-mgmt) -> D(version) -> then the repeats (B,C,F,G..R,34). The 8 add/list/remove
+# families (E,F,K,L,M,N,O,P = 24 tasks) share ONE pattern; the 2 version families (D,J) share one; establish, then apply.
 active_story: null   # *** 33/33 FOUNDATION COMPLETE + PHASE-6 EPIC GATE = PASS ***
 review_cycle: 0
 # EPIC GATE (Phase 6) RESULT -- PASS:
@@ -99,7 +190,12 @@ specialists:
   architect:    {spawned: true,  id: "af0958eff0e1846e5", role: "architecture conformance vs docs/12-13", status: "P3 done — architecture/epics/readiness=PASS; RESUME if a task reveals a design gap"}
   tea:          {spawned: true,  id: "aa6e3730c6822131e", role: "test design/framework/ci/trace/nfr/gate", status: "P3 done — test-design/framework=vitest/ci=matrix; RESUME in P6 (trace/nfr/final gate)"}
   sm:           {spawned: true,  id: "a58a6182b0009cbb7", role: "sprint setup + create-story per task",  status: "P4 done — sprint-status.yaml; worker owns create-story in the P5 loop"}
-  worker:       {spawned: true,  id: "a7f5ad601fc4cbfee", role: "dev-story implementation (fresh general-purpose worker, invokes bmad-* skills)", last_skill: "create-story + dev-story + qa-generate-e2e-tests + dev-story(fix) @ task-29 (tab-completion)", status: "RELIABLE. Resume via SendMessage to a7f5ad601fc4cbfee for task-33 + the CLI epic 34-84. Implemented tasks 31,32,28,29; tasks 1-27,30 were the old (retired) worker."}
+  worker:       {spawned: true,  id: "a2b7fcc7ac77791f1", role: "dev-story implementation (fresh worker #3, invokes bmad-* skills)", last_skill: "dev-story @ the materialise-root lifecycle fix (in progress)", status: "ACTIVE worker (rotated). a7f5ad601 (worker #2) degraded -> parse errors after ~9 tasks (33, dev-merge, A:35/36+S1, E:42/43/44); a67b0906 (worker #1) degraded after ~30. OPERATING RULE: workers accumulate transcript + eventually parse-error on resume; ROTATE to a fresh Agent every ~5-8 tasks or on the first 0-tool/parse-error return. Worker #2 implemented 31,32,28,29,33,A,E; #1 implemented 1-27,30."}
+  # CROSS-CUTTING FIX in flight (worker #3): the task-25 lifecycle ⑤ MATERIALISE used ctx.root, but the real authoring backlog is
+  # <project>/.authoring-backlog -- so every materialising command (targets add; createBundle/bundle new later) FAILED on a real
+  # project (BacklogCli shells out cwd=root; project root isn't a backlog root). Hidden by FakeBacklog-at-project-root tests; CAUGHT
+  # by the orchestrator's real-binary spot-check. Fix: materialise into join(ctx.root, AUTHORING_BACKLOG_DIR) [shared constant] +
+  # update the FakeBacklog tests to init at .authoring-backlog (parity) + a real-backlog regression test. Rides feature/cli-targets.
   worker_retired: {id: "a67b0906de8ff721d", reason: "broke on continuations -- big authoring runs worked but short follow-ups returned 0 tool_uses + got confused; retired after task-30. Do not re-dispatch."}
   reviewer:     {spawned: true,  id: "a7f5a303c38f8ec6d", role: "separate-lane review",                  last_skill: "bmad-story-automator-review @ task-29 (APPROVE; report-only)", status: "reviewed through task-29; re-verified the omelette protocol fix 3 ways (loop closes for bash/zsh/fish, byte-accurate to omelette 0.4.17)"}
   investigator: {spawned: false,                          role: "systematic debugging at the epic gate", status: "spawn in P6 on cold-E2E failure"}

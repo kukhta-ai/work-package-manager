@@ -13,6 +13,13 @@ import {
 import type { DesiredArtefacts } from "../../../src/core/services/derived-artefacts.js";
 
 const ROOT = "/proj";
+/**
+ * The authoring backlog is its own Backlog.md root at `<project>/.authoring-backlog` (doc 10 step 6), NOT the
+ * project root — the harness's ⑤ MATERIALISE writes there. The fake is initialised there and the materialise
+ * assertions read there, mirroring reality (initialising at the project root hid the real "No Backlog.md project
+ * found" failure of every materialising command).
+ */
+const AUTHORING = `${ROOT}/.authoring-backlog`;
 
 /**
  * Seed a minimal valid project (`manifest.yml`, one target, no bundles) into `fs` at `ROOT`, and initialise
@@ -35,7 +42,7 @@ function seedProject(fs: MemoryFileSystem, backlog: FakeBacklog): void {
   // The alias target a prior `init` would have created (doc-10 §init makes installer-skills/ BEFORE the
   // scope-alias symlink) — so the alias the harness creates points at a real dir, not a broken link.
   fs.makeDirectories(`${ROOT}/installer-skills`);
-  backlog.init(ROOT, { taskPrefix: "demo" });
+  backlog.init(AUTHORING, { taskPrefix: "demo" });
 }
 
 /**
@@ -130,8 +137,8 @@ describe("lifecycle harness — runMutation (doc 13 §5/§8)", () => {
     // ④ the artefacts re-derived (fixture front-door written + alias created):
     expect(fs.read(`${ROOT}/AGENTS.md`)).toBe("# front-door\n");
     expect(fs.aliasTarget(`${ROOT}/.claude/skills`)).toBe(`${ROOT}/installer-skills`);
-    // ⑤ the authoring task materialised:
-    expect(backlog.listTasks(ROOT).map((t) => t.title)).toContain("Author the thing");
+    // ⑤ the authoring task materialised (into the .authoring-backlog root):
+    expect(backlog.listTasks(AUTHORING).map((t) => t.title)).toContain("Author the thing");
     // ⑥ RESULT built last, carrying ③'s + ④'s changed paths + ⑤'s title:
     expect(result.summary).toBe("did it for demo");
     expect(result.changedPaths).toContain(`${ROOT}/applied.txt`);
@@ -161,7 +168,7 @@ describe("lifecycle harness — runMutation (doc 13 §5/§8)", () => {
     expect(fs.read(`${ROOT}/AGENTS.md`)).toBe("# front-door\n");
     expect(calls).toContain("RERENDER");
     // ...and materialised the task even though the spec only returned the plan:
-    expect(backlog.listTasks(ROOT).map((t) => t.title)).toContain("Auto materialised");
+    expect(backlog.listTasks(AUTHORING).map((t) => t.title)).toContain("Auto materialised");
     expect(result.materialisedTaskTitles).toEqual(["Auto materialised"]);
   });
 
@@ -187,7 +194,7 @@ describe("lifecycle harness — runMutation (doc 13 §5/§8)", () => {
     expect(first.materialisedTaskTitles).toEqual(["One time task"]);
 
     const afterFirst = snapshot(fs, ROOT, ALIAS_LINKS);
-    const tasksAfterFirst = backlog.listTasks(ROOT).map((t) => t.title);
+    const tasksAfterFirst = backlog.listTasks(AUTHORING).map((t) => t.title);
 
     const second = runMutation(deps(fs, backlog, calls), { root: ROOT }, spec, undefined);
 
@@ -197,7 +204,7 @@ describe("lifecycle harness — runMutation (doc 13 §5/§8)", () => {
     expect(second.materialisedTaskTitles).toEqual([]);
     // on-disk + backlog byte-identical to after the first run:
     expect(snapshot(fs, ROOT, ALIAS_LINKS)).toEqual(afterFirst);
-    expect(backlog.listTasks(ROOT).map((t) => t.title)).toEqual(tasksAfterFirst);
+    expect(backlog.listTasks(AUTHORING).map((t) => t.title)).toEqual(tasksAfterFirst);
   });
 
   it("a failing CHECK raises the DomainError and skips APPLY/RERENDER/MATERIALISE entirely", () => {
@@ -232,7 +239,7 @@ describe("lifecycle harness — runMutation (doc 13 §5/§8)", () => {
     expect(calls).not.toContain("RERENDER");
     expect(fs.exists(`${ROOT}/should-not-exist.txt`)).toBe(false);
     expect(fs.exists(`${ROOT}/AGENTS.md`)).toBe(false);
-    expect(backlog.listTasks(ROOT)).toEqual([]);
+    expect(backlog.listTasks(AUTHORING)).toEqual([]);
   });
 });
 
@@ -243,7 +250,7 @@ describe("lifecycle harness — runRead (doc 13 §8 read trace)", () => {
     seedProject(fs, backlog);
 
     const before = snapshot(fs, ROOT, ALIAS_LINKS);
-    const tasksBefore = backlog.listTasks(ROOT);
+    const tasksBefore = backlog.listTasks(AUTHORING);
 
     const readSpec: ReadSpec<void, string> = {
       summary: "read the name",
@@ -260,6 +267,6 @@ describe("lifecycle harness — runRead (doc 13 §8 read trace)", () => {
     expect(outcome.result.summary).toBe("read the name");
     // nothing changed on disk or in the backlog:
     expect(snapshot(fs, ROOT, ALIAS_LINKS)).toEqual(before);
-    expect(backlog.listTasks(ROOT)).toEqual(tasksBefore);
+    expect(backlog.listTasks(AUTHORING)).toEqual(tasksBefore);
   });
 });

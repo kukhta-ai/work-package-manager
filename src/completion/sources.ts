@@ -26,6 +26,13 @@ export interface CompletionContext {
   readonly builtinTemplatesRoot: string;
   /** The `-C/--project <path>` override carried on the command line, if any, so completion targets it. */
   readonly projectOverride?: string;
+  /**
+   * The resolved bundle id of a `bundle <id> …` per-bundle completion, when the partial sits inside the
+   * per-bundle space. Threaded in by the per-bundle completion recursion so a source can complete values scoped
+   * to THIS bundle (e.g. `requires remove <dep>` → the host bundle's current `requires` keys). `undefined`
+   * outside the per-bundle space.
+   */
+  readonly bundleId?: string;
   /** The partial token the user is completing (may be `""`); sources prefix-filter their suggestions by it. */
   readonly partial: string;
 }

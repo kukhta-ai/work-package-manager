@@ -48,6 +48,8 @@ function bundle(
     summary: `${name}.`,
     confirmation: "safe",
     requires: req,
+    payload: { files: [], templates: [], scripts: [], skills: [] },
+    installerSkills: [],
   };
 }
 
@@ -59,6 +61,7 @@ function project(bundles: BundleManifest[], targets: string[]): Project {
       meta: { name: "p", version: ver("1.0.0") },
       bundles: bundles.map((b) => b.id),
       targets: targets.map(agent),
+      installerSkills: [],
     },
     bundles: new Map(bundles.map((b) => [b.id, b])),
   };

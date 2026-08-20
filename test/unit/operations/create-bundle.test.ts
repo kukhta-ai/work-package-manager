@@ -13,6 +13,13 @@ import { parseYaml } from "../../../src/util/yaml.js";
 
 const ROOT = "/proj";
 const BUILTIN = "/builtin-templates";
+/**
+ * The authoring backlog is its own Backlog.md root at `<project>/.authoring-backlog` (doc 10 step 6) — NOT the
+ * project root. The lifecycle's ⑤ MATERIALISE writes there, so the fake must be initialised there and the
+ * materialise assertions must read there, mirroring reality (the fake-parity discipline: the fake used to be
+ * initialised at the project root, which hid the real `targets add`/`bundle new` "No Backlog.md project found").
+ */
+const AUTHORING = `${ROOT}/.authoring-backlog`;
 
 /** A YAML comment seeded into the manifest, to prove the bundle-append edit preserves comments. */
 const MANIFEST_COMMENT = "# hand-written note: bundles are appended below";
@@ -39,7 +46,7 @@ function seed(): { fs: MemoryFileSystem; backlog: FakeBacklog } {
       "",
     ].join("\n"),
   );
-  backlog.init(ROOT, { taskPrefix: "authoring" });
+  backlog.init(AUTHORING, { taskPrefix: "authoring" });
   // The ROOT alias target a prior `init` created (doc 06): so bundles' rerender alias is non-broken.
   fs.makeDirectories(`${ROOT}/installer-skills`);
 
@@ -55,6 +62,11 @@ function seed(): { fs: MemoryFileSystem; backlog: FakeBacklog } {
   fs.write(
     `${BUILTIN}/project/minimal/snippets/installer-skills/{{project-name}}-installer/SKILL.md`,
     "---\nname: {{project-name}}-installer\n---\nInstall {{project-name}}.\n",
+  );
+  // The advisor snippet `bundle new`'s auto-advisor renders (doc 10 step 6).
+  fs.write(
+    `${BUILTIN}/project/minimal/snippets/advisor.SKILL.md.tmpl`,
+    "---\nname: {{bundle-id}}-advisor\n---\n\n# {{bundle-id}} advisor\n",
   );
 
   // Bundle template (built-in): the dir tree `bundle new` scaffolds (incl. the alias target dir).
@@ -127,15 +139,15 @@ describe("createBundle — end-to-end through the lifecycle (doc 13 §5; doc 10 
     expect(frontDoor).toContain("# demo"); // {{project-name}} substituted
     expect(frontDoor).toContain("- web bundle"); // {{bundles}} menu includes the new bundle
 
-    // (materialise) all 12 doc-11 authoring tasks present in the backlog:
-    const titles = backlog.listTasks(ROOT).map((t) => t.title);
+    // (materialise) all 12 doc-11 authoring tasks present in the authoring backlog:
+    const titles = backlog.listTasks(AUTHORING).map((t) => t.title);
     for (const t of perBundleAuthoringTasks("web", { advisor: true })) {
       expect(titles).toContain(t.title);
     }
     expect(perBundleAuthoringTasks("web", { advisor: true })).toHaveLength(12);
 
     // the OperationResult is observable (AC#2):
-    expect(result.summary).toBe("created bundle web");
+    expect(result.summary).toBe("created bundle web (advisor scaffolded)");
     expect(result.changedPaths).toContain(`${ROOT}/bundles/web/bundle.yml`);
     expect(result.changedPaths).toContain(`${ROOT}/manifest.yml`);
     expect(result.changedPaths).toContain(`${ROOT}/AGENTS.md`);
@@ -165,7 +177,7 @@ describe("createBundle — end-to-end through the lifecycle (doc 13 §5; doc 10 
     const { fs, backlog } = seed();
     const result = runMutation(lifecycleDeps(fs, backlog), { root: ROOT }, spec(), { id: "web" });
     expect(fs.exists(`${ROOT}/AGENTS.md`)).toBe(true); // ④ ran (harness)
-    expect(backlog.listTasks(ROOT).length).toBeGreaterThan(0); // ⑤ ran (harness)
+    expect(backlog.listTasks(AUTHORING).length).toBeGreaterThan(0); // ⑤ ran (harness)
     expect(result.materialisedTaskTitles.length).toBe(12);
   });
 
@@ -175,7 +187,7 @@ describe("createBundle — end-to-end through the lifecycle (doc 13 §5; doc 10 
       runMutation(lifecycleDeps(fs, backlog), { root: ROOT }, spec(), { id: "list" }),
     ).toThrow(ValidationError);
     expect(fs.exists(`${ROOT}/bundles/list`)).toBe(false);
-    expect(backlog.listTasks(ROOT)).toEqual([]);
+    expect(backlog.listTasks(AUTHORING)).toEqual([]);
   });
 
   it("rejects a non-kebab id with ValidationError", () => {
@@ -199,7 +211,7 @@ describe("createBundle — end-to-end through the lifecycle (doc 13 §5; doc 10 
     // CHECK rejected the version before any effect — ③④⑤ never ran:
     expect(fs.exists(`${ROOT}/bundles/web`)).toBe(false); // no scaffold
     expect(fs.read(`${ROOT}/manifest.yml`)).toBe(manifestBefore); // manifest untouched
-    expect(backlog.listTasks(ROOT)).toEqual([]); // no tasks materialised
+    expect(backlog.listTasks(AUTHORING)).toEqual([]); // no tasks materialised
   });
 
   it("rejects a duplicate id with ConflictError, changing nothing on the second run", () => {
@@ -208,13 +220,13 @@ describe("createBundle — end-to-end through the lifecycle (doc 13 §5; doc 10 
     runMutation(deps, { root: ROOT }, spec(), { id: "web" });
 
     const manifestAfterFirst = fs.read(`${ROOT}/manifest.yml`);
-    const tasksAfterFirst = backlog.listTasks(ROOT).map((t) => t.title);
+    const tasksAfterFirst = backlog.listTasks(AUTHORING).map((t) => t.title);
 
     expect(() => runMutation(deps, { root: ROOT }, spec(), { id: "web" })).toThrow(ConflictError);
 
     // The failed second run changed neither the manifest nor the backlog:
     expect(fs.read(`${ROOT}/manifest.yml`)).toBe(manifestAfterFirst);
-    expect(backlog.listTasks(ROOT).map((t) => t.title)).toEqual(tasksAfterFirst);
+    expect(backlog.listTasks(AUTHORING).map((t) => t.title)).toEqual(tasksAfterFirst);
   });
 
   it("--no-advisor materialises 11 tasks, omitting the advisor task", () => {
@@ -226,6 +238,66 @@ describe("createBundle — end-to-end through the lifecycle (doc 13 §5; doc 10 
     expect(result.materialisedTaskTitles).toHaveLength(11);
     expect(result.materialisedTaskTitles).not.toContain("Write advisor content for core");
     expect(result.materialisedTaskTitles).toContain("Plan bundle core");
+  });
+});
+
+describe("createBundle — the project bundle-template default (§4; doc 10:150 step 2)", () => {
+  /** A marker file unique to the project's `bundles/bundle-template/` scaffold (NOT in the registry `default`). */
+  const PROJECT_SCAFFOLD_MARKER = "PROJECT-SCAFFOLD.txt";
+
+  /** Seed a project that ALSO has a `bundles/bundle-template/` scaffold with a distinguishing marker file. */
+  function seedWithProjectScaffold(): { fs: MemoryFileSystem; backlog: FakeBacklog } {
+    const { fs, backlog } = seed();
+    // The project's default bundle scaffold (what `init`/`bundle template set` materialise). It carries a marker
+    // file ABSENT from the registry `default`, plus a bundle.yml-less tree with placeholders kept.
+    fs.write(
+      `${ROOT}/bundles/bundle-template/${PROJECT_SCAFFOLD_MARKER}`,
+      "from project scaffold\n",
+    );
+    fs.write(
+      `${ROOT}/bundles/bundle-template/install-backlog/config.yml`,
+      "task_prefix: {{bundle-id}}\n",
+    );
+    fs.write(`${ROOT}/bundles/bundle-template/installer-skills/.keep`, "");
+    return { fs, backlog };
+  }
+
+  it("when no --template is given AND bundles/bundle-template/ exists, `bundle new` clones THAT scaffold", () => {
+    const { fs, backlog } = seedWithProjectScaffold();
+    // No bundleTemplateName ⇒ default branch ⇒ prefer the project scaffold.
+    const spec = createBundleSpec({ builtinTemplatesRoot: BUILTIN });
+    runMutation(lifecycleDeps(fs, backlog), { root: ROOT }, spec, { id: "web" });
+
+    // The marker from the PROJECT scaffold landed in the new bundle (proving set is now LIVE for bundle new):
+    expect(fs.exists(`${ROOT}/bundles/web/${PROJECT_SCAFFOLD_MARKER}`)).toBe(true);
+    expect(fs.read(`${ROOT}/bundles/web/${PROJECT_SCAFFOLD_MARKER}`)).toBe(
+      "from project scaffold\n",
+    );
+    // And the placeholders were substituted (renderTree ran over the cloned tree):
+    expect(fs.read(`${ROOT}/bundles/web/install-backlog/config.yml`)).toBe("task_prefix: web\n");
+    // bundle.yml is still written by step (b) (the scaffold carries none):
+    expect(fs.exists(`${ROOT}/bundles/web/bundle.yml`)).toBe(true);
+  });
+
+  it("an EXPLICIT --template still resolves from the REGISTRY even when bundles/bundle-template/ exists", () => {
+    const { fs, backlog } = seedWithProjectScaffold();
+    // Explicit bundleTemplateName ⇒ registry path ⇒ the project scaffold is IGNORED.
+    const spec = createBundleSpec({ builtinTemplatesRoot: BUILTIN, bundleTemplateName: "default" });
+    runMutation(lifecycleDeps(fs, backlog), { root: ROOT }, spec, { id: "web" });
+
+    // The registry `default` has NO project-scaffold marker, so the new bundle must NOT contain it:
+    expect(fs.exists(`${ROOT}/bundles/web/${PROJECT_SCAFFOLD_MARKER}`)).toBe(false);
+    // It DOES have the registry default's bundle.yml-derived tree (the fixture default ships bundle.yml):
+    expect(fs.exists(`${ROOT}/bundles/web/bundle.yml`)).toBe(true);
+  });
+
+  it("with NO bundles/bundle-template/ present, `bundle new` falls back to the registry default (no regression)", () => {
+    const { fs, backlog } = seed(); // the standard seed: NO bundles/bundle-template/
+    const spec = createBundleSpec({ builtinTemplatesRoot: BUILTIN });
+    runMutation(lifecycleDeps(fs, backlog), { root: ROOT }, spec, { id: "web" });
+    // Falls back to the registry `default` and still scaffolds correctly:
+    expect(fs.exists(`${ROOT}/bundles/web/bundle.yml`)).toBe(true);
+    expect(fs.exists(`${ROOT}/bundles/web/${PROJECT_SCAFFOLD_MARKER}`)).toBe(false);
   });
 });
 
@@ -271,6 +343,7 @@ describe("makeArtefactDeriver (doc 13 §5 ④)", () => {
         },
         targets: ["claude-code" as never],
         bundles: ["web" as never],
+        installerSkills: [],
       },
       bundles: new Map([
         [
@@ -281,6 +354,8 @@ describe("makeArtefactDeriver (doc 13 §5 ④)", () => {
             summary: "web bundle",
             confirmation: "safe",
             requires: new Map(),
+            payload: { files: [], templates: [], scripts: [], skills: [] },
+            installerSkills: [],
           },
         ],
       ]),
