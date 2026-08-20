@@ -4,8 +4,8 @@
 # (Distinct from _bmad/ — that is BMAD's own install dir; this dot-dir is our tracker.)
 
 phase: 6
-phase_name: "Authoring-context epic gate — external CI verification"
-branch: feature/authoring-context
+phase_name: "Authoring-context epic gate — Windows CI follow-up remediation"
+branch: fix/authoring-context/windows-ci-followup
 epic: authoring-context
 # USER RESUMED 2026-08-19: "finish this feature". Reopened Phase 5 for the four tracked follow-ups
 # in dependency order: TASK-95, TASK-101, TASK-104, TASK-105. Each runs the full mandated
@@ -19,6 +19,7 @@ epic: authoring-context
 # FOLLOW-UP COLD GATE PASS at 2398d42 from a separate clean clone: npm ci; typecheck; Biome (200 files); build; Vitest 1278/1278 across 99 files (375.88s); clean diff. npm production audit = 0 vulnerabilities; npm reported 3 high advisories only when development dependencies were included, left for dependency-maintenance scope.
 # PR #3 CI run 32355637349 exposed an Info-ZIP same-output update defect plus a pre-existing Windows test baseline failure. TASK-105 ZIP repair is review-clean (fresh exact-set output + failed-process partial cleanup; 1279/1279 local). The concluded `windows-ci-gate` investigation partitioned all 284 Windows failures into six bounded mechanisms; the worker implemented them and the separate reviewer approved with 0 open findings. Exact-final local evidence is typecheck/Biome/build plus 1286/1286 tests; external Windows Node 20/22 CI is the remaining empirical gate.
 # POST-FIX COLD GATE PASS at f59c1b5 from fresh clone: npm ci; typecheck; Biome (200 files); build; Vitest 1286/1286 across 99 files (385.62s); clean diff; production audit 0. Interim bmad-testarch-trace maps 46/46 AC FULL and has a PASS coverage base; overall CONCERNS is solely the pending external Windows Node 20/22 pair and must be re-run after CI.
+# CI run 32368788474 at 8920284: Ubuntu/macOS Node 20/22 passed 1286/1286. Windows Node 22 failed 4 deterministic cases; Node 20 failed the same 4 plus 3 real-subprocess tests exceeding the unit project's 5s budget. Follow-up bmad-investigate concluded High confidence: 3 stale portable-output expectations, 1 real Windows ZIP-availability product seam, and 3 integration-style packager timeouts. Dedicated follow-up fix branch active.
 # *** EPIC-4 COMPLETE (stories 96-100 done + merged --no-ff into feature/authoring-context). GATE = PASS (content-only: agent-skills/*.md + 1 strengthened test + backlog/ledger; NO src/ changes -> fast suite is the right gate; tsc0/biome0/vitest 1076 passed). ***
 # Added 2 skill references (task-conventions.md = AC what-not-how contract; native-surfaces.md = 5 roles + scope table + front-door mechanic); named the core bet in the spine + executor loop/done-gate/how-to-use in quality-protocol; fixed 9 drift spots + the files-add example. DOGFOOD (task-100): a cold agent authored a valid bundle from only the 2 surfaces -> surfaces self-sufficient; gaps resolved-in-skill or DEFERRED.
 # DEFERRED PRODUCT DEFECTS found by the dogfood (tracked, human/product): TASK-102 (BLOCKER: a bundle's install-backlog is NOT Backlog.md-CLI-resolvable -> the documented `cd wip/bundles/<id> && backlog ...` recipe-authoring cmd FAILS; also hits the executor at install time; skill ships a self-cleaning symlink workaround meanwhile), TASK-103 (payload-skill stub limbo), TASK-104 (bundle-template ships into archive + dangling menu). Plus TASK-101 (docs/templates reconcile: missing single-bundle/multi-bundle/with-payload-skill/adopts-system-tool templates + the files-add doc bug). TASK-95 (epic-3: --format git transform).
@@ -247,10 +248,10 @@ specialists:
   # update the FakeBacklog tests to init at .authoring-backlog (parity) + a real-backlog regression test. Rides feature/cli-targets.
   worker_retired: {id: "a67b0906de8ff721d", reason: "broke on continuations -- big authoring runs worked but short follow-ups returned 0 tool_uses + got confused; retired after task-30. Do not re-dispatch."}
   reviewer:     {spawned: true,  id: "/root/followup_reviewer2", role: "replacement persistent separate-lane follow-up reviewer", last_skill: "bmad-story-automator-review @ windows-ci-gate (final APPROVE)", status: "Windows remediation review clean; 0 open findings; exact full gate 1286/1286."}
-  investigator: {spawned: true, id: "/root/ci_investigator", role: "systematic debugging at the epic gate", last_skill: "bmad-investigate @ windows-ci-gate", status: "Concluded (Medium): all 284 Windows failures partitioned into six bounded mechanisms with exact repair/verification seams."}
+  investigator: {spawned: true, id: "/root/ci_investigator", role: "systematic debugging at the epic gate", last_skill: "bmad-investigate @ windows-ci-gate follow-up #2", status: "Concluded (High): five mechanisms exhaust Windows Node22=4 and Node20=7 residual failures; bounded product/test fix plan recorded."}
   retro:        {spawned: false,                          role: "epic retrospective",                    status: "spawn after task-33 (end of P5)"}
 
-gates_pending: ["Phase-6 external CI matrix and final testarch-trace", "Human review and merge PR #3 into feature/authoring-workspace"]
+gates_pending: ["Phase-6 Windows follow-up remediation, external CI rerun, and final testarch-trace", "Human review and merge PR #3 into feature/authoring-workspace"]
 # GOAL EXTENDED (2026-06-01): "complete to task 33 ... full SDLC; THEN merge to dev and start the same SDLC
 # from it with the CLI tasks pushed there (update from remote) and go to task 84 (to the end)." So:
 #   (1) finish the foundation epic 23-33 + the Phase-6 epic gate;
@@ -272,4 +273,4 @@ tooling:
   tool_target: "claude-code"
   claude_code_skills: ".claude/skills (56 skills)"
 
-last_updated: "2026-08-20T12:24:50Z"
+last_updated: "2026-08-20T13:07:13Z"
