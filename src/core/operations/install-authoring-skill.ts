@@ -1,4 +1,5 @@
 import { join } from "node:path";
+import { toPosix } from "../../util/posix-path.js";
 import { NotFoundError, UsageError } from "../errors.js";
 import type { Environment, FileSystem } from "../ports/index.js";
 import { USER_SCOPE_PATHS } from "../services/agent-aliases.js";
@@ -99,7 +100,7 @@ function requireHome(env: Environment): string {
  * @param home - The HOME directory.
  * @returns The detected scopes, in {@link USER_SCOPE_PATHS} iteration order (may be empty).
  */
-export function detectUserAgentScopes(fs: FileSystem, home: string): DetectedAgentScope[] {
+function detectNativeUserAgentScopes(fs: FileSystem, home: string): DetectedAgentScope[] {
   const detected: DetectedAgentScope[] = [];
   for (const [agent, suffix] of Object.entries(USER_SCOPE_PATHS)) {
     const firstSegment = suffix.split("/")[0];
@@ -115,6 +116,20 @@ export function detectUserAgentScopes(fs: FileSystem, home: string): DetectedAge
 }
 
 /**
+ * Detect supported user-agent scopes and expose their paths as portable logical result values.
+ *
+ * Detection itself uses native paths internally; normalization happens only after every filesystem probe so
+ * callers and command output receive stable `/`-separated values without changing effect paths.
+ */
+export function detectUserAgentScopes(fs: FileSystem, home: string): DetectedAgentScope[] {
+  return detectNativeUserAgentScopes(fs, home).map(({ agent, configDir, scope }) => ({
+    agent,
+    configDir: toPosix(configDir),
+    scope: toPosix(scope),
+  }));
+}
+
+/**
  * Whether the bundled authoring skill is already present in at least one detected user agent scope. Used by
  * `wpm init` to decide whether to surface the "run `wpm skill install`" hint (AC#4 — "when it is absent"); the
  * install command itself does not need it (it always (re)copies and reports installed/updated per scope).
@@ -124,7 +139,7 @@ export function detectUserAgentScopes(fs: FileSystem, home: string): DetectedAge
  * @returns `true` when every detected scope already holds the skill (and at least one scope is detected).
  */
 export function authoringSkillPresent(fs: FileSystem, home: string): boolean {
-  const scopes = detectUserAgentScopes(fs, home);
+  const scopes = detectNativeUserAgentScopes(fs, home);
   if (scopes.length === 0) {
     return false;
   }
@@ -168,7 +183,7 @@ export function installAuthoringSkill(
 
   // 3. Detect supported agent scopes; with none present there is nothing to install into (AC#3) — raise
   // BEFORE any write so the failure leaves the filesystem untouched.
-  const scopes = detectUserAgentScopes(fs, home);
+  const scopes = detectNativeUserAgentScopes(fs, home);
   if (scopes.length === 0) {
     throw new UsageError(
       "no supported agent skill scope detected under HOME " +
@@ -184,8 +199,13 @@ export function installAuthoringSkill(
     const destination = join(scope, AUTHORING_SKILL_NAME);
     const status: InstalledScopeRecord["status"] = fs.exists(destination) ? "updated" : "installed";
     fs.copyTree(source, destination);
-    installed.push({ agent, scope, destination, status });
-    changedPaths.push(destination);
+    installed.push({
+      agent,
+      scope: toPosix(scope),
+      destination: toPosix(destination),
+      status,
+    });
+    changedPaths.push(toPosix(destination));
   }
 
   return { skillName: AUTHORING_SKILL_NAME, installed, changedPaths };

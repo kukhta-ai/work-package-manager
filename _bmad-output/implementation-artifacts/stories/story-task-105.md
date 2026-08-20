@@ -161,6 +161,30 @@ GPT-5.4 Codex persistent worker
 - Cycle-3 gates: focused unit/schema/CLI 194/194 across 7 files; built E2E/symlink integration 27/27 across 2
   files; typecheck passed; Biome passed (200 files); production build passed; `git diff --check` passed. The
   reviewer's unchanged exact-final full regression remains 1,278/1,278 across 99 files.
+- CI regression continuation: GitHub run 32355637349 exposed that Info-ZIP incrementally updates an existing
+  `<name>.zip`; after deregistration, dry-run and the new ship plan were correct but stale entries survived in
+  the reused archive on macOS Node 20/22 and Ubuntu Node 22. Re-invoked `bmad-dev-story`; customization again
+  resolved with no activation prepend/append steps, no project-context facts, and an empty completion hook.
+- ZIP red/green: a deterministic fake Info-ZIP first reproduced the stale update (1 failed / 10 passed), then
+  passed 11/11 after the adapter began removing the prior output before archive creation. The removal occurs
+  only after the ZIP tool is available and the archive source is prepared, and aligns ZIP with tar/git overwrite
+  behavior.
+- QA regression workflow: re-invoked `bmad-qa-generate-e2e-tests`; customization resolved with no activation
+  prepend/append steps, no project-context facts, and an empty completion hook. The fake-ZIP unit runs without a
+  local ZIP installation, while the existing real successive-archive E2E exercises the same output path and
+  verifies stale registered entries disappear whenever ZIP/unzip are present.
+- CI-fix gates: focused packager 11/11; built E2E/symlink integration 27/27; typecheck passed; Biome passed (200
+  files); production build passed; full Vitest 1,279/1,279 across 99 files; `git diff --check` passed.
+- Post-CI review absorption: re-invoked `bmad-dev-story` against the complete story after the approved repair
+  review. Customization resolved with no activation prepend/append steps, no matching project-context facts, and
+  an empty completion hook.
+- Partial-output audit: confirmed the ZIP subprocess's typed error is preserved, its partial canonical output is
+  removed before rethrow, and staged-source cleanup still runs in the outer `finally`. The strengthened fake
+  Info-ZIP writes a partial archive, exits 9, and proves both domain-error classification and canonical-output
+  absence. No further product/test correction was needed.
+- Post-review gates: focused packager 11/11; typecheck passed; Biome passed (200 files); production build passed;
+  `git diff --check` passed. The reviewer's exact-final built E2E/symlink 27/27 and full 1,279/1,279 across 99
+  files remain applicable because this absorption changed artifacts only.
 
 ### Completion Notes List
 
@@ -186,6 +210,12 @@ GPT-5.4 Codex persistent worker
 - The post-cycle-2 continuation absorbed both reviewer findings: hand-authored payload registries now require a
   unique `name` deregistration key without changing installerSkills, and missing plus invalid-frontmatter source
   packages have explicit negative authorization evidence. No additional implementation correction was needed.
+- ZIP packaging now always creates a fresh exact representation of `PackageRequest.files`; Info-ZIP can no
+  longer retain a deregistered payload package from an earlier archive with the same output name. A deterministic
+  fake-tool regression covers update semantics on every Linux/macOS test host, and the real conditional ZIP E2E
+  retains cross-format successive-build coverage.
+- The post-CI review continuation absorbed the partial-output fix: failed ZIP creation now leaves no canonical
+  artifact that could be mistaken for success, while preserving the typed failure and temporary-stage cleanup.
 - QA automation validated both acceptance criteria and recorded coverage in
   `_bmad-output/implementation-artifacts/tests/test-summary-task-105.md`.
 
@@ -196,6 +226,7 @@ GPT-5.4 Codex persistent worker
 - `docs/06-project-skeleton.md`
 - `docs/10-authoring-cli.md`
 - `docs/12-builder-architecture.md`
+- `src/adapters/packager.ts`
 - `src/cli.ts`
 - `src/core/model/bundle.ts`
 - `src/core/operations/build.ts`
@@ -204,6 +235,7 @@ GPT-5.4 Codex persistent worker
 - `src/core/services/skill-ref-path.ts` (new)
 - `test/integration/cli.build.e2e.test.ts`
 - `test/integration/operations/build-shippable-symlink.test.ts`
+- `test/unit/adapters/packager.test.ts`
 - `test/unit/cli/bundle-installer-skills-commands.test.ts`
 - `test/unit/cli/bundle-skills-commands.test.ts`
 - `test/unit/cli/project-installer-skills-commands.test.ts`
@@ -352,6 +384,83 @@ GPT-5.4 Codex persistent separate-lane reviewer — review cycle 3
 
 **APPROVE** — 0 fresh findings; all prior findings remain closed and no worker code re-absorption is required.
 
+## Senior Developer Review (AI) — CI ZIP Repair
+
+### Reviewer
+
+GPT-5.4 Codex persistent separate-lane reviewer — post-CI repair review
+
+### Workflow and Full-Diff Audit
+
+- Re-invoked `bmad-story-automator-review` and audited the complete repair diff from baseline
+  `4547434117562bb79a9dfe0e670f66934a8034e4`, not only the latest test edit.
+- Customization resolved to defaults: English/intermediate output, no `customize.toml`, no activation
+  prepend/append steps, no project-context facts, and no completion hook. Sprint/backlog/state/branch files
+  remained orchestration-owned and untouched.
+- Confirmed GitHub run 32355637349's failure mode: the pure ship plan was exact, but Info-ZIP update semantics
+  retained deregistered entries when the same output path was reused. Removing the old ZIP before invoking the
+  tool makes every successful archive an exact representation of the current `PackageRequest.files` on
+  Linux/macOS and uses only cross-platform Node filesystem operations.
+- The deterministic fake Info-ZIP faithfully models retained-entry update behavior without relying on local ZIP
+  installation, while the real conditional built-CLI scenario reuses the same archive path after deregistration.
+  Prior TASK-105 path, symlink, protected-surface, registry, and installerSkills guarantees remain unchanged.
+
+### Finding and Auto-fix
+
+- **MEDIUM — fixed:** if ZIP wrote a partial canonical output and then exited non-zero, the adapter propagated a
+  typed error but left that truncated file in `builds/`, where it could be mistaken for a successful archive.
+  The ZIP failure path now removes the partial output before rethrowing. The same fake-tool test forces a partial
+  write plus exit 9 and proves a domain error is returned with no canonical archive left behind.
+
+### Acceptance and Gate Evidence
+
+- AC 1/2: PASS — successive same-path ZIP creation cannot retain entries absent from the authoritative current
+  ship set; real deregistration still leaves source content in the authoring workspace while all archive formats
+  omit it on the next successful build.
+- Focused packager: 11/11; focused built E2E/symlink integration: 27/27 across 2 files; full regression:
+  1,279/1,279 across 99 files (started 10:16:51 UTC, duration 376.90s).
+- Typecheck: PASS; Biome lint: PASS (200 files); production build: PASS; diff/inventory checks: PASS.
+
+### Outcome
+
+**APPROVE** — 1 MEDIUM finding auto-fixed; 0 open findings.
+
+## Senior Developer Review (AI) — Final Post-Absorption
+
+### Reviewer
+
+GPT-5.4 Codex persistent separate-lane reviewer — final post-absorption review
+
+### Workflow and Exact-Diff Audit
+
+- Re-invoked `bmad-story-automator-review` and audited the complete current repair diff from
+  `4547434117562bb79a9dfe0e670f66934a8034e4` after worker absorption.
+- Customization resolved to defaults: English/intermediate output, no `customize.toml`, no activation
+  prepend/append steps, no project-context facts, and no completion hook. Sprint/backlog/state/branch and
+  investigation artifacts remained orchestration-owned and untouched.
+- The current repair diff contains exactly four documented files: this story, its QA summary,
+  `src/adapters/packager.ts`, and `test/unit/adapters/packager.test.ts`. All four appear in the story File List;
+  there are no staged or undocumented repair files.
+- Product and test behavior remains unchanged from the approved repair: ZIP removes a prior same-name output
+  only after tool/source preparation, removes any partial canonical output on archiver failure, preserves the
+  typed failure, and always cleans a staged source in the outer `finally`. The deterministic fake Info-ZIP still
+  proves both stale-entry replacement and partial-output cleanup, while the real built-CLI scenario retains
+  successive same-path archive coverage.
+- All TASK-105 findings remain closed. AC 1/2 remain proven: the authoritative current ship set alone reaches
+  successful archives, and deregistration leaves source content in place while omitting its package from the
+  next dry-run and archive.
+
+### Fresh Gate Evidence
+
+- Focused packager: 11/11; focused built E2E/symlink integration: 27/27 across 2 files.
+- Typecheck: PASS; Biome lint: PASS (200 files); production build: PASS.
+- Fresh full regression: 1,279/1,279 across 99 files (started 10:29:14 UTC, duration 376.72s).
+- File List/inventory reconciliation and `git diff --check`: PASS.
+
+### Outcome
+
+**APPROVE** — 0 fresh findings; every prior finding remains closed and no product/test re-absorption is required.
+
 ## Change Log
 
 - 2026-08-20: Created TASK-105 story context from the authoritative task, project model, build architecture,
@@ -374,3 +483,12 @@ GPT-5.4 Codex persistent separate-lane reviewer — review cycle 3
 - 2026-08-20: Review cycle 3 re-audited the full baseline diff and artifact-only absorption, confirmed all prior
   findings remain closed, reran focused/static/built gates, cited the unchanged exact-final full regression, and
   approved the story as done.
+- 2026-08-20: Re-invoked dev-story and QA for CI run 32355637349, made ZIP packaging replace rather than update
+  an existing archive, added a tool-independent stale-entry regression, reran the full gate, and returned the
+  story to review.
+- 2026-08-20: Post-CI review approved the exact-set ZIP repair, added cleanup for partial output on tool failure,
+  strengthened the deterministic fake-tool regression, reran the complete local gate, and marked the story done.
+- 2026-08-20: Re-invoked dev-story after the post-CI review, absorbed its partial-output cleanup and regression,
+  reran focused/static/build gates, reconciled story/QA evidence, and returned the story to review.
+- 2026-08-20: Final post-absorption review re-audited the exact four-file repair diff, confirmed the ZIP exact-set
+  and partial-output fixes unchanged, reran focused/built/static/full gates, and approved the story as done.

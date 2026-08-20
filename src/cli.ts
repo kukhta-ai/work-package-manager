@@ -2945,7 +2945,7 @@ const projectModule: CommandModule = {
         // Prints the DELIVERABLE root (`<workspace>/wip`) per doc 10 — the path commands operate on, composable
         // as `cd "$(wpm project root)/bundles/…"`.
         const { deliverableRoot: root } = requireProject(ctx, parent);
-        ctx.io.out.write(`${root}\n`);
+        ctx.io.out.write(`${toPosix(root)}\n`);
       });
     withExamples(rootLeaf, [
       {

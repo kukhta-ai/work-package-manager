@@ -1,4 +1,5 @@
 import { join } from "node:path";
+import { toPosix } from "../../util/posix-path.js";
 import { NotFoundError } from "../errors.js";
 import type { FileSystem } from "../ports/index.js";
 import type { RenderParams } from "../services/render.js";
@@ -84,5 +85,5 @@ export function renderSkillStub(
 
   const rendered = renderSnippet(snippet, substitutions);
   fs.write(stubAbs, rendered.content);
-  return [stubAbs];
+  return [toPosix(stubAbs)];
 }

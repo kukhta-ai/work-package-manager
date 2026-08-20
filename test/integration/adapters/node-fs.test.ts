@@ -106,42 +106,48 @@ describe("NodeFileSystem (the real FileSystem adapter, against a real tmpdir)", 
     });
   });
 
-  it("ensureAlias on POSIX creates a working symlink pointing at the target (AC#3)", async () => {
-    await withTempDir((dir) => {
-      const fs = new NodeFileSystem();
-      const target = join(dir, "installer-skills");
-      fs.makeDirectories(target);
-      fs.write(join(target, "SKILL.md"), "# skill");
-      const link = join(dir, ".claude-skills");
+  it.runIf(process.platform !== "win32")(
+    "ensureAlias on POSIX creates a working symlink pointing at the target (AC#3)",
+    async () => {
+      await withTempDir((dir) => {
+        const fs = new NodeFileSystem();
+        const target = join(dir, "installer-skills");
+        fs.makeDirectories(target);
+        fs.write(join(target, "SKILL.md"), "# skill");
+        const link = join(dir, ".claude-skills");
 
-      const result = fs.ensureAlias(target, link);
-      expect(result.kind).toBe("symlink");
-      // It is really a symlink, and it resolves to the target (so reading through it works).
-      expect(lstatSync(link).isSymbolicLink()).toBe(true);
-      expect(realpathSync(link)).toBe(realpathSync(target));
-      expect(fs.read(join(link, "SKILL.md"))).toBe("# skill");
-    });
-  });
+        const result = fs.ensureAlias(target, link);
+        expect(result.kind).toBe("symlink");
+        // It is really a symlink, and it resolves to the target (so reading through it works).
+        expect(lstatSync(link).isSymbolicLink()).toBe(true);
+        expect(realpathSync(link)).toBe(realpathSync(target));
+        expect(fs.read(join(link, "SKILL.md"))).toBe("# skill");
+      });
+    },
+  );
 
-  it("ensureAlias with a RELATIVE target creates a relative symlink that resolves (TASK-102)", async () => {
-    await withTempDir((dir) => {
-      const fs = new NodeFileSystem();
-      // Model the per-bundle recipe layout: install-backlog beside the `backlog` link.
-      const bundle = join(dir, "bundles", "web");
-      fs.makeDirectories(join(bundle, "install-backlog", "tasks"));
-      fs.write(join(bundle, "install-backlog", "config.yml"), "task_prefix: web\n");
-      const link = join(bundle, "backlog");
+  it.runIf(process.platform !== "win32")(
+    "ensureAlias with a RELATIVE target creates a relative symlink that resolves (TASK-102)",
+    async () => {
+      await withTempDir((dir) => {
+        const fs = new NodeFileSystem();
+        // Model the per-bundle recipe layout: install-backlog beside the `backlog` link.
+        const bundle = join(dir, "bundles", "web");
+        fs.makeDirectories(join(bundle, "install-backlog", "tasks"));
+        fs.write(join(bundle, "install-backlog", "config.yml"), "task_prefix: web\n");
+        const link = join(bundle, "backlog");
 
-      const result = fs.ensureAlias("install-backlog", link);
-      expect(result.kind).toBe("symlink");
-      expect(lstatSync(link).isSymbolicLink()).toBe(true);
-      // RELATIVE: the link's raw content is exactly `install-backlog`, never an absolute path — so it stays
-      // valid after the archive is extracted to any path (archive portability):
-      expect(readlinkSync(link)).toBe("install-backlog");
-      // …and it resolves to the real sibling install-backlog dir, so reading through it works:
-      expect(fs.read(join(link, "config.yml"))).toBe("task_prefix: web\n");
-    });
-  });
+        const result = fs.ensureAlias("install-backlog", link);
+        expect(result.kind).toBe("symlink");
+        expect(lstatSync(link).isSymbolicLink()).toBe(true);
+        // RELATIVE: the link's raw content is exactly `install-backlog`, never an absolute path — so it stays
+        // valid after the archive is extracted to any path (archive portability):
+        expect(readlinkSync(link)).toBe("install-backlog");
+        // …and it resolves to the real sibling install-backlog dir, so reading through it works:
+        expect(fs.read(join(link, "config.yml"))).toBe("task_prefix: web\n");
+      });
+    },
+  );
 
   it("ensureAlias copy fallback resolves a RELATIVE target against the link's parent, not cwd (TASK-102)", async () => {
     await withTempDir((dir) => {

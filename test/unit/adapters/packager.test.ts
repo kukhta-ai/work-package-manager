@@ -20,21 +20,25 @@ import { withTempDir } from "../../helpers/tmpdir.js";
 
 /**
  * Unit tests for the build PACKAGER adapter (task-83) over a REAL tmpdir — it is infrastructure (it shells out
- * via `runSync`), so it is exercised end-to-end against real `tar`/`git`, not in memory. The `zip` happy path is
- * conditional on `zip` being installed (it is NOT on CI); the always-on assertions are tarball + git + the
- * missing-tool typed error + the push (local-dir + git-remote).
+ * via `runSync`), so it is exercised end-to-end against real `tar`/`git`, not in memory. ZIP expectations are
+ * selected from the host probe's three observable states: usable, spawn-absent, or present-but-nonzero. The
+ * always-on assertions also cover tarball, Git, fake-ZIP exact-set/failure semantics, and both push kinds.
  */
 
-/** Whether a CLI tool is available (so a zip-dependent test can skip rather than fail on a CI without `zip`). */
-function has(tool: string): boolean {
+/** The three version-probe states production deliberately distinguishes for optional archive tools. */
+type ToolProbeState = "spawn-absent" | "usable" | "present-nonzero";
+
+/** Classify a CLI probe without collapsing a process exit into a spawn failure. */
+function probeTool(tool: string): ToolProbeState {
   try {
     execFileSync(tool, ["-v"], { stdio: "pipe" });
-    return true;
-  } catch {
-    return false;
+    return "usable";
+  } catch (error) {
+    const status = (error as { status?: number | null }).status;
+    return typeof status === "number" ? "present-nonzero" : "spawn-absent";
   }
 }
-const hasZip = has("zip");
+const zipProbeState = probeTool("zip");
 
 /** Return a normalized root-relative layout for any gzip-tar archive, ignoring directory-only entries. */
 function tarLayout(archive: string): string[] {
@@ -364,10 +368,74 @@ describe("createArchive — zip (missing-tool handling)", () => {
     });
   });
 
+  it("replaces an existing archive so incremental zip updates cannot retain stale entries", async () => {
+    if (process.platform === "win32") return;
+    await withTempDir(async (dir) => {
+      const root = join(dir, "proj");
+      const bin = join(dir, "bin");
+      mkdirSync(root, { recursive: true });
+      mkdirSync(bin, { recursive: true });
+      writeFileSync(join(root, "keep.txt"), "keep\n");
+      writeFileSync(join(root, "stale.txt"), "stale\n");
+      writeFileSync(join(root, "fail.txt"), "fail\n");
+
+      // Emulate Info-ZIP's update semantics: when the output already exists, retain its old entries and add the
+      // newly requested ones. The production adapter must remove the old output before invoking this tool.
+      const fakeZip = join(bin, "zip");
+      writeFileSync(
+        fakeZip,
+        [
+          "#!/usr/bin/env node",
+          'const fs = require("node:fs");',
+          "const args = process.argv.slice(2);",
+          'if (args[0] === "-v") process.exit(0);',
+          'const outIndex = args.indexOf("-y") + 1;',
+          "const out = args[outIndex];",
+          'const prior = fs.existsSync(out) ? JSON.parse(fs.readFileSync(out, "utf8")) : [];',
+          "const next = args.slice(outIndex + 1);",
+          'if (next.includes("fail.txt")) { fs.writeFileSync(out, "partial"); process.exit(9); }',
+          "fs.writeFileSync(out, JSON.stringify([...new Set([...prior, ...next])].sort()));",
+          "",
+        ].join("\n"),
+      );
+      chmodSync(fakeZip, 0o755);
+
+      const previousPath = process.env.PATH;
+      process.env.PATH = `${bin}:${previousPath ?? ""}`;
+      try {
+        const request = {
+          root,
+          outDir: dir,
+          baseName: "successive",
+          format: "zip" as const,
+        };
+        const archive = createArchive({ ...request, files: ["keep.txt", "stale.txt"] });
+        expect(JSON.parse(readFileSync(archive, "utf8"))).toEqual(["keep.txt", "stale.txt"]);
+
+        createArchive({ ...request, files: ["keep.txt"] });
+        expect(JSON.parse(readFileSync(archive, "utf8"))).toEqual(["keep.txt"]);
+
+        let thrown: unknown;
+        try {
+          createArchive({ ...request, files: ["fail.txt"] });
+        } catch (err) {
+          thrown = err;
+        }
+        expect(isDomainError(thrown)).toBe(true);
+        expect(existsSync(archive)).toBe(false);
+      } finally {
+        if (previousPath === undefined) delete process.env.PATH;
+        else process.env.PATH = previousPath;
+      }
+    });
+  });
+
   it(
-    hasZip
-      ? "produces a real .zip when zip is available"
-      : "raises a clear typed error when zip is absent",
+    zipProbeState === "usable"
+      ? "produces a real .zip when zip is usable"
+      : zipProbeState === "spawn-absent"
+        ? "raises unavailable guidance when zip cannot be spawned"
+        : "preserves a typed zip failure when the present tool exits non-zero",
     async () => {
       await withTempDir(async (dir) => {
         const root = join(dir, "proj");
@@ -376,7 +444,7 @@ describe("createArchive — zip (missing-tool handling)", () => {
         const out = join(dir, "out");
         mkdirSync(out, { recursive: true });
 
-        if (hasZip) {
+        if (zipProbeState === "usable") {
           // The returned package path is POSIX on every OS (a portable artefact reference) — assert against the
           // `/`-form so the expectation is correct on Windows too, where `join` would otherwise yield `\`.
           const expected = toPosix(join(out, "demo-1.0.0.zip"));
@@ -397,7 +465,12 @@ describe("createArchive — zip (missing-tool handling)", () => {
             thrown = e;
           }
           expect(isDomainError(thrown)).toBe(true);
-          expect((thrown as Error).message).toMatch(/zip.*not available|tarball/i);
+          if (zipProbeState === "spawn-absent") {
+            expect((thrown as Error).message).toMatch(/zip.*not available|tarball/i);
+          } else {
+            expect((thrown as Error).message).toMatch(/zip failed/i);
+            expect((thrown as Error).message).not.toMatch(/not available|use.*tarball/i);
+          }
         }
       });
     },

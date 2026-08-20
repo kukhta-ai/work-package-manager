@@ -171,3 +171,24 @@ describe("MemoryFileSystem (the in-memory FileSystem fake — AC#1)", () => {
     expect(fs.exists("/a/c.txt/")).toBe(true);
   });
 });
+
+describe("MemoryFileSystem alias observations", () => {
+  it("records an absolute Win32 target as POSIX and resolves it in the fake namespace", () => {
+    const fs = new MemoryFileSystem();
+    fs.write("C:\\work\\proj\\installer-skills\\demo\\SKILL.md", "# demo\n");
+
+    fs.ensureAlias("C:\\work\\proj\\installer-skills", "C:\\work\\proj\\.claude\\skills");
+
+    expect(fs.aliasTarget("C:\\work\\proj\\.claude\\skills")).toBe("C:/work/proj/installer-skills");
+    expect(fs.exists("C:\\work\\proj\\.claude\\skills")).toBe(true);
+  });
+
+  it("preserves relative alias targets byte-for-byte", () => {
+    const fs = new MemoryFileSystem();
+    fs.ensureAlias("install-backlog", "/proj/bundles/web/backlog");
+    fs.ensureAlias("nested\\relative-target", "/proj/other-alias");
+
+    expect(fs.aliasTarget("/proj/bundles/web/backlog")).toBe("install-backlog");
+    expect(fs.aliasTarget("/proj/other-alias")).toBe("nested\\relative-target");
+  });
+});
