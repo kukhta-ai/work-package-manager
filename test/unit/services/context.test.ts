@@ -151,4 +151,26 @@ describe("resolveContext (workspace resolution — doc 10/13 §7)", () => {
       expect(first).toEqual(located("/work/proj"));
     });
   });
+
+  describe("injected platform path dialect", () => {
+    it("uses Win32 operations for a Win32 fake and returns native drive-rooted paths", () => {
+      const fs = new MemoryFileSystem();
+      const env = new FakeEnvironment({
+        cwd: "C:\\work\\proj\\wip\\bundles\\web-handoff",
+        platform: "win32",
+      });
+      fs.write("C:\\work\\proj\\wip\\manifest.yml", "x");
+
+      expect(resolveContext({ fs, env })).toEqual({
+        found: true,
+        workspaceRoot: "C:\\work\\proj",
+        deliverableRoot: "C:\\work\\proj\\wip",
+      });
+      expect(resolveContext({ fs, env }, { projectOverride: "..\\..\\.." })).toEqual({
+        found: true,
+        workspaceRoot: "C:\\work\\proj",
+        deliverableRoot: "C:\\work\\proj\\wip",
+      });
+    });
+  });
 });

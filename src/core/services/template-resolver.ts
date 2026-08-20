@@ -1,4 +1,5 @@
 import { join } from "node:path";
+import { toPosix } from "../../util/posix-path.js";
 // `parseYaml` is a pure leaf (no I/O); the FS port supplies the text it parses.
 import { parseYaml } from "../../util/yaml.js";
 import type { Template, TemplateFile, TemplateScope } from "../model/index.js";
@@ -151,7 +152,7 @@ export function resolveTemplate(
       return { found: true, template: readTemplate(deps.fs, dir) };
     }
   }
-  return { found: false, name, scope, searched: candidates };
+  return { found: false, name, scope, searched: candidates.map(toPosix) };
 }
 
 /**

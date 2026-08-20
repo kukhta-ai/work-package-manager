@@ -1,4 +1,4 @@
-import { dirname, join, resolve } from "node:path";
+import { posix, win32 } from "node:path";
 import type { Environment, FileSystem } from "../ports/index.js";
 
 /**
@@ -10,9 +10,9 @@ import type { Environment, FileSystem } from "../ports/index.js";
  *
  * It is pure **over the Environment + FileSystem ports** (doc 13 §3/§5): it reads the working directory from
  * {@link Environment.cwd} and probes for the workspace marker through {@link FileSystem.exists}, and so resolves
- * deterministically against the in-memory fakes in tests. It uses `node:path` (`join`/`dirname`/`resolve`) —
- * pure string operations the import-boundary rule permits in the core — but never `node:fs`: every disk touch
- * goes through the port.
+ * deterministically against the in-memory fakes in tests. It selects `node:path.posix` or `node:path.win32`
+ * from the injected {@link Environment.platform} and uses that dialect's pure string operations — permitted
+ * by the core import-boundary rule — but never `node:fs`: every disk touch goes through the port.
  *
  * doc 10 ("Project context is explicit" + "Project context resolution"): every command except `init`, the
  * project-agnostic `template` subcommands, and the machine-level installers operates on an authoring workspace,
@@ -44,7 +44,7 @@ export const WORKSPACE_MANIFEST = "manifest.yml";
  * rather than a bare `manifest.yml` (whose presence at a directory would make an unwrapped deliverable look like
  * a workspace) or the gitignored `.authoring-backlog/` (absent after a fresh clone).
  */
-export const WORKSPACE_MARKER = join(DELIVERABLE_DIR, WORKSPACE_MANIFEST);
+export const WORKSPACE_MARKER = posix.join(DELIVERABLE_DIR, WORKSPACE_MANIFEST);
 
 /**
  * The result of {@link resolveContext}: either a located workspace (its workspace root and the nested
@@ -83,12 +83,15 @@ export interface ResolveOptions {
   readonly projectOverride?: string;
 }
 
+/** The pure path operations context resolution uses after selecting a platform dialect. */
+type PathDialect = typeof posix;
+
 /** Build the located-workspace context for a confirmed workspace root: its root plus the nested deliverable. */
-function located(workspaceRoot: string): ProjectContext {
+function located(workspaceRoot: string, path: PathDialect): ProjectContext {
   return {
     found: true,
     workspaceRoot,
-    deliverableRoot: join(workspaceRoot, DELIVERABLE_DIR),
+    deliverableRoot: path.join(workspaceRoot, DELIVERABLE_DIR),
   };
 }
 
@@ -113,24 +116,28 @@ function located(workspaceRoot: string): ProjectContext {
  */
 export function resolveContext(deps: ResolveDeps, opts?: ResolveOptions): ProjectContext {
   const { fs, env } = deps;
+  // The environment port—not the host running this JavaScript process—is authoritative. This keeps the
+  // default Linux/POSIX fake deterministic on a Windows test runner while a real or fake Win32 environment
+  // still receives native drive-rooted path semantics.
+  const path: PathDialect = env.platform() === "win32" ? win32 : posix;
 
   const override = opts?.projectOverride;
   if (override !== undefined) {
     // The override points AT a workspace root: resolve it against cwd (absolute overrides resolve to
     // themselves), then check `wip/manifest.yml` there and only there — never walk up from an override.
-    const workspaceRoot = resolve(env.cwd(), override);
-    return fs.exists(join(workspaceRoot, WORKSPACE_MARKER))
-      ? located(workspaceRoot)
+    const workspaceRoot = path.resolve(env.cwd(), override);
+    return fs.exists(path.join(workspaceRoot, WORKSPACE_MARKER))
+      ? located(workspaceRoot, path)
       : { found: false };
   }
 
   // No override: walk upward from cwd until the marker is found or the filesystem root is passed.
   let dir = env.cwd();
   while (true) {
-    if (fs.exists(join(dir, WORKSPACE_MARKER))) {
-      return located(dir);
+    if (fs.exists(path.join(dir, WORKSPACE_MARKER))) {
+      return located(dir, path);
     }
-    const parent = dirname(dir);
+    const parent = path.dirname(dir);
     if (parent === dir) {
       // `dirname` of the filesystem root is the root itself — we have checked it and found nothing.
       return { found: false };

@@ -12,6 +12,7 @@ import {
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
+import { toPosix } from "../../src/util/posix-path.js";
 import { withTempDir } from "../helpers/tmpdir.js";
 import { initWorkspace } from "../helpers/workspace.js";
 
@@ -176,7 +177,7 @@ describeIfBuilt("`wpm build package` E2E (task-83, through dist/cli.js)", () => 
       const archive = join(proj, "builds", "demo-0.1.0.tgz");
       expect(existsSync(archive)).toBe(true);
       expect(existsSync(join(out, "demo-0.1.0.tgz"))).toBe(false);
-      expect(r.stdout).toContain(join(proj, "builds", "demo-0.1.0.tgz"));
+      expect(r.stdout).toContain(toPosix(archive));
 
       const listed = execFileSync("tar", ["-tzf", archive], { encoding: "utf8" });
       // AC89#2: the archive root is the un-nested deliverable — manifest.yml sits at the archive root (no wip/ prefix).

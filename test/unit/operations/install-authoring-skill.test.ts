@@ -1,3 +1,4 @@
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { FakeEnvironment } from "../../../src/adapters/fake-env.js";
 import { MemoryFileSystem } from "../../../src/adapters/memory-fs.js";
@@ -19,6 +20,16 @@ import {
 
 const PKG = "/pkg/agent-skills";
 const HOME = "/home/me";
+
+/** Memory fake that also exposes the raw paths handed across the filesystem-effect boundary. */
+class RecordingMemoryFileSystem extends MemoryFileSystem {
+  readonly copyCalls: Array<{ from: string; to: string }> = [];
+
+  override copyTree(from: string, to: string): void {
+    this.copyCalls.push({ from, to });
+    super.copyTree(from, to);
+  }
+}
 
 /** Seed the bundled `agent-skills/installer-builder/` source the operation copies from. */
 function seedBundledSkill(fs: MemoryFileSystem): void {
@@ -171,5 +182,30 @@ describe("detectUserAgentScopes / authoringSkillPresent (task-91)", () => {
   it("authoringSkillPresent is false when no agent scope is detected at all", () => {
     const { fs } = setup([]);
     expect(authoringSkillPresent(fs, HOME)).toBe(false);
+  });
+
+  it("keeps Windows-like filesystem inputs native while returning portable scope and changed-path values", () => {
+    const fs = new RecordingMemoryFileSystem();
+    const home = "C:\\Users\\me";
+    seedBundledSkill(fs);
+    fs.makeDirectories(`${home}\\.claude`);
+    const env = new FakeEnvironment({ platform: "win32", env: { HOME: home } });
+
+    const result = installAuthoringSkill({ fs, env }, { bundledSkillsRoot: PKG });
+    const nativeDestination = join(home, ".claude/skills", AUTHORING_SKILL_NAME);
+
+    expect(fs.copyCalls).toEqual([
+      { from: join(PKG, AUTHORING_SKILL_NAME), to: nativeDestination },
+    ]);
+    expect(result.installed).toEqual([
+      {
+        agent: "claude-code",
+        scope: "C:/Users/me/.claude/skills",
+        destination: "C:/Users/me/.claude/skills/installer-builder",
+        status: "installed",
+      },
+    ]);
+    expect(result.changedPaths).toEqual([nativeDestination.replaceAll("\\", "/")]);
+    expect(fs.exists("C:\\Users\\me\\.claude\\skills\\installer-builder\\SKILL.md")).toBe(true);
   });
 });

@@ -329,7 +329,7 @@ describeIfBacklog(
 );
 
 describeIfBuilt("`wpm init` FULL — scope aliases on real disk (AC#1, through dist/cli.js)", () => {
-  it("init then `project targets add claude-code` creates a real scope-alias symlink under wip/", async () => {
+  it("init then `project targets add claude-code` creates the platform-contract scope alias", async () => {
     await withTempDir((dir) => {
       // `project targets add` is project-bound: it resolves the authoring WORKSPACE (task-88) and operates on
       // the deliverable under `wip/`, with the authoring backlog at the workspace root. So we init a real
@@ -348,8 +348,12 @@ describeIfBuilt("`wpm init` FULL — scope aliases on real disk (AC#1, through d
       );
       const alias = join(proj, "wip", ".claude", "skills");
       expect(existsSync(alias)).toBe(true);
-      // It is a symlink pointing at installer-skills/ (POSIX); the real adapter uses a symlink on this platform:
-      expect(lstatSync(alias).isSymbolicLink()).toBe(true);
+      // The contract is unconditional: POSIX creates a symlink; Windows creates a readable directory copy
+      // without probing runner privileges. Both mechanisms expose the installer skill content.
+      expect(lstatSync(alias).isSymbolicLink()).toBe(process.platform !== "win32");
+      expect(readFileSync(join(alias, "demo-installer", "SKILL.md"), "utf8")).toContain(
+        "name: demo-installer",
+      );
     });
   });
 });

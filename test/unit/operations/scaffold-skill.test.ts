@@ -1,3 +1,4 @@
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { MemoryFileSystem } from "../../../src/adapters/memory-fs.js";
 import { DomainError } from "../../../src/core/errors.js";
@@ -15,9 +16,18 @@ import { renderSkillStub } from "../../../src/core/operations/scaffold-skill.js"
 const ROOT = "/proj";
 const BUILTIN = "/builtin-templates";
 
+/** Memory fake that records raw write paths before its internal POSIX normalization. */
+class RecordingMemoryFileSystem extends MemoryFileSystem {
+  readonly writePaths: string[] = [];
+
+  override write(path: string, content: string): void {
+    this.writePaths.push(path);
+    super.write(path, content);
+  }
+}
+
 /** Seed the built-in minimal project template with an advisor snippet + a generic test snippet. */
-function seedTemplates(): MemoryFileSystem {
-  const fs = new MemoryFileSystem();
+function seedTemplates(fs: MemoryFileSystem = new MemoryFileSystem()): MemoryFileSystem {
   fs.write(`${BUILTIN}/project/minimal/template.yml`, "name: minimal\nscope: project\n");
   fs.write(
     `${BUILTIN}/project/minimal/snippets/advisor.SKILL.md.tmpl`,
@@ -97,6 +107,26 @@ describe("renderSkillStub", () => {
     }
     expect(thrown).toBeInstanceOf(DomainError);
     expect((thrown as DomainError).category).toBe("not-found");
+  });
+
+  it("returns a portable changed path while using the native-looking absolute path for filesystem work", () => {
+    const fs = new RecordingMemoryFileSystem();
+    seedTemplates(fs);
+    const seedWriteCount = fs.writePaths.length;
+    const root = "C:\\work\\proj";
+    const written = renderSkillStub(
+      { builtinTemplatesRoot: BUILTIN },
+      fs,
+      root,
+      "payload/agent-skills/foo/SKILL.md",
+      "payload-skill.SKILL.md.tmpl",
+      new Map([["skill-name", "foo"]]),
+    );
+
+    const nativeStub = join(root, "payload/agent-skills/foo/SKILL.md");
+    expect(fs.writePaths.slice(seedWriteCount)).toEqual([nativeStub]);
+    expect(written).toEqual([nativeStub.replaceAll("\\", "/")]);
+    expect(fs.read("C:\\work\\proj\\payload\\agent-skills\\foo\\SKILL.md")).toContain("name: foo");
   });
 });
 

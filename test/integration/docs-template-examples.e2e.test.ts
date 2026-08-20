@@ -2,6 +2,7 @@ import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { execaSync } from "execa";
 import { describe, expect, it } from "vitest";
 import { withTempDir } from "../helpers/tmpdir.js";
 
@@ -36,11 +37,14 @@ function cli(
 }
 
 function backlog(workspace: string, args: readonly string[]): string {
-  return execFileSync("backlog", args, {
+  // Execa resolves npm's platform-specific command shim (`backlog.cmd` on Windows) and preserves its captured
+  // stdout/stderr in a thrown diagnostic when the command exits non-zero.
+  return execaSync("backlog", args, {
     cwd: join(workspace, ".authoring-backlog"),
-    encoding: "utf8",
-    stdio: ["ignore", "pipe", "pipe"],
-  });
+    stdin: "ignore",
+    stdout: "pipe",
+    stderr: "pipe",
+  }).stdout as string;
 }
 
 function wpm(workspace: string, args: readonly string[]) {

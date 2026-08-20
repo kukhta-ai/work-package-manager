@@ -230,6 +230,23 @@ describe("project root (task-49 — a READ)", () => {
     expect(help).toMatch(/Usage:/);
     expect(help).toContain("Example:");
   });
+
+  it("prints a Win32 resolved root as a portable logical path while context remains native", async () => {
+    const fs = new MemoryFileSystem();
+    const backlog = new FakeBacklog();
+    fs.write("C:\\work\\demo\\wip\\manifest.yml", "project:\n  name: demo\n  version: 0.1.0\n");
+    const i = io();
+    const winDeps: CliDeps = {
+      fs,
+      backlog,
+      clock: new FixedClock("2026-01-01T00:00:00.000Z"),
+      env: new FakeEnvironment({ cwd: "C:\\elsewhere", platform: "win32" }),
+      builtinTemplatesRoot: BUILTIN,
+    };
+
+    expect(await run(["project", "root", "-C", "C:\\work\\demo"], winDeps, i)).toBe(0);
+    expect(i.out.text).toBe("C:/work/demo/wip\n");
+  });
 });
 
 describe("project validate (task-48 — a READ that reports)", () => {

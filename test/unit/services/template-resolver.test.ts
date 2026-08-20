@@ -1,3 +1,4 @@
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { MemoryFileSystem } from "../../../src/adapters/memory-fs.js";
 import {
@@ -8,6 +9,16 @@ import {
 
 const BUILTIN = "/pkg/templates";
 const PROJECT = "/proj/templates";
+
+/** Memory fake that records the raw candidate paths used for filesystem probes. */
+class RecordingMemoryFileSystem extends MemoryFileSystem {
+  readonly existsCalls: string[] = [];
+
+  override exists(path: string): boolean {
+    this.existsCalls.push(path);
+    return super.exists(path);
+  }
+}
 
 /** Write a minimal template (template.yml + files/ + optional snippets/) into a MemoryFileSystem. */
 function writeTemplate(
@@ -133,6 +144,26 @@ describe("resolveTemplate — not found (AC#3)", () => {
   it("does not throw for a missing template — it is an expected lookup miss", () => {
     const fs = new MemoryFileSystem();
     expect(() => resolveTemplate("nope", "bundle", deps(fs))).not.toThrow();
+  });
+
+  it("returns portable searched diagnostics for Windows-like native roots", () => {
+    const fs = new RecordingMemoryFileSystem();
+    const builtin = "C:\\pkg\\templates";
+    const project = "C:\\work\\proj\\templates";
+    const result = resolveTemplate("nope", "project", {
+      fs,
+      builtinTemplatesRoot: builtin,
+      projectTemplatesRoot: project,
+    });
+    const nativeCandidates = [join(project, "project", "nope"), join(builtin, "project", "nope")];
+
+    expect(fs.existsCalls).toEqual(nativeCandidates);
+    expect(result).toEqual({
+      found: false,
+      name: "nope",
+      scope: "project",
+      searched: nativeCandidates.map((path) => path.replaceAll("\\", "/")),
+    });
   });
 });
 
