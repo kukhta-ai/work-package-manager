@@ -4,7 +4,7 @@
 # (Distinct from _bmad/ — that is BMAD's own install dir; this dot-dir is our tracker.)
 
 phase: 6
-phase_name: "Authoring-context epic gate — follow-up cold verification"
+phase_name: "Authoring-context epic gate — external CI verification"
 branch: feature/authoring-context
 epic: authoring-context
 # USER RESUMED 2026-08-19: "finish this feature". Reopened Phase 5 for the four tracked follow-ups
@@ -21,6 +21,7 @@ epic: authoring-context
 # POST-FIX COLD GATE PASS at f59c1b5 from fresh clone: npm ci; typecheck; Biome (200 files); build; Vitest 1286/1286 across 99 files (385.62s); clean diff; production audit 0. Interim bmad-testarch-trace maps 46/46 AC FULL and has a PASS coverage base; overall CONCERNS is solely the pending external Windows Node 20/22 pair and must be re-run after CI.
 # CI run 32368788474 at 8920284: Ubuntu/macOS Node 20/22 passed 1286/1286. Windows Node 22 failed 4 deterministic cases; Node 20 failed the same 4 plus 3 real-subprocess tests exceeding the unit project's 5s budget. Follow-up bmad-investigate concluded High confidence: 3 stale portable-output expectations, 1 real Windows ZIP-availability product seam, and 3 integration-style packager timeouts. Dedicated follow-up fix branch active.
 # FOLLOW-UP #2 IMPLEMENTATION APPROVED: three output expectations corrected; ZIP availability requires zero-exit probe; real packager subprocess suite moved to existing serialized integration budget. Worker dev+QA and separate review/absorption actually ran; 13/13 packager, 42/42 focused, typecheck/Biome/build, and exact-final 1288/1288 across 99 files passed; 0 open findings. External Windows rerun remains.
+# FOLLOW-UP #2 COLD GATE PASS at 3dc5a20 from fresh clone: npm ci; typecheck; Biome (200 files); build; Vitest 1288/1288 across 99 files (387.94s); clean diff; production audit 0. Ready for external six-cell matrix rerun.
 # *** EPIC-4 COMPLETE (stories 96-100 done + merged --no-ff into feature/authoring-context). GATE = PASS (content-only: agent-skills/*.md + 1 strengthened test + backlog/ledger; NO src/ changes -> fast suite is the right gate; tsc0/biome0/vitest 1076 passed). ***
 # Added 2 skill references (task-conventions.md = AC what-not-how contract; native-surfaces.md = 5 roles + scope table + front-door mechanic); named the core bet in the spine + executor loop/done-gate/how-to-use in quality-protocol; fixed 9 drift spots + the files-add example. DOGFOOD (task-100): a cold agent authored a valid bundle from only the 2 surfaces -> surfaces self-sufficient; gaps resolved-in-skill or DEFERRED.
 # DEFERRED PRODUCT DEFECTS found by the dogfood (tracked, human/product): TASK-102 (BLOCKER: a bundle's install-backlog is NOT Backlog.md-CLI-resolvable -> the documented `cd wip/bundles/<id> && backlog ...` recipe-authoring cmd FAILS; also hits the executor at install time; skill ships a self-cleaning symlink workaround meanwhile), TASK-103 (payload-skill stub limbo), TASK-104 (bundle-template ships into archive + dangling menu). Plus TASK-101 (docs/templates reconcile: missing single-bundle/multi-bundle/with-payload-skill/adopts-system-tool templates + the files-add doc bug). TASK-95 (epic-3: --format git transform).
@@ -252,7 +253,7 @@ specialists:
   investigator: {spawned: true, id: "/root/ci_investigator", role: "systematic debugging at the epic gate", last_skill: "bmad-investigate @ windows-ci-gate follow-up #2", status: "Concluded (High): five mechanisms exhaust Windows Node22=4 and Node20=7 residual failures; bounded product/test fix plan recorded."}
   retro:        {spawned: false,                          role: "epic retrospective",                    status: "spawn after task-33 (end of P5)"}
 
-gates_pending: ["Phase-6 follow-up cold gate, external CI rerun, and final testarch-trace", "Human review and merge PR #3 into feature/authoring-workspace"]
+gates_pending: ["Phase-6 external CI rerun and final testarch-trace", "Human review and merge PR #3 into feature/authoring-workspace"]
 # GOAL EXTENDED (2026-06-01): "complete to task 33 ... full SDLC; THEN merge to dev and start the same SDLC
 # from it with the CLI tasks pushed there (update from remote) and go to task 84 (to the end)." So:
 #   (1) finish the foundation epic 23-33 + the Phase-6 epic gate;
@@ -274,4 +275,4 @@ tooling:
   tool_target: "claude-code"
   claude_code_skills: ".claude/skills (56 skills)"
 
-last_updated: "2026-08-20T13:44:11Z"
+last_updated: "2026-08-20T13:52:48Z"
