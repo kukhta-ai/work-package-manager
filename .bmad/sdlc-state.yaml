@@ -3,8 +3,8 @@
 # Re-read on every resume; update at every phase boundary.
 # (Distinct from _bmad/ — that is BMAD's own install dir; this dot-dir is our tracker.)
 
-phase: 6
-phase_name: "Authoring-context follow-up completion — cold epic gate"
+phase: 7
+phase_name: "Authoring-context follow-up completion — handoff"
 branch: feature/authoring-context
 epic: authoring-context
 # USER RESUMED 2026-08-19: "finish this feature". Reopened Phase 5 for the four tracked follow-ups
@@ -15,7 +15,8 @@ epic: authoring-context
 # TASK-102 (install-backlog now Backlog.md-resolvable via a relative backlog->install-backlog symlink per bundle; ships; skill workaround dropped) — APPROVE, archive re-verified end-to-end.
 # TASK-103 (bundle new no longer ships an unregistered payload-skill stub; skills remove deletes on-disk orphans, keeps deregister-leave for registered) — APPROVE; also fixed a bundle-template.e2e snapshot that EISDIR'd on the task-102 symlink.
 # Per-fix gates: tsc/biome clean (197 files), fast suite 1089 passed, targeted e2e green (102: 118 across 5 suites; 103: bundle-new/build/bundle-template/bundle-id). FULL COLD gate SKIPPED at user request ("skip this for gate") — fast+targeted e2e deemed sufficient.
-# FOLLOW-UPS COMPLETE + merged: TASK-95 (git-format parity), TASK-101 (template/docs reconciliation), TASK-104 (filtered archive scaffold/front-door parity), TASK-105 (registered payload-skill ship policy). Final cold gate in progress.
+# FOLLOW-UPS COMPLETE + merged: TASK-95 (git-format parity), TASK-101 (template/docs reconciliation), TASK-104 (filtered archive scaffold/front-door parity), TASK-105 (registered payload-skill ship policy). Cold gate passed; PR handoff in progress.
+# FOLLOW-UP COLD GATE PASS at 2398d42 from a separate clean clone: npm ci; typecheck; Biome (200 files); build; Vitest 1278/1278 across 99 files (375.88s); clean diff. npm production audit = 0 vulnerabilities; npm reported 3 high advisories only when development dependencies were included, left for dependency-maintenance scope.
 # *** EPIC-4 COMPLETE (stories 96-100 done + merged --no-ff into feature/authoring-context). GATE = PASS (content-only: agent-skills/*.md + 1 strengthened test + backlog/ledger; NO src/ changes -> fast suite is the right gate; tsc0/biome0/vitest 1076 passed). ***
 # Added 2 skill references (task-conventions.md = AC what-not-how contract; native-surfaces.md = 5 roles + scope table + front-door mechanic); named the core bet in the spine + executor loop/done-gate/how-to-use in quality-protocol; fixed 9 drift spots + the files-add example. DOGFOOD (task-100): a cold agent authored a valid bundle from only the 2 surfaces -> surfaces self-sufficient; gaps resolved-in-skill or DEFERRED.
 # DEFERRED PRODUCT DEFECTS found by the dogfood (tracked, human/product): TASK-102 (BLOCKER: a bundle's install-backlog is NOT Backlog.md-CLI-resolvable -> the documented `cd wip/bundles/<id> && backlog ...` recipe-authoring cmd FAILS; also hits the executor at install time; skill ships a self-cleaning symlink workaround meanwhile), TASK-103 (payload-skill stub limbo), TASK-104 (bundle-template ships into archive + dangling menu). Plus TASK-101 (docs/templates reconcile: missing single-bundle/multi-bundle/with-payload-skill/adopts-system-tool templates + the files-add doc bug). TASK-95 (epic-3: --format git transform).
@@ -247,7 +248,7 @@ specialists:
   investigator: {spawned: false,                          role: "systematic debugging at the epic gate", status: "spawn in P6 on cold-E2E failure"}
   retro:        {spawned: false,                          role: "epic retrospective",                    status: "spawn after task-33 (end of P5)"}
 
-gates_pending: []
+gates_pending: ["Human review and merge PR #3 into feature/authoring-workspace"]
 # GOAL EXTENDED (2026-06-01): "complete to task 33 ... full SDLC; THEN merge to dev and start the same SDLC
 # from it with the CLI tasks pushed there (update from remote) and go to task 84 (to the end)." So:
 #   (1) finish the foundation epic 23-33 + the Phase-6 epic gate;
