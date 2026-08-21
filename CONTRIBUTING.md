@@ -250,6 +250,10 @@ reviewed source changes and non-publishing local package evidence.
 Maintainers can produce that local evidence with `npm run package:inspect -- --revision HEAD`. The command
 requires a clean checkout, performs a clean production build, packs and inspects the real local archive, and
 reports its exact boundary. It does not publish, tag, create a release, use credentials, or mutate remote state.
+Save the JSON report outside the checkout, then run `npm run package:verify-install -- --report <report-file>`
+to install those exact inspected bytes in a disposable consumer environment and exercise every declared bin
+and required package path. The verifier performs no WPM setup and checks that representative Codex and Claude
+Code personal/workspace configuration remains unchanged.
 
 ### Changelog
 

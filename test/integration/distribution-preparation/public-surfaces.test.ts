@@ -22,7 +22,9 @@ const PREPARATION_FILES = [
   "assess-readiness.js",
   "package-boundary.js",
   "package-archive.js",
+  "packed-install.js",
   "prepare-package.js",
+  "verify-packed-install.js",
 ] as const;
 
 /**
@@ -294,6 +296,9 @@ describe("inactive distribution public-surface contract", () => {
     );
     expect(manifest.scripts["package:inspect"]).toBe(
       "node distribution-preparation/prepare-package.js",
+    );
+    expect(manifest.scripts["package:verify-install"]).toBe(
+      "node distribution-preparation/verify-packed-install.js",
     );
     expect(manifest.scripts.prepack).toBe("npm run build");
   });

@@ -145,6 +145,7 @@ npm run typecheck    # type-check only (tsc, no emit) — separate from the test
 npm test             # the whole vitest suite (npm run test:unit / test:integration for a split)
 npm run lint         # biome check (lint + format check, incl. the core import-boundary rule)
 npm run package:inspect -- --revision HEAD  # clean-build, pack, and inspect the local npm boundary
+npm run package:verify-install -- --report ../wpm-package-report.json  # install the accepted archive freshly
 ```
 
 To exercise the in-development command **as if it were installed**, link it onto your `PATH`:
@@ -162,6 +163,13 @@ emitted sourcemaps map `dist/*.js` back to the original `src/*.ts` for source-le
 `package:inspect` is local, non-publishing preparation: it requires a clean checkout at the requested Git
 revision, creates a fresh build, inspects the actual `.tgz`, and reports its exact paths and metadata. It does
 not activate a public package coordinate or create tags, releases, registry writes, or remote state.
+
+To prove the consumer journey, save the inspection report outside the clean checkout, then pass that report to
+`package:verify-install`. For example, run `npm run package:inspect -- --revision HEAD --output
+../wpm-package-evidence > ../wpm-package-report.json`, followed by the verification command above. Verification
+freezes those inspected archive bytes, installs them into a disposable HOME/workspace/global prefix, invokes
+every declared executable, resolves the declared package paths, and confirms installation did not change
+representative Codex or Claude Code configuration. It remains local and non-publishing.
 
 ## A note on the word "installer"
 
