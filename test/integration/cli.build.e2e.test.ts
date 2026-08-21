@@ -748,6 +748,7 @@ describeIfBuilt("`wpm build package` E2E (task-83, through dist/cli.js)", () => 
       const ROOT_SENTINEL = "TASK95-ROOT-EXECUTOR-3f8c";
       const BUNDLE_SENTINEL = "TASK95-BUNDLE-EXECUTOR-b247";
       const WRAPPER_SENTINEL = "TASK95-WORKSPACE-WRAPPER-MUST-NOT-SHIP-91ad";
+      const PREPARATION_SENTINEL = "TASK108-DISTRIBUTION-PREPARATION-MUST-NOT-SHIP-2e4c";
       writeFileSync(join(proj, "wip", "_AGENTS.md"), `# root\n${ROOT_SENTINEL}\n`);
       writeFileSync(
         join(proj, "wip", "bundles", "web", "_AGENTS.md"),
@@ -755,6 +756,11 @@ describeIfBuilt("`wpm build package` E2E (task-83, through dist/cli.js)", () => 
       );
       writeFileSync(join(proj, ".authoring-backlog", "task95-leak.txt"), WRAPPER_SENTINEL);
       writeFileSync(join(proj, "builds", "task95-leak.txt"), WRAPPER_SENTINEL);
+      mkdirSync(join(proj, "distribution-preparation"));
+      writeFileSync(
+        join(proj, "distribution-preparation", "package-boundary.js"),
+        PREPARATION_SENTINEL,
+      );
 
       const tgz = join(proj, "builds", "demo-0.1.0.tgz");
       expect(cli(["build", "package", "--format", "tarball", "-C", proj], dir).code).toBe(0);
@@ -778,6 +784,7 @@ describeIfBuilt("`wpm build package` E2E (task-83, through dist/cli.js)", () => 
       // AC#2: the three workspace-wrapper regions and the archive itself never enter the Git archive.
       expect(gitLayout.some((path) => path.startsWith(".authoring-backlog/"))).toBe(false);
       expect(gitLayout.some((path) => path.startsWith("builds/"))).toBe(false);
+      expect(gitLayout.some((path) => path.startsWith("distribution-preparation/"))).toBe(false);
       expect(gitLayout).not.toContain("task95-leak.txt");
 
       const extracted = join(dir, "task95-git-extracted");
@@ -789,6 +796,7 @@ describeIfBuilt("`wpm build package` E2E (task-83, through dist/cli.js)", () => 
       );
       expect(lstatSync(join(extracted, "CLAUDE.md")).isSymbolicLink()).toBe(true);
       expect(concatAllFiles(extracted)).not.toContain(WRAPPER_SENTINEL);
+      expect(concatAllFiles(extracted)).not.toContain(PREPARATION_SENTINEL);
 
       // AC#4: zip is part of the same parity assertion when both authoring and listing tools are available.
       if (hasZip() && hasUnzip()) {
