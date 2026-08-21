@@ -3,9 +3,9 @@
 # Re-read on every resume; update at every phase boundary.
 # (Distinct from _bmad/ — that is BMAD's own install dir; this dot-dir is our tracker.)
 
-phase: 4
-phase_name: "Sprint setup — authoring-agent-onboarding prepared; awaiting ready-to-build gate"
-branch: feature/authoring-agent-onboarding
+phase: 5
+phase_name: "Autonomous build (BAUT) — TASK-106"
+branch: feature/authoring-agent-onboarding-task-106
 epic: authoring-agent-onboarding
 # CURRENT SCOPE (2026-08-21): planning/readiness is READY; Backlog.md now contains the
 # non-story Node-support prerequisite TASK-106 plus 21 approved stories TASK-107..TASK-127.
@@ -38,8 +38,8 @@ epic: authoring-agent-onboarding
 # Stories: 96 (AC what-not-how contract ref) + 97 (native-surfaces ref) = Story A; 98 (name the bet + executor loop + done-gate + how-to-use close) + 99 (drift/correctness fixes: skill install, no-rerender, wip/ paths, build rows, drop non-existent templates) = Story B; 100 (dogfood-verify) = Story C. 101 = human-gated docs/templates reconcile (build templates vs fix docs/10-11 + doc-05).
 # DECISIONS (proceeding defaults; user said "proceed"): teach current truth in the skill; DEFER building templates + editing human-owned docs (05/10/11) -> TASK-101 human-gated. EPIC-3 below.
 # === EPIC-3 (authoring-workspace) COMPLETE — PR #2 open (feature/authoring-workspace -> feature/cli), awaiting HUMAN merge. Details retained below. ===
-active_story: null
-review_cycle: 0
+active_story: task-106
+review_cycle: 2
 # *** ALL 10 EPIC-3 STORIES DONE + merged --no-ff into feature/authoring-workspace: 85, 92, 86, 87, 91, 88, 94, 89, 90, 93. ***
 # Follow-up TASK-95 created (deferred --format git reconciliation; pre-existing, outside task-90 scope). PHASE 6 epic gate IN PROGRESS.
 # *** PHASE 6 EPIC GATE = PASS. *** Cold E2E green (tsc0/biome0/build0/vitest 1217 passed, 96 files). testarch-trace 61/61 ACs (100%, 0 gaps, P0 100%). testarch-nfr PASS (Maintainability/Reliability/Security/Fake-Real-Parity; Perf=CONCERNS note-only, pre-existing ~22min real-binary e2e). retro=GREEN w/ tracked AMBER carry-forwards. Gate artifacts committed 165a144.
@@ -248,18 +248,18 @@ specialists:
   architect:    {spawned: true,  id: "af0958eff0e1846e5", role: "architecture conformance vs docs/12-13", status: "P3 done — architecture/epics/readiness=PASS; RESUME if a task reveals a design gap"}
   tea:          {spawned: true,  id: "/root/phase6_tea", role: "test design/framework/ci/trace/nfr/gate", last_skill: "bmad-testarch-trace @ epic-4 authoring-context (final PASS)", status: "47/47 AC FULL; 6/6 CI green; Windows evidence risk closed; deterministic Phase-6 PASS."}
   sm:           {spawned: true,  id: "/root/sprint_planner", role: "authoring-agent-onboarding sprint setup + create-story coordination", last_skill: "bmad-sprint-planning @ authoring-agent-onboarding", status: "Scoped sprint mirror validated: 3 epics, 21 stories, all backlog; TASK-106 tracked as the non-story prerequisite."}
-  worker:       {spawned: true,  id: "/root/followup_worker2", role: "replacement persistent follow-up story worker", last_skill: "bmad-dev-story @ windows-ci-gate follow-up #2 (review absorption)", status: "Residual Windows fix implemented; artifact fix absorbed; 42/42 focused + static/build green; reviewer exact full gate 1288/1288."}
+  worker:       {spawned: true,  id: "/root/onboarding_worker", role: "persistent authoring-agent-onboarding story worker", last_skill: "bmad-dev-story @ task-106 (review absorption)", status: "Cycle-1 fixes absorbed; focused/static/build green; story returned to review."}
   # CROSS-CUTTING FIX in flight (worker #3): the task-25 lifecycle ⑤ MATERIALISE used ctx.root, but the real authoring backlog is
   # <project>/.authoring-backlog -- so every materialising command (targets add; createBundle/bundle new later) FAILED on a real
   # project (BacklogCli shells out cwd=root; project root isn't a backlog root). Hidden by FakeBacklog-at-project-root tests; CAUGHT
   # by the orchestrator's real-binary spot-check. Fix: materialise into join(ctx.root, AUTHORING_BACKLOG_DIR) [shared constant] +
   # update the FakeBacklog tests to init at .authoring-backlog (parity) + a real-backlog regression test. Rides feature/cli-targets.
   worker_retired: {id: "a67b0906de8ff721d", reason: "broke on continuations -- big authoring runs worked but short follow-ups returned 0 tool_uses + got confused; retired after task-30. Do not re-dispatch."}
-  reviewer:     {spawned: true,  id: "/root/followup_reviewer2", role: "replacement persistent separate-lane follow-up reviewer", last_skill: "bmad-story-automator-review @ windows-ci-gate follow-up #2 (final APPROVE)", status: "Residual Windows review clean; 0 open findings; exact full gate 1288/1288."}
+  reviewer:     {spawned: true,  id: "/root/onboarding_reviewer", role: "separate adversarial authoring-agent-onboarding reviewer", last_skill: "bmad-story-automator-review @ task-106 (cycle 2 APPROVE)", status: "TASK-106 final review clean; 0 new findings; exact full gate 1294/1294."}
   investigator: {spawned: true, id: "/root/ci_investigator", role: "systematic debugging at the epic gate", last_skill: "bmad-investigate @ windows-ci-gate follow-up #2", status: "Concluded (High): five mechanisms exhaust Windows Node22=4 and Node20=7 residual failures; bounded product/test fix plan recorded."}
   retro:        {spawned: false,                          role: "epic retrospective",                    status: "spawn after task-33 (end of P5)"}
 
-gates_pending: ["Human confirms the authoring-agent-onboarding sprint is ready to build"]
+gates_pending: []
 # GOAL EXTENDED (2026-06-01): "complete to task 33 ... full SDLC; THEN merge to dev and start the same SDLC
 # from it with the CLI tasks pushed there (update from remote) and go to task 84 (to the end)." So:
 #   (1) finish the foundation epic 23-33 + the Phase-6 epic gate;
@@ -281,4 +281,4 @@ tooling:
   tool_target: "claude-code"
   claude_code_skills: ".claude/skills (56 skills)"
 
-last_updated: "2026-08-21T15:08:54Z"
+last_updated: "2026-08-21T17:33:18Z"
