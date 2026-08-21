@@ -36,6 +36,8 @@
     "test:watch": "vitest",
     "lint": "biome check .",
     "format": "biome format --write .",
+    "package:inspect": "node distribution-preparation/prepare-package.js",
+    "prepack": "npm run build",
     "prepare": "husky"
   },
   "lint-staged": {

@@ -12,6 +12,8 @@ independent version in its `bundle.yml` and is not recorded here.
 
 ### Added
 
+- A revision-bound local package-preparation command that clean-builds, packs, and inspects the exact WPM npm
+  archive without enabling public distribution or remote mutation.
 - Foundation work in progress (pre-1.0): the `wpm` CLI package, its TypeScript/ESM toolchain, and the
   ports-and-adapters core are under active development against the design set (`docs/00`–`14`). Individual
   changes will be itemized here as the surface stabilizes toward the first tagged release.

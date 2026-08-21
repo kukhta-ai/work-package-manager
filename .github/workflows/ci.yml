@@ -75,6 +75,13 @@ jobs:
       - name: Lint + format check (biome ci, incl. the core import-boundary rule)
         run: npx biome ci .
 
+      # Build and inspect the real local npm archive from the still-clean checkout. This preparation step
+      # writes only to a temporary local directory; it has no publication, release, credential, or remote
+      # mutation capability. Running it before the ordinary build prevents ambient dist/ from masking a
+      # clean-package failure and exercises the same revision binding across the Node/OS matrix.
+      - name: Prepare and inspect clean local npm package
+        run: npm run package:inspect -- --revision HEAD
+
       # Build before testing so the integration test that runs the *built* binary (dist/cli.js via a bin
       # symlink) actually executes rather than self-skipping on a missing dist/. This is artifact
       # provisioning for the test step (the same `npm run build && npm test` a developer does locally), not

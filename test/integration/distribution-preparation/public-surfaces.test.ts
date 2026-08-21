@@ -17,6 +17,13 @@ const REAL_TEMPLATES = join(REPO_ROOT, "templates");
 const BUILTIN_TEMPLATES = "/builtin-templates";
 const WORKSPACE = "/workspace";
 const INACTIVE_MARKER = "Public distribution is inactive";
+const PREPARATION_FILES = [
+  "readiness.js",
+  "assess-readiness.js",
+  "package-boundary.js",
+  "package-archive.js",
+  "prepare-package.js",
+] as const;
 
 /**
  * The dynamic `bundle <id>` program is built only when `run()` dispatches a non-verb bundle id, so it is not
@@ -255,7 +262,7 @@ describe("inactive distribution public-surface contract", () => {
       buildPath,
     );
 
-    for (const file of ["readiness.js", "assess-readiness.js"]) {
+    for (const file of PREPARATION_FILES) {
       const path = join(REPO_ROOT, "distribution-preparation", file);
       expect(typecheck.fileNames).toContain(path);
       expect(build.fileNames).not.toContain(path);
@@ -285,6 +292,10 @@ describe("inactive distribution public-surface contract", () => {
     expect(Object.keys(manifest.scripts)).not.toEqual(
       expect.arrayContaining([expect.stringMatching(/publish|release/i)]),
     );
+    expect(manifest.scripts["package:inspect"]).toBe(
+      "node distribution-preparation/prepare-package.js",
+    );
+    expect(manifest.scripts.prepack).toBe("npm run build");
   });
 
   it("keeps publication automation and release credentials absent", () => {
@@ -300,6 +311,7 @@ describe("inactive distribution public-surface contract", () => {
     expect(workflows).not.toMatch(/^\s*(?:contents|packages|id-token)\s*:\s*write\s*$/m);
     expect(workflows).not.toMatch(/^\s*(?:environment|secrets?)\s*:/m);
     expect(workflows).not.toMatch(/^\s*run\s*:\s*(?:npm\s+(?:publish|dist-tag)|gh\s+release)\b/im);
+    expect(workflows).toContain("npm run package:inspect -- --revision HEAD");
   });
 
   it("makes every currently conflicting public document explicitly inactive", () => {
@@ -364,7 +376,9 @@ describe("inactive distribution public-surface contract", () => {
     expect(deliverableFiles.length).toBeGreaterThan(0);
     expect(deliverableFiles.some((path) => path.includes("distribution-preparation"))).toBe(false);
     for (const path of deliverableFiles) {
-      expect(fs.read(path), path).not.toContain("assess-readiness.js");
+      for (const preparationFile of PREPARATION_FILES) {
+        expect(fs.read(path), path).not.toContain(preparationFile);
+      }
     }
   });
 });

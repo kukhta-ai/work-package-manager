@@ -144,6 +144,7 @@ npm run dev          # live-rebuild: tsc --watch, recompiles dist/ on every sour
 npm run typecheck    # type-check only (tsc, no emit) — separate from the test run
 npm test             # the whole vitest suite (npm run test:unit / test:integration for a split)
 npm run lint         # biome check (lint + format check, incl. the core import-boundary rule)
+npm run package:inspect -- --revision HEAD  # clean-build, pack, and inspect the local npm boundary
 ```
 
 To exercise the in-development command **as if it were installed**, link it onto your `PATH`:
@@ -157,6 +158,10 @@ npm rm -g wpm                # unlink when done (removes the global symlink)
 `build` always cleans first, so a rebuild never carries stale output from a since-deleted source, and the
 emitted sourcemaps map `dist/*.js` back to the original `src/*.ts` for source-level debugging. See
 [`CONTRIBUTING.md`](./CONTRIBUTING.md) for branching, PR, and versioning conventions.
+
+`package:inspect` is local, non-publishing preparation: it requires a clean checkout at the requested Git
+revision, creates a fresh build, inspects the actual `.tgz`, and reports its exact paths and metadata. It does
+not activate a public package coordinate or create tags, releases, registry writes, or remote state.
 
 ## A note on the word "installer"
 

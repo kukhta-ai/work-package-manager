@@ -247,6 +247,10 @@ to npm — becomes actionable only after a later human-authorized activation def
 channel policy, trust/authority, and immutable release procedure. Until then, contributor work stops at
 reviewed source changes and non-publishing local package evidence.
 
+Maintainers can produce that local evidence with `npm run package:inspect -- --revision HEAD`. The command
+requires a clean checkout, performs a clean production build, packs and inspects the real local archive, and
+reports its exact boundary. It does not publish, tag, create a release, use credentials, or mutate remote state.
+
 ### Changelog
 
 Release history lives in [`CHANGELOG.md`](./CHANGELOG.md), in
