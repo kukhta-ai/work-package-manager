@@ -17,28 +17,45 @@ const builtCli = fileURLToPath(new URL("../../dist/cli.js", import.meta.url));
 const hasBuild = existsSync(builtCli);
 const describeIfBuilt = hasBuild ? describe : describe.skip;
 
-describeIfBuilt("installer/wpm binary via a bin symlink (AC#1)", () => {
+const binNames = ["wpm", "installer"] as const;
+
+describe("published CLI bin map (TASK-106 AC#5)", () => {
+  it("declares both executable aliases against the built CLI entry point", () => {
+    expect(pkg.bin).toEqual({
+      wpm: "./dist/cli.js",
+      installer: "./dist/cli.js",
+    });
+  });
+});
+
+describeIfBuilt("installer/wpm binaries via bin symlinks (TASK-106 AC#5)", () => {
   let dir: string;
-  let link: string;
+  let links: Readonly<Record<(typeof binNames)[number], string>>;
 
   beforeAll(() => {
     dir = mkdtempSync(join(tmpdir(), "wpm-bin-"));
-    link = join(dir, "installer");
-    // Mimic how npm exposes the bin: a symlink on PATH pointing at dist/cli.js.
-    symlinkSync(builtCli, link);
+    links = Object.fromEntries(
+      binNames.map((binName) => {
+        const link = join(dir, binName);
+        // Mimic how npm exposes each declared bin: a symlink on PATH pointing at dist/cli.js.
+        const declaredTarget = fileURLToPath(new URL(`../../${pkg.bin[binName]}`, import.meta.url));
+        symlinkSync(declaredTarget, link);
+        return [binName, link];
+      }),
+    ) as Record<(typeof binNames)[number], string>;
   });
 
   afterAll(() => {
     rmSync(dir, { recursive: true, force: true });
   });
 
-  it("prints the version and exits 0 when run through the symlink", () => {
-    const out = execFileSync(process.execPath, [link, "--version"], { encoding: "utf8" });
+  it.each(binNames)("%s prints the installed package version and exits 0", (binName) => {
+    const out = execFileSync(process.execPath, [links[binName], "--version"], { encoding: "utf8" });
     expect(out.trim()).toBe(pkg.version);
   });
 
-  it("prints usage through the symlink for --help", () => {
-    const out = execFileSync(process.execPath, [link, "--help"], { encoding: "utf8" });
+  it("prints usage through the wpm symlink for --help", () => {
+    const out = execFileSync(process.execPath, [links.wpm, "--help"], { encoding: "utf8" });
     // commander renders a `Usage: wpm …` block (task-27 replaced the bootstrap usage line).
     expect(out).toMatch(/Usage:/);
   });
