@@ -1,273 +1,73 @@
-# sprint-status.yaml — Phase 4 Sprint Setup (Foundation Sprint / Epic-1)
+# generated: 2026-08-21T17:38:18+00:00
+# last_updated: 2026-08-21T17:38:18+00:00
+# project: work-package-manager
+# project_key: NOKEY
+# tracking_system: file-system
+# story_location: /workspace/active/work-package-manager/_bmad-output/implementation-artifacts
+
+# STATUS DEFINITIONS:
+# ==================
+# Epic Status:
+#   - backlog: Epic not yet started
+#   - in-progress: Epic actively being worked on
+#   - done: All stories in epic completed
 #
-# epic:               foundation (epic-1)
-# sprint:             Foundation Sprint — 33 stories, Phases A–G
-# source-of-truth:    Backlog.md (this file is a read-only mirror; update Backlog.md via `backlog` CLI only)
-# first_ready:        task-1  (sequence 1, no dependencies)
-# critical_path:      1 → 6 → 10 → 11 → 16 → 19 → 25 → 26 → 33
-#                     (plus CLI spine: 12,14,15,23 → 27; minimal template: 16 → 30)
-# story_spec_note:    Per-story story-spec files are created just-in-time in the Phase-5 build loop
-#                     via `create-story` per task — they are NOT pre-generated here.
-# generated:          2026-05-31
-# generated_by:       sm (BMAD Scrum Master) — Phase 4 sprint setup
+# Epic Status Transitions:
+#   - backlog -> in-progress: Automatically when first story is created (via create-story)
+#   - in-progress -> done: Manually when all stories reach 'done' status
+#
+# Story Status:
+#   - backlog: Story only exists in epic file
+#   - ready-for-dev: Story file created in stories folder
+#   - in-progress: Developer actively working on implementation
+#   - review: Ready for code review (via Dev's code-review workflow)
+#   - done: Story completed
+#
+# Retrospective Status:
+#   - optional: Can be completed but not required
+#   - done: Retrospective has been completed
+#
+# WORKFLOW NOTES:
+# ===============
+# - Epic transitions to 'in-progress' automatically when first story is created
+# - Stories can be worked in parallel if team capacity allows
+# - Developer typically creates next story after previous one is 'done' to incorporate learnings
+# - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
-epic: foundation
-sprint_name: "Foundation Sprint"
-status: ready_to_build
-total_stories: 33
+generated: 2026-08-21T17:38:18+00:00
+last_updated: 2026-08-21T17:38:18+00:00
+project: work-package-manager
+project_key: NOKEY
+tracking_system: file-system
+story_location: /workspace/active/work-package-manager/_bmad-output/implementation-artifacts
 
-phase_summary:
-  A: {label: "Repository, conventions, and toolchain", stories: 9, tasks: "task-1…task-9"}
-  B: {label: "Domain model and ports",                 stories: 6, tasks: "task-10…task-15"}
-  C: {label: "Services",                               stories: 7, tasks: "task-16…task-22"}
-  D: {label: "Operations, lifecycle, errors, context", stories: 4, tasks: "task-23…task-26"}
-  E: {label: "CLI / driving adapter",                  stories: 3, tasks: "task-27…task-29"}
-  F: {label: "Built-in content",                       stories: 3, tasks: "task-30…task-32"}
-  G: {label: "Walking skeleton",                       stories: 1, tasks: "task-33"}
+development_status:
+  epic-1: backlog
+  1-1-expose-an-inactive-distribution-contract: backlog
+  1-2-establish-the-clean-exact-package-boundary: backlog
+  1-3-deliver-a-fresh-local-packed-install-journey: backlog
+  1-4-produce-an-inactive-verifiable-candidate: backlog
+  1-5-assess-github-release-staging-without-writes: backlog
+  1-6-assess-npm-publication-without-writes: backlog
+  1-7-classify-convergent-dual-channel-state: backlog
+  epic-1-retrospective: optional
 
-stories:
+  epic-2: backlog
+  2-1-establish-the-codex-and-claude-code-authoring-client-contract: backlog
+  2-2-plan-and-change-bundles-with-wpm-author-bundle: backlog
+  2-3-author-install-recipes-with-wpm-author-recipe: backlog
+  2-4-author-agent-skills-and-front-doors-with-wpm-author-skill: backlog
+  2-5-review-work-packages-with-wpm-review-package: backlog
+  2-6-resume-and-route-project-work-with-wpm-author: backlog
+  2-7-deliver-and-reconcile-workspace-authoring-integration: backlog
+  2-8-prepare-and-verify-a-fresh-agent-handoff: backlog
+  2-9-guide-package-creation-with-wpm-create-package: backlog
+  2-10-configure-personal-authoring-clients-in-one-setup-action: backlog
+  2-11-complete-the-cold-packed-install-to-handoff-journey: backlog
+  epic-2-retrospective: optional
 
-  # ── Phase A · Repository, conventions, and toolchain (task-1 … task-9) ──────────────────────────
-
-  - id: task-1
-    title: "Initialize the Node + TypeScript (ESM) package"
-    phase: A
-    sequence: 1
-    deps: []
-    status: todo
-
-  - id: task-2
-    title: "Define the branching model and branch-naming convention"
-    phase: A
-    sequence: 2
-    deps: [task-1]
-    status: todo
-
-  - id: task-3
-    title: "Define PR, review, and merge rules"
-    phase: A
-    sequence: 3
-    deps: [task-2]
-    status: todo
-
-  - id: task-4
-    title: "Define versioning, release, and changelog conventions"
-    phase: A
-    sequence: 2
-    deps: [task-1]
-    status: todo
-
-  - id: task-5
-    title: "Set up Biome (lint + format) and pre-commit hooks"
-    phase: A
-    sequence: 2
-    deps: [task-1]
-    status: todo
-
-  - id: task-6
-    title: "Set up the vitest test harness"
-    phase: A
-    sequence: 2
-    deps: [task-1]
-    status: todo
-
-  - id: task-7
-    title: "Establish the build and dev workflow"
-    phase: A
-    sequence: 2
-    deps: [task-1]
-    status: todo
-
-  - id: task-8
-    title: "Add continuous integration (biome ci + tsc --noEmit + vitest; matrix)"
-    phase: A
-    sequence: 4
-    deps: [task-2, task-3, task-4, task-5, task-6]
-    status: todo
-
-  - id: task-9
-    title: "Configure the builder's own dogfood backlog and agent front door"
-    phase: A
-    sequence: 2
-    deps: [task-1]
-    status: todo
-
-  # ── Phase B · Domain model and ports (task-10 … task-15) ────────────────────────────────────────
-
-  - id: task-10
-    title: "Define the domain model and branded types"
-    phase: B
-    sequence: 3
-    deps: [task-6]
-    status: todo
-
-  - id: task-11
-    title: "Implement the three schemas with validators"
-    phase: B
-    sequence: 4
-    deps: [task-10]
-    status: todo
-
-  - id: task-12
-    title: "Implement the FileSystem port (real + in-memory adapters)"
-    phase: B
-    sequence: 3
-    deps: [task-6]
-    status: todo
-
-  - id: task-13
-    title: "Implement comment-preserving YAML"
-    phase: B
-    sequence: 4
-    deps: [task-12]
-    status: todo
-
-  - id: task-14
-    title: "Implement the BacklogMd port (real shell-out + fake)"
-    phase: B
-    sequence: 3
-    deps: [task-6]
-    status: todo
-
-  - id: task-15
-    title: "Implement the Clock and Environment ports"
-    phase: B
-    sequence: 3
-    deps: [task-6]
-    status: todo
-
-  # ── Phase C · Services (task-16 … task-22) ──────────────────────────────────────────────────────
-
-  - id: task-16
-    title: "Implement the template render engine"
-    phase: C
-    sequence: 5
-    deps: [task-11]
-    status: todo
-
-  - id: task-17
-    title: "Implement two-tier template resolution"
-    phase: C
-    sequence: 5
-    deps: [task-11, task-12]
-    status: todo
-
-  - id: task-18
-    title: "Implement version-constraint resolution"
-    phase: C
-    sequence: 4
-    deps: [task-10]
-    status: todo
-
-  - id: task-19
-    title: "Implement the derived-artefacts service (incl. scope-alias planning)"
-    phase: C
-    sequence: 6
-    deps: [task-11, task-16]
-    status: todo
-
-  - id: task-20
-    title: "Implement the validate service"
-    phase: C
-    sequence: 5
-    deps: [task-11, task-18]
-    status: todo
-
-  - id: task-21
-    title: "Implement the authoring-task materialisation service"
-    phase: C
-    sequence: 4
-    deps: [task-14]
-    status: todo
-
-  - id: task-22
-    title: "Implement the integrity service (vendored-content hashing + wpm.lock)"
-    phase: C
-    sequence: 4
-    deps: [task-12]
-    status: todo
-
-  # ── Phase D · Operations, lifecycle, errors, context (task-23 … task-26) ────────────────────────
-
-  - id: task-23
-    title: "Define the typed error model and exit-code mapping"
-    phase: D
-    sequence: 4
-    deps: [task-10]
-    status: todo
-
-  - id: task-24
-    title: "Implement context resolution"
-    phase: D
-    sequence: 5
-    deps: [task-11, task-12, task-15]
-    status: todo
-
-  - id: task-25
-    title: "Implement the shared mutation lifecycle harness"
-    phase: D
-    sequence: 7
-    deps: [task-19, task-21, task-23, task-24]
-    status: todo
-
-  - id: task-26
-    title: "Implement one representative operation end-to-end through the lifecycle"
-    phase: D
-    sequence: 8
-    deps: [task-17, task-25]
-    status: todo
-
-  # ── Phase E · CLI / driving adapter (task-27 … task-29) ─────────────────────────────────────────
-
-  - id: task-27
-    title: "Build the commander composition root, registration pattern, DI, and error handler"
-    phase: E
-    sequence: 5
-    deps: [task-12, task-14, task-15, task-23]
-    status: todo
-
-  - id: task-28
-    title: "Wire the --help content contract"
-    phase: E
-    sequence: 6
-    deps: [task-27]
-    status: todo
-
-  - id: task-29
-    title: "Wire tab-completion plumbing"
-    phase: E
-    sequence: 6
-    deps: [task-27]
-    status: todo
-
-  # ── Phase F · Built-in content (task-30 … task-32) ──────────────────────────────────────────────
-
-  - id: task-30
-    title: "Author the minimal project template (AGENTS.md, RALPH-LOOP.md, orchestrator skill, snippets)"
-    phase: F
-    sequence: 6
-    deps: [task-16]
-    status: todo
-
-  - id: task-31
-    title: "Author the default bundle template"
-    phase: F
-    sequence: 6
-    deps: [task-16]
-    status: todo
-
-  - id: task-32
-    title: "Author the builder's own agent skill"
-    phase: F
-    sequence: 3
-    deps: [task-9]
-    status: todo
-
-  # ── Phase G · Walking skeleton (task-33) ────────────────────────────────────────────────────────
-
-  - id: task-33
-    title: "Walking skeleton: one vertical slice through every layer"
-    phase: G
-    sequence: 9
-    deps: [task-26, task-27, task-30]
-    status: todo
+  epic-3: backlog
+  3-1-declare-and-inspect-template-authoring-tasks: backlog
+  3-2-initialize-complete-project-authoring-work: backlog
+  3-3-materialise-complete-bundle-authoring-work-on-create-and-enable: backlog
+  epic-3-retrospective: optional
