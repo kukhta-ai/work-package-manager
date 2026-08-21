@@ -14,6 +14,9 @@ independent version in its `bundle.yml` and is not recorded here.
 
 - A revision-bound local package-preparation command that clean-builds, packs, and inspects the exact WPM npm
   archive without enabling public distribution or remote mutation.
+- A fresh local packed-install verifier that consumes the accepted inspection evidence, installs only those
+  archive bytes in an isolated consumer prefix, and exercises the installed bins and resources without running
+  WPM setup or changing coding-agent configuration.
 - Foundation work in progress (pre-1.0): the `wpm` CLI package, its TypeScript/ESM toolchain, and the
   ports-and-adapters core are under active development against the design set (`docs/00`–`14`). Individual
   changes will be itemized here as the surface stabilizes toward the first tagged release.
