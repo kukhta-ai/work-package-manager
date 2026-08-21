@@ -60,8 +60,9 @@ acceptance criteria. wpm doesn't reimplement task management; it builds on a bac
 agent-driven execution (Backlog.md today; the design isn't wedded to it).
 
 ### Is it ready to use?
-Not yet. The **design is complete** (`docs/00`–`14`) and the **foundational backlog** is defined;
-implementation is the next step. See `ROADMAP.md` for the arc from *builder* to *builder + registry*.
+**Public distribution is inactive.** The builder can be developed and exercised from a local checkout, but
+there is no approved or published npm coordinate or GitHub release channel yet. See `ROADMAP.md` for the arc
+from *builder* to public distribution and discovery.
 
 ---
 
@@ -183,8 +184,8 @@ No. The three-letter name is overloaded: **wpm** most often means *words per min
 and is sometimes used informally for the *Windows Package Manager* (whose real command is `winget`).
 This **wpm** is **work-package-manager** — the Backlog.md-based builder described in these docs. It
 packages a **work-package**: a structured, status-tracked backlog of instructions plus the skills it
-needs, adapted to run on a recipient's agent. The npm package is published as `work-package-manager`;
-the command you type is `wpm`.
+needs, adapted to run on a recipient's agent. The public package coordinate remains unresolved and
+unpublished; `wpm` is the command name used by local builds.
 
 ### Where do I start reading?
 `00` for the model and vocabulary, then `01`–`03` for the three roles (author, end user, executing
