@@ -6,7 +6,9 @@ Read with `10` (the CLI surface this project implements), `07` (the templates it
 
 ## What the installer-builder is
 
-A single Node.js + TypeScript package, distributed via npm, that ships three things:
+**Public distribution is inactive.** The builder is one private Node.js + TypeScript package prepared for
+eventual GitHub/npm distribution, but no public coordinate, channel policy, release workflow, or publication
+authority is active. Its local package boundary contains three things:
 
 1. **The `wpm` CLI binary** — the surface fully specified in `10`.
 2. **Built-in templates** — the hand-authored, version-controlled trees the CLI scaffolds from with mechanical placeholder substitution.
@@ -19,7 +21,7 @@ The doc set (`docs/00-14.md`) lives in the same repo and is part of what ships, 
 
 ## Engineering decisions, with rationale
 
-**Language: Node.js + TypeScript.** Backlog.md (our hard runtime dependency, since the CLI shells out for every task operation) is itself Node.js. Sharing the ecosystem keeps installation simple — one `npm i -g` step gets both. TypeScript for the implementation because the manifest, bundle.yml, and template schemas are structural enough that a type system pays for itself within the first refactor. ESM-only (no CommonJS dual-build) since Backlog.md's tooling is modern Node.
+**Language: Node.js + TypeScript.** Backlog.md (our hard runtime dependency, since the CLI shells out for every task operation) is itself Node.js. Sharing the ecosystem keeps eventual installation coherent once public distribution is activated. TypeScript for the implementation because the manifest, bundle.yml, and template schemas are structural enough that a type system pays for itself within the first refactor. ESM-only (no CommonJS dual-build) since Backlog.md's tooling is modern Node.
 
 **CLI framework: commander.** Boring, mature, declarative. Handles deeply nested subcommands, flag types, help-text generation. The competition (yargs, clipanion, citty, oclif) either matches it or adds complexity we don't need. commander's `.command()` chain maps cleanly to the tree in `10`, and its `.helpInformation()` / `.helpOption()` hooks let us meet the `--help` content contract from `10`'s discoverability principle without a custom help renderer.
 
@@ -33,9 +35,9 @@ The doc set (`docs/00-14.md`) lives in the same repo and is part of what ships, 
 
 **Symlinks on Windows: a fallback to copies.** Scope-alias symlinks (per `06`) are real `fs.symlink` calls on POSIX. On Windows, where symlinks require admin or developer mode, the CLI falls back to copying `installer-skills/` into each alias path and warns the author that updates need a re-copy step. The detection logic lives in `src/util/symlink.ts`.
 
-**Distribution: a single global npm install.** `npm i -g <package-name>` (final name TBD; working name in the repo is `wpm`) provides the `wpm` binary on `PATH`. Backlog.md is a `peerDependency`, not bundled — installing the builder pings the user to also `npm i -g backlog.md` if missing. This matches the convention of CLIs like `npm`/`pnpm`/`yarn` rather than forcing a transitive bundle.
+**Distribution target: a future public package plus transparent release artifacts.** The working repository name and `wpm` executable are local identities, not an approved public package coordinate or alias policy. Today the package is private and exercised from source; later human-authorized activation decides the GitHub/npm roles and the exact public install path. Backlog.md remains a required `peerDependency`, not bundled.
 
-**CI: GitHub Actions; matrix on Node LTS × {Linux, macOS, Windows}.** Test on every push, build on tag, publish to npm on tagged release. Workflow files in `.github/workflows/`.
+**CI: GitHub Actions; matrix on Node LTS × {Linux, macOS, Windows}.** The current workflow tests every push and pull request. Tag/release creation and npm publication are deferred activation work and have no workflow or credentials in this increment.
 
 ## The directory scaffold
 
@@ -47,7 +49,7 @@ installer/                          the installer-builder project root
 ├── LICENSE                    [REQ]
 ├── CONTRIBUTING.md            [OPT]
 ├── CHANGELOG.md               [OPT]  release history
-├── package.json               [REQ]  npm metadata; declares bin: { installer: "./dist/cli.js" }
+├── package.json               [REQ]  npm metadata; local bin map is { wpm, installer } → ./dist/cli.js
 ├── tsconfig.json              [REQ]
 ├── .gitignore                 [REQ]  includes dist/, node_modules/, .backlog/archive/junk
 ├── .npmrc                     [OPT]
@@ -223,7 +225,7 @@ installer/                          the installer-builder project root
 ├── .github/
 │   └── workflows/
 │       ├── ci.yml                       test on push, matrix on Node LTS × OS
-│       ├── release.yml                  build + publish to npm on tag
+│       ├── release.yml                  [DEFERRED — absent while distribution is inactive]
 │       └── docs.yml                     optional: publish docs/ to a site
 │
 │   ── BUILDER'S OWN DEV BACKLOG (DOGFOOD) ──────────────────────────────
@@ -322,7 +324,7 @@ This is the layer that closes the loop on the discoverability principle. Tab-com
 
 The skill body itself is short; the depth lives in `references/` (each a markdown file under 100 lines), loaded by the agent only when needed. This is the standard SKILL.md progressive-disclosure shape from `05`.
 
-Installation: when the user runs `npm i -g <package>`, the post-install script offers to copy `agent-skills/installer-builder/` into the agent's scanned scope (`~/.claude/skills/`, `~/.agents/skills/`, etc.) — opt-in, not silent. Skipping the copy is fine; the agent can still use the CLI from `--help` alone, just less idiomatically.
+Bootstrap: after the user has made a locally built WPM command available, `wpm skill install` explicitly copies `agent-skills/installer-builder/` into the agent's scanned scope (`~/.claude/skills/`, `~/.agents/skills/`, etc.). The package does not silently copy it during installation. The future public acquisition path remains unresolved while distribution is inactive.
 
 ## Execution mechanics live in the project-template files
 
@@ -334,14 +336,15 @@ The builder deliberately does **not** ship a discipline-*enforcer* skill or a lo
 
 ## Distribution and the user's install experience
 
-A first-time user, end-to-end:
+There is no public first-time acquisition journey yet. Maintainers can exercise the current builder from a
+checked-out source tree without treating that path as a public release:
 
 ```bash
-# Install Backlog.md first (peer dep)
+# Prepare the local builder and required peer
+npm install
+npm run build
+npm link
 npm i -g backlog.md
-
-# Install the builder
-npm i -g <installer-package-name>
 
 # (Optional) install the agent skill
 installer skill install      # copies agent-skills/installer-builder/ into the user's scope
@@ -355,7 +358,8 @@ wpm bundle new core --no-advisor
 # authoring-backlog that init populated
 ```
 
-No registry beyond npm. No telemetry. No login. No template marketplace. The agent skill is opt-in.
+No public GitHub or npm channel is active. Their eventual roles and precedence remain unresolved. There is no
+telemetry, login, or template marketplace, and the agent skill is installed only by an explicit command.
 
 ## Development workflow
 
@@ -369,8 +373,9 @@ npm run test:unit           # just unit
 npm run test:integration    # just integration (slower, real tmpdirs)
 npm run lint                # biome check
 npm run build               # tsc → dist/
-npm run release             # CI handles via tag push
 ```
+
+There is no `npm run release` script or tag-triggered release workflow while distribution is inactive.
 
 `package.json`'s `bin` field points at `dist/cli.js`, so a local `npm link` makes the `wpm` command available pointed at the in-progress build.
 

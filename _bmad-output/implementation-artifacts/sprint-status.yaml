@@ -1,5 +1,5 @@
 # generated: 2026-08-21T17:38:18+00:00
-# last_updated: 2026-08-21T17:38:18+00:00
+# last_updated: 2026-08-21T20:14:52+00:00
 # project: work-package-manager
 # project_key: NOKEY
 # tracking_system: file-system
@@ -35,15 +35,15 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-08-21T17:38:18+00:00
-last_updated: 2026-08-21T17:38:18+00:00
+last_updated: 2026-08-21T20:14:52+00:00
 project: work-package-manager
 project_key: NOKEY
 tracking_system: file-system
 story_location: /workspace/active/work-package-manager/_bmad-output/implementation-artifacts
 
 development_status:
-  epic-1: backlog
-  1-1-expose-an-inactive-distribution-contract: backlog
+  epic-1: in-progress
+  1-1-expose-an-inactive-distribution-contract: done
   1-2-establish-the-clean-exact-package-boundary: backlog
   1-3-deliver-a-fresh-local-packed-install-journey: backlog
   1-4-produce-an-inactive-verifiable-candidate: backlog

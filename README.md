@@ -21,7 +21,11 @@ the package). The roadmap grows it into the full *work package manager* the name
 build → publish → discover → install — by adding a registry and distribution layer on top of a
 stable builder and install contract.
 
-- **npm package:** `work-package-manager` · **command:** `wpm`
+> **Public distribution is inactive.** No npm coordinate or GitHub release channel has been approved or
+> published. `wpm` is the local product and command name, not a claim that an npm package named `wpm` or
+> `work-package-manager` is publicly obtainable.
+
+- **public package:** inactive; coordinate unresolved · **local command:** `wpm`
 
 ---
 
@@ -44,12 +48,15 @@ Node.js **>= 20** is also required (`wpm` is an ESM-only package).
 ## Getting started — author a work-package
 
 You don't author a work-package by editing files yourself. `wpm` scaffolds an **authoring workspace**
-and your **AI agent** authors the deliverable inside it, driving the CLI through a bundled skill. The
-first run is five steps:
+and your **AI agent** authors the deliverable inside it, driving the CLI through a bundled skill. Until
+later distribution activation is approved, the first run starts from a checked-out source tree:
 
 ```bash
-# 1. Install wpm and its required peer (see Prerequisites above).
-npm i -g work-package-manager backlog.md
+# 1. Prepare the local WPM command and its required peer.
+npm install
+npm run build
+npm link
+npm i -g backlog.md
 
 # 2. Install the authoring skill into your agent's user skill scope.
 wpm skill install

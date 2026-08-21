@@ -6,6 +6,10 @@ is not about installing or using a generated bundle-project. The authoritative p
 SDLC in [`AGENTS.md`](./AGENTS.md) and its sequence diagram in [`docs/SDLC.md`](./docs/SDLC.md); the
 sections below are the concrete conventions those describe.
 
+> **Public distribution is inactive.** This repository has no approved public package coordinate, release
+> workflow, publication authority, or public release channel. Contributor work may prepare and verify local
+> artifacts, but public activation remains a separate human-authorized decision.
+
 > **Section ownership.** This file is assembled across a few foundational tasks. The `## Branching model`
 > section below is owned by task-2. `## Pull requests, review & merge` (task-3) and
 > `## Versioning & releases` (task-4) are appended later and are intentionally absent for now.
@@ -184,9 +188,10 @@ PR.
 
 This section governs the version of **the `wpm` builder itself** — the number in `package.json` (currently
 `0.1.0`). It applies the Semantic Versioning model that [`docs/08`](./docs/08-versioning-and-migrations.md)
-establishes for the artifacts the builder produces, to the builder as a published npm package, and defines
-how a release is cut and recorded. (Doc 08 itself is about *bundle* versioning; see [The builder's version
-is not a bundle's version](#the-builders-version-is-not-a-bundles-version) for the distinction.)
+establishes for the artifacts the builder produces to the builder's eventual releases. It does not imply that
+the current private package is publicly distributed. (Doc 08 itself is about *bundle* versioning; see [The
+builder's version is not a bundle's version](#the-builders-version-is-not-a-bundles-version) for the
+distinction.)
 
 ### Semantic versioning for the builder
 
@@ -229,26 +234,18 @@ a bundle never bumps the builder** — they are separate version lines in separa
 different actors. Consequently, **this `CHANGELOG.md` tracks the builder's releases only**; a generated
 project keeps its own per-bundle history in its bundles' `bundle.yml` files, not here.
 
-### Release process
+### Release activation is deferred
 
-Cutting a builder release follows these steps (doc 12 §CI: "build on tag, publish to npm on tagged
-release"; §Distribution: `npm i -g`). It is the agreed **convention** — see the automation note below:
+No builder release can be cut from the current repository state. `package.json` is deliberately private, the
+public identity and GitHub/npm channel policy are unresolved, and `.github/workflows/release.yml` does not
+exist. The current CI workflow is a source-quality gate only; `wpm build publish` remains a separate command
+for pushing a generated work-package archive and is not a mechanism for releasing WPM itself.
 
-1. **Bump** the version in `package.json` to `X.Y.Z` (per the rules above).
-2. **Roll the changelog**: move the entries under `## [Unreleased]` in `CHANGELOG.md` into a new
-   `## [X.Y.Z] - YYYY-MM-DD` heading, and leave a fresh, empty `## [Unreleased]` on top.
-3. **Commit** the bump + changelog roll (through the normal reviewed-PR flow — releases are not committed
-   straight to a protected branch; see [Pull requests, review & merge](#pull-requests-review--merge)).
-4. **Tag** the release commit `vX.Y.Z` and **push the tag**.
-5. **CI publishes**: the tag triggers the release workflow (`.github/workflows/release.yml`), which builds
-   the package and publishes it to npm. Users then install it with `npm i -g` (Backlog.md is a
-   `peerDependency`, pinged-not-bundled — doc 12 §Distribution).
-
-> **Automation note (not yet wired).** The publish workflow file (`release.yml`) and the `wpm build`
-> dry-run/package/publish command are **later** work — the foundation deliberately does not include them
-> yet; task-8 wires the CI **test** gate (the three-command suite), not the release/publish job. So treat
-> this section as the **convention** a release follows once that automation lands, not as a button that
-> exists today.
+Routine version development and maintenance of the `[Unreleased]` changelog remain valid. Cutting a public
+release — rolling those entries into a released version, tagging it, creating a GitHub Release, or publishing
+to npm — becomes actionable only after a later human-authorized activation defines the public identity,
+channel policy, trust/authority, and immutable release procedure. Until then, contributor work stops at
+reviewed source changes and non-publishing local package evidence.
 
 ### Changelog
 
@@ -259,7 +256,7 @@ Release history lives in [`CHANGELOG.md`](./CHANGELOG.md), in
 - Each released version appears below it as `## [X.Y.Z] - YYYY-MM-DD`, with changes grouped under the
   standard headings — **Added**, **Changed**, **Fixed**, **Removed** (and **Deprecated** / **Security** as
   needed).
-- At release time, the [Release process](#release-process) moves the `[Unreleased]` entries under the new
+- After later activation defines a release process, that process moves the `[Unreleased]` entries under the new
   version heading. The changelog records the **builder's** versions only (per the section above).
 
 ## Tracking work — the dogfood backlog

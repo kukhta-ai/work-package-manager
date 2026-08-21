@@ -9,8 +9,8 @@
 # human-owned -- SDLC Phase 7); it is not configured here, by design. CONTRIBUTING already states PRs must
 # show green CI before merge.
 #
-# Release / publish to npm on tag is a SEPARATE workflow (release.yml) and is intentionally NOT part of
-# this file (task-4 note; ci.md section 6) -- this file is the quality gate only.
+# Public distribution is inactive: release/tag creation and npm publication are deferred, and release.yml is
+# intentionally absent (task-4 note; ci.md section 6). This file is the source-quality gate only.
 #
 # Security note: no untrusted event input (issue/PR/commit text) is used in any run: step; the only
 # expression interpolations are trusted matrix values and github.workflow/github.ref, so there is no
