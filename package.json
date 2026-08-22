@@ -39,7 +39,8 @@
     "package:inspect": "node distribution-preparation/prepare-package.js",
     "prepack": "npm run build",
     "prepare": "husky",
-    "package:verify-install": "node distribution-preparation/verify-packed-install.js"
+    "package:verify-install": "node distribution-preparation/verify-packed-install.js",
+    "package:prepare-candidate": "node distribution-preparation/prepare-candidate.js"
   },
   "lint-staged": {
     "*.{ts,tsx,js,json,jsonc}": "biome check --write --no-errors-on-unmatched"
