@@ -26,6 +26,11 @@ import {
 } from "./core/model/index.js";
 import { advisorSkillDir, advisorSkillPath } from "./core/operations/advisor.js";
 import { advisorAddSpec, advisorRemoveSpec } from "./core/operations/advisor-commands.js";
+import {
+  type InspectedAuthoringClient,
+  inspectAuthoringClient,
+  inspectAuthoringClients,
+} from "./core/operations/authoring-clients.js";
 import { type BuildPlan, computeBuildPlan } from "./core/operations/build.js";
 import { disableBundleSpec, enableBundleSpec } from "./core/operations/bundle-lifecycle.js";
 import {
@@ -3386,6 +3391,83 @@ const skillModule: CommandModule = {
   },
 };
 
+function reloadGuidance(client: InspectedAuthoringClient): string {
+  return client.reload.kind === "automatic-with-restart-fallback"
+    ? "changes are detected automatically; restart Codex in the workspace if the skill is absent"
+    : "changes are watched live; restart Claude Code if the top-level skill directory was created after session start";
+}
+
+function formatAuthoringClient(client: InspectedAuthoringClient): string {
+  const detection =
+    client.currentDetection.status === "unavailable"
+      ? "unavailable (HOME is not set to an absolute path)"
+      : `${client.currentDetection.status === "detected" ? "personal config directory detected" : "personal config directory not detected"} (${JSON.stringify(client.currentDetection.observedPath)})`;
+  return [
+    `${client.displayName} (${client.id})`,
+    `  support:          ${client.supportStatus}`,
+    `  configured:       no`,
+    `  detection hint:   ${detection}`,
+    `  personal skills:  ${client.personalSkillsDirectory}`,
+    `  workspace skills: ${client.workspaceSkillsDirectory}`,
+    `  front door:       ${client.workspaceFrontDoor}`,
+    `  launch:           ${client.launch.command} (from the workspace root)`,
+    `  reload:           ${reloadGuidance(client)}`,
+  ].join("\n");
+}
+
+/** Read-only authoring-client inventory; it is independent of deliverable `manifest.yml.targets`. */
+const authoringModule: CommandModule = {
+  register(parent, ctx) {
+    const group = parent
+      .command("authoring")
+      .description("inspect WPM authoring support without changing client configuration");
+    const clients = group
+      .command("clients [id]")
+      .description(
+        "inspect Codex (codex) and Claude Code (claude-code); detection is advisory and independent of manifest.yml.targets",
+      )
+      .option("--json", "print the stable machine-readable contract")
+      .action((id: string | undefined, options: { json?: boolean }) => {
+        if (id !== undefined) {
+          const result = inspectAuthoringClient({ fs: ctx.deps.fs, env: ctx.deps.env }, id);
+          if (options.json === true) {
+            ctx.io.out.write(`${JSON.stringify(result)}\n`);
+            return;
+          }
+          if (result.supportStatus === "selectable") {
+            ctx.io.out.write(`${formatAuthoringClient(result)}\n`);
+            return;
+          }
+          ctx.io.out.write(
+            [
+              `${result.id.length > 0 ? JSON.stringify(result.id) : "(empty)"}`,
+              `  support:    ${result.supportStatus}`,
+              `  selectable: no`,
+              `  configured: no`,
+              `  reason:     ${result.reason}`,
+              "",
+            ].join("\n"),
+          );
+          return;
+        }
+
+        const result = inspectAuthoringClients({ fs: ctx.deps.fs, env: ctx.deps.env });
+        if (options.json === true) {
+          ctx.io.out.write(`${JSON.stringify({ clients: result })}\n`);
+          return;
+        }
+        ctx.io.out.write(`${result.map(formatAuthoringClient).join("\n\n")}\n`);
+      });
+
+    withExamples(clients, [
+      {
+        command: "wpm authoring clients claude-code --json",
+        note: "inspect one client as structured data; omit the id to list both selectable clients",
+      },
+    ]);
+  },
+};
+
 const completionModule: CommandModule = {
   register(parent, ctx) {
     const group = parent.command("completion").description("shell tab-completion (doc 12)");
@@ -3573,6 +3655,7 @@ const TOP_LEVEL_MODULES: readonly CommandModule[] = [
   projectModule,
   bundleModule,
   buildModule,
+  authoringModule,
   skillModule,
   completionModule,
 ];
