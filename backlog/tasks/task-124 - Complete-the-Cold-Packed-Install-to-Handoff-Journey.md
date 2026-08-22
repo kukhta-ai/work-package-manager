@@ -4,6 +4,7 @@ title: Complete the Cold Packed-Install-to-Handoff Journey
 status: To Do
 assignee: []
 created_date: '2026-08-21 15:01'
+updated_date: '2026-08-22 14:29'
 labels:
   - onboarding-epic-2
   - authoring-onboarding
@@ -27,7 +28,7 @@ Why: The complete consumer journey must work from one exact local package withou
 
 Boundary: Proves inert installation, one-action setup, bootstrap availability, selected workspace integration, native front doors, shared backlog, prepared handoff, fresh-session continuation, six-skill packaging, and generated-deliverable non-leakage.
 
-Non-goals: Public acquisition, release activation, process or session ownership, or replacing each skill story's own artifact and platform evidence.
+Non-goals: Public acquisition, release activation, process or session ownership, or replacing each skill story's own artifact and deterministic two-platform compatibility evidence.
 <!-- SECTION:DESCRIPTION:END -->
 
 ## Acceptance Criteria

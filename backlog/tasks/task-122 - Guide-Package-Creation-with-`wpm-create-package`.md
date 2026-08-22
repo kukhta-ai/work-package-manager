@@ -4,7 +4,7 @@ title: Guide Package Creation with wpm-create-package
 status: To Do
 assignee: []
 created_date: '2026-08-21 15:01'
-updated_date: '2026-08-21 15:02'
+updated_date: '2026-08-22 14:31'
 labels:
   - onboarding-epic-2
   - authoring-onboarding
@@ -47,5 +47,5 @@ Non-goals: Normal personal-scope installation or reconciliation, which belongs t
 - [ ] #1 Typechecks clean (tsc --noEmit) and Biome clean (biome ci)
 - [ ] #2 Tests added and green (vitest): unit for pure logic, integration where it touches ports
 - [ ] #3 Public functions documented; no dead code; the core import-boundary rule is not violated
-- [ ] #4 During this story, a fresh current official Codex `$skill-creator` or Claude Code `skill-creator@claude-plugins-official` authoring helper is invoked; evidence records the helper and host versions, then-current official Codex and Claude skill-authoring sources with access date, and fresh-session discovery, explicit-invocation, natural-language-trigger, non-trigger, and outcome verification for both supported platforms.
+- [ ] #4 During this story, a fresh current official Codex `$skill-creator` or Claude Code `skill-creator@claude-plugins-official` authoring helper is invoked; evidence records the helper and host versions, then-current official Codex and Claude Code skill-authoring sources with access date, deterministic native-path, frontmatter, discovery and explicit-invocation identity, trigger/non-trigger contract, and source-free portability evidence for both supported platforms, and fresh Codex discovery, explicit-invocation, natural-language-trigger, non-trigger, and outcome verification. Authenticated live Claude behavioral parity is owned by the approved post-implementation exact-revision cold gate and is not claimed by this story.
 <!-- DOD:END -->

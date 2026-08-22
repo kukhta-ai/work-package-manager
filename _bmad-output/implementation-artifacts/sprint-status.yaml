@@ -1,5 +1,5 @@
 # generated: 2026-08-21T17:38:18+00:00
-# last_updated: 2026-08-22T09:09:39+00:00
+# last_updated: 2026-08-22T09:47:09+00:00
 # project: work-package-manager
 # project_key: NOKEY
 # tracking_system: file-system
@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-08-21T17:38:18+00:00
-last_updated: 2026-08-22T09:09:39+00:00
+last_updated: 2026-08-22T14:53:53+00:00
 project: work-package-manager
 project_key: NOKEY
 tracking_system: file-system
@@ -54,7 +54,7 @@ development_status:
 
   epic-2: in-progress
   2-1-establish-the-codex-and-claude-code-authoring-client-contract: done
-  2-2-plan-and-change-bundles-with-wpm-author-bundle: backlog
+  2-2-plan-and-change-bundles-with-wpm-author-bundle: done
   2-3-author-install-recipes-with-wpm-author-recipe: backlog
   2-4-author-agent-skills-and-front-doors-with-wpm-author-skill: backlog
   2-5-review-work-packages-with-wpm-review-package: backlog
