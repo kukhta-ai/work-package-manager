@@ -793,6 +793,211 @@ describe("fresh local packed-install and inactive-candidate journey", () => {
       ]),
     );
 
+    const activation = {
+      facts: Object.fromEntries(
+        ACTIVATION_FACT_KEYS.map((key) => [
+          key,
+          {
+            ...(key === "public-npm-coordinate"
+              ? { proposedValue: candidateRecord.binding.package.name }
+              : key.endsWith("evidence")
+                ? {}
+                : { proposedValue: `decision:${key}` }),
+            authorization: { decision: "authorized", reference: `authorization:${key}` },
+            ...(key === "public-npm-coordinate" || key.endsWith("evidence")
+              ? { evidence: { kind: "controlled", reference: `evidence:${key}` } }
+              : {}),
+          },
+        ]),
+      ),
+    };
+    writeFileSync(
+      githubPolicyPath,
+      `${JSON.stringify({
+        schemaVersion: 1,
+        activation,
+        release: { prerelease: false, requireImmutable: true },
+      })}\n`,
+    );
+    writeFileSync(
+      npmPolicyPath,
+      `${JSON.stringify({
+        schemaVersion: 1,
+        activation,
+        publication: {
+          coordinate: candidateRecord.binding.package.name,
+          finalDistTag: "latest",
+          repository,
+          provenance: { required: true },
+          authority: { bootstrap: { required: true }, trustedPublisher },
+        },
+      })}\n`,
+    );
+
+    writeFileSync(
+      githubObservationPath,
+      `${JSON.stringify({ schemaVersion: 1, tags: [], releases: [] })}\n`,
+    );
+    const readyGithubAssessment = assessGithub();
+    writeFileSync(
+      npmObservationPath,
+      `${JSON.stringify({
+        schemaVersion: 1,
+        package: null,
+        authority: matchingNpmObservation.authority,
+      })}\n`,
+    );
+    const readyNpmAssessment = assessNpm();
+    writeFileSync(githubObservationPath, `${JSON.stringify(matchingObservation)}\n`);
+    const completeGithubAssessment = assessGithub();
+    writeFileSync(npmObservationPath, `${JSON.stringify(matchingNpmObservation)}\n`);
+    const completeNpmAssessment = assessNpm();
+    writeFileSync(npmObservationPath, `${JSON.stringify(manualTagObservation)}\n`);
+    const manualNpmAssessment = assessNpm();
+    writeFileSync(githubObservationPath, `${JSON.stringify(conflictingObservation)}\n`);
+    const conflictingGithubAssessmentWithActivation = assessGithub();
+    writeFileSync(npmObservationPath, `${JSON.stringify(conflictingNpmObservation)}\n`);
+    const conflictingNpmAssessmentWithActivation = assessNpm();
+
+    const convergencePolicyPath = join(root, "convergence-policy.json");
+    const githubAssessmentPath = join(root, "github-assessment.json");
+    const npmAssessmentPath = join(root, "npm-assessment.json");
+    const classifyConvergence = (
+      githubAssessment: unknown,
+      npmAssessment: unknown,
+      requiredBoundaries: readonly string[],
+    ) => {
+      writeFileSync(
+        convergencePolicyPath,
+        `${JSON.stringify({ schemaVersion: 1, activation, requiredBoundaries })}\n`,
+      );
+      writeFileSync(githubAssessmentPath, `${JSON.stringify(githubAssessment)}\n`);
+      writeFileSync(npmAssessmentPath, `${JSON.stringify(npmAssessment)}\n`);
+      const candidateBefore = directorySnapshot(candidateOutput);
+      const policyBefore = readFileSync(convergencePolicyPath);
+      const githubBefore = readFileSync(githubAssessmentPath);
+      const npmBefore = readFileSync(npmAssessmentPath);
+      const githubObservationBefore = readFileSync(githubObservationPath);
+      const npmObservationBefore = readFileSync(npmObservationPath);
+      const assessment = npm(
+        REPO_ROOT,
+        "run",
+        "--silent",
+        "package:classify-convergence",
+        "--",
+        "--candidate",
+        candidateOutput,
+        "--policy",
+        convergencePolicyPath,
+        "--github-assessment",
+        githubAssessmentPath,
+        "--npm-assessment",
+        npmAssessmentPath,
+      );
+      expect({ status: assessment.status, stderr: assessment.stderr }).toEqual({
+        status: 0,
+        stderr: "",
+      });
+      expect(directorySnapshot(candidateOutput)).toEqual(candidateBefore);
+      expect(readFileSync(convergencePolicyPath)).toEqual(policyBefore);
+      expect(readFileSync(githubAssessmentPath)).toEqual(githubBefore);
+      expect(readFileSync(npmAssessmentPath)).toEqual(npmBefore);
+      expect(readFileSync(githubObservationPath)).toEqual(githubObservationBefore);
+      expect(readFileSync(npmObservationPath)).toEqual(npmObservationBefore);
+      expect(readFileSync(npmConfigPath)).toEqual(npmConfigBefore);
+      expect(readFileSync(npmCredentialPath)).toEqual(npmCredentialBefore);
+      expect(git(REPO_ROOT, "tag", "--list")).toBe(tagsBefore);
+      expect(readFileSync(externalStatePath)).toEqual(externalStateBefore);
+      return JSON.parse(String(assessment.stdout)) as {
+        status: string;
+        result: {
+          classification: string;
+          requiredBoundaries: string[];
+          completedBoundaries: string[];
+          outstandingBoundaries: string[];
+          conflicts: unknown[];
+          blockers: unknown[];
+          recovery: { safeActions: string[]; prohibitedActions: string[] };
+        };
+      };
+    };
+    const allBoundaries = [
+      "github.tag",
+      "github.release",
+      "github.asset",
+      "npm.version",
+      "npm.final-dist-tag",
+    ];
+
+    const ready = classifyConvergence(readyGithubAssessment, readyNpmAssessment, allBoundaries);
+    expect(ready).toMatchObject({
+      status: "classified",
+      result: { classification: "ready", completedBoundaries: [], conflicts: [], blockers: [] },
+    });
+
+    const resumable = classifyConvergence(
+      completeGithubAssessment,
+      readyNpmAssessment,
+      allBoundaries,
+    );
+    expect(resumable.result).toMatchObject({
+      classification: "resumable",
+      completedBoundaries: ["github.tag", "github.release", "github.asset"],
+      outstandingBoundaries: ["npm.version", "npm.final-dist-tag"],
+      conflicts: [],
+      blockers: [],
+    });
+
+    const complete = classifyConvergence(
+      completeGithubAssessment,
+      completeNpmAssessment,
+      allBoundaries,
+    );
+    expect(complete.result).toMatchObject({
+      classification: "complete",
+      completedBoundaries: allBoundaries,
+      outstandingBoundaries: [],
+      conflicts: [],
+      blockers: [],
+    });
+
+    const matching = classifyConvergence(readyGithubAssessment, manualNpmAssessment, [
+      "npm.final-dist-tag",
+    ]);
+    expect(matching.result).toMatchObject({
+      classification: "matching",
+      completedBoundaries: [],
+      outstandingBoundaries: ["npm.final-dist-tag"],
+      conflicts: [],
+      blockers: [],
+    });
+
+    const blocked = classifyConvergence(readyGithubAssessment, readyNpmAssessment, []);
+    expect(blocked.result).toMatchObject({
+      classification: "blocked",
+      requiredBoundaries: [],
+      conflicts: [],
+      blockers: [expect.objectContaining({ kind: "missing-policy" })],
+    });
+
+    const conflicting = classifyConvergence(
+      conflictingGithubAssessmentWithActivation,
+      conflictingNpmAssessmentWithActivation,
+      allBoundaries,
+    );
+    expect(conflicting.result.classification).toBe("conflicting");
+    expect(conflicting.result.conflicts.length).toBeGreaterThanOrEqual(7);
+    expect(conflicting.result.recovery.safeActions).toEqual([]);
+    expect(conflicting.result.recovery.prohibitedActions).toEqual(
+      expect.arrayContaining([
+        "overwrite",
+        "republication",
+        "retagging",
+        "rollback",
+        "version-reuse",
+      ]),
+    );
+
     const corruptCandidateOutput = join(root, "corrupt candidate");
     cpSync(candidateOutput, corruptCandidateOutput, { recursive: true, preserveTimestamps: true });
     const corruptRecordPath = join(corruptCandidateOutput, "candidate.json");
