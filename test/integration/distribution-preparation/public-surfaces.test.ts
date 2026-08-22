@@ -33,6 +33,8 @@ const PREPARATION_FILES = [
   "assess-github.js",
   "npm-assessment.js",
   "assess-npm.js",
+  "convergence-assessment.js",
+  "assess-convergence.js",
 ] as const;
 
 /**
@@ -317,6 +319,9 @@ describe("inactive distribution public-surface contract", () => {
     expect(manifest.scripts["package:assess-npm"]).toBe(
       "node distribution-preparation/assess-npm.js",
     );
+    expect(manifest.scripts["package:classify-convergence"]).toBe(
+      "node distribution-preparation/assess-convergence.js",
+    );
     expect(manifest.scripts.prepack).toBe("npm run build");
   });
 
@@ -389,6 +394,31 @@ describe("inactive distribution public-surface contract", () => {
     );
     expect(assessmentSource).not.toMatch(
       /\b(?:npm\s+(?:publish|dist-tag|owner|access)|git\s+(?:tag|push))\b/i,
+    );
+    expect(assessmentSource).not.toMatch(
+      /(?:_authToken|NODE_AUTH_TOKEN|NPM_TOKEN|id-token:\s*write)/i,
+    );
+  });
+
+  it("keeps combined channel classification structurally read-only, credential-blind, and local", () => {
+    const assessmentSource = [
+      readProjectFile("distribution-preparation/convergence-assessment.js"),
+      readProjectFile("distribution-preparation/assess-convergence.js"),
+    ].join("\n");
+
+    expect(assessmentSource).not.toMatch(/from\s+["']node:child_process["']/);
+    expect(assessmentSource).not.toMatch(/from\s+["']node:https?["']/);
+    expect(assessmentSource).not.toMatch(/from\s+["']node:(?:http2|net|tls|dns)["']/);
+    expect(assessmentSource).not.toMatch(
+      /(?:@octokit|libnpm|pacote|npm-registry-fetch|undici|axios)/i,
+    );
+    expect(assessmentSource).not.toMatch(/\bfetch\s*\(/);
+    expect(assessmentSource).not.toMatch(/\bprocess\.env\b/);
+    expect(assessmentSource).not.toMatch(
+      /import\s*{[^}]*\b(?:appendFile|chmod|copyFile|createWriteStream|link|mkdir|rename|rm|symlink|truncate|unlink|writeFile)(?:Sync)?\b[^}]*}\s*from\s*["']node:fs["']/s,
+    );
+    expect(assessmentSource).not.toMatch(
+      /\b(?:npm\s+(?:publish|dist-tag|owner|access)|gh\s+release|git\s+(?:tag|push))\b/i,
     );
     expect(assessmentSource).not.toMatch(
       /(?:_authToken|NODE_AUTH_TOKEN|NPM_TOKEN|id-token:\s*write)/i,

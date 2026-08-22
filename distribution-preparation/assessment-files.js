@@ -9,7 +9,8 @@ function sameFile(left, right) {
     left.dev === right.dev &&
     left.ino === right.ino &&
     left.size === right.size &&
-    left.mtimeMs === right.mtimeMs
+    left.mtimeMs === right.mtimeMs &&
+    left.ctimeMs === right.ctimeMs
   );
 }
 
@@ -33,6 +34,10 @@ function readOrdinaryFile(path, field) {
     const bytes = readFileSync(descriptor);
     const after = fstatSync(descriptor);
     if (!sameFile(before, after)) throw new Error(`${field} input changed while it was read`);
+    const namedAfter = lstatSync(path);
+    if (namedAfter.isSymbolicLink() || !namedAfter.isFile() || !sameFile(after, namedAfter)) {
+      throw new Error(`${field} input path changed while it was read`);
+    }
     return bytes;
   } finally {
     closeSync(descriptor);

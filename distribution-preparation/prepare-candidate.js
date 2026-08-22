@@ -63,6 +63,18 @@ function compareText(left, right) {
   return left < right ? -1 : left > right ? 1 : 0;
 }
 
+/** @param {import("node:fs").Stats} left @param {import("node:fs").Stats} right */
+function sameFile(left, right) {
+  return (
+    left.dev === right.dev &&
+    left.ino === right.ino &&
+    left.size === right.size &&
+    left.mtimeMs === right.mtimeMs &&
+    left.ctimeMs === right.ctimeMs &&
+    left.nlink === right.nlink
+  );
+}
+
 /** @param {Buffer} bytes @param {"sha256" | "sha512"} algorithm */
 function digestBytes(bytes, algorithm) {
   return `${algorithm}:${createHash(algorithm).update(bytes).digest("hex")}`;
@@ -217,6 +229,8 @@ function readCandidateOwnedFile(root, path) {
     throw new Error("candidate root must be an ordinary directory");
   }
   let cursor = root;
+  /** @type {import("node:fs").Stats | undefined} */
+  let namedBefore;
   const segments = /** @type {string} */ (path).split("/");
   for (const [index, segment] of segments.entries()) {
     cursor = join(cursor, segment);
@@ -228,6 +242,7 @@ function readCandidateOwnedFile(root, path) {
     if (index === segments.length - 1 && !stat.isFile()) {
       throw new Error(`candidate-owned path is not an ordinary file: ${path}`);
     }
+    if (index === segments.length - 1) namedBefore = stat;
   }
   const realRoot = realpathSync(root);
   const realFile = realpathSync(absolute);
@@ -245,19 +260,20 @@ function readCandidateOwnedFile(root, path) {
   const descriptor = openSync(absolute, constants.O_RDONLY | noFollow);
   try {
     const before = fstatSync(descriptor);
-    if (!before.isFile()) throw new Error(`candidate-owned path is not an ordinary file: ${path}`);
+    if (namedBefore === undefined || !before.isFile() || !sameFile(namedBefore, before)) {
+      throw new Error(`candidate-owned path changed while it was opened: ${path}`);
+    }
     if (before.nlink !== 1) {
       throw new Error(`candidate-owned path must not be a hard link: ${path}`);
     }
     const bytes = readFileSync(descriptor);
     const after = fstatSync(descriptor);
-    if (
-      before.dev !== after.dev ||
-      before.ino !== after.ino ||
-      before.size !== after.size ||
-      before.mtimeMs !== after.mtimeMs
-    ) {
+    if (!sameFile(before, after)) {
       throw new Error(`candidate-owned file changed while it was being read: ${path}`);
+    }
+    const namedAfter = lstatSync(absolute);
+    if (namedAfter.isSymbolicLink() || !namedAfter.isFile() || !sameFile(after, namedAfter)) {
+      throw new Error(`candidate-owned path changed while it was being read: ${path}`);
     }
     return { path: absolute, bytes };
   } finally {
