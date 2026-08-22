@@ -276,6 +276,24 @@ required evidence is reported before later channel assessment and never overwrit
 proposed tag remains inert data: the resulting record stays inactive and release-ineligible, and this command
 cannot create tags, releases, assets, npm versions/dist-tags, trust settings, credentials, or remote state.
 
+To assess that exact candidate against a caller-supplied GitHub snapshot, use local schema-version 1 policy
+and observation JSON. An empty observation can be as small as
+`{"schemaVersion":1,"tags":[],"releases":[]}`; policy may project release facts such as
+`{"schemaVersion":1,"release":{"prerelease":false,"requireImmutable":true}}`. Then run:
+
+```bash
+npm run package:assess-github -- \
+  --candidate <candidate-directory> \
+  --policy <github-policy.json> \
+  --observation <github-observation.json>
+```
+
+The report distinguishes exact matches, genuinely missing objects, missing proof, and hard tag/release/asset
+conflicts while retaining every unresolved activation fact. The command revalidates the complete candidate and
+only reads local input; it has no GitHub client, credentials, network call, Git mutation, or release/asset
+writer. A permitted read-only observer may supply the same stable tag, release, and asset fields later, but
+this command neither obtains authority nor performs that observation itself.
+
 ### Changelog
 
 Release history lives in [`CHANGELOG.md`](./CHANGELOG.md), in

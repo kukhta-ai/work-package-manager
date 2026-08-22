@@ -541,6 +541,19 @@ function loadExistingRecord(outputDirectory) {
 }
 
 /**
+ * Load and fully revalidate one persisted inactive candidate for later read-only channel assessment. The
+ * returned record is never accepted without the same exact-byte, canonical-binding, inactive-readiness, and
+ * candidate-owned path checks used for preparation reruns.
+ *
+ * @param {string} outputDirectory
+ */
+export function loadPersistedCandidate(outputDirectory) {
+  const root = resolve(outputDirectory);
+  const record = loadExistingRecord(root);
+  return { record, findings: validatePersistedCandidate(root, record) };
+}
+
+/**
  * Claim a fresh destination before moving verified staged entries into it. `candidate.json` moves last and is
  * the visible commit marker; an existing destination, including an empty one created in a race, is never
  * replaced. Every move remains on the same filesystem because staging is adjacent to the destination.
