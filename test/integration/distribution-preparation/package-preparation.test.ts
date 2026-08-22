@@ -5,6 +5,8 @@ import {
   lstatSync,
   mkdirSync,
   mkdtempSync,
+  readdirSync,
+  readFileSync,
   readlinkSync,
   rmSync,
   symlinkSync,
@@ -280,6 +282,7 @@ describe("clean revision package preparation", () => {
         "package.json",
         "dist/cli.js",
         "agent-skills/installer-builder/SKILL.md",
+        "agent-skills/wpm-author-bundle/SKILL.md",
         "docs/00-foundation-and-lineage.md",
         "templates/project/minimal/template.yml",
       ]),
@@ -295,5 +298,24 @@ describe("clean revision package preparation", () => {
     );
     expect(report.artifact.size).toBeGreaterThan(0);
     expect(existsSync(report.artifact.path)).toBe(true);
+
+    const extracted = join(root, "extracted");
+    mkdirSync(extracted);
+    execFileSync("tar", ["-xzf", report.artifact.path, "-C", extracted]);
+    const extractedSkillRoot = join(extracted, "package", "agent-skills", "wpm-author-bundle");
+    const extractedSkillPath = join(extractedSkillRoot, "SKILL.md");
+    const expectedSkill = readFileSync(
+      join(REPO_ROOT, "agent-skills", "wpm-author-bundle", "SKILL.md"),
+      "utf8",
+    );
+    expect(readdirSync(extractedSkillRoot)).toEqual(["SKILL.md"]);
+    expect(readFileSync(extractedSkillPath, "utf8")).toBe(expectedSkill);
+
+    rmSync(source, { recursive: true, force: true });
+    expect(existsSync(source)).toBe(false);
+    const sourceFreeSkill = readFileSync(extractedSkillPath, "utf8");
+    expect(sourceFreeSkill).toContain("name: wpm-author-bundle");
+    expect(sourceFreeSkill).toContain("## Establish the boundary before changing state");
+    expect(sourceFreeSkill).not.toMatch(/\]\((?:\.\.?\/|references\/|scripts\/|assets\/)/);
   }, 240_000);
 });

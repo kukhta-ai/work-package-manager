@@ -372,8 +372,14 @@ The terms in this addendum have narrow meanings:
   capabilities, each delivered by its own story.
 - Every story that creates or changes a WPM-owned skill must use a fresh official Codex or Claude Code
   skill-authoring helper at implementation time and record the helper and host versions, then-current official
-  source links and access date, and fresh-session discovery, explicit-invocation, natural-language trigger,
-  non-trigger, and outcome evidence for both supported platforms.
+  source links and access date, deterministic native-path, frontmatter, discovery and explicit-invocation
+  identity, trigger/non-trigger contract, and source-free portability evidence for Codex and Claude Code,
+  exact packed/source-free availability, generated-deliverable non-leakage, and live Codex discovery,
+  explicit-invocation, natural-language trigger, non-trigger, and observable-outcome evidence.
+- After all scoped implementation, authenticated live Claude Code discovery, explicit-invocation,
+  natural-language trigger, non-trigger, and representative-outcome parity for all six WPM-owned skills is
+  proven once against the exact final packed revision before final handoff or activation. Authentication is an
+  external prerequisite for that final gate and is not a WPM capability.
 - Each skill story owns packed-install availability and generated-deliverable non-leakage evidence for its
   artifact; later family-level verification does not substitute for that evidence.
 - Bootstrap and workspace skills reuse supplied or retained facts, ask only for unresolved decisions, and
