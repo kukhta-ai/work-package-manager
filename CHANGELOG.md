@@ -20,6 +20,9 @@ independent version in its `bundle.yml` and is not recorded here.
 - A deterministic local inactive-candidate command that persists one verified package, SHA-256/SHA-512
   digests, inspection/quality/install evidence, and release-note preview without replacing changed bindings or
   creating any public distribution state.
+- A read-only local GitHub staging assessment that compares an exact inactive candidate with caller-supplied
+  policy and observations, recognizing compatible tag/release/asset state and aggregating missing proof and
+  hard conflicts without creating or changing Git or GitHub objects.
 - Foundation work in progress (pre-1.0): the `wpm` CLI package, its TypeScript/ESM toolchain, and the
   ports-and-adapters core are under active development against the design set (`docs/00`–`14`). Individual
   changes will be itemized here as the surface stabilizes toward the first tagged release.

@@ -147,6 +147,7 @@ npm run lint         # biome check (lint + format check, incl. the core import-b
 npm run package:inspect -- --revision HEAD  # clean-build, pack, and inspect the local npm boundary
 npm run package:verify-install -- --report ../wpm-package-report.json  # install the accepted archive freshly
 npm run package:prepare-candidate -- --inspection ../wpm-package-report.json --install ../wpm-install-report.json --quality ../wpm-quality-report.json --tag <proposed-tag> --notes ../release-notes.md --output ../wpm-candidate
+npm run package:assess-github -- --candidate ../wpm-candidate --policy ../github-policy.json --observation ../github-observation.json
 ```
 
 To exercise the in-development command **as if it were installed**, link it onto your `PATH`:
@@ -177,6 +178,12 @@ persists one exact archive, its SHA-256/SHA-512 digests, the inspection/quality/
 release-note preview. Repeating the same binding reuses its stable candidate identity; changed evidence is
 reported without replacing it. The record explicitly remains inactive and release-ineligible, and the command
 has no tag, release, registry, trust, credential, or remote-write capability.
+
+`package:assess-github` revalidates that persisted candidate and compares it with caller-supplied local GitHub
+policy and observation JSON. Its structured report lists the exact required tag, draft metadata, asset,
+checksums, notes/evidence, missing work, matches, unverifiable facts, and hard conflicts. It only reads those
+inputs: matching state is reused in the report, while activation remains disabled and no Git or GitHub object
+is created or changed.
 
 ## A note on the word "installer"
 

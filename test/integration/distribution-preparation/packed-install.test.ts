@@ -1,10 +1,13 @@
 import { execFileSync, spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import {
   copyFileSync,
+  cpSync,
   existsSync,
   lstatSync,
   mkdirSync,
   mkdtempSync,
+  readdirSync,
   readFileSync,
   readlinkSync,
   realpathSync,
@@ -68,6 +71,31 @@ function npm(cwd: string, ...args: string[]): ReturnType<typeof spawnSync> {
     encoding: "utf8",
     timeout: 300_000,
   });
+}
+
+function directorySnapshot(root: string): Array<readonly [string, string]> {
+  const snapshot: Array<readonly [string, string]> = [];
+  const walk = (directory: string, prefix = ""): void => {
+    for (const entry of readdirSync(directory, { withFileTypes: true }).sort((left, right) =>
+      left.name.localeCompare(right.name),
+    )) {
+      const path = join(directory, entry.name);
+      const relativePath = prefix === "" ? entry.name : `${prefix}/${entry.name}`;
+      const stat = lstatSync(path, { bigint: true });
+      const metadata = `${stat.mode}:${stat.size}:${stat.mtimeNs}:${stat.ctimeNs}`;
+      if (entry.isDirectory()) {
+        snapshot.push([`${relativePath}/`, `directory:${metadata}`]);
+        walk(path, relativePath);
+      } else if (entry.isSymbolicLink()) {
+        snapshot.push([relativePath, `symlink:${metadata}:${readlinkSync(path)}`]);
+      } else {
+        const digest = createHash("sha256").update(readFileSync(path)).digest("hex");
+        snapshot.push([relativePath, `file:${metadata}:sha256:${digest}`]);
+      }
+    }
+  };
+  walk(root);
+  return snapshot;
 }
 
 afterEach(() => {
@@ -361,6 +389,13 @@ describe("fresh local packed-install and inactive-candidate journey", () => {
       candidateId: string;
       distribution: { unresolvedFacts: Array<{ key: string }> };
       binding: {
+        sourceRevision: string;
+        proposedTag: string;
+        artifact: {
+          filename: string;
+          size: number;
+          digests: { sha256: string; sha512: string };
+        };
         evidence: Record<
           string,
           { path: string; status: string; digest: string; rawDigest: string }
@@ -422,6 +457,176 @@ describe("fresh local packed-install and inactive-candidate journey", () => {
       releaseEligibility: "ineligible",
       findings: [expect.objectContaining({ kind: "changed", field: "proposedTag" })],
     });
+
+    const githubPolicyPath = join(root, "github-policy.json");
+    const githubObservationPath = join(root, "github-observation.json");
+    writeFileSync(
+      githubPolicyPath,
+      `${JSON.stringify({
+        schemaVersion: 1,
+        release: { prerelease: false, requireImmutable: true },
+      })}\n`,
+    );
+    writeFileSync(
+      githubObservationPath,
+      `${JSON.stringify({ schemaVersion: 1, tags: [], releases: [] })}\n`,
+    );
+    const assessGithub = () => {
+      const candidateBefore = directorySnapshot(candidateOutput);
+      const policyBefore = readFileSync(githubPolicyPath);
+      const observationBefore = readFileSync(githubObservationPath);
+      const assessment = npm(
+        REPO_ROOT,
+        "run",
+        "--silent",
+        "package:assess-github",
+        "--",
+        "--candidate",
+        candidateOutput,
+        "--policy",
+        githubPolicyPath,
+        "--observation",
+        githubObservationPath,
+      );
+      expect({ status: assessment.status, stderr: assessment.stderr }).toEqual({
+        status: 0,
+        stderr: "",
+      });
+      expect(directorySnapshot(candidateOutput)).toEqual(candidateBefore);
+      expect(readFileSync(githubPolicyPath)).toEqual(policyBefore);
+      expect(readFileSync(githubObservationPath)).toEqual(observationBefore);
+      expect(git(REPO_ROOT, "tag", "--list")).toBe(tagsBefore);
+      expect(readFileSync(externalStatePath)).toEqual(externalStateBefore);
+      return JSON.parse(String(assessment.stdout)) as {
+        status: string;
+        assessment: {
+          activation: string;
+          releaseEligibility: string;
+          publicationCapable: boolean;
+          unresolvedPolicyFacts: Array<{ key: string }>;
+          matches: Array<{ object: string; state: string }>;
+          missing: Array<{ object: string }>;
+          conflicts: Array<{ object: string; field: string }>;
+        };
+      };
+    };
+
+    const absentAssessment = assessGithub();
+    expect(absentAssessment).toMatchObject({
+      status: "assessed",
+      assessment: {
+        activation: "disabled",
+        releaseEligibility: "ineligible",
+        publicationCapable: false,
+      },
+    });
+    expect(absentAssessment.assessment.unresolvedPolicyFacts.map(({ key }) => key)).toEqual(
+      ACTIVATION_FACT_KEYS,
+    );
+    expect(absentAssessment.assessment.missing.map(({ object }) => object)).toEqual([
+      "tag",
+      "release",
+      "asset",
+    ]);
+
+    const matchingObservation = {
+      schemaVersion: 1,
+      tags: [
+        {
+          name: candidateRecord.binding.proposedTag,
+          targetRevision: candidateRecord.binding.sourceRevision,
+        },
+      ],
+      releases: [
+        {
+          id: 21,
+          tagName: candidateRecord.binding.proposedTag,
+          name: candidateRecord.binding.proposedTag,
+          body: candidateRecord.binding.releaseNotes.preview,
+          draft: true,
+          prerelease: false,
+          immutable: false,
+          assets: [
+            {
+              id: 31,
+              name: candidateRecord.binding.artifact.filename,
+              state: "uploaded",
+              size: candidateRecord.binding.artifact.size,
+              digest: candidateRecord.binding.artifact.digests.sha256,
+            },
+          ],
+        },
+      ],
+    };
+    writeFileSync(githubObservationPath, `${JSON.stringify(matchingObservation)}\n`);
+    const matchingAssessment = assessGithub();
+    expect(
+      matchingAssessment.assessment.matches.map(({ object, state }) => `${object}:${state}`),
+    ).toEqual(["tag:matching", "release:matching-draft", "asset:matching"]);
+    expect(matchingAssessment.assessment.missing).toEqual([]);
+    expect(matchingAssessment.assessment.conflicts).toEqual([]);
+
+    const conflictingObservation = structuredClone(matchingObservation);
+    const conflictingTag = conflictingObservation.tags[0];
+    const conflictingRelease = conflictingObservation.releases[0];
+    const conflictingAsset = conflictingRelease?.assets[0];
+    if (
+      conflictingTag === undefined ||
+      conflictingRelease === undefined ||
+      conflictingAsset === undefined
+    ) {
+      throw new Error("matching GitHub observation fixture is incomplete");
+    }
+    conflictingTag.targetRevision = "f".repeat(40);
+    conflictingRelease.name = "another release";
+    conflictingRelease.body = "different release notes";
+    conflictingAsset.digest = `sha256:${"0".repeat(64)}`;
+    writeFileSync(githubObservationPath, `${JSON.stringify(conflictingObservation)}\n`);
+    const conflictingAssessment = assessGithub();
+    expect(
+      conflictingAssessment.assessment.conflicts.map(({ object, field }) => `${object}.${field}`),
+    ).toEqual(["tag.targetRevision", "release.bodyDigest", "release.name", "asset.digest"]);
+
+    const corruptCandidateOutput = join(root, "corrupt candidate");
+    cpSync(candidateOutput, corruptCandidateOutput, { recursive: true, preserveTimestamps: true });
+    const corruptRecordPath = join(corruptCandidateOutput, "candidate.json");
+    const corruptRecord = JSON.parse(readFileSync(corruptRecordPath, "utf8")) as {
+      binding: { proposedTag: string };
+    };
+    corruptRecord.binding.proposedTag = "v0.1.1";
+    writeFileSync(corruptRecordPath, `${JSON.stringify(corruptRecord, undefined, 2)}\n`);
+    const corruptCandidateBefore = directorySnapshot(corruptCandidateOutput);
+    const policyBeforeCorruptAssessment = readFileSync(githubPolicyPath);
+    const observationBeforeCorruptAssessment = readFileSync(githubObservationPath);
+    const corruptAssessment = npm(
+      REPO_ROOT,
+      "run",
+      "--silent",
+      "package:assess-github",
+      "--",
+      "--candidate",
+      corruptCandidateOutput,
+      "--policy",
+      githubPolicyPath,
+      "--observation",
+      githubObservationPath,
+    );
+    expect({ status: corruptAssessment.status, stderr: corruptAssessment.stderr }).toEqual({
+      status: 1,
+      stderr: "",
+    });
+    expect(JSON.parse(String(corruptAssessment.stdout))).toMatchObject({
+      status: "rejected",
+      releaseEligibility: "ineligible",
+      findings: expect.arrayContaining([
+        expect.objectContaining({ field: "candidate.candidateId" }),
+      ]),
+    });
+    expect(directorySnapshot(corruptCandidateOutput)).toEqual(corruptCandidateBefore);
+    expect(readFileSync(githubPolicyPath)).toEqual(policyBeforeCorruptAssessment);
+    expect(readFileSync(githubObservationPath)).toEqual(observationBeforeCorruptAssessment);
+    expect(git(REPO_ROOT, "tag", "--list")).toBe(tagsBefore);
+    expect(readFileSync(externalStatePath)).toEqual(externalStateBefore);
 
     expect(git(REPO_ROOT, "tag", "--list")).toBe(tagsBefore);
     expect(readFileSync(externalStatePath)).toEqual(externalStateBefore);
