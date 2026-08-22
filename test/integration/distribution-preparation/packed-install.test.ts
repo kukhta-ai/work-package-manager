@@ -24,6 +24,11 @@ import { ACTIVATION_FACT_KEYS } from "../../../distribution-preparation/readines
 
 const REPO_ROOT = fileURLToPath(new URL("../../..", import.meta.url));
 const tempRoots: string[] = [];
+const NPM_REPOSITORY = {
+  type: "git",
+  url: "https://github.com/example/work-package-manager.git",
+  directory: null,
+};
 
 function temporaryRoot(prefix: string): string {
   const root = mkdtempSync(join(tmpdir(), prefix));
@@ -135,6 +140,13 @@ describe("fresh local packed-install and inactive-candidate journey", () => {
     const reportPath = join(root, "inspection-report.json");
     const consumer = join(root, "consumer");
     copyCurrentSource(source);
+    const sourcePackagePath = join(source, "package.json");
+    const sourcePackage = JSON.parse(readFileSync(sourcePackagePath, "utf8")) as Record<
+      string,
+      unknown
+    >;
+    sourcePackage.repository = NPM_REPOSITORY;
+    writeFileSync(sourcePackagePath, `${JSON.stringify(sourcePackage, undefined, 2)}\n`);
     initializeGit(source);
 
     const dependencies = npm(source, "ci", "--ignore-scripts", "--no-audit", "--no-fund");
@@ -280,6 +292,8 @@ describe("fresh local packed-install and inactive-candidate journey", () => {
     const notesPath = join(root, "release-notes.md");
     const candidateOutput = join(root, "candidate output");
     const externalStatePath = join(root, "external-state.json");
+    const npmConfigPath = join(root, "isolated.npmrc");
+    const npmCredentialPath = join(root, "isolated-npm-credentials.json");
     writeFileSync(installReportPath, String(verification.stdout));
     writeFileSync(
       qualityPath,
@@ -305,8 +319,15 @@ describe("fresh local packed-install and inactive-candidate journey", () => {
         trust: { github: "unconfigured", npm: "unconfigured" },
       })}\n`,
     );
+    writeFileSync(npmConfigPath, "registry=https://registry.invalid.example/\n");
+    writeFileSync(
+      npmCredentialPath,
+      `${JSON.stringify({ token: "sentinel-not-for-assessment" })}\n`,
+    );
     const tagsBefore = git(REPO_ROOT, "tag", "--list");
     const externalStateBefore = readFileSync(externalStatePath);
+    const npmConfigBefore = readFileSync(npmConfigPath);
+    const npmCredentialBefore = readFileSync(npmCredentialPath);
 
     const candidateArgs = [
       "--inspection",
@@ -391,6 +412,7 @@ describe("fresh local packed-install and inactive-candidate journey", () => {
       binding: {
         sourceRevision: string;
         proposedTag: string;
+        package: { name: string; version: string };
         artifact: {
           filename: string;
           size: number;
@@ -587,6 +609,190 @@ describe("fresh local packed-install and inactive-candidate journey", () => {
       conflictingAssessment.assessment.conflicts.map(({ object, field }) => `${object}.${field}`),
     ).toEqual(["tag.targetRevision", "release.bodyDigest", "release.name", "asset.digest"]);
 
+    const repository = NPM_REPOSITORY;
+    const trustedPublisher = {
+      provider: "github-actions",
+      repository: "example/work-package-manager",
+      workflow: "release.yml",
+      environment: null,
+      allowedAction: "publish",
+    };
+    const npmPolicyPath = join(root, "npm-policy.json");
+    const npmObservationPath = join(root, "npm-observation.json");
+    writeFileSync(
+      npmPolicyPath,
+      `${JSON.stringify({
+        schemaVersion: 1,
+        publication: {
+          coordinate: candidateRecord.binding.package.name,
+          finalDistTag: "latest",
+          repository,
+          provenance: { required: true },
+          authority: {
+            bootstrap: { required: true },
+            trustedPublisher,
+          },
+        },
+      })}\n`,
+    );
+    writeFileSync(
+      npmObservationPath,
+      `${JSON.stringify({
+        schemaVersion: 1,
+        package: null,
+        authority: {
+          coordinate: candidateRecord.binding.package.name,
+          coordinateControl: "unknown",
+          bootstrap: "unknown",
+          credentials: "not-observed",
+          trustedPublisher: null,
+        },
+      })}\n`,
+    );
+    const assessNpm = () => {
+      const candidateBefore = directorySnapshot(candidateOutput);
+      const policyBefore = readFileSync(npmPolicyPath);
+      const observationBefore = readFileSync(npmObservationPath);
+      const assessment = npm(
+        REPO_ROOT,
+        "run",
+        "--silent",
+        "package:assess-npm",
+        "--",
+        "--candidate",
+        candidateOutput,
+        "--policy",
+        npmPolicyPath,
+        "--observation",
+        npmObservationPath,
+      );
+      expect({ status: assessment.status, stderr: assessment.stderr }).toEqual({
+        status: 0,
+        stderr: "",
+      });
+      expect(directorySnapshot(candidateOutput)).toEqual(candidateBefore);
+      expect(readFileSync(npmPolicyPath)).toEqual(policyBefore);
+      expect(readFileSync(npmObservationPath)).toEqual(observationBefore);
+      expect(readFileSync(npmConfigPath)).toEqual(npmConfigBefore);
+      expect(readFileSync(npmCredentialPath)).toEqual(npmCredentialBefore);
+      expect(git(REPO_ROOT, "tag", "--list")).toBe(tagsBefore);
+      expect(readFileSync(externalStatePath)).toEqual(externalStateBefore);
+      return JSON.parse(String(assessment.stdout)) as {
+        status: string;
+        assessment: {
+          activation: string;
+          publicationCapable: boolean;
+          matches: Array<{ object: string; state: string }>;
+          missing: Array<{ object: string }>;
+          manualAuthority: Array<{ object: string; expected: string; observed: string | null }>;
+          conflicts: Array<{ object: string; field: string }>;
+          safeActions: string[];
+          prohibitedActions: string[];
+        };
+      };
+    };
+
+    const absentNpmAssessment = assessNpm();
+    expect(absentNpmAssessment).toMatchObject({
+      status: "assessed",
+      assessment: {
+        activation: "disabled",
+        publicationCapable: false,
+        safeActions: [],
+      },
+    });
+    expect(absentNpmAssessment.assessment.missing.map(({ object }) => object)).toEqual([
+      "version",
+      "tag",
+    ]);
+
+    const candidateSha512 = candidateRecord.binding.artifact.digests.sha512;
+    const candidateIntegrity = `sha512-${Buffer.from(
+      candidateSha512.slice("sha512:".length),
+      "hex",
+    ).toString("base64")}`;
+    const matchingNpmObservation = {
+      schemaVersion: 1,
+      package: {
+        coordinate: candidateRecord.binding.package.name,
+        versions: [
+          {
+            version: candidateRecord.binding.package.version,
+            integrity: candidateIntegrity,
+            repository,
+            provenance: {
+              status: "present",
+              repository,
+              sourceRevision: candidateRecord.binding.sourceRevision,
+            },
+          },
+        ],
+        distTags: [{ name: "latest", targetVersion: candidateRecord.binding.package.version }],
+        owners: ["maintainer"],
+      },
+      authority: {
+        coordinate: candidateRecord.binding.package.name,
+        coordinateControl: "controlled",
+        bootstrap: "available",
+        credentials: "not-observed",
+        trustedPublisher,
+      },
+    };
+    writeFileSync(npmObservationPath, `${JSON.stringify(matchingNpmObservation)}\n`);
+    const matchingNpmAssessment = assessNpm();
+    expect(
+      matchingNpmAssessment.assessment.matches.map(({ object, state }) => `${object}:${state}`),
+    ).toEqual([
+      "version:matching",
+      "tag:matching",
+      "authority:matching",
+      "authority:matching",
+      "authority:matching",
+    ]);
+    expect(matchingNpmAssessment.assessment.manualAuthority).toEqual([]);
+    expect(matchingNpmAssessment.assessment.conflicts).toEqual([]);
+
+    const manualTagObservation = structuredClone(matchingNpmObservation);
+    manualTagObservation.package.distTags = [];
+    writeFileSync(npmObservationPath, `${JSON.stringify(manualTagObservation)}\n`);
+    const manualTagAssessment = assessNpm();
+    expect(manualTagAssessment.assessment.conflicts).toEqual([]);
+    expect(manualTagAssessment.assessment.manualAuthority).toEqual([
+      expect.objectContaining({
+        object: "tag",
+        expected: candidateRecord.binding.package.version,
+        observed: null,
+      }),
+    ]);
+    expect(manualTagAssessment.assessment.safeActions).toEqual([]);
+
+    const conflictingNpmObservation = structuredClone(matchingNpmObservation);
+    const conflictingVersion = conflictingNpmObservation.package.versions[0];
+    if (conflictingVersion === undefined) throw new Error("matching npm version is missing");
+    conflictingVersion.integrity = `sha512-${Buffer.alloc(64, 0xff).toString("base64")}`;
+    conflictingVersion.repository = {
+      ...repository,
+      url: "https://github.com/other/project.git",
+    };
+    conflictingVersion.provenance = { status: "absent" } as never;
+    writeFileSync(npmObservationPath, `${JSON.stringify(conflictingNpmObservation)}\n`);
+    const conflictingNpmAssessment = assessNpm();
+    expect(
+      conflictingNpmAssessment.assessment.conflicts.map(
+        ({ object, field }) => `${object}.${field}`,
+      ),
+    ).toEqual(["version.integrity", "version.provenance", "version.repository"]);
+    expect(conflictingNpmAssessment.assessment.safeActions).toEqual([]);
+    expect(conflictingNpmAssessment.assessment.prohibitedActions).toEqual(
+      expect.arrayContaining([
+        "automatic-dist-tag-repair",
+        "overwrite",
+        "republication",
+        "unpublish-and-republish",
+        "version-reuse",
+      ]),
+    );
+
     const corruptCandidateOutput = join(root, "corrupt candidate");
     cpSync(candidateOutput, corruptCandidateOutput, { recursive: true, preserveTimestamps: true });
     const corruptRecordPath = join(corruptCandidateOutput, "candidate.json");
@@ -625,10 +831,14 @@ describe("fresh local packed-install and inactive-candidate journey", () => {
     expect(directorySnapshot(corruptCandidateOutput)).toEqual(corruptCandidateBefore);
     expect(readFileSync(githubPolicyPath)).toEqual(policyBeforeCorruptAssessment);
     expect(readFileSync(githubObservationPath)).toEqual(observationBeforeCorruptAssessment);
+    expect(readFileSync(npmConfigPath)).toEqual(npmConfigBefore);
+    expect(readFileSync(npmCredentialPath)).toEqual(npmCredentialBefore);
     expect(git(REPO_ROOT, "tag", "--list")).toBe(tagsBefore);
     expect(readFileSync(externalStatePath)).toEqual(externalStateBefore);
 
     expect(git(REPO_ROOT, "tag", "--list")).toBe(tagsBefore);
     expect(readFileSync(externalStatePath)).toEqual(externalStateBefore);
+    expect(readFileSync(npmConfigPath)).toEqual(npmConfigBefore);
+    expect(readFileSync(npmCredentialPath)).toEqual(npmCredentialBefore);
   }, 300_000);
 });

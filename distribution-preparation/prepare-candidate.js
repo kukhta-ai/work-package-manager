@@ -529,6 +529,63 @@ export function validatePersistedCandidate(root, record) {
   return findings.sort(({ field: left }, { field: right }) => compareText(left, right));
 }
 
+/**
+ * Project the package metadata needed by npm assessment from the same exact persisted archive that the
+ * candidate binds. The second stable read is hashed again so a path replacement between validation and
+ * projection becomes a candidate finding rather than silently associating metadata with different bytes.
+ *
+ * @param {string} root
+ * @param {unknown} record
+ * @param {CandidateFinding[]} findings
+ */
+function loadExactArchiveProjection(root, record, findings) {
+  if (!isRecord(record) || !isRecord(record.binding) || !isRecord(record.binding.artifact)) {
+    return undefined;
+  }
+  const artifact = record.binding.artifact;
+  try {
+    const persisted = readCandidateOwnedFile(root, artifact.path);
+    const observed = hashCandidateBytes(persisted.bytes);
+    let exact = true;
+    if (observed.size !== artifact.size) {
+      addFinding(findings, "changed", "artifact.size", "persisted artifact size changed");
+      exact = false;
+    }
+    const digests = isRecord(artifact.digests) ? artifact.digests : undefined;
+    for (const algorithm of /** @type {const} */ (["sha256", "sha512"])) {
+      if (observed.digests[algorithm] !== digests?.[algorithm]) {
+        addFinding(
+          findings,
+          "changed",
+          `artifact.digests.${algorithm}`,
+          `persisted artifact ${algorithm.toUpperCase()} changed`,
+        );
+        exact = false;
+      }
+    }
+    if (!exact) return undefined;
+
+    const packedManifest = inspectPackageArchiveBytes(persisted.bytes).packedManifest;
+    return {
+      artifact: observed,
+      package: {
+        name: packedManifest.name,
+        version: packedManifest.version,
+        repository: Object.hasOwn(packedManifest, "repository") ? packedManifest.repository : null,
+      },
+    };
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error);
+    addFinding(
+      findings,
+      "invalid",
+      "artifact.packageMetadata",
+      `could not bind package metadata to the exact persisted artifact: ${reason}`,
+    );
+    return undefined;
+  }
+}
+
 /** @param {string} outputDirectory */
 function loadExistingRecord(outputDirectory) {
   const output = lstatSync(outputDirectory);
@@ -543,14 +600,20 @@ function loadExistingRecord(outputDirectory) {
 /**
  * Load and fully revalidate one persisted inactive candidate for later read-only channel assessment. The
  * returned record is never accepted without the same exact-byte, canonical-binding, inactive-readiness, and
- * candidate-owned path checks used for preparation reruns.
+ * candidate-owned path checks used for preparation reruns. When validation succeeds, `archive` is a
+ * digest-bound projection of the package metadata needed by channel-specific assessment.
  *
  * @param {string} outputDirectory
+ * @returns {{record: unknown, archive?: {artifact: {size: number, digests: {sha256: string, sha512: string}}, package: {name: unknown, version: unknown, repository: unknown}}, findings: CandidateFinding[]}}
  */
 export function loadPersistedCandidate(outputDirectory) {
   const root = resolve(outputDirectory);
   const record = loadExistingRecord(root);
-  return { record, findings: validatePersistedCandidate(root, record) };
+  const findings = validatePersistedCandidate(root, record);
+  const archive =
+    findings.length === 0 ? loadExactArchiveProjection(root, record, findings) : undefined;
+  findings.sort(({ field: left }, { field: right }) => compareText(left, right));
+  return { record, archive, findings };
 }
 
 /**
