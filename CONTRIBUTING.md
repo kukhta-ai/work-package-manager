@@ -255,6 +255,27 @@ to install those exact inspected bytes in a disposable consumer environment and 
 and required package path. The verifier performs no WPM setup and checks that representative Codex and Claude
 Code personal/workspace configuration remains unchanged.
 
+Save the verifier's JSON output and an accepted local quality report, then bind them to the same inspected
+archive with:
+
+```bash
+npm run package:prepare-candidate -- \
+  --inspection <inspection-report.json> \
+  --install <packed-install-report.json> \
+  --quality <quality-report.json> \
+  --tag <proposed-tag> \
+  --notes <release-notes.md> \
+  --output <candidate-directory>
+```
+
+The quality report is a small JSON object with `status: "accepted"`, the inspection's `sourceRevision`, and
+a non-empty `checks` array of unique `{ "name": "...", "status": "passed" }` entries. Candidate preparation
+revalidates the exact inspection and frozen-install bytes, persists one archive plus its evidence and
+SHA-256/SHA-512 digests, and reuses an unchanged binding. A changed tag, revision, package, archive, notes, or
+required evidence is reported before later channel assessment and never overwrites the prior candidate. The
+proposed tag remains inert data: the resulting record stays inactive and release-ineligible, and this command
+cannot create tags, releases, assets, npm versions/dist-tags, trust settings, credentials, or remote state.
+
 ### Changelog
 
 Release history lives in [`CHANGELOG.md`](./CHANGELOG.md), in

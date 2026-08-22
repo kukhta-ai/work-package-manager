@@ -25,6 +25,8 @@ const PREPARATION_FILES = [
   "packed-install.js",
   "prepare-package.js",
   "verify-packed-install.js",
+  "candidate.js",
+  "prepare-candidate.js",
 ] as const;
 
 /**
@@ -300,6 +302,9 @@ describe("inactive distribution public-surface contract", () => {
     expect(manifest.scripts["package:verify-install"]).toBe(
       "node distribution-preparation/verify-packed-install.js",
     );
+    expect(manifest.scripts["package:prepare-candidate"]).toBe(
+      "node distribution-preparation/prepare-candidate.js",
+    );
     expect(manifest.scripts.prepack).toBe("npm run build");
   });
 
@@ -317,6 +322,20 @@ describe("inactive distribution public-surface contract", () => {
     expect(workflows).not.toMatch(/^\s*(?:environment|secrets?)\s*:/m);
     expect(workflows).not.toMatch(/^\s*run\s*:\s*(?:npm\s+(?:publish|dist-tag)|gh\s+release)\b/im);
     expect(workflows).toContain("npm run package:inspect -- --revision HEAD");
+  });
+
+  it("keeps candidate preparation structurally unable to inspect or mutate release channels", () => {
+    const candidateSource = [
+      readProjectFile("distribution-preparation/candidate.js"),
+      readProjectFile("distribution-preparation/prepare-candidate.js"),
+    ].join("\n");
+
+    expect(candidateSource).not.toMatch(/from\s+["']node:child_process["']/);
+    expect(candidateSource).not.toMatch(/from\s+["']node:https?["']/);
+    expect(candidateSource).not.toMatch(/\bfetch\s*\(/);
+    expect(candidateSource).not.toMatch(
+      /\b(?:npm\s+(?:publish|dist-tag)|gh\s+release|git\s+(?:tag|push))\b/i,
+    );
   });
 
   it("makes every currently conflicting public document explicitly inactive", () => {

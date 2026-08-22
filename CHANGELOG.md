@@ -17,6 +17,9 @@ independent version in its `bundle.yml` and is not recorded here.
 - A fresh local packed-install verifier that consumes the accepted inspection evidence, installs only those
   archive bytes in an isolated consumer prefix, and exercises the installed bins and resources without running
   WPM setup or changing coding-agent configuration.
+- A deterministic local inactive-candidate command that persists one verified package, SHA-256/SHA-512
+  digests, inspection/quality/install evidence, and release-note preview without replacing changed bindings or
+  creating any public distribution state.
 - Foundation work in progress (pre-1.0): the `wpm` CLI package, its TypeScript/ESM toolchain, and the
   ports-and-adapters core are under active development against the design set (`docs/00`–`14`). Individual
   changes will be itemized here as the surface stabilizes toward the first tagged release.

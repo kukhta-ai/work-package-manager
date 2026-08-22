@@ -17,6 +17,7 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 import { resolveNpmInvocation } from "../../../distribution-preparation/prepare-package.js";
+import { ACTIVATION_FACT_KEYS } from "../../../distribution-preparation/readiness.js";
 
 const REPO_ROOT = fileURLToPath(new URL("../../..", import.meta.url));
 const tempRoots: string[] = [];
@@ -73,7 +74,7 @@ afterEach(() => {
   for (const root of tempRoots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
 
-describe("fresh local packed-install journey", () => {
+describe("fresh local packed-install and inactive-candidate journey", () => {
   it("rejects bad invocation and a missing inspected report actionably", () => {
     const badInvocation = npm(
       REPO_ROOT,
@@ -245,5 +246,184 @@ describe("fresh local packed-install journey", () => {
     expect(readFileSync(join(consumer, "workspace", "CLAUDE.md"), "utf8")).toContain(
       "preserve-claude-workspace",
     );
+
+    const installReportPath = join(root, "packed-install-report.json");
+    const qualityPath = join(root, "quality-report.json");
+    const notesPath = join(root, "release-notes.md");
+    const candidateOutput = join(root, "candidate output");
+    const externalStatePath = join(root, "external-state.json");
+    writeFileSync(installReportPath, String(verification.stdout));
+    writeFileSync(
+      qualityPath,
+      `${JSON.stringify({
+        status: "accepted",
+        sourceRevision: inspection.sourceRevision,
+        checks: [
+          { name: "build", status: "passed" },
+          { name: "lint", status: "passed" },
+          { name: "package-boundary", status: "passed" },
+          { name: "packed-install", status: "passed" },
+          { name: "tests", status: "passed" },
+          { name: "typecheck", status: "passed" },
+        ],
+      })}\n`,
+    );
+    writeFileSync(notesPath, "## Inactive candidate\n\n- Exact local package verification.\n");
+    writeFileSync(
+      externalStatePath,
+      `${JSON.stringify({
+        github: { tag: null, release: null, assets: [] },
+        npm: { version: null, distTags: {} },
+        trust: { github: "unconfigured", npm: "unconfigured" },
+      })}\n`,
+    );
+    const tagsBefore = git(REPO_ROOT, "tag", "--list");
+    const externalStateBefore = readFileSync(externalStatePath);
+
+    const candidateArgs = [
+      "--inspection",
+      reportPath,
+      "--install",
+      installReportPath,
+      "--quality",
+      qualityPath,
+      "--tag",
+      "v0.1.0",
+      "--notes",
+      notesPath,
+      "--output",
+      candidateOutput,
+    ];
+    const candidate = npm(
+      REPO_ROOT,
+      "run",
+      "--silent",
+      "package:prepare-candidate",
+      "--",
+      ...candidateArgs,
+    );
+    expect({ status: candidate.status, stderr: candidate.stderr }).toEqual({
+      status: 0,
+      stderr: "",
+    });
+    const prepared = JSON.parse(String(candidate.stdout)) as {
+      status: string;
+      outcome: string;
+      candidateId: string;
+      distribution: {
+        status: string;
+        activation: string;
+        releaseEligibility: string;
+        publicationCapable: boolean;
+        unresolvedFacts: Array<{ key: string }>;
+      };
+      binding: {
+        sourceRevision: string;
+        package: { name: string; version: string };
+        proposedTag: string;
+        artifact: {
+          path: string;
+          size: number;
+          digests: { sha256: string; sha512: string };
+        };
+      };
+    };
+    expect(prepared).toMatchObject({
+      status: "prepared",
+      outcome: "created",
+      distribution: {
+        status: "inactive",
+        activation: "disabled",
+        releaseEligibility: "ineligible",
+        publicationCapable: false,
+      },
+      binding: {
+        sourceRevision: inspection.sourceRevision,
+        package: { name: inspection.package.name, version: inspection.package.version },
+        proposedTag: "v0.1.0",
+        artifact: { size: inspection.artifact.size },
+      },
+    });
+    expect(prepared.distribution.unresolvedFacts.map(({ key }) => key)).toEqual(
+      ACTIVATION_FACT_KEYS,
+    );
+    expect(prepared.binding.artifact.digests.sha256).toMatch(/^sha256:[a-f0-9]{64}$/);
+    expect(prepared.binding.artifact.digests.sha512).toMatch(/^sha512:[a-f0-9]{128}$/);
+    expect(readFileSync(join(candidateOutput, prepared.binding.artifact.path))).toEqual(
+      readFileSync(inspection.artifact.path),
+    );
+    expect(readFileSync(join(candidateOutput, prepared.binding.artifact.path))).toEqual(
+      readFileSync(result.artifact.frozenPath),
+    );
+    const candidateRecord = JSON.parse(
+      readFileSync(join(candidateOutput, "candidate.json"), "utf8"),
+    ) as {
+      candidateId: string;
+      distribution: { unresolvedFacts: Array<{ key: string }> };
+      binding: {
+        evidence: Record<
+          string,
+          { path: string; status: string; digest: string; rawDigest: string }
+        >;
+        releaseNotes: { path: string; preview: string; digest: string };
+      };
+    };
+    expect(candidateRecord.candidateId).toBe(prepared.candidateId);
+    expect(candidateRecord.distribution.unresolvedFacts.map(({ key }) => key)).toEqual(
+      ACTIVATION_FACT_KEYS,
+    );
+    for (const [name, sourcePath] of [
+      ["inspection", reportPath],
+      ["quality", qualityPath],
+      ["packedInstall", installReportPath],
+    ] as const) {
+      const evidence = candidateRecord.binding.evidence[name];
+      if (evidence === undefined) throw new Error(`missing persisted ${name} evidence`);
+      expect(evidence).toMatchObject({ status: "accepted" });
+      expect(evidence.digest).toMatch(/^sha256:[a-f0-9]{64}$/);
+      expect(evidence.rawDigest).toMatch(/^sha256:[a-f0-9]{64}$/);
+      expect(readFileSync(join(candidateOutput, evidence.path))).toEqual(readFileSync(sourcePath));
+    }
+    expect(readFileSync(join(candidateOutput, candidateRecord.binding.releaseNotes.path))).toEqual(
+      readFileSync(notesPath),
+    );
+    expect(candidateRecord.binding.releaseNotes.preview).toBe(readFileSync(notesPath, "utf8"));
+    expect(candidateRecord.binding.releaseNotes.digest).toMatch(/^sha256:[a-f0-9]{64}$/);
+
+    const repeated = npm(
+      REPO_ROOT,
+      "run",
+      "--silent",
+      "package:prepare-candidate",
+      "--",
+      ...candidateArgs,
+    );
+    expect({ status: repeated.status, stderr: repeated.stderr }).toEqual({
+      status: 0,
+      stderr: "",
+    });
+    expect(JSON.parse(String(repeated.stdout))).toMatchObject({
+      status: "prepared",
+      outcome: "reused",
+      candidateId: prepared.candidateId,
+    });
+
+    const changed = npm(
+      REPO_ROOT,
+      "run",
+      "--silent",
+      "package:prepare-candidate",
+      "--",
+      ...candidateArgs.map((value) => (value === "v0.1.0" ? "v0.1.1" : value)),
+    );
+    expect(changed.status).toBe(1);
+    expect(JSON.parse(String(changed.stdout))).toMatchObject({
+      status: "rejected",
+      releaseEligibility: "ineligible",
+      findings: [expect.objectContaining({ kind: "changed", field: "proposedTag" })],
+    });
+
+    expect(git(REPO_ROOT, "tag", "--list")).toBe(tagsBefore);
+    expect(readFileSync(externalStatePath)).toEqual(externalStateBefore);
   }, 300_000);
 });

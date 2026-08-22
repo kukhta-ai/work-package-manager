@@ -146,6 +146,7 @@ npm test             # the whole vitest suite (npm run test:unit / test:integrat
 npm run lint         # biome check (lint + format check, incl. the core import-boundary rule)
 npm run package:inspect -- --revision HEAD  # clean-build, pack, and inspect the local npm boundary
 npm run package:verify-install -- --report ../wpm-package-report.json  # install the accepted archive freshly
+npm run package:prepare-candidate -- --inspection ../wpm-package-report.json --install ../wpm-install-report.json --quality ../wpm-quality-report.json --tag <proposed-tag> --notes ../release-notes.md --output ../wpm-candidate
 ```
 
 To exercise the in-development command **as if it were installed**, link it onto your `PATH`:
@@ -170,6 +171,12 @@ To prove the consumer journey, save the inspection report outside the clean chec
 freezes those inspected archive bytes, installs them into a disposable HOME/workspace/global prefix, invokes
 every declared executable, resolves the declared package paths, and confirms installation did not change
 representative Codex or Claude Code configuration. It remains local and non-publishing.
+
+After saving the verifier's JSON output and a local accepted quality report, `package:prepare-candidate`
+persists one exact archive, its SHA-256/SHA-512 digests, the inspection/quality/install evidence, and a
+release-note preview. Repeating the same binding reuses its stable candidate identity; changed evidence is
+reported without replacing it. The record explicitly remains inactive and release-ineligible, and the command
+has no tag, release, registry, trust, credential, or remote-write capability.
 
 ## A note on the word "installer"
 
