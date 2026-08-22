@@ -3,8 +3,8 @@
 # Re-read on every resume; update at every phase boundary.
 # (Distinct from _bmad/ — that is BMAD's own install dir; this dot-dir is our tracker.)
 
-phase: 6
-phase_name: "Epic gate — authoring-agent-onboarding Epic 1"
+phase: 5
+phase_name: "Autonomous build (BAUT) — Epic 2 / ready for TASK-114"
 branch: feature/authoring-agent-onboarding
 epic: authoring-agent-onboarding
 # CURRENT SCOPE (2026-08-21): planning/readiness is READY; Backlog.md now contains the
@@ -249,7 +249,7 @@ specialists:
   pm:           {spawned: true,  id: "ad55659c67626dac3", role: "PRD conformance vs docs/00-05",        status: "P2 done — prd shim; no scope conflicts (noted wpm/installer bin placeholder)"}
   ux-designer:  {spawned: false,                          role: "UX spec",                              status: "skipped — no GUI per docs/12"}
   architect:    {spawned: true,  id: "af0958eff0e1846e5", role: "architecture conformance vs docs/12-13", status: "P3 done — architecture/epics/readiness=PASS; RESUME if a task reveals a design gap"}
-  tea:          {spawned: true,  id: "/root/onboarding_tea", role: "authoring-agent-onboarding trace/nfr/cold gate", last_skill: "bmad-testarch-trace @ onboarding Epic 1 (active)", status: "Initial 46/46 AC FULL; NFR and cold clean-clone gate in progress."}
+  tea:          {spawned: true,  id: "/root/onboarding_tea", role: "authoring-agent-onboarding trace/nfr/cold gate", last_skill: "bmad-testarch-trace @ onboarding Epic 1 (final PASS)", status: "46/46 AC FULL; NFR PASS/LOW; cold exact-head 1473/1473; 0 concerns."}
   sm:           {spawned: true,  id: "/root/sprint_tracker_worker", role: "authoring-agent-onboarding sprint setup + tracker coordination", last_skill: "bmad-sprint-planning @ authoring-agent-onboarding (live tracker rotation)", status: "Live generic tracker validated: 3 epics, 21 stories (7/11/3), all backlog; foundation tracker archived exactly."}
   worker:       {spawned: true,  id: "/root/onboarding_worker2", role: "persistent authoring-agent-onboarding story worker", last_skill: "bmad-qa-generate-e2e-tests @ task-113", status: "TASK-113 implementation and QA complete; reusable after Epic 1 gate."}
   # CROSS-CUTTING FIX in flight (worker #3): the task-25 lifecycle ⑤ MATERIALISE used ctx.root, but the real authoring backlog is
@@ -284,4 +284,4 @@ tooling:
   tool_target: "claude-code"
   claude_code_skills: ".claude/skills (56 skills)"
 
-last_updated: "2026-08-22T08:22:00Z"
+last_updated: "2026-08-22T08:45:00Z"
