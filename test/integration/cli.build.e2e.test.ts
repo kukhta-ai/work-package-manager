@@ -28,6 +28,9 @@ const builtCli = fileURLToPath(new URL("../../dist/cli.js", import.meta.url));
 const authoringBundleSkill = fileURLToPath(
   new URL("../../agent-skills/wpm-author-bundle/SKILL.md", import.meta.url),
 );
+const authoringRecipeSkill = fileURLToPath(
+  new URL("../../agent-skills/wpm-author-recipe/SKILL.md", import.meta.url),
+);
 const hasBuild = existsSync(builtCli);
 const describeIfBuilt = hasBuild ? describe : describe.skip;
 
@@ -753,6 +756,8 @@ describeIfBuilt("`wpm build package` E2E (task-83, through dist/cli.js)", () => 
       const WRAPPER_SENTINEL = "TASK95-WORKSPACE-WRAPPER-MUST-NOT-SHIP-91ad";
       const PREPARATION_SENTINEL = "TASK108-DISTRIBUTION-PREPARATION-MUST-NOT-SHIP-2e4c";
       const AUTHORING_SKILL_SENTINEL = "Turn the request into four short lists:";
+      const RECIPE_AUTHORING_SKILL_SENTINEL =
+        "The bundle's install backlog is the single recipe task source:";
       writeFileSync(join(proj, "wip", "_AGENTS.md"), `# root\n${ROOT_SENTINEL}\n`);
       writeFileSync(
         join(proj, "wip", "bundles", "web", "_AGENTS.md"),
@@ -770,11 +775,22 @@ describeIfBuilt("`wpm build package` E2E (task-83, through dist/cli.js)", () => 
       const nativeAuthoringSkill = readFileSync(authoringBundleSkill, "utf8");
       expect(nativeAuthoringSkill).toContain(AUTHORING_SKILL_SENTINEL);
       writeFileSync(join(nativeAuthoringSkillDir, "SKILL.md"), nativeAuthoringSkill);
+      const nativeRecipeSkillDir = join(proj, ".claude", "skills", "wpm-author-recipe");
+      mkdirSync(nativeRecipeSkillDir, { recursive: true });
+      const nativeRecipeSkill = readFileSync(authoringRecipeSkill, "utf8");
+      expect(nativeRecipeSkill).toContain(RECIPE_AUTHORING_SKILL_SENTINEL);
+      writeFileSync(join(nativeRecipeSkillDir, "SKILL.md"), nativeRecipeSkill);
 
       const tgz = join(proj, "builds", "demo-0.1.0.tgz");
       expect(cli(["build", "package", "--format", "tarball", "-C", proj], dir).code).toBe(0);
       const tarballLayout = archiveLayout(tgz);
       expect(tarballLayout.some((path) => path.includes("wpm-author-bundle"))).toBe(false);
+      expect(tarballLayout.some((path) => path.includes("wpm-author-recipe"))).toBe(false);
+      const tarballExtracted = join(dir, "task95-tarball-extracted");
+      mkdirSync(tarballExtracted);
+      execFileSync("tar", ["-xzf", tgz, "-C", tarballExtracted]);
+      expect(concatAllFiles(tarballExtracted)).not.toContain(AUTHORING_SKILL_SENTINEL);
+      expect(concatAllFiles(tarballExtracted)).not.toContain(RECIPE_AUTHORING_SKILL_SENTINEL);
 
       // The workspace created by init is intentionally NOT initialized as its own Git repository. Git format
       // must package the prepared ship set, not require/ascend to an enclosing repository's raw HEAD.
@@ -796,6 +812,7 @@ describeIfBuilt("`wpm build package` E2E (task-83, through dist/cli.js)", () => 
       expect(gitLayout.some((path) => path.startsWith("builds/"))).toBe(false);
       expect(gitLayout.some((path) => path.startsWith("distribution-preparation/"))).toBe(false);
       expect(gitLayout.some((path) => path.includes("wpm-author-bundle"))).toBe(false);
+      expect(gitLayout.some((path) => path.includes("wpm-author-recipe"))).toBe(false);
       expect(gitLayout).not.toContain("task95-leak.txt");
 
       const extracted = join(dir, "task95-git-extracted");
@@ -809,6 +826,7 @@ describeIfBuilt("`wpm build package` E2E (task-83, through dist/cli.js)", () => 
       expect(concatAllFiles(extracted)).not.toContain(WRAPPER_SENTINEL);
       expect(concatAllFiles(extracted)).not.toContain(PREPARATION_SENTINEL);
       expect(concatAllFiles(extracted)).not.toContain(AUTHORING_SKILL_SENTINEL);
+      expect(concatAllFiles(extracted)).not.toContain(RECIPE_AUTHORING_SKILL_SENTINEL);
 
       // AC#4: zip is part of the same parity assertion when both authoring and listing tools are available.
       if (hasZip() && hasUnzip()) {
@@ -819,6 +837,7 @@ describeIfBuilt("`wpm build package` E2E (task-83, through dist/cli.js)", () => 
         mkdirSync(zipExtracted);
         execFileSync("unzip", ["-q", zip, "-d", zipExtracted]);
         expect(concatAllFiles(zipExtracted)).not.toContain(AUTHORING_SKILL_SENTINEL);
+        expect(concatAllFiles(zipExtracted)).not.toContain(RECIPE_AUTHORING_SKILL_SENTINEL);
       }
     });
   });

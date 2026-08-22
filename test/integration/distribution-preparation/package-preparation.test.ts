@@ -283,6 +283,7 @@ describe("clean revision package preparation", () => {
         "dist/cli.js",
         "agent-skills/installer-builder/SKILL.md",
         "agent-skills/wpm-author-bundle/SKILL.md",
+        "agent-skills/wpm-author-recipe/SKILL.md",
         "docs/00-foundation-and-lineage.md",
         "templates/project/minimal/template.yml",
       ]),
@@ -311,11 +312,55 @@ describe("clean revision package preparation", () => {
     expect(readdirSync(extractedSkillRoot)).toEqual(["SKILL.md"]);
     expect(readFileSync(extractedSkillPath, "utf8")).toBe(expectedSkill);
 
+    const extractedRecipeSkillRoot = join(
+      extracted,
+      "package",
+      "agent-skills",
+      "wpm-author-recipe",
+    );
+    const extractedRecipeSkillPath = join(extractedRecipeSkillRoot, "SKILL.md");
+    const expectedRecipeSkill = readFileSync(
+      join(REPO_ROOT, "agent-skills", "wpm-author-recipe", "SKILL.md"),
+      "utf8",
+    );
+    expect(readdirSync(extractedRecipeSkillRoot)).toEqual(["SKILL.md"]);
+    expect(readFileSync(extractedRecipeSkillPath, "utf8")).toBe(expectedRecipeSkill);
+
     rmSync(source, { recursive: true, force: true });
     expect(existsSync(source)).toBe(false);
     const sourceFreeSkill = readFileSync(extractedSkillPath, "utf8");
     expect(sourceFreeSkill).toContain("name: wpm-author-bundle");
     expect(sourceFreeSkill).toContain("## Establish the boundary before changing state");
     expect(sourceFreeSkill).not.toMatch(/\]\((?:\.\.?\/|references\/|scripts\/|assets\/)/);
+
+    const sourceFreeRecipeSkill = readFileSync(extractedRecipeSkillPath, "utf8");
+    expect(sourceFreeRecipeSkill).toContain("name: wpm-author-recipe");
+    expect(sourceFreeRecipeSkill).toContain("## Model current desired state");
+    expect(sourceFreeRecipeSkill).not.toMatch(/\]\((?:\.\.?\/|references\/|scripts\/|assets\/)/);
+
+    const nativeCodexRecipeRoot = join(
+      root,
+      "codex-host",
+      ".agents",
+      "skills",
+      "wpm-author-recipe",
+    );
+    const nativeClaudeRecipeRoot = join(
+      root,
+      "claude-host",
+      ".claude",
+      "skills",
+      "wpm-author-recipe",
+    );
+    mkdirSync(nativeCodexRecipeRoot, { recursive: true });
+    mkdirSync(nativeClaudeRecipeRoot, { recursive: true });
+    copyFileSync(extractedRecipeSkillPath, join(nativeCodexRecipeRoot, "SKILL.md"));
+    copyFileSync(extractedRecipeSkillPath, join(nativeClaudeRecipeRoot, "SKILL.md"));
+    expect(readFileSync(join(nativeCodexRecipeRoot, "SKILL.md"), "utf8")).toBe(
+      sourceFreeRecipeSkill,
+    );
+    expect(readFileSync(join(nativeClaudeRecipeRoot, "SKILL.md"), "utf8")).toBe(
+      sourceFreeRecipeSkill,
+    );
   }, 240_000);
 });
