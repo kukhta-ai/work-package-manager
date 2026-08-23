@@ -1,15 +1,18 @@
 import { execFileSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import {
+  cpSync,
   existsSync,
   lstatSync,
   mkdirSync,
   readdirSync,
   readFileSync,
   readlinkSync,
+  rmSync,
   symlinkSync,
   writeFileSync,
 } from "node:fs";
-import { join } from "node:path";
+import { join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { toPosix } from "../../src/util/posix-path.js";
@@ -33,6 +36,9 @@ const authoringRecipeSkill = fileURLToPath(
 );
 const authoringSkillSkill = fileURLToPath(
   new URL("../../agent-skills/wpm-author-skill/SKILL.md", import.meta.url),
+);
+const reviewPackageSkill = fileURLToPath(
+  new URL("../../agent-skills/wpm-review-package/SKILL.md", import.meta.url),
 );
 const hasBuild = existsSync(builtCli);
 const describeIfBuilt = hasBuild ? describe : describe.skip;
@@ -108,6 +114,41 @@ function concatAllFiles(root: string): string {
     }
   }
   return blob;
+}
+
+/** Snapshot paths, file bytes, and symlink targets without following directory links. */
+function snapshotTree(root: string): string[] {
+  const entries: string[] = [];
+  const walk = (absolute: string): void => {
+    for (const entry of readdirSync(absolute, { withFileTypes: true })) {
+      const child = join(absolute, entry.name);
+      const path = toPosix(relative(root, child));
+      const stat = lstatSync(child);
+      if (stat.isSymbolicLink()) {
+        entries.push(`link ${path} -> ${readlinkSync(child)}`);
+      } else if (stat.isDirectory()) {
+        entries.push(`dir ${path}`);
+        walk(child);
+      } else {
+        const digest = createHash("sha256").update(readFileSync(child)).digest("hex");
+        entries.push(`file ${path} ${digest}`);
+      }
+    }
+  };
+  walk(root);
+  return entries.sort();
+}
+
+/** Resolve the enclosing Git worktree, or return undefined when `root` is deliberately isolated from Git. */
+function gitTopLevel(root: string): string | undefined {
+  try {
+    return execFileSync("git", ["-C", root, "rev-parse", "--show-toplevel"], {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "pipe"],
+    }).trim();
+  } catch {
+    return undefined;
+  }
 }
 
 /**
@@ -745,6 +786,116 @@ describeIfBuilt("`wpm build package` E2E (task-83, through dist/cli.js)", () => 
         expect(afterDryRun.stdout).not.toContain(path);
       for (const path of controls) expect(afterDryRun.stdout).toContain(path);
       packageLayouts("deregistered", false);
+    });
+  });
+
+  it("TASK-118 AC#5/#6/#8/#10 — fresh multi-format review builds use an equivalent Git-isolated copy while the original stays byte-for-byte unchanged", async () => {
+    if (process.platform === "win32") return;
+    await withTempDir(async (dir) => {
+      const sourceRepo = join(dir, "source-repository");
+      mkdirSync(sourceRepo);
+      execFileSync("git", ["init", "--quiet"], { cwd: sourceRepo });
+      const sourceAscentMarker = "TASK118-SOURCE-GIT-ASCENT-MUST-NOT-SHIP-a712";
+      writeFileSync(join(sourceRepo, "source-only-review-marker.txt"), sourceAscentMarker);
+
+      const proj = initProject(sourceRepo);
+      expect(cli(["project", "targets", "add", "claude-code", "-C", proj], dir).code).toBe(0);
+      expect(cli(["bundle", "new", "web", "-C", proj], dir).code).toBe(0);
+      expect(gitTopLevel(proj)).toBe(sourceRepo);
+
+      // Give the review subject a pre-existing prospective deliverable. Review must not replace these bytes.
+      expect(cli(["build", "package", "--format", "tarball", "-C", proj], dir).code).toBe(0);
+      const originalArchive = join(proj, "builds", "demo-0.1.0.tgz");
+      const originalArchiveDigest = createHash("sha256")
+        .update(readFileSync(originalArchive))
+        .digest("hex");
+      const authoringFrontDoorMarker = "This is an authoring workspace, not a project to install.";
+      expect(readFileSync(join(proj, "AGENTS.md"), "utf8")).toContain(authoringFrontDoorMarker);
+
+      // Establish the immutable subject baseline BEFORE copying or planting any review-only marker.
+      const before = snapshotTree(proj);
+      const originalAliasTarget = readlinkSync(join(proj, "CLAUDE.md"));
+      const reviewCopy = join(dir, "isolated-review", "workspace");
+      mkdirSync(join(dir, "isolated-review"));
+      cpSync(proj, reviewCopy, {
+        recursive: true,
+        dereference: false,
+        verbatimSymlinks: true,
+      });
+
+      // The unmodified copy is equivalent at the review boundary and cannot ascend to the source repository.
+      expect(snapshotTree(reviewCopy)).toEqual(before);
+      expect(snapshotTree(proj)).toEqual(before);
+      expect(gitTopLevel(reviewCopy)).toBeUndefined();
+      expect(lstatSync(join(reviewCopy, "CLAUDE.md")).isSymbolicLink()).toBe(true);
+      expect(readlinkSync(join(reviewCopy, "CLAUDE.md"))).toBe(originalAliasTarget);
+
+      // Copied archives are stale input, never proof of this review. Every format must create absent output.
+      rmSync(join(reviewCopy, "builds"), { recursive: true, force: true });
+      mkdirSync(join(reviewCopy, "builds"));
+      expect(readdirSync(join(reviewCopy, "builds"))).toEqual([]);
+
+      // Plant exact workspace-native authoring paths and unique content in the disposable copy only.
+      const marker = "TASK118-WPM-REVIEW-PACKAGE-MUST-NOT-SHIP-6d29";
+      const reviewBytes = `${readFileSync(reviewPackageSkill, "utf8")}\n${marker}\n`;
+      for (const nativePath of [
+        join(reviewCopy, ".agents", "skills", "wpm-review-package", "SKILL.md"),
+        join(reviewCopy, ".claude", "skills", "wpm-review-package", "SKILL.md"),
+      ]) {
+        mkdirSync(join(nativePath, ".."), { recursive: true });
+        writeFileSync(nativePath, reviewBytes);
+      }
+      expect(snapshotTree(proj)).toEqual(before);
+
+      const dryRun = cli(["build", "dry-run", "-C", reviewCopy], dir);
+      expect(dryRun.code).toBe(0);
+
+      const formats: Array<{ name: "tarball" | "git" | "zip"; ext: "tgz" | "zip" }> = [
+        { name: "tarball", ext: "tgz" },
+        { name: "git", ext: "tgz" },
+      ];
+      if (hasZip() && hasUnzip()) formats.push({ name: "zip", ext: "zip" });
+
+      const layouts: string[][] = [];
+      for (const format of formats) {
+        const copyArchive = join(reviewCopy, "builds", `demo-0.1.0.${format.ext}`);
+        rmSync(copyArchive, { force: true });
+        expect(existsSync(copyArchive)).toBe(false);
+
+        const packed = cli(["build", "package", "--format", format.name, "-C", reviewCopy], dir);
+        expect(packed.code).toBe(0);
+        expect(existsSync(copyArchive)).toBe(true);
+
+        const layout = archiveLayout(copyArchive);
+        layouts.push(layout);
+        expect(layout.some((path) => path.includes("wpm-review-package"))).toBe(false);
+        expect(
+          layout.some((path) => path.startsWith(".agents/") || path.startsWith(".claude/")),
+        ).toBe(false);
+        expect(layout).not.toContain("source-only-review-marker.txt");
+
+        const extracted = join(dir, `task118-review-copy-${format.name}-extracted`);
+        mkdirSync(extracted);
+        if (format.ext === "zip") execFileSync("unzip", ["-q", copyArchive, "-d", extracted]);
+        else execFileSync("tar", ["-xzf", copyArchive, "-C", extracted]);
+        const extractedBytes = concatAllFiles(extracted);
+        expect(extractedBytes).not.toContain(marker);
+        expect(extractedBytes).not.toContain(sourceAscentMarker);
+        expect(extractedBytes).not.toContain(authoringFrontDoorMarker);
+        expect(lstatSync(join(extracted, "CLAUDE.md")).isSymbolicLink()).toBe(true);
+        expect(readlinkSync(join(extracted, "CLAUDE.md"))).toBe("AGENTS.md");
+        expect(lstatSync(join(extracted, "bundles", "web", "CLAUDE.md")).isSymbolicLink()).toBe(
+          true,
+        );
+        expect(readlinkSync(join(extracted, "bundles", "web", "CLAUDE.md"))).toBe("AGENTS.md");
+      }
+      for (const layout of layouts.slice(1)) expect(layout).toEqual(layouts[0]);
+
+      // The exact original paths, bytes, links, and pre-existing archive remain unchanged after real build.
+      expect(snapshotTree(proj)).toEqual(before);
+      expect(createHash("sha256").update(readFileSync(originalArchive)).digest("hex")).toBe(
+        originalArchiveDigest,
+      );
     });
   });
 
