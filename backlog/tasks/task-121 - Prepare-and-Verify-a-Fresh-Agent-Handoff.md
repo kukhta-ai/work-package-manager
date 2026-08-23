@@ -4,7 +4,7 @@ title: Prepare and Verify a Fresh-Agent Handoff
 status: In Progress
 assignee: []
 created_date: '2026-08-21 15:01'
-updated_date: '2026-08-23 14:12'
+updated_date: '2026-08-23 14:56'
 labels:
   - onboarding-epic-2
   - authoring-onboarding
@@ -47,7 +47,7 @@ Non-goals: Spawning, authenticating, or owning an agent process; claiming agent 
 ## Implementation Notes
 
 <!-- SECTION:NOTES:BEGIN -->
-Delivery policy fast-gates-v1 is effective immediately: focused tests, typecheck, Biome, relevant build, and one stable-hash package proof only if needed. The exact full npm test and live-client matrix are post-TASK127 Phase-6 gates, not TASK-121 review gates.
+Literal bmad-create-story, bmad-dev-story, and bmad-qa-generate-e2e-tests completed for Story 2.8. Worker focused, static, build, packed source-free, and generated non-leakage gates pass; stable product/test hash b4c1b1a38f0827e3004d8611344403df30a0208a24cdadf3ec9c173bb84a22a9. Independent bmad-story-automator-review and the exact stable full npm test remain pending.
 <!-- SECTION:NOTES:END -->
 
 ## Definition of Done
