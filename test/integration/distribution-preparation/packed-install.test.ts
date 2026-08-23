@@ -37,6 +37,7 @@ const WORKSPACE_SKILL_NAMES = [
   "wpm-author-skill",
   "wpm-review-package",
 ] as const;
+const PERSONAL_BOOTSTRAP_SKILL_NAME = "wpm-create-package";
 
 function temporaryRoot(prefix: string): string {
   const root = mkdtempSync(join(tmpdir(), prefix));
@@ -282,6 +283,35 @@ describe("fresh local packed-install and inactive-candidate journey", () => {
     expect(result.configuration.surfaces.length).toBeGreaterThanOrEqual(6);
     expect(result.configuration.surfaces.every(({ unchanged }) => unchanged)).toBe(true);
 
+    const packagedPersonalSkill = join(
+      result.environment.packageRoot,
+      "agent-skills",
+      PERSONAL_BOOTSTRAP_SKILL_NAME,
+      "SKILL.md",
+    );
+    const packagedPersonalSkillText = readFileSync(packagedPersonalSkill, "utf8");
+    expect(packagedPersonalSkillText).toContain("name: wpm-create-package");
+    expect(packagedPersonalSkillText).toContain(
+      "## Establish readiness before any write or mutation",
+    );
+    expect(readdirSync(dirname(packagedPersonalSkill))).toEqual(["SKILL.md"]);
+    expect(result.resources.resolvedPaths).toContain("agent-skills/wpm-create-package/SKILL.md");
+
+    for (const personalScope of [".agents", ".claude"]) {
+      const personalSkillRoot = join(
+        consumer,
+        "home",
+        personalScope,
+        "skills",
+        PERSONAL_BOOTSTRAP_SKILL_NAME,
+      );
+      mkdirSync(personalSkillRoot, { recursive: true });
+      copyFileSync(packagedPersonalSkill, join(personalSkillRoot, "SKILL.md"));
+      expect(readFileSync(join(personalSkillRoot, "SKILL.md"), "utf8")).toBe(
+        packagedPersonalSkillText,
+      );
+    }
+
     expect(readFileSync(join(consumer, "home", ".agents", "config.toml"), "utf8")).toBe(
       'model = "preserve-codex-personal"\n',
     );
@@ -333,6 +363,8 @@ describe("fresh local packed-install and inactive-candidate journey", () => {
       status: 0,
       stderr: "",
     });
+    const installedManifest = readFileSync(join(installedWorkspace, "wip", "manifest.yml"), "utf8");
+    expect(installedManifest).toMatch(/^targets:\s*\[\]\s*$/m);
     const installedState = JSON.parse(
       readFileSync(join(installedWorkspace, ".wpm-authoring.json"), "utf8"),
     ) as {
@@ -423,6 +455,17 @@ describe("fresh local packed-install and inactive-candidate journey", () => {
           ),
         );
       }
+      expect(
+        existsSync(
+          join(
+            installedWorkspace,
+            nativeScope,
+            "skills",
+            PERSONAL_BOOTSTRAP_SKILL_NAME,
+            "SKILL.md",
+          ),
+        ),
+      ).toBe(false);
     }
     const installedAgents = readFileSync(join(installedWorkspace, "AGENTS.md"), "utf8");
     const installedClaude = readFileSync(join(installedWorkspace, "CLAUDE.md"), "utf8");

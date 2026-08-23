@@ -282,6 +282,7 @@ describe("clean revision package preparation", () => {
         "package.json",
         "dist/cli.js",
         "agent-skills/installer-builder/SKILL.md",
+        "agent-skills/wpm-create-package/SKILL.md",
         "agent-skills/wpm-author/SKILL.md",
         "agent-skills/wpm-author-bundle/SKILL.md",
         "agent-skills/wpm-author-recipe/SKILL.md",
@@ -361,6 +362,20 @@ describe("clean revision package preparation", () => {
     expect(readdirSync(extractedReviewSkillRoot)).toEqual(["SKILL.md"]);
     expect(readFileSync(extractedReviewSkillPath, "utf8")).toBe(expectedReviewSkill);
 
+    const extractedCreatePackageSkillRoot = join(
+      extracted,
+      "package",
+      "agent-skills",
+      "wpm-create-package",
+    );
+    const extractedCreatePackageSkillPath = join(extractedCreatePackageSkillRoot, "SKILL.md");
+    const expectedCreatePackageSkill = readFileSync(
+      join(REPO_ROOT, "agent-skills", "wpm-create-package", "SKILL.md"),
+      "utf8",
+    );
+    expect(readdirSync(extractedCreatePackageSkillRoot)).toEqual(["SKILL.md"]);
+    expect(readFileSync(extractedCreatePackageSkillPath, "utf8")).toBe(expectedCreatePackageSkill);
+
     rmSync(source, { recursive: true, force: true });
     expect(existsSync(source)).toBe(false);
     const sourceFreeRouterSkill = readFileSync(extractedRouterSkillPath, "utf8");
@@ -387,6 +402,15 @@ describe("clean revision package preparation", () => {
     expect(sourceFreeReviewSkill).toContain("name: wpm-review-package");
     expect(sourceFreeReviewSkill).toContain("## Evaluate the complete bounded catalog");
     expect(sourceFreeReviewSkill).not.toMatch(/\]\((?:\.\.?\/|references\/|scripts\/|assets\/)/);
+
+    const sourceFreeCreatePackageSkill = readFileSync(extractedCreatePackageSkillPath, "utf8");
+    expect(sourceFreeCreatePackageSkill).toContain("name: wpm-create-package");
+    expect(sourceFreeCreatePackageSkill).toContain(
+      "## Establish readiness before any write or mutation",
+    );
+    expect(sourceFreeCreatePackageSkill).not.toMatch(
+      /\]\((?:\.\.?\/|references\/|scripts\/|assets\/)/,
+    );
 
     const nativeCodexBundleRoot = join(
       root,
@@ -476,6 +500,31 @@ describe("clean revision package preparation", () => {
     );
     expect(readFileSync(join(nativeClaudeReviewRoot, "SKILL.md"), "utf8")).toBe(
       sourceFreeReviewSkill,
+    );
+
+    const nativeCodexCreatePackageRoot = join(
+      root,
+      "codex-host",
+      ".agents",
+      "skills",
+      "wpm-create-package",
+    );
+    const nativeClaudeCreatePackageRoot = join(
+      root,
+      "claude-host",
+      ".claude",
+      "skills",
+      "wpm-create-package",
+    );
+    mkdirSync(nativeCodexCreatePackageRoot, { recursive: true });
+    mkdirSync(nativeClaudeCreatePackageRoot, { recursive: true });
+    copyFileSync(extractedCreatePackageSkillPath, join(nativeCodexCreatePackageRoot, "SKILL.md"));
+    copyFileSync(extractedCreatePackageSkillPath, join(nativeClaudeCreatePackageRoot, "SKILL.md"));
+    expect(readFileSync(join(nativeCodexCreatePackageRoot, "SKILL.md"), "utf8")).toBe(
+      sourceFreeCreatePackageSkill,
+    );
+    expect(readFileSync(join(nativeClaudeCreatePackageRoot, "SKILL.md"), "utf8")).toBe(
+      sourceFreeCreatePackageSkill,
     );
 
     const nativeCodexRouterRoot = join(root, "codex-host", ".agents", "skills", "wpm-author");
