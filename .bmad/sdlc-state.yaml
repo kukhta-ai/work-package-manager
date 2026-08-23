@@ -258,7 +258,7 @@ specialists:
   # by the orchestrator's real-binary spot-check. Fix: materialise into join(ctx.root, AUTHORING_BACKLOG_DIR) [shared constant] +
   # update the FakeBacklog tests to init at .authoring-backlog (parity) + a real-backlog regression test. Rides feature/cli-targets.
   worker_retired: {id: "a67b0906de8ff721d", reason: "broke on continuations -- big authoring runs worked but short follow-ups returned 0 tool_uses + got confused; retired after task-30. Do not re-dispatch."}
-  reviewer:     {spawned: true,  id: "/root/onboarding_reviewer3", role: "replacement independent authoring-agent-onboarding reviewer", last_skill: "bmad-story-automator-review @ task-120 cycle 1 APPROVE", status: "TASK-121 read-only preload and worker QA handoff complete; review cycle 1 ready."}
+  reviewer:     {spawned: true,  id: "/root/onboarding_reviewer3", role: "replacement independent authoring-agent-onboarding reviewer", last_skill: "bmad-story-automator-review @ task-121 cycle 1 APPROVE", status: "TASK-121 APPROVE; 7/7 AC, 0 open findings; stable full gate 1645/1645."}
   investigator: {spawned: true, id: "/root/ci_investigator", role: "systematic debugging at the epic gate", last_skill: "bmad-investigate @ windows-ci-gate follow-up #2", status: "Concluded (High): five mechanisms exhaust Windows Node22=4 and Node20=7 residual failures; bounded product/test fix plan recorded."}
   retro:        {spawned: true, id: "/root/onboarding_retro", role: "authoring-agent-onboarding epic retrospective", last_skill: "bmad-retrospective @ onboarding Epic 1", status: "GREEN; no blockers or Epic 2 replan; artifact validated."}
 
@@ -286,4 +286,4 @@ tooling:
   tool_target: "claude-code"
   claude_code_skills: ".claude/skills (56 skills)"
 
-last_updated: "2026-08-23T14:56:34Z"
+last_updated: "2026-08-23T15:35:47Z"

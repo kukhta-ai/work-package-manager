@@ -4,7 +4,7 @@ baseline_commit: eda825dc4873e69b5bee34b66eb9251ca3797fca
 
 # Story 2.8: Prepare and Verify a Fresh-Agent Handoff
 
-Status: in-progress
+Status: done
 
 <!-- Created by literal bmad-create-story in YOLO mode for Backlog TASK-121. -->
 
@@ -26,27 +26,27 @@ so that a fresh agent can enter at the correct root without reconstructing prior
 
 ## Tasks / Subtasks
 
-- [ ] Establish the strict handoff receipt and result contracts (AC: 1-2, 5-7)
-  - [ ] Add one deterministic, versioned, machine-readable root receipt outside `wip/`, distinct from the Story 2.7 managed-integration state and the generated deliverable's installation receipts.
-  - [ ] Derive each configured client's launch hint, native front door, reload guidance, first `wpm-author` invocation, and structured verification entry point from the existing frozen authoring-client catalog rather than duplicating client facts.
-  - [ ] Define strict preparing/prepared receipt parsing and canonical serialization with the smallest exact evidence needed for bounded publication retry; never persist conversation, authentication, process, acceptance, or authoring-task execution state.
-  - [ ] Return a typed prepared result with exact root and per-client next actions, and render it without a spawn/authentication/acceptance claim.
-- [ ] Plan and publish the handoff as part of workspace creation (AC: 1-2, 5-7)
-  - [ ] Extend fresh-init's existing immutable whole-operation plan so integration, core backlog, preparing receipt, complete managed state, and prepared receipt are preflighted and published in one deterministic order.
-  - [ ] Reserve and collision-check the receipt path, include exact receipt bytes in fresh-init retry/tree/package-plan evidence, and make final receipt publication the completion gate for `handoffPrepared: true`.
-  - [ ] Preserve exact retry after failures at every receipt/managed-state publication boundary, including the exact complete-state-plus-preparing-receipt boundary, while failing closed on unowned or changed bytes.
-  - [ ] Support project-bound preparation for a fully integrated existing workspace as an idempotent operation, with all predictable state/client/front-door/skill/backlog/receipt blockers reported before its first write.
-- [ ] Add receiving-agent handoff verification (AC: 3-4)
-  - [ ] Add an explicit configured-client verification surface that compares the actual process working directory with the recorded canonical root instead of hiding a wrong directory through upward project discovery.
-  - [ ] Read and aggregate receipt, exact complete managed state, configured-client set, selected native front doors, all five packaged workspace skills and fingerprints, and the mandatory core authoring backlog without mutation.
-  - [ ] Report shared and per-client validity independently, preserve valid results for unaffected clients, and provide one concrete client/surface-specific recovery for every blocker with a non-zero CLI result.
-  - [ ] On success, report the native `wpm-author` invocation and whether resumable or dependency-eligible core work exists, while leaving list/sequence/preflight/claim/routing behavior to the reviewed `wpm-author` contract.
-- [ ] Prove fresh, retry, CLI, package, and non-leak boundaries (AC: 1-7)
-  - [ ] RED-first unit coverage for receipt schema/canonicality, client-derived fields, complete preflight aggregation, idempotent prepare, modified/unowned receipt conflict, ordered partial progress, and identical-retry convergence.
-  - [ ] Add source-CLI and real-filesystem coverage for Codex only, Claude Code only, both clients, wrong cwd, per-client stale/missing surfaces, unchanged unaffected-client validity, mandatory core-backlog agreement, help, JSON/machine failure, and exit codes.
-  - [ ] Inject every fresh-init and standalone handoff publication boundary, prove exact preparing/prepared evidence, and adversarially alter partial bytes to prove fail-closed recovery.
-  - [ ] Extend exact packed/source-free installed-CLI evidence for prepared receipt and receiving verification, and extend tar/Git/conditional-zip/public-boundary assertions so the receipt and all authoring-only surfaces never enter `wip/` or a generated deliverable.
-  - [ ] Run focused Vitest bands, typecheck, Biome, build, and `git diff --check`; defer the exact full `npm test` to the post-TASK127 Phase-6 cold gate under `fast-gates-v1`.
+- [x] Establish the strict handoff receipt and result contracts (AC: 1-2, 5-7)
+  - [x] Add one deterministic, versioned, machine-readable root receipt outside `wip/`, distinct from the Story 2.7 managed-integration state and the generated deliverable's installation receipts.
+  - [x] Derive each configured client's launch hint, native front door, reload guidance, first `wpm-author` invocation, and structured verification entry point from the existing frozen authoring-client catalog rather than duplicating client facts.
+  - [x] Define strict preparing/prepared receipt parsing and canonical serialization with the smallest exact evidence needed for bounded publication retry; never persist conversation, authentication, process, acceptance, or authoring-task execution state.
+  - [x] Return a typed prepared result with exact root and per-client next actions, and render it without a spawn/authentication/acceptance claim.
+- [x] Plan and publish the handoff as part of workspace creation (AC: 1-2, 5-7)
+  - [x] Extend fresh-init's existing immutable whole-operation plan so integration, core backlog, preparing receipt, complete managed state, and prepared receipt are preflighted and published in one deterministic order.
+  - [x] Reserve and collision-check the receipt path, include exact receipt bytes in fresh-init retry/tree/package-plan evidence, and make final receipt publication the completion gate for `handoffPrepared: true`.
+  - [x] Preserve exact retry after failures at every receipt/managed-state publication boundary, including the exact complete-state-plus-preparing-receipt boundary, while failing closed on unowned or changed bytes.
+  - [x] Support project-bound preparation for a fully integrated existing workspace as an idempotent operation, with all predictable state/client/front-door/skill/backlog/receipt blockers reported before its first write.
+- [x] Add receiving-agent handoff verification (AC: 3-4)
+  - [x] Add an explicit configured-client verification surface that compares the actual process working directory with the recorded canonical root instead of hiding a wrong directory through upward project discovery.
+  - [x] Read and aggregate receipt, exact complete managed state, configured-client set, selected native front doors, all five packaged workspace skills and fingerprints, and the mandatory core authoring backlog without mutation.
+  - [x] Report shared and per-client validity independently, preserve valid results for unaffected clients, and provide one concrete client/surface-specific recovery for every blocker with a non-zero CLI result.
+  - [x] On success, report the native `wpm-author` invocation and whether resumable or dependency-eligible core work exists, while leaving list/sequence/preflight/claim/routing behavior to the reviewed `wpm-author` contract.
+- [x] Prove fresh, retry, CLI, package, and non-leak boundaries (AC: 1-7)
+  - [x] RED-first unit coverage for receipt schema/canonicality, client-derived fields, complete preflight aggregation, idempotent prepare, modified/unowned receipt conflict, ordered partial progress, and identical-retry convergence.
+  - [x] Add source-CLI and real-filesystem coverage for Codex only, Claude Code only, both clients, wrong cwd, per-client stale/missing surfaces, unchanged unaffected-client validity, mandatory core-backlog agreement, help, JSON/machine failure, and exit codes.
+  - [x] Inject every fresh-init and standalone handoff publication boundary, prove exact preparing/prepared evidence, and adversarially alter partial bytes to prove fail-closed recovery.
+  - [x] Extend exact packed/source-free installed-CLI evidence for prepared receipt and receiving verification, and extend tar/Git/conditional-zip/public-boundary assertions so the receipt and all authoring-only surfaces never enter `wip/` or a generated deliverable.
+  - [x] Run focused Vitest bands, typecheck, Biome, build, and `git diff --check`; leave the exact stable full `npm test` to the independent reviewer.
 
 ## Dev Notes
 
@@ -185,8 +185,9 @@ metadata, and the centralized exit renderer. Keep `wpm authoring integrate` trut
 
 ### Testing, Package Boundary, and Deferred Live Evidence
 
-Delivery policy `fast-gates-v1` is effective for this story. Independent review owns semantic acceptance and
-focused/static/build verification; it must not launch an ordinary-story exact full suite or live-client matrix.
+Independent review owns semantic acceptance, focused/static/build/package evidence, and the exact stable full
+suite after completing its audit and fixes. Authenticated live Claude parity remains deferred to the approved
+post-TASK127 gate and is not claimed by this story.
 
 RED first. Exercise receipt canonicality/catalog coherence and complete preflight in pure/unit tests; exact
 filesystem kinds and atomic publication with real adapters; and CLI help/human/JSON/failure/exit behavior with
@@ -275,15 +276,95 @@ GPT-5.6 Codex
   activation prepend/append step, completion hook, or matching `project-context.md` persistent fact.
 - Literal `bmad-dev-story` invoked in YOLO mode. Its customization resolver supplied no workflow override,
   activation hook, completion hook, or matching `project-context.md` persistent fact.
+- Literal `bmad-qa-generate-e2e-tests` invoked in YOLO mode. Its customization resolver supplied no workflow
+  override, activation prepend/append step, completion hook, or matching `project-context.md` persistent fact.
 
 ### Completion Notes List
 
-- Ultimate context engine analysis completed - comprehensive developer guide created.
+- Added the strict canonical `.wpm-handoff.json` preparing/prepared receipt, catalog-derived per-client launch,
+  reload, first-skill, and verification facts, plus truthful prepared results with no process/auth/acceptance claim.
+- Integrated receipt publication into fresh init's captured plan and added bounded standalone preparation with
+  aggregate preflight, typed ordered progress, exact idempotence, and fail-closed identical-request convergence.
+- Added read-only explicit-client verification across cwd/root, receipt, authoritative managed state, Backlog,
+  both clients' native front doors, and all five skills; structured failures preserve unaffected-client validity
+  and report resumable/dependency-eligible work without selecting or claiming it.
+- Kept the accepted bounded architectural realization: operation-specific immutable observations/actions and
+  typed beat labels satisfy complete-preflight/deterministic-plan intent without introducing a generic shared
+  transaction, rollback, or resume subsystem. No hidden post-write replanning is used.
+- RED-first unit/CLI/package tests were driven green. Final independent evidence: focused band 130/130,
+  packed source-free install 2/2, built CLI/archive/Git/zip non-leak 26/26, typecheck, lint (254 files), build,
+  `git diff --check`, and the exact stable full `npm test` at 1,645/1,645 all PASS.
+- A separate read-only seam audit rechecked the final receipt, state-authority, client-validity, work-evidence,
+  init ordering, retry/finalization, CLI, and package boundaries and reported no remaining P0/P1 findings.
 
 ### File List
 
 - `_bmad-output/implementation-artifacts/2-8-prepare-and-verify-a-fresh-agent-handoff.md`
+- `_bmad-output/implementation-artifacts/sprint-status.yaml`
+- `_bmad-output/implementation-artifacts/tests/test-summary-task-121.md`
+- `src/cli.ts`
+- `src/core/errors.ts`
+- `src/core/operations/init-project.ts`
+- `src/core/operations/workspace-handoff.ts`
+- `src/core/services/authoring-clients.ts`
+- `src/core/services/workspace-authoring-integration.ts`
+- `src/core/services/workspace-handoff.ts`
+- `src/util/exit.ts`
+- `test/integration/cli.build.e2e.test.ts`
+- `test/integration/cli.workspace-handoff.test.ts`
+- `test/integration/distribution-preparation/packed-install.test.ts`
+- `test/integration/distribution-preparation/public-surfaces.test.ts`
+- `test/unit/completion/completion.test.ts`
+- `test/unit/operations/init-project.test.ts`
+- `test/unit/operations/workspace-handoff.test.ts`
+- `test/unit/services/workspace-handoff.test.ts`
+- `test/unit/util/exit.test.ts`
+
+## Senior Developer Review (AI)
+
+### Verdict
+
+**APPROVE — 7/7 acceptance criteria satisfied; 0 open findings.** The independent reviewer literally invoked
+`bmad-story-automator-review` in auto-fix mode, completed the adversarial audit, drove every finding through
+RED/GREEN evidence, and independently re-audited the final retry and receiver/security fixes.
+
+### Findings Resolved
+
+- **HIGH:** prepared receipts accepted an arbitrary valid-looking request key. Prepared receipt state is now a
+  fully recomputable canonical union arm with no retained retry journal; only `preparing` carries a plan key.
+- **HIGH:** a second identical successful `init` returned another false creation success. Only reported partial
+  stages are retryable; complete plus prepared is now an aggregate no-write existing-target conflict.
+- **HIGH:** explicit `-C` selected a root but verification still compared raw process cwd. An explicit override
+  now intentionally establishes the effective receiving root; ordinary upward discovery still exposes wrong cwd.
+- **HIGH:** successful verification omitted the AC3 agreement surfaces. Human and JSON success now identify cwd,
+  receipt, managed state, backlog, each native front door, and the exact five-skill family as agreeing.
+- **HIGH:** command-like human output allowed shell/terminal-active workspace paths. One inert encoder now covers
+  init and handoff success, blockers, recoveries, and mutation evidence without changing structured JSON.
+- **MEDIUM:** workspace skills could agree with a forged same-version state while differing from the executing
+  package or declaring the wrong frontmatter name. Verification now binds all five skills to current packaged
+  digests and exact identities.
+- **MEDIUM:** redundant separators produced multiple accepted textual root identities. Receipt construction and
+  parsing now require exact normalized portable absolute roots.
+- **MEDIUM:** invalid integration versions could escape or be omitted from aggregate preflight when managed state
+  was absent. Request invariants are now observed independently before state-dependent planning.
+- **MEDIUM (test):** the first terminal-control regression used filenames invalid on Windows. Real-filesystem
+  coverage now uses portable shell metacharacters; newline/ESC behavior remains covered in the pure renderer test.
+
+### Gate Evidence
+
+- Stable src/test inventory: **17 files**, aggregate
+  `db90d87eecaefd9d44d6098666d95bdcf1025ec62fe9810e4ee2b8219779ff42`.
+- Focused unit/source-CLI/real/public band: **8 files, 130/130 tests passed**.
+- TypeScript typecheck: PASS; Biome: PASS over **254 files**; build and `git diff --check`: PASS.
+- Rebuilt CLI/archive/Git/conditional-zip non-leak: **26/26 tests passed**.
+- Fresh packed/source-free installed CLI: **2/2 tests passed**.
+- Exact stable full `npm test`: **130 files, 1,645/1,645 tests passed** in **460.73s**.
+- `package.json` unchanged; authenticated live Claude remains deferred under the approved post-TASK127 gate.
 
 ## Change Log
 
 - 2026-08-23: Created Story 2.8 from Backlog TASK-121 via literal `bmad-create-story` in YOLO mode.
+- 2026-08-23: Implemented and QA-automated prepared handoff receipts, exact publication retry, receiving-agent
+  verification, structured CLI failures, source-free package proof, and authoring-surface non-leak evidence.
+- 2026-08-23: Independent auto-fix review resolved nine findings, reached 0 open, passed all stable focused,
+  static, build, package, source-free, non-leak, and full-suite gates, and approved Story 2.8.

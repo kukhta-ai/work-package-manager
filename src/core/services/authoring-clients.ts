@@ -114,6 +114,18 @@ export function listAuthoringClientDefinitions(): readonly AuthoringClientDefini
   return DEFINITIONS.map(copyDefinition);
 }
 
+/** Native invocation of the first WPM workspace skill for one supported authoring client. */
+export function authoringClientFirstSkillInvocation(client: AuthoringClientId): string {
+  return client === "codex" ? "$wpm-author" : "/wpm-author";
+}
+
+/** Actionable native reload guidance shared by inspection, receipts, and handoff results. */
+export function authoringClientReloadGuidance(client: AuthoringClientId): string {
+  return client === "codex"
+    ? "changes are detected automatically; restart Codex in the workspace if the skill is absent"
+    : "changes are watched live; restart Claude Code if the top-level skill directory was created after session start";
+}
+
 /**
  * Evaluate a raw authoring-client identifier without treating detection or deliverable targets as selection.
  *

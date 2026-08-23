@@ -3,6 +3,7 @@ import { parseSemVer } from "../model/index.js";
 import {
   AUTHORING_CLIENT_IDS,
   type AuthoringClientId,
+  authoringClientFirstSkillInvocation,
   evaluateAuthoringClientId,
 } from "./authoring-clients.js";
 
@@ -164,7 +165,7 @@ export function workspaceIntegrationRequestKey(
 
 /** Render the exact client-specific block whose surrounding user bytes remain outside WPM ownership. */
 export function renderManagedFrontDoorBlock(client: AuthoringClientId, version: string): string {
-  const invocation = client === "codex" ? "$wpm-author" : "/wpm-author";
+  const invocation = authoringClientFirstSkillInvocation(client);
   return [
     MANAGED_FRONT_DOOR_START,
     "## WPM workspace authoring",

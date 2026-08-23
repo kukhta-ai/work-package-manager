@@ -55,6 +55,33 @@ export interface WorkspaceIntegrationBlocker {
   readonly recovery: string;
 }
 
+/** One predictable prepared-handoff or receiving-verification mismatch. */
+export interface HandoffBlocker {
+  /** Stable machine-readable reason code. */
+  readonly code: string;
+  /** Exact handoff surface affected by the mismatch. */
+  readonly surface:
+    | "working-directory"
+    | "target"
+    | "receipt"
+    | "managed-state"
+    | "backlog"
+    | "packaged-content"
+    | "selected-client"
+    | "front-door"
+    | "skill-family";
+  /** Client identity for a native surface; absent for shared surfaces. */
+  readonly client?: string;
+  readonly message: string;
+  readonly recovery: string;
+}
+
+/** Independent validity of one configured client in a failed or successful receiving verification. */
+export interface HandoffClientValidity {
+  readonly id: string;
+  readonly status: "valid" | "invalid";
+}
+
 /**
  * The base class for the core's typed domain errors. Carries a {@link ErrorCategory} discriminator and
  * optional structured {@link ErrorDetail}, on top of the standard `Error` message. Operations raise a
@@ -159,6 +186,45 @@ export class WorkspaceIntegrationPreflightError extends DomainError {
       `workspace authoring integration preflight failed with ${blockers.length} blocker(s): ${blockers.map(({ code }) => code).join(", ")}`,
     );
     this.blockers = [...blockers];
+  }
+}
+
+/** Aggregate predictable no-write failure while preparing a workspace handoff. */
+export class HandoffPreparationPreflightError extends DomainError {
+  readonly blockers: readonly HandoffBlocker[];
+  readonly handoffPrepared = false as const;
+
+  constructor(blockers: readonly HandoffBlocker[]) {
+    super(
+      "conflict",
+      `workspace handoff preparation failed with ${blockers.length} blocker(s): ${blockers.map(({ code }) => code).join(", ")}`,
+    );
+    this.blockers = [...blockers];
+  }
+}
+
+/** Aggregate read-only receiving verification failure, retaining unaffected-client validity. */
+export class HandoffVerificationError extends DomainError {
+  readonly blockers: readonly HandoffBlocker[];
+  readonly selectedClient: string;
+  readonly clients: readonly HandoffClientValidity[];
+  readonly sharedValid: boolean;
+  readonly handoffPrepared = false as const;
+
+  constructor(input: {
+    readonly blockers: readonly HandoffBlocker[];
+    readonly selectedClient: string;
+    readonly clients: readonly HandoffClientValidity[];
+    readonly sharedValid: boolean;
+  }) {
+    super(
+      input.blockers.some(({ surface }) => surface === "selected-client") ? "usage" : "validation",
+      `workspace handoff verification failed with ${input.blockers.length} blocker(s): ${input.blockers.map(({ code }) => code).join(", ")}`,
+    );
+    this.blockers = [...input.blockers];
+    this.selectedClient = input.selectedClient;
+    this.clients = [...input.clients];
+    this.sharedValid = input.sharedValid;
   }
 }
 

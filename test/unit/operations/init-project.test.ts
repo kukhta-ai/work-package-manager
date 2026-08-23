@@ -4,7 +4,11 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { FakeBacklog } from "../../../src/adapters/fake-backlog.js";
 import { MemoryFileSystem } from "../../../src/adapters/memory-fs.js";
-import { MutationFailure, WorkspaceIntegrationPreflightError } from "../../../src/core/errors.js";
+import {
+  HandoffVerificationError,
+  MutationFailure,
+  WorkspaceIntegrationPreflightError,
+} from "../../../src/core/errors.js";
 import { perBundleAuthoringTasks } from "../../../src/core/operations/create-bundle.js";
 import { makeArtefactDeriver } from "../../../src/core/operations/derive-artefacts-capability.js";
 import {
@@ -13,11 +17,16 @@ import {
   type InitProjectInput,
   projectWideAuthoringTasks,
 } from "../../../src/core/operations/init-project.js";
+import { verifyWorkspaceHandoff } from "../../../src/core/operations/workspace-handoff.js";
 import { parseManifest } from "../../../src/core/services/schema/index.js";
 import {
   WORKSPACE_INTEGRATION_STATE_PATH,
   WORKSPACE_SKILL_NAMES,
 } from "../../../src/core/services/workspace-authoring-integration.js";
+import {
+  parseWorkspaceHandoffReceipt,
+  WORKSPACE_HANDOFF_RECEIPT_PATH,
+} from "../../../src/core/services/workspace-handoff.js";
 import { parseYaml } from "../../../src/util/yaml.js";
 
 /**
@@ -129,6 +138,32 @@ class InitBoundaryBacklog extends FakeBacklog {
 
   override createTask(root: string, input: Parameters<FakeBacklog["createTask"]>[1]) {
     this.controller.hit(`backlog-task:${input.title}`);
+    return super.createTask(root, input);
+  }
+}
+
+class MissingFinalTaskBacklog extends InitBoundaryBacklog {
+  private hideFinal = false;
+  createCallsAfterHide = 0;
+
+  hideFinalTask(): void {
+    this.hideFinal = true;
+  }
+
+  override listTasks(root: string, filter?: Parameters<FakeBacklog["listTasks"]>[1]) {
+    const tasks = super.listTasks(root, filter);
+    return this.hideFinal ? tasks.slice(0, -1) : tasks;
+  }
+
+  override inspectTaskInventory(root: string) {
+    const inventory = super.inspectTaskInventory(root);
+    return this.hideFinal
+      ? { ...inventory, activeEntries: this.listTasks(root).map(({ id }) => id) }
+      : inventory;
+  }
+
+  override createTask(root: string, input: Parameters<FakeBacklog["createTask"]>[1]) {
+    if (this.hideFinal) this.createCallsAfterHide += 1;
     return super.createTask(root, input);
   }
 }
@@ -274,7 +309,17 @@ describe("initProject — scaffolds an authoring workspace (task-87; docs 06/10/
     );
     expect(result.changedPaths).toContain(`${TARGET}/AGENTS.md`);
     expect(result.changedPaths).toContain(`${TARGET}/.authoring-backlog`);
+    expect(result.changedPaths).toContain(`${TARGET}/${WORKSPACE_HANDOFF_RECEIPT_PATH}`);
     expect(result.materialisedTaskTitles).toHaveLength(8);
+    expect(result).toMatchObject({
+      handoffPrepared: true,
+      handoff: {
+        status: "prepared",
+        workspaceRoot: TARGET,
+        receiptPath: WORKSPACE_HANDOFF_RECEIPT_PATH,
+        configuredClients: ["codex"],
+      },
+    });
   });
 
   it("AC#2 — an EMPTY build-output directory (builds/) exists at the workspace root", () => {
@@ -512,6 +557,29 @@ describe("initProject — scaffolds an authoring workspace (task-87; docs 06/10/
     expect(fs.read(`${WIP}/manifest.yml`)).toBe(manifestBefore); // unchanged
   });
 
+  it("refuses an exact replay after a fully successful init instead of treating it as a partial retry", () => {
+    const fs = seedTemplates();
+    const backlog = new FakeBacklog();
+    const input = { targetDir: TARGET, name: "hermes-handoff" } as const;
+    initProject(deps(fs, backlog), input);
+    const manifestBefore = fs.read(`${WIP}/manifest.yml`);
+    const receiptBefore = fs.read(`${TARGET}/${WORKSPACE_HANDOFF_RECEIPT_PATH}`);
+
+    let caught: unknown;
+    try {
+      initProject(deps(fs, backlog), input);
+    } catch (error) {
+      caught = error;
+    }
+
+    expect(caught).toBeInstanceOf(WorkspaceIntegrationPreflightError);
+    expect((caught as WorkspaceIntegrationPreflightError).blockers).toEqual(
+      expect.arrayContaining([expect.objectContaining({ code: "workspace-target-exists" })]),
+    );
+    expect(fs.read(`${WIP}/manifest.yml`)).toBe(manifestBefore);
+    expect(fs.read(`${TARGET}/${WORKSPACE_HANDOFF_RECEIPT_PATH}`)).toBe(receiptBefore);
+  });
+
   it("aggregates a missing chosen project template before mutation", () => {
     const fs = new MemoryFileSystem(); // no templates seeded
     expect(() =>
@@ -556,6 +624,7 @@ describe("initProject — scaffolds an authoring workspace (task-87; docs 06/10/
       `${WIP}/installer-skills/hermes-handoff-installer/references/journaling.md`,
       `${WIP}/bundles/bundle-template/_AGENTS.md.tmpl`,
       `${TARGET}/AGENTS.md`,
+      `${TARGET}/${WORKSPACE_HANDOFF_RECEIPT_PATH}`,
       `${TARGET}/builds`,
       `${TARGET}/.authoring-backlog`,
       `${TARGET}/.gitignore`,
@@ -652,6 +721,169 @@ describe("initProject — scaffolds an authoring workspace (task-87; docs 06/10/
         }
       }
     }
+  });
+
+  it("fails closed when a completed output changes before final prepared-receipt retry", () => {
+    const counter = new InitBoundaryController();
+    const countFs = seedTemplates(new InitBoundaryFileSystem(counter));
+    const countBacklog = new InitBoundaryBacklog(counter);
+    counter.arm(Number.MAX_SAFE_INTEGER);
+    initProject(deps(countFs, countBacklog), {
+      targetDir: TARGET,
+      name: "hermes-handoff",
+      authoringClientIds: ["codex"],
+    });
+
+    const controller = new InitBoundaryController();
+    const fs = seedTemplates(new InitBoundaryFileSystem(controller));
+    const backlog = new InitBoundaryBacklog(controller);
+    controller.arm(counter.count());
+    let caught: unknown;
+    try {
+      initProject(deps(fs, backlog), {
+        targetDir: TARGET,
+        name: "hermes-handoff",
+        authoringClientIds: ["codex"],
+      });
+    } catch (error) {
+      caught = error;
+    }
+    expect(caught).toBeInstanceOf(MutationFailure);
+    expect((caught as MutationFailure).failed.id).toBe("handoff-receipt:prepared");
+    expect(JSON.parse(fs.read(`${TARGET}/${WORKSPACE_INTEGRATION_STATE_PATH}`))).toMatchObject({
+      status: "complete",
+    });
+    expect(
+      parseWorkspaceHandoffReceipt(fs.read(`${TARGET}/${WORKSPACE_HANDOFF_RECEIPT_PATH}`)),
+    ).toMatchObject({ ok: true, value: { status: "preparing" } });
+
+    let verificationFailure: unknown;
+    try {
+      verifyWorkspaceHandoff(
+        { fs, backlog, bundledSkillsRoot: BUNDLED_SKILLS },
+        {
+          workspaceRoot: TARGET,
+          actualWorkingDirectory: TARGET,
+          clientId: "codex",
+          integrationVersion: "0.1.0",
+        },
+      );
+    } catch (error) {
+      verificationFailure = error;
+    }
+    expect(verificationFailure).toBeInstanceOf(HandoffVerificationError);
+    const receiptBlocker = (verificationFailure as HandoffVerificationError).blockers.find(
+      ({ code }) => code === "handoff-receipt-not-prepared",
+    );
+    expect(receiptBlocker?.recovery).toContain("identical original wpm init request");
+    expect(receiptBlocker?.recovery).not.toContain("authoring handoff prepare");
+
+    const changedSkill = `${TARGET}/.agents/skills/wpm-author/SKILL.md`;
+    fs.write(changedSkill, "user-modified after reported partial\n");
+    const receiptBefore = fs.read(`${TARGET}/${WORKSPACE_HANDOFF_RECEIPT_PATH}`);
+    controller.disarm();
+
+    expect(() =>
+      initProject(deps(fs, backlog), {
+        targetDir: TARGET,
+        name: "hermes-handoff",
+        authoringClientIds: ["codex"],
+      }),
+    ).toThrow(WorkspaceIntegrationPreflightError);
+    expect(fs.read(changedSkill)).toBe("user-modified after reported partial\n");
+    expect(fs.read(`${TARGET}/${WORKSPACE_HANDOFF_RECEIPT_PATH}`)).toBe(receiptBefore);
+  });
+
+  it("fails closed on missing completed output after the preparing receipt was published", () => {
+    const counter = new InitBoundaryController();
+    const countFs = seedTemplates(new InitBoundaryFileSystem(counter));
+    const countBacklog = new InitBoundaryBacklog(counter);
+    counter.arm(Number.MAX_SAFE_INTEGER);
+    initProject(deps(countFs, countBacklog), {
+      targetDir: TARGET,
+      name: "hermes-handoff",
+      authoringClientIds: ["codex"],
+    });
+
+    const controller = new InitBoundaryController();
+    const fs = seedTemplates(new InitBoundaryFileSystem(controller));
+    const backlog = new InitBoundaryBacklog(controller);
+    controller.arm(counter.count() - 1);
+    let caught: unknown;
+    try {
+      initProject(deps(fs, backlog), {
+        targetDir: TARGET,
+        name: "hermes-handoff",
+        authoringClientIds: ["codex"],
+      });
+    } catch (error) {
+      caught = error;
+    }
+    expect(caught).toBeInstanceOf(MutationFailure);
+    expect((caught as MutationFailure).failed.id).toBe("managed-state:complete");
+    expect(JSON.parse(fs.read(`${TARGET}/${WORKSPACE_INTEGRATION_STATE_PATH}`))).toMatchObject({
+      status: "applying",
+    });
+    expect(
+      parseWorkspaceHandoffReceipt(fs.read(`${TARGET}/${WORKSPACE_HANDOFF_RECEIPT_PATH}`)),
+    ).toMatchObject({ ok: true, value: { status: "preparing" } });
+
+    const completedSkill = `${TARGET}/.agents/skills/wpm-author/SKILL.md`;
+    fs.remove(completedSkill);
+    const receiptBefore = fs.read(`${TARGET}/${WORKSPACE_HANDOFF_RECEIPT_PATH}`);
+    controller.disarm();
+
+    expect(() =>
+      initProject(deps(fs, backlog), {
+        targetDir: TARGET,
+        name: "hermes-handoff",
+        authoringClientIds: ["codex"],
+      }),
+    ).toThrow(WorkspaceIntegrationPreflightError);
+    expect(fs.inspectPath(completedSkill).kind).toBe("missing");
+    expect(fs.read(`${TARGET}/${WORKSPACE_HANDOFF_RECEIPT_PATH}`)).toBe(receiptBefore);
+  });
+
+  it("does not recreate a coherently missing completed task while finalizing the receipt", () => {
+    const counter = new InitBoundaryController();
+    const countFs = seedTemplates(new InitBoundaryFileSystem(counter));
+    const countBacklog = new InitBoundaryBacklog(counter);
+    counter.arm(Number.MAX_SAFE_INTEGER);
+    initProject(deps(countFs, countBacklog), {
+      targetDir: TARGET,
+      name: "hermes-handoff",
+      authoringClientIds: ["codex"],
+    });
+
+    const controller = new InitBoundaryController();
+    const fs = seedTemplates(new InitBoundaryFileSystem(controller));
+    const backlog = new MissingFinalTaskBacklog(controller);
+    controller.arm(counter.count());
+    let caught: unknown;
+    try {
+      initProject(deps(fs, backlog), {
+        targetDir: TARGET,
+        name: "hermes-handoff",
+        authoringClientIds: ["codex"],
+      });
+    } catch (error) {
+      caught = error;
+    }
+    expect(caught).toBeInstanceOf(MutationFailure);
+    expect((caught as MutationFailure).failed.id).toBe("handoff-receipt:prepared");
+    backlog.hideFinalTask();
+    const receiptBefore = fs.read(`${TARGET}/${WORKSPACE_HANDOFF_RECEIPT_PATH}`);
+    controller.disarm();
+
+    expect(() =>
+      initProject(deps(fs, backlog), {
+        targetDir: TARGET,
+        name: "hermes-handoff",
+        authoringClientIds: ["codex"],
+      }),
+    ).toThrow(WorkspaceIntegrationPreflightError);
+    expect(backlog.createCallsAfterHide).toBe(0);
+    expect(fs.read(`${TARGET}/${WORKSPACE_HANDOFF_RECEIPT_PATH}`)).toBe(receiptBefore);
   });
 
   it("retries a Backlog init that left only its canonical empty directory skeleton", () => {

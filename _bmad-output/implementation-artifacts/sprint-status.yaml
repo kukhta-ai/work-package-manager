@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-08-21T17:38:18+00:00
-last_updated: 2026-08-23T13:49:35+00:00
+last_updated: 2026-08-23T15:33:37+00:00
 project: work-package-manager
 project_key: NOKEY
 tracking_system: file-system
@@ -60,7 +60,7 @@ development_status:
   2-5-review-work-packages-with-wpm-review-package: done
   2-6-resume-and-route-project-work-with-wpm-author: done
   2-7-deliver-and-reconcile-workspace-authoring-integration: done
-  2-8-prepare-and-verify-a-fresh-agent-handoff: backlog
+  2-8-prepare-and-verify-a-fresh-agent-handoff: done
   2-9-guide-package-creation-with-wpm-create-package: backlog
   2-10-configure-personal-authoring-clients-in-one-setup-action: backlog
   2-11-complete-the-cold-packed-install-to-handoff-journey: backlog

@@ -314,19 +314,20 @@ describe("fresh local packed-install and inactive-candidate journey", () => {
       ],
     );
     const pathKey = Object.keys(process.env).find((key) => key.toLowerCase() === "path") ?? "PATH";
+    const installedEnv = {
+      ...process.env,
+      [pathKey]: [
+        dirname(installedInvocation.shimPath),
+        process.env[pathKey] ?? process.env.PATH ?? "",
+      ]
+        .filter((entry) => entry !== "")
+        .join(delimiter),
+    };
     const installedInit = spawnSync(installedInvocation.executable, installedInvocation.args, {
       cwd: consumer,
       encoding: "utf8",
       timeout: 180_000,
-      env: {
-        ...process.env,
-        [pathKey]: [
-          dirname(installedInvocation.shimPath),
-          process.env[pathKey] ?? process.env.PATH ?? "",
-        ]
-          .filter((entry) => entry !== "")
-          .join(delimiter),
-      },
+      env: installedEnv,
     });
     expect({ status: installedInit.status, stderr: installedInit.stderr }).toEqual({
       status: 0,
@@ -344,6 +345,70 @@ describe("fresh local packed-install and inactive-candidate journey", () => {
       integrationVersion: inspection.package.version,
       selectedClients: ["codex", "claude-code"],
     });
+    const installedReceipt = JSON.parse(
+      readFileSync(join(installedWorkspace, ".wpm-handoff.json"), "utf8"),
+    ) as {
+      status: string;
+      workspaceRoot: string;
+      integrationVersion: string;
+      configuredClients: string[];
+      clients: Array<{
+        id: string;
+        frontDoor: string;
+        firstSkill: { name: string; invocation: string };
+        verification: { command: string; args: string[]; workingDirectory: string };
+      }>;
+    };
+    expect(installedReceipt).toMatchObject({
+      status: "prepared",
+      workspaceRoot: installedWorkspace,
+      integrationVersion: inspection.package.version,
+      configuredClients: ["codex", "claude-code"],
+      clients: [
+        {
+          id: "codex",
+          frontDoor: "AGENTS.md",
+          firstSkill: { name: "wpm-author", invocation: "$wpm-author" },
+        },
+        {
+          id: "claude-code",
+          frontDoor: "CLAUDE.md",
+          firstSkill: { name: "wpm-author", invocation: "/wpm-author" },
+        },
+      ],
+    });
+    for (const client of installedReceipt.clients) {
+      expect(client.verification).toEqual({
+        command: "wpm",
+        args: ["-C", installedWorkspace, "authoring", "handoff", "verify", "--client", client.id],
+        workingDirectory: installedWorkspace,
+      });
+      const verificationInvocation = resolveInstalledExecutableInvocation(
+        process.platform,
+        installedWpm.shimPath,
+        client.verification.args,
+      );
+      const receivingVerification = spawnSync(
+        verificationInvocation.executable,
+        verificationInvocation.args,
+        {
+          cwd: installedWorkspace,
+          encoding: "utf8",
+          timeout: 180_000,
+          env: installedEnv,
+        },
+      );
+      expect(
+        {
+          client: client.id,
+          status: receivingVerification.status,
+          stderr: receivingVerification.stderr,
+        },
+        client.id,
+      ).toEqual({ client: client.id, status: 0, stderr: "" });
+      expect(receivingVerification.stdout).toContain("verified fresh-agent handoff");
+      expect(receivingVerification.stdout).toContain(`${client.id}: valid`);
+    }
     for (const nativeScope of [".agents", ".claude"]) {
       for (const skillName of WORKSPACE_SKILL_NAMES) {
         expect(

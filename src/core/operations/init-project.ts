@@ -24,6 +24,11 @@ import { type RenderedFile, renderTree } from "../services/render.js";
 import { parseBundleManifest, parseManifest } from "../services/schema/index.js";
 import { resolveTemplate } from "../services/template-resolver.js";
 import { WORKSPACE_INTEGRATION_STATE_PATH } from "../services/workspace-authoring-integration.js";
+import {
+  createWorkspaceHandoffReceipt,
+  serializeWorkspaceHandoffReceipt,
+  WORKSPACE_HANDOFF_RECEIPT_PATH,
+} from "../services/workspace-handoff.js";
 import { perBundleAuthoringTasks } from "./create-bundle.js";
 import { makeArtefactDeriver } from "./derive-artefacts-capability.js";
 import {
@@ -33,6 +38,7 @@ import {
   planFreshWorkspaceAuthoringIntegration,
   type WorkspaceAuthoringIntegrationResult,
 } from "./workspace-authoring-integration.js";
+import type { PreparedWorkspaceHandoffResult } from "./workspace-handoff.js";
 
 /**
  * `initProject` — the `wpm init` use case (doc 10 §"Per-command actions", the `init` row), and the architecture's
@@ -133,10 +139,11 @@ export interface InitProjectDeps {
   readonly integrationVersion: string;
 }
 
-/** Fresh-init outcome, including the workspace-local integration result and an explicit no-handoff claim. */
+/** Fresh-init outcome, including workspace integration and its completion-gated prepared handoff. */
 export interface InitProjectResult extends OperationResult {
   readonly authoringIntegration: WorkspaceAuthoringIntegrationResult;
-  readonly handoffPrepared: false;
+  readonly handoff: PreparedWorkspaceHandoffResult;
+  readonly handoffPrepared: true;
 }
 
 /**
@@ -322,6 +329,7 @@ function freshInitRequestKey(
     readonly clients: readonly string[];
     readonly integrationVersion: string;
     readonly completeStateText: string;
+    readonly handoffShapeText: string;
   },
   files: Iterable<PlannedInitFile>,
   directories: Iterable<PlannedInitDirectory>,
@@ -342,6 +350,7 @@ function freshInitRequestKey(
         integrationVersion: input.integrationVersion,
       },
       completeState: hashTextContent(input.completeStateText),
+      handoffShape: hashTextContent(input.handoffShapeText),
       files: [...files].sort(byPathAndId).map(({ id, path, content, beat }) => ({
         id,
         path: toPosix(path),
@@ -1078,6 +1087,7 @@ export function initProject(deps: InitProjectDeps, input: InitProjectInput): Ini
   });
 
   const managedStatePath = join(targetDir, WORKSPACE_INTEGRATION_STATE_PATH);
+  const handoffReceiptPath = join(targetDir, WORKSPACE_HANDOFF_RECEIPT_PATH);
   const authoringRoot = join(targetDir, AUTHORING_BACKLOG_DIR);
   const kindByPath = new Map<string, Set<"file" | "directory" | "alias">>();
   const recordKind = (path: string, kind: "file" | "directory" | "alias"): void => {
@@ -1089,6 +1099,7 @@ export function initProject(deps: InitProjectDeps, input: InitProjectInput): Ini
   for (const { path } of plannedDirectories.values()) recordKind(path, "directory");
   for (const { path } of plannedAliases.values()) recordKind(path, "alias");
   recordKind(managedStatePath, "file");
+  recordKind(handoffReceiptPath, "file");
   for (const path of [
     ...plannedFiles.keys(),
     ...plannedAliases.keys(),
@@ -1101,6 +1112,16 @@ export function initProject(deps: InitProjectDeps, input: InitProjectInput): Ini
           "packaged-content",
           `${JSON.stringify(path)} collides with WPM's reserved managed-state path`,
           "repair the selected template so only WPM owns the integration state path",
+        ),
+      );
+    }
+    if (path === handoffReceiptPath || isContained(handoffReceiptPath, path)) {
+      blockers.push(
+        initBlocker(
+          "workspace-plan-handoff-path-collision",
+          "packaged-content",
+          `${JSON.stringify(path)} collides with WPM's reserved handoff-receipt path`,
+          "repair the selected template so only WPM owns the handoff receipt path",
         ),
       );
     }
@@ -1153,6 +1174,14 @@ export function initProject(deps: InitProjectDeps, input: InitProjectInput): Ini
   // Bind the applying record to the exact immutable output/task plan, not merely to the caller's flags. A
   // partial retry may therefore use only the same captured package/template revision; newly resolved bytes
   // cannot be mixed with already-completed boundaries from an earlier plan.
+  const handoffShapeText = serializeWorkspaceHandoffReceipt(
+    createWorkspaceHandoffReceipt({
+      status: "prepared",
+      workspaceRoot: targetDir,
+      integrationVersion: deps.integrationVersion,
+      configuredClients: authoringSeed.clients,
+    }),
+  );
   const pendingRequestKey = freshInitRequestKey(
     {
       name,
@@ -1161,6 +1190,7 @@ export function initProject(deps: InitProjectDeps, input: InitProjectInput): Ini
       clients: authoringSeed.clients,
       integrationVersion: deps.integrationVersion,
       completeStateText: authoringSeed.completeStateText,
+      handoffShapeText,
     },
     plannedFiles.values(),
     plannedDirectories.values(),
@@ -1171,17 +1201,65 @@ export function initProject(deps: InitProjectDeps, input: InitProjectInput): Ini
     authoringSeed,
     pendingRequestKey,
   );
+  const preparedHandoffReceipt = createWorkspaceHandoffReceipt({
+    status: "prepared",
+    workspaceRoot: targetDir,
+    integrationVersion: deps.integrationVersion,
+    configuredClients: authoringPlan.clients,
+  });
+  const preparingHandoffReceipt = createWorkspaceHandoffReceipt({
+    status: "preparing",
+    workspaceRoot: targetDir,
+    integrationVersion: deps.integrationVersion,
+    configuredClients: authoringPlan.clients,
+    requestKey: pendingRequestKey,
+  });
+  const preparedHandoffText = serializeWorkspaceHandoffReceipt(preparedHandoffReceipt);
+  const preparingHandoffText = serializeWorkspaceHandoffReceipt(preparingHandoffReceipt);
 
-  let retrying = false;
+  let retryStage: "none" | "applying" | "finalizing" = "none";
+  let handoffReceiptAlreadyPreparing = false;
   try {
     if (targetInspection?.kind === "directory") {
       const stateInspection = fs.inspectPath(managedStatePath);
-      if (
-        stateInspection.kind === "file" &&
-        fs.read(managedStatePath) === authoringPlan.applyingStateText
+      const stateText = stateInspection.kind === "file" ? fs.read(managedStatePath) : undefined;
+      const receiptInspection = fs.inspectPath(handoffReceiptPath);
+      const receiptText =
+        receiptInspection.kind === "file" ? fs.read(handoffReceiptPath) : undefined;
+      if (stateText === authoringPlan.applyingStateText) {
+        if (receiptInspection.kind === "missing") {
+          retryStage = "applying";
+        } else if (receiptText === preparingHandoffText) {
+          retryStage = "applying";
+          handoffReceiptAlreadyPreparing = true;
+        } else {
+          blockers.push(
+            initBlocker(
+              "workspace-partial-handoff-conflict",
+              "ownership",
+              `existing ${WORKSPACE_HANDOFF_RECEIPT_PATH} is not absent or the exact preparing receipt authorized by the applying init plan`,
+              "restore the exact applying receipt bytes or preserve the conflicting content before retrying",
+            ),
+          );
+        }
+      } else if (
+        stateText === authoringPlan.completeStateText &&
+        receiptText === preparingHandoffText
       ) {
-        retrying = true;
-        inspectExistingRootIdentity(fs, targetDir, blockers);
+        retryStage = "finalizing";
+        handoffReceiptAlreadyPreparing = true;
+      } else if (
+        stateText === authoringPlan.completeStateText &&
+        receiptText === preparedHandoffText
+      ) {
+        blockers.push(
+          initBlocker(
+            "workspace-target-exists",
+            "target",
+            `cannot create a project at ${JSON.stringify(targetDir)}: the workspace is already completely initialized and handoff-prepared`,
+            "pick an absent target path; use the project-bound authoring commands for an existing workspace",
+          ),
+        );
       } else {
         blockers.push(
           initBlocker(
@@ -1190,13 +1268,16 @@ export function initProject(deps: InitProjectDeps, input: InitProjectInput): Ini
               : "workspace-target-exists",
             stateInspection.kind === "file" ? "managed-state" : "target",
             stateInspection.kind === "file"
-              ? `existing ${WORKSPACE_INTEGRATION_STATE_PATH} does not authorize this exact immutable init plan`
+              ? `existing ${WORKSPACE_INTEGRATION_STATE_PATH} and ${WORKSPACE_HANDOFF_RECEIPT_PATH} do not authorize this exact immutable init plan`
               : `cannot create a project at ${JSON.stringify(targetDir)}: found an existing directory without the exact applying record`,
             stateInspection.kind === "file"
               ? "repeat the exact init request with the original packaged plan or preserve/recover the partial workspace explicitly"
               : "pick an absent target path, or recover a prior WPM applying request before retrying",
           ),
         );
+      }
+      if (retryStage !== "none") {
+        inspectExistingRootIdentity(fs, targetDir, blockers);
       }
     }
   } catch (error) {
@@ -1209,6 +1290,12 @@ export function initProject(deps: InitProjectDeps, input: InitProjectInput): Ini
       ),
     );
   }
+
+  const retrying = retryStage !== "none";
+  // Before the receipt exists, an applying record can truthfully authorize unfinished output boundaries.
+  // Once the exact preparing receipt exists, every earlier output/task boundary was reported complete; a
+  // missing path at that stage is external change, not recoverable partial creation.
+  const repairing = retryStage === "applying" && !handoffReceiptAlreadyPreparing;
 
   const filesToWrite: PlannedInitFile[] = [];
   const directoriesToCreate: PlannedInitDirectory[] = [];
@@ -1231,7 +1318,18 @@ export function initProject(deps: InitProjectDeps, input: InitProjectInput): Ini
     try {
       const inspection = fs.inspectPath(planned.path);
       if (inspection.kind === "missing") {
-        filesToWrite.push(planned);
+        if (repairing) {
+          filesToWrite.push(planned);
+        } else {
+          blockers.push(
+            initBlocker(
+              "workspace-complete-file-missing",
+              "destination",
+              `${JSON.stringify(planned.path)} is missing after managed integration reached complete`,
+              "restore the exact completed output before finalizing the prepared handoff",
+            ),
+          );
+        }
       } else if (inspection.kind !== "file" || fs.read(planned.path) !== planned.content) {
         blockers.push(
           initBlocker(
@@ -1261,8 +1359,20 @@ export function initProject(deps: InitProjectDeps, input: InitProjectInput): Ini
     }
     try {
       const inspection = fs.inspectPath(planned.path);
-      if (inspection.kind === "missing") directoriesToCreate.push(planned);
-      else if (inspection.kind !== "directory") {
+      if (inspection.kind === "missing") {
+        if (repairing) {
+          directoriesToCreate.push(planned);
+        } else {
+          blockers.push(
+            initBlocker(
+              "workspace-complete-directory-missing",
+              "destination",
+              `${JSON.stringify(planned.path)} is missing after managed integration reached complete`,
+              "restore the exact completed directory before finalizing the prepared handoff",
+            ),
+          );
+        }
+      } else if (inspection.kind !== "directory") {
         blockers.push(
           initBlocker(
             "workspace-partial-directory-conflict",
@@ -1292,7 +1402,18 @@ export function initProject(deps: InitProjectDeps, input: InitProjectInput): Ini
     try {
       const inspection = fs.inspectPath(planned.path);
       if (inspection.kind === "missing") {
-        aliasesToCreate.push(planned);
+        if (repairing) {
+          aliasesToCreate.push(planned);
+        } else {
+          blockers.push(
+            initBlocker(
+              "workspace-complete-alias-missing",
+              "destination",
+              `${JSON.stringify(planned.path)} is missing after managed integration reached complete`,
+              "restore the exact completed alias before finalizing the prepared handoff",
+            ),
+          );
+        }
       } else if (
         inspection.kind === "symbolic-link" &&
         toPosix(inspection.target) === toPosix(planned.target)
@@ -1331,15 +1452,28 @@ export function initProject(deps: InitProjectDeps, input: InitProjectInput): Ini
 
   let initialiseBacklog = !retrying;
   const existingTaskTitles = new Set<string>();
+  let taskSetObserved = false;
   if (retrying) {
     try {
       const rootInspection = fs.inspectPath(authoringRoot);
       if (rootInspection.kind === "missing") {
-        initialiseBacklog = true;
+        if (repairing) {
+          initialiseBacklog = true;
+        } else {
+          blockers.push(
+            initBlocker(
+              "workspace-complete-backlog-missing",
+              "backlog",
+              "authoring backlog is missing after managed integration reached complete",
+              "restore the exact completed authoring backlog before finalizing the prepared handoff",
+            ),
+          );
+        }
       } else if (rootInspection.kind === "directory") {
         const inspected = backlog.inspectRoot(authoringRoot);
         if (inspected.valid && inspected.taskPrefix === AUTHORING_TASK_PREFIX) {
           const tasks = backlog.listTasks(authoringRoot);
+          taskSetObserved = true;
           const inventory = backlog.inspectTaskInventory(authoringRoot);
           const listedIds = tasks.map(({ id }) => id).sort();
           if (
@@ -1398,7 +1532,10 @@ export function initProject(deps: InitProjectDeps, input: InitProjectInput): Ini
           }
         } else if (!inspected.valid) {
           const entries = fs.list(authoringRoot);
-          if (entries.length === 0 || backlog.inspectEmptyInitialisationResidue(authoringRoot)) {
+          if (
+            repairing &&
+            (entries.length === 0 || backlog.inspectEmptyInitialisationResidue(authoringRoot))
+          ) {
             initialiseBacklog = true;
           } else {
             blockers.push(
@@ -1455,6 +1592,20 @@ export function initProject(deps: InitProjectDeps, input: InitProjectInput): Ini
       new Set([authoringRoot, ...plannedAliases.keys()]),
       blockers,
     );
+  }
+
+  if (retrying && !repairing && taskSetObserved) {
+    for (const spec of specs) {
+      if (existingTaskTitles.has(spec.title)) continue;
+      blockers.push(
+        initBlocker(
+          "workspace-complete-task-missing",
+          "backlog",
+          `mandatory authoring task ${JSON.stringify(spec.title)} is missing after handoff preparation began`,
+          "restore the exact completed authoring task plan before finalizing the prepared handoff",
+        ),
+      );
+    }
   }
 
   if (blockers.length > 0) throw new WorkspaceIntegrationPreflightError(blockers);
@@ -1525,6 +1676,7 @@ export function initProject(deps: InitProjectDeps, input: InitProjectInput): Ini
   }
   for (const spec of specs) {
     if (existingTaskTitles.has(spec.title)) continue;
+    if (retrying && !repairing) continue;
     actions.push(
       initAction(
         `authoring-task:${spec.title}`,
@@ -1538,12 +1690,36 @@ export function initProject(deps: InitProjectDeps, input: InitProjectInput): Ini
       ),
     );
   }
+  if (!handoffReceiptAlreadyPreparing) {
+    actions.push(
+      initAction(
+        "handoff-receipt:preparing",
+        handoffReceiptPath,
+        "publish exact whole-init handoff preparation evidence",
+        () => fs.write(handoffReceiptPath, preparingHandoffText),
+        undefined,
+        "MATERIALISE",
+      ),
+    );
+  }
+  if (retryStage !== "finalizing") {
+    actions.push(
+      initAction(
+        "managed-state:complete",
+        managedStatePath,
+        "publish the complete workspace-authoring handshake",
+        () => fs.write(managedStatePath, authoringPlan.completeStateText),
+        undefined,
+        "MATERIALISE",
+      ),
+    );
+  }
   actions.push(
     initAction(
-      "managed-state:complete",
-      managedStatePath,
-      "publish the complete workspace-authoring handshake",
-      () => fs.write(managedStatePath, authoringPlan.completeStateText),
+      "handoff-receipt:prepared",
+      handoffReceiptPath,
+      "publish the prepared fresh-agent handoff receipt",
+      () => fs.write(handoffReceiptPath, preparedHandoffText),
       undefined,
       "MATERIALISE",
     ),
@@ -1566,12 +1742,27 @@ export function initProject(deps: InitProjectDeps, input: InitProjectInput): Ini
     changedPaths: integrationChangedPaths,
     handoffPrepared: false,
   };
+  const handoffChangedPaths = executed.changedPaths.filter(
+    (path) => path === toPosix(handoffReceiptPath),
+  );
+  const handoff: PreparedWorkspaceHandoffResult = {
+    status: "prepared",
+    summary: `prepared fresh-agent handoff at ${toPosix(targetDir)} for ${preparedHandoffReceipt.configuredClients.join(", ")}`,
+    handoffPrepared: true,
+    workspaceRoot: preparedHandoffReceipt.workspaceRoot,
+    receiptPath: WORKSPACE_HANDOFF_RECEIPT_PATH,
+    configuredClients: preparedHandoffReceipt.configuredClients,
+    clients: preparedHandoffReceipt.clients,
+    changedPaths: handoffChangedPaths,
+    materialisedTaskTitles: [],
+  };
 
   return {
     summary: `created authoring workspace ${name} at ${targetDir} (deliverable under ${DELIVERABLE_DIR}/)`,
     changedPaths: executed.changedPaths,
     materialisedTaskTitles: executed.materialisedTaskTitles,
     authoringIntegration,
-    handoffPrepared: false,
+    handoff,
+    handoffPrepared: true,
   };
 }
