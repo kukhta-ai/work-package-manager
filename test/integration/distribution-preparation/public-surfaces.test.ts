@@ -19,6 +19,7 @@ const BUILTIN_TEMPLATES = "/builtin-templates";
 const BUNDLED_SKILLS = "/bundled-skills";
 const WORKSPACE = "/workspace";
 const INACTIVE_MARKER = "Public distribution is inactive";
+const PERSONAL_BOOTSTRAP_SENTINEL = "Adoption has two mutating commands";
 const PREPARATION_FILES = [
   "readiness.js",
   "assess-readiness.js",
@@ -480,6 +481,9 @@ describe("inactive distribution public-surface contract", () => {
 
   it("audits the rendered authoring front door and proves preparation tooling never enters a deliverable", () => {
     const fs = new MemoryFileSystem();
+    expect(readProjectFile("agent-skills/wpm-create-package/SKILL.md")).toContain(
+      PERSONAL_BOOTSTRAP_SENTINEL,
+    );
     mirrorTemplates(fs);
     mirrorTemplates(fs, REAL_SKILLS, BUNDLED_SKILLS);
     initProject(
@@ -492,6 +496,10 @@ describe("inactive distribution public-surface contract", () => {
     expect(renderedFrontDoor).toContain(".wpm-authoring.json");
     expect(renderedFrontDoor).toContain("$wpm-author");
     expectNoPublicAcquisitionClaim(renderedFrontDoor);
+    expect(fs.inspectPath(join(WORKSPACE, ".agents", "skills", "wpm-create-package")).kind).toBe(
+      "missing",
+    );
+    expect(renderedFrontDoor).not.toContain("wpm-create-package");
 
     const handoffReceipt = JSON.parse(fs.read(join(WORKSPACE, ".wpm-handoff.json"))) as {
       status: string;
@@ -512,6 +520,8 @@ describe("inactive distribution public-surface contract", () => {
     expect(deliverableFiles.some((path) => path.endsWith(".wpm-handoff.json"))).toBe(false);
     for (const path of deliverableFiles) {
       expect(fs.read(path), path).not.toContain(handoffSentinel);
+      expect(fs.read(path), path).not.toContain("wpm-create-package");
+      expect(fs.read(path), path).not.toContain(PERSONAL_BOOTSTRAP_SENTINEL);
       for (const preparationFile of PREPARATION_FILES) {
         expect(fs.read(path), path).not.toContain(preparationFile);
       }

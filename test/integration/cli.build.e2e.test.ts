@@ -43,6 +43,9 @@ const authoringSkillSkill = fileURLToPath(
 const reviewPackageSkill = fileURLToPath(
   new URL("../../agent-skills/wpm-review-package/SKILL.md", import.meta.url),
 );
+const createPackageSkill = fileURLToPath(
+  new URL("../../agent-skills/wpm-create-package/SKILL.md", import.meta.url),
+);
 const hasBuild = existsSync(builtCli);
 const describeIfBuilt = hasBuild ? describe : describe.skip;
 
@@ -923,6 +926,7 @@ describeIfBuilt("`wpm build package` E2E (task-83, through dist/cli.js)", () => 
       const WRAPPER_SENTINEL = "TASK95-WORKSPACE-WRAPPER-MUST-NOT-SHIP-91ad";
       const PREPARATION_SENTINEL = "TASK108-DISTRIBUTION-PREPARATION-MUST-NOT-SHIP-2e4c";
       const FRONTDOOR_SENTINEL = "TASK120-MANAGED-FRONT-DOOR-MUST-NOT-SHIP-53fe";
+      const PERSONAL_SKILL_SENTINEL = "TASK122-WPM-CREATE-PACKAGE-MUST-NOT-SHIP-4c8e";
       const workspaceSkillEvidence = [
         [
           "wpm-author",
@@ -991,6 +995,12 @@ describeIfBuilt("`wpm build package` E2E (task-83, through dist/cli.js)", () => 
           ).toBe(expectedBytes);
         }
       }
+      const personalSkillBytes = `${readFileSync(createPackageSkill, "utf8")}\n${PERSONAL_SKILL_SENTINEL}\n`;
+      for (const nativeRoot of [".agents", ".claude"]) {
+        const personalPath = join(proj, nativeRoot, "skills", "wpm-create-package", "SKILL.md");
+        mkdirSync(join(personalPath, ".."), { recursive: true });
+        writeFileSync(personalPath, personalSkillBytes);
+      }
 
       const assertNoWorkspaceIntegration = (layout: string[], extractedRoot: string): void => {
         expect(layout).not.toContain(".wpm-authoring.json");
@@ -1001,10 +1011,12 @@ describeIfBuilt("`wpm build package` E2E (task-83, through dist/cli.js)", () => 
         for (const [skillName] of workspaceSkillEvidence) {
           expect(layout.some((path) => path.includes(skillName))).toBe(false);
         }
+        expect(layout.some((path) => path.includes("wpm-create-package"))).toBe(false);
         const extractedBytes = concatAllFiles(extractedRoot);
         expect(extractedBytes).not.toContain(STATE_SENTINEL);
         expect(extractedBytes).not.toContain(HANDOFF_SENTINEL);
         expect(extractedBytes).not.toContain(FRONTDOOR_SENTINEL);
+        expect(extractedBytes).not.toContain(PERSONAL_SKILL_SENTINEL);
         for (const [, , sentinel] of workspaceSkillEvidence) {
           expect(extractedBytes).not.toContain(sentinel);
         }
@@ -1018,6 +1030,7 @@ describeIfBuilt("`wpm build package` E2E (task-83, through dist/cli.js)", () => 
         expect(concatAllFiles(join(proj, "wip"))).not.toContain(sentinel);
       }
       expect(concatAllFiles(join(proj, "wip"))).not.toContain(HANDOFF_SENTINEL);
+      expect(concatAllFiles(join(proj, "wip"))).not.toContain(PERSONAL_SKILL_SENTINEL);
 
       const tgz = join(proj, "builds", "demo-0.1.0.tgz");
       expect(cli(["build", "package", "--format", "tarball", "-C", proj], dir).code).toBe(0);
@@ -1078,6 +1091,7 @@ describeIfBuilt("`wpm build package` E2E (task-83, through dist/cli.js)", () => 
       for (const [, , sentinel] of workspaceSkillEvidence) {
         expect(concatAllFiles(join(proj, "wip"))).not.toContain(sentinel);
       }
+      expect(concatAllFiles(join(proj, "wip"))).not.toContain(PERSONAL_SKILL_SENTINEL);
     });
   });
 
