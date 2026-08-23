@@ -493,10 +493,25 @@ describe("inactive distribution public-surface contract", () => {
     expect(renderedFrontDoor).toContain("$wpm-author");
     expectNoPublicAcquisitionClaim(renderedFrontDoor);
 
+    const handoffReceipt = JSON.parse(fs.read(join(WORKSPACE, ".wpm-handoff.json"))) as {
+      status: string;
+      workspaceRoot: string;
+      configuredClients: string[];
+    };
+    expect(handoffReceipt).toMatchObject({
+      status: "prepared",
+      workspaceRoot: WORKSPACE,
+      configuredClients: ["codex"],
+    });
+    const handoffSentinel = '"authoringBacklogPath": ".authoring-backlog"';
+    expect(fs.read(join(WORKSPACE, ".wpm-handoff.json"))).toContain(handoffSentinel);
+
     const deliverableFiles = filesUnder(fs, join(WORKSPACE, "wip"));
     expect(deliverableFiles.length).toBeGreaterThan(0);
     expect(deliverableFiles.some((path) => path.includes("distribution-preparation"))).toBe(false);
+    expect(deliverableFiles.some((path) => path.endsWith(".wpm-handoff.json"))).toBe(false);
     for (const path of deliverableFiles) {
+      expect(fs.read(path), path).not.toContain(handoffSentinel);
       for (const preparationFile of PREPARATION_FILES) {
         expect(fs.read(path), path).not.toContain(preparationFile);
       }

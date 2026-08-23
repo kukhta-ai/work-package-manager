@@ -81,6 +81,7 @@ function complete(deps: CliDeps, words: string[]): string[] {
     specs: {
       init: { options: { "--authoring-client": "authoring-client-ids" } },
       "authoring integrate": { options: { "--client": "authoring-client-ids" } },
+      "authoring handoff verify": { options: { "--client": "authoring-client-ids" } },
       "bundle new": { options: { "--template": "bundle-template-names" }, args: [undefined] },
       "completion install": { options: { "--shell": "shells" } },
     },
@@ -184,13 +185,17 @@ describe("AC#2 — options with a fixed set of valid values complete to those va
     expect(registry.resolve("authoring-client-ids", ctx(""))).toEqual(["codex", "claude-code"]);
   });
 
-  it("both workspace-integration selection flags complete from the shared client catalog", () => {
+  it("workspace integration and handoff client flags complete from the shared catalog", () => {
     const deps = seededDeps();
     expect(complete(deps, ["init", "demo", "--authoring-client", ""])).toEqual([
       "codex",
       "claude-code",
     ]);
     expect(complete(deps, ["authoring", "integrate", "--client", "c"])).toEqual([
+      "codex",
+      "claude-code",
+    ]);
+    expect(complete(deps, ["authoring", "handoff", "verify", "--client", "c"])).toEqual([
       "codex",
       "claude-code",
     ]);

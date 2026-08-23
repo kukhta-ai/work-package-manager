@@ -1,6 +1,8 @@
 import { CommanderError } from "commander";
 import {
   exitCodeFor,
+  HandoffPreparationPreflightError,
+  HandoffVerificationError,
   isDomainError,
   isMutationFailure,
   WorkspaceIntegrationPreflightError,
@@ -48,12 +50,44 @@ export interface CliIo {
   readonly in?: NodeJS.ReadableStream;
 }
 
+/** An already-structured CLI failure whose JSON bytes and exit code must be preserved by the global shell. */
+export class JsonCliFailure extends Error {
+  constructor(
+    readonly payload: unknown,
+    readonly exitCode: number,
+  ) {
+    super("structured JSON CLI failure");
+    Object.setPrototypeOf(this, new.target.prototype);
+    this.name = "JsonCliFailure";
+  }
+}
+
 /** The commander error codes that mean "help or version was displayed" — a successful, already-printed exit. */
 const HELP_OR_VERSION_CODES = new Set<string>([
   "commander.help",
   "commander.helpDisplayed",
   "commander.version",
 ]);
+
+/** Make arbitrary text inert in a terminal/shell transcript while preserving readable ordinary prose. */
+export function escapeHumanText(value: string): string {
+  return [...value]
+    .map((character) => {
+      if (character === "\n") return "\\n";
+      if (character === "\r") return "\\r";
+      if (character === "\t") return "\\t";
+      const codePoint = character.codePointAt(0) as number;
+      return codePoint < 32 || (codePoint >= 127 && codePoint <= 159) || "$`!".includes(character)
+        ? `\\u${codePoint.toString(16).padStart(4, "0")}`
+        : character;
+    })
+    .join("");
+}
+
+/** Quote one value as JSON data, then neutralize shell metacharacters that JSON leaves literal. */
+export function formatHumanValue(value: string): string {
+  return escapeHumanText(JSON.stringify(value));
+}
 
 /**
  * Format a thrown value into a user-facing message (doc 13 §7). A task-23 `DomainError` yields a clean
@@ -66,12 +100,38 @@ const HELP_OR_VERSION_CODES = new Set<string>([
  * @returns The formatted message, newline-terminated.
  */
 export function formatError(error: unknown, debug: boolean): string {
+  if (error instanceof HandoffPreparationPreflightError) {
+    const lines = [`error: ${error.message}`, "blockers:"];
+    for (const blocker of error.blockers) {
+      lines.push(
+        `  - [${blocker.code}] ${blocker.surface}${blocker.client !== undefined ? ` (${escapeHumanText(blocker.client)})` : ""}: ${escapeHumanText(blocker.message)}`,
+        `    recovery: ${escapeHumanText(blocker.recovery)}`,
+      );
+    }
+    lines.push("handoff prepared: no");
+    return `${lines.join("\n")}\n`;
+  }
+  if (error instanceof HandoffVerificationError) {
+    const lines = [`error: ${error.message}`, "blockers:"];
+    for (const blocker of error.blockers) {
+      lines.push(
+        `  - [${blocker.code}] ${blocker.surface}${blocker.client !== undefined ? ` (${escapeHumanText(blocker.client)})` : ""}: ${escapeHumanText(blocker.message)}`,
+        `    recovery: ${escapeHumanText(blocker.recovery)}`,
+      );
+    }
+    lines.push(
+      `shared surfaces: ${error.sharedValid ? "valid" : "invalid"}`,
+      ...error.clients.map(({ id, status }) => `${id}: ${status}`),
+      "verification: failed",
+    );
+    return `${lines.join("\n")}\n`;
+  }
   if (error instanceof WorkspaceIntegrationPreflightError) {
     const lines = [`error: ${error.message}`, "blockers:"];
     for (const blocker of error.blockers) {
       lines.push(
-        `  - [${blocker.code}] ${blocker.surface}: ${blocker.message}`,
-        `    recovery: ${blocker.recovery}`,
+        `  - [${blocker.code}] ${blocker.surface}: ${escapeHumanText(blocker.message)}`,
+        `    recovery: ${escapeHumanText(blocker.recovery)}`,
       );
     }
     lines.push("handoff prepared: no");
@@ -84,20 +144,25 @@ export function formatError(error: unknown, debug: boolean): string {
       "completed:",
       ...(error.completed.length > 0
         ? error.completed.map(
-            ({ id, path }) => `  - ${id}${path !== undefined ? ` (${path})` : ""}`,
+            ({ id, path }) =>
+              `  - ${id}${path !== undefined ? ` (${formatHumanValue(path)})` : ""}`,
           )
         : ["  - (none)"]),
-      `failed: ${error.failed.id}${error.failed.path !== undefined ? ` (${error.failed.path})` : ""}`,
+      `failed: ${error.failed.id}${error.failed.path !== undefined ? ` (${formatHumanValue(error.failed.path)})` : ""}`,
       "unattempted:",
       ...(error.unattempted.length > 0
         ? error.unattempted.map(
-            ({ id, path }) => `  - ${id}${path !== undefined ? ` (${path})` : ""}`,
+            ({ id, path }) =>
+              `  - ${id}${path !== undefined ? ` (${formatHumanValue(path)})` : ""}`,
           )
         : ["  - (none)"]),
-      `recovery: ${error.recovery}`,
+      `recovery: ${escapeHumanText(error.recovery)}`,
     ];
     if (debug && error.underlyingCause instanceof Error) {
-      lines.push(error.underlyingCause.stack ?? error.underlyingCause.message);
+      lines.push(escapeHumanText(error.underlyingCause.stack ?? error.underlyingCause.message));
+    }
+    if (error.operation === "workspace handoff preparation") {
+      lines.push("handoff prepared: no");
     }
     return `${lines.join("\n")}\n`;
   }
@@ -141,6 +206,10 @@ export async function runWithExit(io: CliIo, body: () => Promise<void>): Promise
     await body();
     return 0;
   } catch (error) {
+    if (error instanceof JsonCliFailure) {
+      io.err.write(`${JSON.stringify(error.payload)}\n`);
+      return error.exitCode;
+    }
     if (error instanceof CommanderError) {
       // Commander already wrote help/version/usage text via the configured output; do not duplicate it.
       if (HELP_OR_VERSION_CODES.has(error.code)) {

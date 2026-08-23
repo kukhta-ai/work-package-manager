@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { realpathSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { join, posix, resolve, win32 } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Argument, Command, Option } from "commander";
 import { BacklogCli } from "./adapters/backlog-cli.js";
@@ -11,7 +11,15 @@ import { SystemClock } from "./adapters/system-clock.js";
 import { type CompletionSpecs, completeArgv } from "./completion/complete.js";
 import { BUILD_FORMATS, BUMP_LEVELS, CONFIRMATION_LEVELS } from "./completion/enums.js";
 import { defaultRegistry } from "./completion/registry.js";
-import { NotFoundError, UsageError, ValidationError } from "./core/errors.js";
+import {
+  exitCodeFor,
+  HandoffPreparationPreflightError,
+  HandoffVerificationError,
+  isMutationFailure,
+  NotFoundError,
+  UsageError,
+  ValidationError,
+} from "./core/errors.js";
 import {
   type AgentName,
   type ConfirmationLevel,
@@ -59,7 +67,7 @@ import {
 } from "./core/operations/bundle-version.js";
 import { createBundleSpec } from "./core/operations/create-bundle.js";
 import { makeArtefactDeriver } from "./core/operations/derive-artefacts-capability.js";
-import { initProject } from "./core/operations/init-project.js";
+import { type InitProjectResult, initProject } from "./core/operations/init-project.js";
 import {
   type InstallAuthoringSkillResult,
   installAuthoringSkill,
@@ -109,7 +117,14 @@ import {
   integrateWorkspaceAuthoring,
   type WorkspaceAuthoringIntegrationResult,
 } from "./core/operations/workspace-authoring-integration.js";
+import {
+  type PreparedWorkspaceHandoffResult,
+  prepareWorkspaceHandoff,
+  type VerifiedWorkspaceHandoffResult,
+  verifyWorkspaceHandoff,
+} from "./core/operations/workspace-handoff.js";
 import type { BacklogMd, Clock, Environment, FileSystem } from "./core/ports/index.js";
+import { authoringClientReloadGuidance } from "./core/services/authoring-clients.js";
 import { resolveContext } from "./core/services/context.js";
 import { parseManifest, parseTemplateDescriptor } from "./core/services/schema/index.js";
 import {
@@ -124,7 +139,13 @@ import {
 import { withExamples } from "./help/examples.js";
 import { installCompletion, type Shell } from "./util/completion-install.js";
 import { readConfirmation } from "./util/confirm.js";
-import { type CliIo, runWithExit } from "./util/exit.js";
+import {
+  type CliIo,
+  escapeHumanText,
+  formatHumanValue,
+  JsonCliFailure,
+  runWithExit,
+} from "./util/exit.js";
 import { toPosix } from "./util/posix-path.js";
 import { parseYaml } from "./util/yaml.js";
 import { VERSION } from "./version.js";
@@ -189,7 +210,7 @@ function formatResult(result: {
   changedPaths: readonly string[];
   materialisedTaskTitles: readonly string[];
 }): string {
-  const lines = [result.summary];
+  const lines = [escapeHumanText(result.summary)];
   if (result.changedPaths.length > 0) {
     lines.push(`changed: ${result.changedPaths.length} path(s)`);
   }
@@ -214,6 +235,100 @@ function formatWorkspaceAuthoringIntegration(result: WorkspaceAuthoringIntegrati
     `changed: ${result.changedPaths.length} path(s)`,
     "handoff prepared: no",
   ].join("\n")}\n`;
+}
+
+function formatPreparedHandoff(result: PreparedWorkspaceHandoffResult): string {
+  const lines = [
+    `prepared fresh-agent handoff at ${formatHumanValue(result.workspaceRoot)} for ${result.configuredClients.join(", ")}`,
+    "handoff: prepared",
+    `workspace root: ${formatHumanValue(result.workspaceRoot)}`,
+    `receipt: ${result.receiptPath}`,
+    `changed: ${result.changedPaths.length} path(s)`,
+  ];
+  for (const client of result.clients) {
+    lines.push(
+      `${client.id}:`,
+      `  launch: ${client.launch.command} from ${formatHumanValue(client.launch.workingDirectory)}`,
+      `  front door: ${client.frontDoor}`,
+      `  reload: ${client.reload.guidance}`,
+      `  verify: wpm authoring handoff verify --client ${client.id} from the recorded root (the receipt carries exact structured argv)`,
+      `  then invoke: ${client.firstSkill.invocation}`,
+    );
+  }
+  lines.push(
+    "agent process: not spawned or authenticated; receiving-agent acceptance is not claimed",
+  );
+  return `${lines.join("\n")}\n`;
+}
+
+function formatInitResult(result: InitProjectResult): string {
+  return `${formatResult(result).trimEnd()}\n${formatPreparedHandoff(result.handoff)}`;
+}
+
+function formatVerifiedHandoff(result: VerifiedWorkspaceHandoffResult): string {
+  const agreement = result.agreement;
+  return `${[
+    `verified fresh-agent handoff at ${formatHumanValue(result.workspaceRoot)} for ${result.selectedClient}`,
+    `workspace root: ${formatHumanValue(result.workspaceRoot)}`,
+    `selected client: ${result.selectedClient}`,
+    "agreement:",
+    `  working directory: ${agreement.workingDirectory.status} (${formatHumanValue(agreement.workingDirectory.path)})`,
+    `  receipt: ${agreement.receipt.status} (${agreement.receipt.path})`,
+    `  managed state: ${agreement.managedState.status} (${agreement.managedState.path})`,
+    `  authoring backlog: ${agreement.authoringBacklog.status} (${agreement.authoringBacklog.path})`,
+    ...agreement.clients.flatMap((client) => [
+      `  ${client.id} front door: ${client.frontDoor.status} (${client.frontDoor.path})`,
+      `  ${client.id} five-skill family: ${client.skillFamily.status} (${client.skillFamily.names.join(", ")})`,
+    ]),
+    ...result.clients.map(({ id, status }) => `${id}: ${status}`),
+    `durable core work: resumable=${result.workEvidence.resumable ? "yes" : "no"}; dependency-eligible=${result.workEvidence.dependencyEligible ? "yes" : "no"}`,
+    `next action: invoke ${result.nextAction.invocation} (${result.nextAction.skill})`,
+    "agent process: not spawned or authenticated; receiving-agent acceptance is not claimed",
+  ].join("\n")}\n`;
+}
+
+function throwJsonHandoffFailure(error: unknown): never {
+  if (error instanceof HandoffPreparationPreflightError) {
+    throw new JsonCliFailure(
+      {
+        status: "failed",
+        operation: "workspace-handoff-preparation",
+        handoffPrepared: false,
+        blockers: error.blockers,
+      },
+      exitCodeFor(error),
+    );
+  }
+  if (error instanceof HandoffVerificationError) {
+    throw new JsonCliFailure(
+      {
+        status: "failed",
+        operation: "workspace-handoff-verification",
+        handoffPrepared: false,
+        selectedClient: error.selectedClient,
+        sharedValid: error.sharedValid,
+        clients: error.clients,
+        blockers: error.blockers,
+      },
+      exitCodeFor(error),
+    );
+  }
+  if (isMutationFailure(error) && error.operation === "workspace handoff preparation") {
+    throw new JsonCliFailure(
+      {
+        status: "failed",
+        operation: "workspace-handoff-preparation",
+        handoffPrepared: false,
+        failedBeat: error.failedBeat,
+        completed: error.completed,
+        failed: error.failed,
+        unattempted: error.unattempted,
+        recovery: error.recovery,
+      },
+      1,
+    );
+  }
+  throw error;
 }
 
 /**
@@ -270,6 +385,30 @@ function requireProject(ctx: CommandContext, parent: Command): WorkspaceRoots {
     throw new NotFoundError(NO_PROJECT_MESSAGE);
   }
   return { deliverableRoot: context.deliverableRoot, workspaceRoot: context.workspaceRoot };
+}
+
+/**
+ * Resolve the bounded root a handoff command must inspect even when the normal workspace marker is itself one
+ * of the broken surfaces. An explicit `-C` is authoritative; otherwise retain normal ancestor orientation and
+ * fall back only to the actual cwd so verification can report a missing marker instead of failing dispatch.
+ */
+function handoffCandidateRoot(ctx: CommandContext, parent: Command): string {
+  const projectOverride = parent.opts().project as string | undefined;
+  const path = ctx.deps.env.platform() === "win32" ? win32 : posix;
+  if (projectOverride !== undefined) {
+    return path.resolve(ctx.deps.env.cwd(), projectOverride);
+  }
+  const context = resolveContext({ fs: ctx.deps.fs, env: ctx.deps.env });
+  return context.found ? context.workspaceRoot : path.resolve(ctx.deps.env.cwd());
+}
+
+/** Explicit `-C` intentionally establishes the receiving root; discovery alone never rewrites actual cwd. */
+function handoffEffectiveWorkingDirectory(
+  ctx: CommandContext,
+  parent: Command,
+  workspaceRoot: string,
+): string {
+  return parent.opts().project !== undefined ? workspaceRoot : ctx.deps.env.cwd();
 }
 
 /**
@@ -2346,7 +2485,7 @@ const initModule: CommandModule = {
               authoringClientIds: opts.authoringClient ?? [],
             },
           );
-          ctx.io.out.write(formatResult(result));
+          ctx.io.out.write(formatInitResult(result));
         },
       );
 
@@ -3293,6 +3432,9 @@ export const COMPLETION_SPECS: CompletionSpecs = {
   "authoring integrate": {
     options: { "--client": "authoring-client-ids" },
   },
+  "authoring handoff verify": {
+    options: { "--client": "authoring-client-ids" },
+  },
   "template list": {
     options: { "--scope": "template-scopes" },
   },
@@ -3409,9 +3551,7 @@ const skillModule: CommandModule = {
 };
 
 function reloadGuidance(client: InspectedAuthoringClient): string {
-  return client.reload.kind === "automatic-with-restart-fallback"
-    ? "changes are detected automatically; restart Codex in the workspace if the skill is absent"
-    : "changes are watched live; restart Claude Code if the top-level skill directory was created after session start";
+  return authoringClientReloadGuidance(client.id);
 }
 
 function formatAuthoringClient(client: InspectedAuthoringClient): string {
@@ -3515,6 +3655,80 @@ const authoringModule: CommandModule = {
       {
         command: "wpm authoring integrate --client codex --client claude-code",
         note: "reconcile both native workspace scopes from the installed WPM package",
+      },
+    ]);
+
+    const handoff = group
+      .command("handoff")
+      .description("prepare or verify one fresh-agent workspace handoff");
+
+    const prepare = handoff
+      .command("prepare")
+      .description("publish an exact prepared receipt for the current integrated workspace")
+      .option("--json", "print the stable machine-readable prepared result")
+      .action((options: { json?: boolean }) => {
+        const workspaceRoot = handoffCandidateRoot(ctx, parent);
+        try {
+          const result = prepareWorkspaceHandoff(
+            {
+              fs: ctx.deps.fs,
+              backlog: ctx.deps.backlog,
+              bundledSkillsRoot: requireBundledSkillsRoot(ctx.deps),
+            },
+            { workspaceRoot, integrationVersion: VERSION },
+          );
+          ctx.io.out.write(
+            options.json === true ? `${JSON.stringify(result)}\n` : formatPreparedHandoff(result),
+          );
+        } catch (error) {
+          if (options.json === true) throwJsonHandoffFailure(error);
+          throw error;
+        }
+      });
+
+    withExamples(prepare, [
+      {
+        command: "wpm -C ./workspace authoring handoff prepare",
+        note: "prepare an already integrated workspace without starting or authenticating another agent",
+      },
+    ]);
+
+    const verify = handoff
+      .command("verify")
+      .description(
+        "verify the actual cwd, receipt, managed state, native client surfaces, and core authoring backlog",
+      )
+      .requiredOption("--client <id>", "verify as one configured codex or claude-code client")
+      .option("--json", "print the stable machine-readable verified result")
+      .action((options: { client: string; json?: boolean }) => {
+        const workspaceRoot = handoffCandidateRoot(ctx, parent);
+        try {
+          const result = verifyWorkspaceHandoff(
+            {
+              fs: ctx.deps.fs,
+              backlog: ctx.deps.backlog,
+              bundledSkillsRoot: requireBundledSkillsRoot(ctx.deps),
+            },
+            {
+              workspaceRoot,
+              actualWorkingDirectory: handoffEffectiveWorkingDirectory(ctx, parent, workspaceRoot),
+              clientId: options.client,
+              integrationVersion: VERSION,
+            },
+          );
+          ctx.io.out.write(
+            options.json === true ? `${JSON.stringify(result)}\n` : formatVerifiedHandoff(result),
+          );
+        } catch (error) {
+          if (options.json === true) throwJsonHandoffFailure(error);
+          throw error;
+        }
+      });
+
+    withExamples(verify, [
+      {
+        command: "wpm -C ./workspace authoring handoff verify --client codex",
+        note: "run from the recorded workspace root; then invoke the reported native wpm-author skill",
       },
     ]);
   },

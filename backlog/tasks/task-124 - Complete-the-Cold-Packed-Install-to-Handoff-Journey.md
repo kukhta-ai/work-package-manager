@@ -4,7 +4,7 @@ title: Complete the Cold Packed-Install-to-Handoff Journey
 status: To Do
 assignee: []
 created_date: '2026-08-21 15:01'
-updated_date: '2026-08-23 13:52'
+updated_date: '2026-08-23 15:18'
 labels:
   - onboarding-epic-2
   - authoring-onboarding

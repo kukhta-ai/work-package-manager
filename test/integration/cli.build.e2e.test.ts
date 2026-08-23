@@ -916,6 +916,7 @@ describeIfBuilt("`wpm build package` E2E (task-83, through dist/cli.js)", () => 
           dir,
         ).code,
       ).toBe(0);
+      expect(cli(["authoring", "handoff", "prepare", "-C", proj], dir).code).toBe(0);
 
       const ROOT_SENTINEL = "TASK95-ROOT-EXECUTOR-3f8c";
       const BUNDLE_SENTINEL = "TASK95-BUNDLE-EXECUTOR-b247";
@@ -951,6 +952,17 @@ describeIfBuilt("`wpm build package` E2E (task-83, through dist/cli.js)", () => 
         selectedClients: ["codex", "claude-code"],
       });
       const STATE_SENTINEL = integrationState.workspaceRoot;
+      const handoffReceiptText = readFileSync(join(proj, ".wpm-handoff.json"), "utf8");
+      const handoffReceipt = JSON.parse(handoffReceiptText) as {
+        status: string;
+        configuredClients: string[];
+      };
+      expect(handoffReceipt).toMatchObject({
+        status: "prepared",
+        configuredClients: ["codex", "claude-code"],
+      });
+      const HANDOFF_SENTINEL = '"authoringBacklogPath": ".authoring-backlog"';
+      expect(handoffReceiptText).toContain(HANDOFF_SENTINEL);
       writeFileSync(join(proj, "wip", "_AGENTS.md"), `# root\n${ROOT_SENTINEL}\n`);
       writeFileSync(
         join(proj, "wip", "bundles", "web", "_AGENTS.md"),
@@ -982,6 +994,7 @@ describeIfBuilt("`wpm build package` E2E (task-83, through dist/cli.js)", () => 
 
       const assertNoWorkspaceIntegration = (layout: string[], extractedRoot: string): void => {
         expect(layout).not.toContain(".wpm-authoring.json");
+        expect(layout).not.toContain(".wpm-handoff.json");
         expect(
           layout.some((path) => path.startsWith(".agents/") || path.startsWith(".claude/")),
         ).toBe(false);
@@ -990,6 +1003,7 @@ describeIfBuilt("`wpm build package` E2E (task-83, through dist/cli.js)", () => 
         }
         const extractedBytes = concatAllFiles(extractedRoot);
         expect(extractedBytes).not.toContain(STATE_SENTINEL);
+        expect(extractedBytes).not.toContain(HANDOFF_SENTINEL);
         expect(extractedBytes).not.toContain(FRONTDOOR_SENTINEL);
         for (const [, , sentinel] of workspaceSkillEvidence) {
           expect(extractedBytes).not.toContain(sentinel);
@@ -1003,6 +1017,7 @@ describeIfBuilt("`wpm build package` E2E (task-83, through dist/cli.js)", () => 
       for (const [, , sentinel] of workspaceSkillEvidence) {
         expect(concatAllFiles(join(proj, "wip"))).not.toContain(sentinel);
       }
+      expect(concatAllFiles(join(proj, "wip"))).not.toContain(HANDOFF_SENTINEL);
 
       const tgz = join(proj, "builds", "demo-0.1.0.tgz");
       expect(cli(["build", "package", "--format", "tarball", "-C", proj], dir).code).toBe(0);

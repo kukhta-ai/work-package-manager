@@ -27,6 +27,7 @@ sequenceDiagram
     participant T as tea
     participant SM as sm
     participant W as worker (dev)
+    participant RV as reviewer
     participant R as retro
     participant I as investigator
     participant S as System
@@ -76,7 +77,8 @@ sequenceDiagram
     U-->>M: [GATE] mark stories ready
 
     Note over U,G: Phase 5 — Autonomous build / BAUT (sequential, single working tree)
-    M->>S: install + configure automator
+    M->>S: install review workflow; smoke-test optional outer automator
+    Note over M,RV: Default: direct persistent worker + independent reviewer; never nest duplicate agents
 
     Note over M,W: Story N (one backlog task) — repeat per task
     M->>G: checkout -b feature/foundation/task-<id>
@@ -84,17 +86,22 @@ sequenceDiagram
     W-->>M: story file confirmed
     M->>W: RESUME dev-story
     W-->>M: code + tests
+    Note over W: run focused tests and relevant static checks while diff is moving
     M->>W: RESUME qa-generate-e2e-tests
     W-->>M: E2E tests added
-    M->>W: RESUME story-automator-review (cycle 1)
-    W-->>M: findings or clean
+    Note over W: run the focused acceptance/E2E band
+    M->>RV: SPAWN story-automator-review (cycle 1)
+    RV-->>M: findings or clean
 
-    loop until clean (≈ up to 5 cycles)
+    loop until clean (repeat only for an open concrete finding)
         M->>W: RESUME dev-story (apply review findings)
         W-->>M: follow-ups done
-        M->>W: RESUME story-automator-review (cycle n)
-        W-->>M: findings or clean
+        M->>RV: RESUME story-automator-review (cycle n)
+        RV-->>M: findings or clean
     end
+
+    Note over M,RV: once stable, run one exact full CI-equivalent local gate
+    Note over M,RV: rerun it only after executable source/test behavior changes
 
     Note over W: task verified against acceptance criteria; status = Done
     W->>G: commit feat + test + fix (task-<id>)
@@ -140,6 +147,7 @@ sequenceDiagram
 
 - **SPAWN** — start a persistent subagent for a role (first call in its lifetime).
 - **RESUME** — re-enter an already-spawned subagent, preserving its context.
+- The direct persistent worker/reviewer path is the default; an outer automator is optional coordination only.
 - **[GATE]** — a human approval point; the agent stops and waits.
 - **solid arrow** — a call; **dashed arrow** — its return.
 - Branch topology: `main → dev → feature/foundation → feature/foundation/task-<id>`, with
@@ -152,7 +160,7 @@ sequenceDiagram
 |---|---|---|
 | analyst, pm, ux-designer, architect, sm, tea, tech-writer | **BMM** module (`npx bmad-method install --modules bmm`) | the core SDLC roles + their workflows |
 | tea (Murat) + the `testarch-*` workflows | **TEA** module (`--modules tea`; repo `bmad-method-test-architecture-enterprise`) | test design, framework, ci, trace, nfr, atdd, automate, test-review |
-| worker / automator loop (`story-automator`, `story-automator-review`) | **bmad-automator** (`--modules automator`) | the per-story build→review automation in Phase 5 |
+| reviewer / optional automator (`story-automator-review`, `story-automator`) | **bmad-automator** (`--modules automator`) | independent per-story review and optional Phase 5 coordination |
 | worker (dev), investigator, retro | roles spun from BMM `dev`/`qa` + the `retrospective` workflow | implement stories, debug at the gate, write the epic retro |
 
 See `AGENTS.md` for how to install these, initialize the persistent specialists, track SDLC state, and the
