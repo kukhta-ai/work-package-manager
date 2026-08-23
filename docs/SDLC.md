@@ -79,6 +79,7 @@ sequenceDiagram
     Note over U,G: Phase 5 — Autonomous build / BAUT (sequential, single working tree)
     M->>S: install review workflow; smoke-test optional outer automator
     Note over M,RV: Default: direct persistent worker + independent reviewer; never nest duplicate agents
+    Note over M,W,RV: On resume, re-read any changed delivery_policy.revision before choosing gates
 
     Note over M,W: Story N (one backlog task) — repeat per task
     M->>G: checkout -b feature/foundation/task-<id>
@@ -100,8 +101,9 @@ sequenceDiagram
         RV-->>M: findings or clean
     end
 
-    Note over M,RV: once stable, run one exact full CI-equivalent local gate
-    Note over M,RV: rerun it only after executable source/test behavior changes
+    Note over M,RV: stable diff: focused/static/build plus one hash-bound ship-boundary proof when applicable
+    Note over M,RV: no ordinary-story exact full suite or live supported-client matrix
+    Note over M,RV: exception only for a recorded concrete cross-cutting risk not bounded by focused tests
 
     Note over W: task verified against acceptance criteria; status = Done
     W->>G: commit feat + test + fix (task-<id>)
@@ -118,7 +120,8 @@ sequenceDiagram
     T-->>M: coverage matrix
     M->>T: RESUME testarch-nfr
     T-->>M: NFR report
-    M->>S: clean-environment reset + run full E2E (cold start)
+    M->>S: exact final revision: clean install + typecheck + lint + build + one exact full suite
+    M->>S: rebind exact package/candidate/channel evidence + run live Codex/Claude six-skill matrix
     S-->>M: failures (if any)
     M->>I: SPAWN investigate + systematic-debugging
     I-->>M: root cause + fix plan

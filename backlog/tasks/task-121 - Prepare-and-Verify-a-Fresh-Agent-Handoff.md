@@ -4,7 +4,7 @@ title: Prepare and Verify a Fresh-Agent Handoff
 status: In Progress
 assignee: []
 created_date: '2026-08-21 15:01'
-updated_date: '2026-08-23 14:56'
+updated_date: '2026-08-23 15:14'
 labels:
   - onboarding-epic-2
   - authoring-onboarding
@@ -47,7 +47,7 @@ Non-goals: Spawning, authenticating, or owning an agent process; claiming agent 
 ## Implementation Notes
 
 <!-- SECTION:NOTES:BEGIN -->
-Literal bmad-create-story, bmad-dev-story, and bmad-qa-generate-e2e-tests completed for Story 2.8. Worker focused, static, build, packed source-free, and generated non-leakage gates pass; stable product/test hash b4c1b1a38f0827e3004d8611344403df30a0208a24cdadf3ec9c173bb84a22a9. Independent bmad-story-automator-review and the exact stable full npm test remain pending.
+Literal bmad-create-story, bmad-dev-story, and bmad-qa-generate-e2e-tests completed for Story 2.8. Worker focused, static, build, packed source-free, and generated non-leakage gates pass; stable product/test hash b4c1b1a38f0827e3004d8611344403df30a0208a24cdadf3ec9c173bb84a22a9. Independent bmad-story-automator-review remains pending. PROCESS POLICY UPDATE (user-approved 2026-08-23): fast-gates-v2 is effective for this active review. Complete the independent semantic audit plus focused/static/build/package evidence, but do not launch an ordinary-story exact full npm test or live-client matrix unless a named concrete cross-cutting risk satisfies and records the policy exception. The complete exact suite and live Codex/externally authenticated Claude six-skill matrix run once after TASK-127 from one clean exact revision. Source: _bmad-output/planning-artifacts/sprint-change-proposal-2026-08-23-fast-gates-v2.md.
 <!-- SECTION:NOTES:END -->
 
 ## Definition of Done

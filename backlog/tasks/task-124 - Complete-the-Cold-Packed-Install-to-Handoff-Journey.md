@@ -4,7 +4,7 @@ title: Complete the Cold Packed-Install-to-Handoff Journey
 status: To Do
 assignee: []
 created_date: '2026-08-21 15:01'
-updated_date: '2026-08-23 14:56'
+updated_date: '2026-08-23 15:14'
 labels:
   - onboarding-epic-2
   - authoring-onboarding
@@ -48,6 +48,12 @@ Non-goals: Public acquisition, release activation, process or session ownership,
 - [ ] #13 Given fresh-agent handoff verification and authoring continuation succeed; when WPM's handoff claims are inspected; then WPM claims no process, authentication, session, or acceptance ownership.
 - [ ] #14 Given that authoring workspace produces a work-package deliverable; when the deliverable boundary is inspected; then it contains no personal or workspace WPM skills, authoring backlog, managed onboarding state, handoff receipt, or workspace authoring front door.
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Delivery policy fast-gates-v2: this story remains the deterministic complete-family packed-install/handoff proof. AC11 may use one independently launched supported agent with deterministic per-adapter fixtures; the exact full npm test and live Codex/externally authenticated Claude six-skill matrix belong to the post-TASK127 exact-revision cold gate. A story-level full suite is allowed only for the documented named concrete-risk exception.
+<!-- SECTION:NOTES:END -->
 
 ## Definition of Done
 <!-- DOD:BEGIN -->

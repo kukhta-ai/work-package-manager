@@ -4,7 +4,7 @@ title: Guide Package Creation with wpm-create-package
 status: To Do
 assignee: []
 created_date: '2026-08-21 15:01'
-updated_date: '2026-08-23 14:56'
+updated_date: '2026-08-23 15:14'
 labels:
   - onboarding-epic-2
   - authoring-onboarding
@@ -42,10 +42,16 @@ Non-goals: Normal personal-scope installation or reconciliation, which belongs t
 - [ ] #7 Generated work-package deliverables contain no copy of the personal `wpm-create-package` skill.
 <!-- AC:END -->
 
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Delivery policy fast-gates-v2: use focused/static/build evidence and one stable-hash-bound exact package/source-free/non-leak proof for this skill. Do not run the ordinary-story exact full npm test or live-client matrix unless the documented concrete-risk exception applies.
+<!-- SECTION:NOTES:END -->
+
 ## Definition of Done
 <!-- DOD:BEGIN -->
 - [ ] #1 Typechecks clean (tsc --noEmit) and Biome clean (biome ci)
 - [ ] #2 Tests added and green (vitest): unit for pure logic, integration where it touches ports
 - [ ] #3 Public functions documented; no dead code; the core import-boundary rule is not violated
-- [ ] #4 During this story, a fresh current official Codex `$skill-creator` or Claude Code `skill-creator@claude-plugins-official` authoring helper is invoked; evidence records the helper and host versions, then-current official Codex and Claude Code skill-authoring sources with access date, deterministic native-path, frontmatter, discovery and explicit-invocation identity, trigger/non-trigger contract, and source-free portability evidence for both supported platforms, and fresh Codex discovery, explicit-invocation, natural-language-trigger, non-trigger, and outcome verification. Authenticated live Claude behavioral parity is owned by the approved post-implementation exact-revision cold gate and is not claimed by this story.
+- [ ] #4 During this story, a fresh current official Codex $skill-creator or Claude Code skill-creator@claude-plugins-official authoring helper is invoked; evidence records the helper and host versions, then-current official Codex and Claude Code skill-authoring sources with access date, deterministic native-path, frontmatter, discovery and explicit-invocation identity, trigger/non-trigger contract, and source-free portability for both supported platforms, plus exact packed availability and generated-deliverable non-leakage. Fresh live Codex and externally authenticated live Claude behavioral parity are owned by the approved post-TASK127 exact-revision cold gate and are not claimed by this story.
 <!-- DOD:END -->
