@@ -263,19 +263,8 @@ specialists:
   retro:        {spawned: true, id: "/root/onboarding_retro", role: "authoring-agent-onboarding epic retrospective", last_skill: "bmad-retrospective @ onboarding Epic 1", status: "GREEN; no blockers or Epic 2 replan; artifact validated."}
 
 gates_pending: []
-delivery_policy:
-  revision: "fast-gates-v2"
-  approved_at: "2026-08-23"
-  source: "_bmad-output/planning-artifacts/sprint-change-proposal-2026-08-23-fast-gates-v2.md"
-  effective_from: "TASK-121"
-  resume_rule: "Worker and reviewer must compare this revision on every resume; if new or unread, reread AGENTS.md Fast feedback and proportional review, this policy block, and the current story before choosing gates."
-  per_story: "Literal create/dev/QA/review workflows; focused acceptance and regression tests, typecheck, Biome, relevant build, and one stable-hash-bound exact archive/source-free/non-leakage proof only when the ship boundary changed. No ordinary-story exact full npm test or live supported-client behavior matrix."
-  evidence_reuse: "An earlier worker/QA archive/source-free run may be accepted without repetition only when review changes no product/test byte and the evidence binds the same stable product/test hash."
-  exception_rule: "A reviewer may request a story-level exact full suite only for a named concrete cross-cutting risk that focused tests cannot bound; the reason and result must be recorded in the story and this state tracker."
-  final_gate: "After TASK-127, one clean exact revision runs dependency install, typecheck, repository lint, build, one exact full npm test, exact package/packed-install/candidate/channel rebinding, and fresh live Codex plus externally authenticated live Claude six-skill parity."
-  main_session_notice: "MANDATORY FOR ACTIVE TASK-121 REVIEW: apply fast-gates-v2 and do not launch the ordinary-story exact full npm test or live-client matrix unless the recorded concrete-risk exception is met. Preserve this policy in the task integration commit."
 deferred_gates:
-  - "FINAL POST-IMPLEMENTATION COLD GATE after TASK-127 / Story 3.3: from one clean exact revision, run dependency installation, typecheck, repository lint, build, and the exact full npm test once; rebind exact package/packed-install/candidate/channel evidence; then run fresh live Codex and externally authenticated live Claude discovery, explicit invocation, natural-language trigger, non-trigger, and representative outcome for all six exact packaged WPM skills. This blocks final handoff/activation, not intermediate stories; WPM does not own host authentication or sessions."
+  - "FINAL POST-IMPLEMENTATION COLD GATE after TASK-127 / Story 3.3: externally authenticated fresh Claude Code discovery, explicit invocation, natural-language trigger, non-trigger, and representative outcome for all six WPM-owned skills against one exact final packed revision. This blocks final handoff/activation, not intermediate skill stories; WPM does not own authentication."
 # GOAL EXTENDED (2026-06-01): "complete to task 33 ... full SDLC; THEN merge to dev and start the same SDLC
 # from it with the CLI tasks pushed there (update from remote) and go to task 84 (to the end)." So:
 #   (1) finish the foundation epic 23-33 + the Phase-6 epic gate;
@@ -297,4 +286,4 @@ tooling:
   tool_target: "claude-code"
   claude_code_skills: ".claude/skills (56 skills)"
 
-last_updated: "2026-08-23T15:15:32Z"
+last_updated: "2026-08-23T14:56:34Z"

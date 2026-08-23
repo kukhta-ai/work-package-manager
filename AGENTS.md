@@ -360,10 +360,8 @@ Update `.bmad/sdlc-state.yaml` at every phase boundary.
 
 **Phase 6 — Epic gate** · branch `feature/foundation` (+ `fix/foundation/<issue>` if needed) · personas `tea`, `investigator`, `worker`
 - `tea`: `testarch-trace` (initial coverage matrix + interim gate) and `testarch-nfr` (NFR report).
-- After the current scoped implementation is complete (TASK-127 for authoring onboarding), reset to one clean
-  exact revision and run dependency installation, typecheck, repository lint, build, and the exact full test
-  suite **once**, cold, the way CI does. Produce or rebind every exact package, packed-install, candidate, and
-  channel-assessment artifact from those same bytes, then run the required live supported-client matrix.
+- Reset to a clean environment (e.g. compose down/up) and run the whole E2E suite **cold**, the way CI does —
+  a fresh checkout, nothing warm.
 - On failure: spawn `investigator` (systematic debugging) -> root cause + fix plan -> `git checkout -b
   fix/foundation/<issue>` -> `worker` applies the fix (re-spawn `dev-story`) -> commit on the fix branch ->
   `git checkout feature/foundation; merge --no-ff fix; branch -d fix` -> re-run cold-start E2E. Repeat until green.
@@ -383,24 +381,13 @@ Update `.bmad/sdlc-state.yaml` at every phase boundary.
 
 Keep correctness gates, but run each at the point where it produces useful information:
 
-- `.bmad/sdlc-state.yaml` carries the active `delivery_policy.revision`. On every resume, worker and reviewer
-  compare that token with the last policy they read. A new or unread revision requires rereading this section,
-  the state policy block, and the current story before selecting any gate; it does not require another full
-  design-doc preload.
 - During implementation, run the smallest relevant test files plus typecheck/lint for touched boundaries.
   Build only when generated output, package boundaries, or built-CLI behavior is affected.
 - QA runs the focused acceptance/E2E band it adds or changes; it does not automatically repeat the full suite.
-- Use one independent reviewer by default. Finish the complete audit and all fixes before accepting expensive
-  artifact evidence. When a story changes a package/ship boundary, accept one exact archive/source-free/
-  non-leakage proof against the stable product/test hash. The reviewer may adopt an earlier worker/QA run only
-  when the audit changed no product/test byte and the evidence binds that exact hash; otherwise run it once
-  after fixes stabilize.
-- Do not run the exact full CI-equivalent suite or a live supported-client behavior matrix in an ordinary story
-  cycle. Run both once at the Phase-6 cold gate after scoped implementation is complete. A reviewer may request
-  an exceptional story-level full suite only for a named, concrete cross-cutting risk that cannot be bounded by
-  focused tests; record the reason and result in the story and state tracker. If executable source or test
-  behavior changes after the final gate, rerun focused checks and then one new complete final gate. Story,
-  QA-record, status, or comment-only changes reuse stable product/test hashes.
+- Use one independent reviewer by default. Finish the complete audit and all fixes before the expensive gate.
+- Run the exact full CI-equivalent local gate **once on the stable final product/test diff**. If executable source
+  or test behavior changes afterward, rerun focused checks and then one new full gate. Story, QA-record, status,
+  or comment-only changes may reuse the last full result when product/test hashes are unchanged.
 - Add another reviewer or review cycle only for a concrete unresolved finding or demonstrated high-risk seam
   such as security, external authority, concurrency, or platform behavior—not as a ritual.
 - Cold-environment and full platform-matrix confirmation remain Phase 6/CI gates; do not duplicate them in
@@ -426,11 +413,9 @@ Then:
    tests for the task's behavior, then run its focused acceptance band.
 6. **story-automator-review cycle (reviewer — a *separate* subagent, never the worker self-reviewing).** The
    reviewer **invokes `story-automator-review`**, completes the audit, and auto-fixes or returns concrete
-   findings. Treat real findings as blocking and bump `review_cycle`; loop dev-story -> review until clean.
-   Run focused/static/build checks and, only for a changed ship boundary, accept one hash-bound exact
-   archive/source-free/non-leakage proof under the policy above. Defer the exact full suite and live supported-
-   client matrix to Phase 6 unless the documented concrete-risk exception applies. Record and raise a genuinely
-   non-converging review; do not multiply cycles for evidence-only edits.
+   findings. Treat real findings as blocking and bump `review_cycle`; loop dev-story -> review until clean. Run
+   the full local CI-equivalent suite once the product/test diff is stable, following the fast-feedback policy
+   above. Record and raise a genuinely non-converging review; do not multiply cycles for evidence-only edits.
 7. **Verify against acceptance criteria.** Criterion by criterion, each observably true; tick as they pass
    (`--check-ac <n>`). Never tick what you haven't shown.
 8. **Record & close.** Tick DoD items (`--check-dod <n>`), record in `--notes` which BMAD skills this story
