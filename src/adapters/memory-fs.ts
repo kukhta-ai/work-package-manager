@@ -1,5 +1,11 @@
+import { createHash } from "node:crypto";
 import { posix, win32 } from "node:path";
-import type { AliasResult, DirEntry, FileSystem } from "../core/ports/filesystem.js";
+import type {
+  AliasResult,
+  DirEntry,
+  FileSystem,
+  PathInspection,
+} from "../core/ports/filesystem.js";
 import { toPosix } from "../util/posix-path.js";
 
 /**
@@ -87,6 +93,49 @@ export class MemoryFileSystem implements FileSystem {
     return this.existsResolved(this.normalize(path), new Set<string>());
   }
 
+  /** @inheritdoc */
+  inspectPath(path: string): PathInspection {
+    const p = this.normalize(path);
+    const target = this.aliases.get(p);
+    if (target !== undefined) {
+      return { kind: "symbolic-link", target };
+    }
+    if (this.files.has(p)) {
+      return { kind: "file" };
+    }
+    if (this.directories.has(p)) {
+      return { kind: "directory" };
+    }
+    return { kind: "missing" };
+  }
+
+  /** @inheritdoc */
+  digestFile(path: string): string {
+    return createHash("sha256").update(this.read(path), "utf8").digest("hex");
+  }
+
+  /** @inheritdoc */
+  readWithDigest(path: string): { content: string; sha256: string } {
+    const content = this.read(path);
+    return {
+      content,
+      sha256: createHash("sha256").update(content, "utf8").digest("hex"),
+    };
+  }
+
+  /** @inheritdoc */
+  canonicalPath(path: string): string {
+    const normalized = this.normalize(path);
+    const inspection = this.inspectPath(normalized);
+    if (inspection.kind === "missing") {
+      throw new Error(`ENOENT: no such path, realpath '${normalized}'`);
+    }
+    if (inspection.kind === "symbolic-link") {
+      return this.resolveAliasTarget(normalized, inspection.target);
+    }
+    return normalized;
+  }
+
   /**
    * Faithful existence check that **follows aliases the way `existsSync` follows a symlink** (the real
    * adapter's behaviour). A direct file or directory at `p` exists. Otherwise, if `p` is a recorded alias
@@ -150,6 +199,9 @@ export class MemoryFileSystem implements FileSystem {
     };
     for (const filePath of this.files.keys()) collect(filePath, "file");
     for (const dirPath of this.directories) collect(dirPath, "directory");
+    // Match NodeFileSystem.list: a symbolic link is a non-directory entry at this surface. Callers that need
+    // its concrete no-follow kind use inspectPath on the child after listing it.
+    for (const aliasPath of this.aliases.keys()) collect(aliasPath, "file");
     return [...names].map(([name, kind]) => ({ name, kind }));
   }
 

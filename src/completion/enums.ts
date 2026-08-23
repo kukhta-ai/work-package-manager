@@ -1,3 +1,4 @@
+import { AUTHORING_CLIENT_IDS } from "../core/services/authoring-clients.js";
 import { type CompletionSource, fixedEnum } from "./sources.js";
 
 /**
@@ -29,6 +30,7 @@ export const SHELLS = ["bash", "zsh", "fish"] as const;
  * default registry so AC#2 holds for every finite enum doc 10 names.
  */
 export const FIXED_ENUM_SOURCES: Readonly<Record<string, CompletionSource>> = {
+  "authoring-client-ids": fixedEnum(AUTHORING_CLIENT_IDS),
   "bump-levels": fixedEnum(BUMP_LEVELS),
   "build-formats": fixedEnum(BUILD_FORMATS),
   "confirmation-levels": fixedEnum(CONFIRMATION_LEVELS),

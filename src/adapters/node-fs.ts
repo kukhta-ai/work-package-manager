@@ -1,17 +1,26 @@
-import { randomBytes } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import {
   cpSync,
   existsSync,
+  lstatSync,
   mkdirSync,
   readdirSync,
   readFileSync,
+  readlinkSync,
+  realpathSync,
   renameSync,
+  rmdirSync,
   rmSync,
   unlinkSync,
   writeFileSync,
 } from "node:fs";
 import { dirname, join } from "node:path";
-import type { AliasResult, DirEntry, FileSystem } from "../core/ports/filesystem.js";
+import type {
+  AliasResult,
+  DirEntry,
+  FileSystem,
+  PathInspection,
+} from "../core/ports/filesystem.js";
 import { ensureSymlinkOrCopy, type SymlinkStrategyOptions } from "../util/symlink.js";
 
 /**
@@ -45,18 +54,38 @@ export class NodeFileSystem implements FileSystem {
    */
   write(path: string, content: string): void {
     const dir = dirname(path);
-    mkdirSync(dir, { recursive: true });
-    // Unique temp name in the same directory so the rename stays on one filesystem (and is therefore atomic).
-    const tmp = join(dir, `.${randomBytes(8).toString("hex")}.tmp`);
+    const newlyCreatedCandidates: string[] = [];
+    let current = dir;
+    while (!existsSync(current)) {
+      newlyCreatedCandidates.push(current);
+      const parent = dirname(current);
+      if (parent === current) break;
+      current = parent;
+    }
+    let tmp: string | undefined;
     try {
+      mkdirSync(dir, { recursive: true });
+      // Unique temp name in the same directory so the rename stays on one filesystem (and is therefore atomic).
+      tmp = join(dir, `.${randomBytes(8).toString("hex")}.tmp`);
       writeFileSync(tmp, content, "utf8");
       renameSync(tmp, path);
     } catch (err) {
-      // Best-effort cleanup; never let the cleanup mask the original error.
-      try {
-        unlinkSync(tmp);
-      } catch {
-        // ignore — the temp may not have been created
+      // Best-effort cleanup; never let cleanup mask the original error. Removing only empty directories that
+      // were absent before this call makes a failed first bootstrap write retryable without deleting raced-in
+      // user content.
+      if (tmp !== undefined) {
+        try {
+          unlinkSync(tmp);
+        } catch {
+          // ignore — the temp may not have been created or may already have been renamed
+        }
+      }
+      for (const created of newlyCreatedCandidates) {
+        try {
+          rmdirSync(created);
+        } catch {
+          // ignore — absent/non-empty directories are either already clean or contain content we must preserve
+        }
       }
       throw err;
     }
@@ -65,6 +94,44 @@ export class NodeFileSystem implements FileSystem {
   /** @inheritdoc */
   exists(path: string): boolean {
     return existsSync(path);
+  }
+
+  /** @inheritdoc */
+  inspectPath(path: string): PathInspection {
+    try {
+      const stat = lstatSync(path);
+      if (stat.isSymbolicLink()) {
+        return { kind: "symbolic-link", target: readlinkSync(path) };
+      }
+      if (stat.isDirectory()) {
+        return { kind: "directory" };
+      }
+      return stat.isFile() ? { kind: "file" } : { kind: "other" };
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+        return { kind: "missing" };
+      }
+      throw error;
+    }
+  }
+
+  /** @inheritdoc */
+  digestFile(path: string): string {
+    return createHash("sha256").update(readFileSync(path)).digest("hex");
+  }
+
+  /** @inheritdoc */
+  readWithDigest(path: string): { content: string; sha256: string } {
+    const bytes = readFileSync(path);
+    return {
+      content: bytes.toString("utf8"),
+      sha256: createHash("sha256").update(bytes).digest("hex"),
+    };
+  }
+
+  /** @inheritdoc */
+  canonicalPath(path: string): string {
+    return realpathSync.native(path);
   }
 
   /** @inheritdoc */

@@ -61,8 +61,6 @@ import { createBundleSpec } from "./core/operations/create-bundle.js";
 import { makeArtefactDeriver } from "./core/operations/derive-artefacts-capability.js";
 import { initProject } from "./core/operations/init-project.js";
 import {
-  AUTHORING_SKILL_NAME,
-  authoringSkillPresent,
   type InstallAuthoringSkillResult,
   installAuthoringSkill,
 } from "./core/operations/install-authoring-skill.js";
@@ -107,6 +105,10 @@ import {
 } from "./core/operations/skill-refs.js";
 import { addTargetSpec, listTargetsSpec, removeTargetSpec } from "./core/operations/targets.js";
 import { bumpVersionSpec, readVersionSpec, setVersionSpec } from "./core/operations/version.js";
+import {
+  integrateWorkspaceAuthoring,
+  type WorkspaceAuthoringIntegrationResult,
+} from "./core/operations/workspace-authoring-integration.js";
 import type { BacklogMd, Clock, Environment, FileSystem } from "./core/ports/index.js";
 import { resolveContext } from "./core/services/context.js";
 import { parseManifest, parseTemplateDescriptor } from "./core/services/schema/index.js";
@@ -195,6 +197,23 @@ function formatResult(result: {
     lines.push(`materialised: ${result.materialisedTaskTitles.length} authoring task(s)`);
   }
   return `${lines.join("\n")}\n`;
+}
+
+function requireBundledSkillsRoot(deps: CliDeps): string {
+  if (deps.bundledSkillsRoot === undefined) {
+    throw new Error("internal: bundledSkillsRoot was not assembled");
+  }
+  return deps.bundledSkillsRoot;
+}
+
+function formatWorkspaceAuthoringIntegration(result: WorkspaceAuthoringIntegrationResult): string {
+  return `${[
+    result.summary,
+    `clients: ${result.selectedClients.join(", ")}`,
+    `state: ${result.statePath}`,
+    `changed: ${result.changedPaths.length} path(s)`,
+    "handoff prepared: no",
+  ].join("\n")}\n`;
 }
 
 /**
@@ -2279,6 +2298,11 @@ const initModule: CommandModule = {
         "a placeholder-substitution value (repeatable, e.g. --param author=me)",
         (value: string, previous: string[] = []) => [...previous, value],
       )
+      .option(
+        "--authoring-client <id>",
+        "install workspace authoring integration for codex or claude-code (repeatable; required)",
+        (value: string, previous: string[] = []) => [...previous, value],
+      )
       .action(
         (
           name: string,
@@ -2287,6 +2311,7 @@ const initModule: CommandModule = {
             template?: string;
             listTemplates?: boolean;
             param?: string[];
+            authoringClient?: string[];
           },
         ) => {
           // --list-templates (AC#6): print the available PROJECT templates and exit 0, creating nothing. This
@@ -2310,34 +2335,26 @@ const initModule: CommandModule = {
               fs: ctx.deps.fs,
               backlog: ctx.deps.backlog,
               builtinTemplatesRoot: ctx.deps.builtinTemplatesRoot,
+              bundledSkillsRoot: requireBundledSkillsRoot(ctx.deps),
+              integrationVersion: VERSION,
             },
             {
               targetDir,
               name,
               ...(opts.template !== undefined ? { templateName: opts.template } : {}),
               params,
+              authoringClientIds: opts.authoringClient ?? [],
             },
           );
           ctx.io.out.write(formatResult(result));
-
-          // AC#4 (task-91): point the author at how to install the authoring skill when it is absent. The
-          // workspace's authoring front door already tells the agent to *invoke* the installer-builder skill;
-          // here we surface, in init's own summary, the command that makes it available — but only when it is
-          // not already present in the detected user agent scope(s) (so a set-up machine stays quiet). Detection
-          // reads HOME via the env port; with no HOME we cannot probe, so we skip (the front door still covers it).
-          const home = ctx.deps.env.getEnv("HOME");
-          if (home !== undefined && home !== "" && !authoringSkillPresent(ctx.deps.fs, home)) {
-            ctx.io.out.write(
-              `tip: run \`wpm skill install\` to make the ${AUTHORING_SKILL_NAME} authoring skill available to your agent\n`,
-            );
-          }
         },
       );
 
     withExamples(leaf, [
       {
-        command: "wpm init hermes-handoff --template minimal --at ./my-installer",
-        note: "scaffold a project at ./my-installer from the minimal template (or `--list-templates` to list them, `--param k=v` to add substitutions)",
+        command:
+          "wpm init hermes-handoff --authoring-client codex --template minimal --at ./my-installer",
+        note: "scaffold a project with explicit Codex workspace integration (repeat --authoring-client for Claude Code too)",
       },
     ]);
   },
@@ -3267,10 +3284,14 @@ export const COMPLETION_SPECS: CompletionSpecs = {
     // `--template`/`--list-templates` complete from the PROJECT-scope templates (AC#8); a project template can't
     // scaffold a bundle, so the source is `project-template-names`, not the unscoped `template-names`.
     options: {
+      "--authoring-client": "authoring-client-ids",
       "--template": "project-template-names",
       "--list-templates": "project-template-names",
     },
     args: [undefined], // <name> — a brand-new project name, no suggestions (doc 10)
+  },
+  "authoring integrate": {
+    options: { "--client": "authoring-client-ids" },
   },
   "template list": {
     options: { "--scope": "template-scopes" },
@@ -3370,11 +3391,7 @@ const skillModule: CommandModule = {
         "copy the bundled installer-builder authoring skill into the detected agents' user skill scope (doc 12)",
       )
       .action(() => {
-        const bundledSkillsRoot = ctx.deps.bundledSkillsRoot;
-        if (bundledSkillsRoot === undefined) {
-          // The composition root always sets this; only a mis-wired deps object reaches here.
-          throw new Error("internal: bundledSkillsRoot was not assembled");
-        }
+        const bundledSkillsRoot = requireBundledSkillsRoot(ctx.deps);
         const result = installAuthoringSkill(
           { fs: ctx.deps.fs, env: ctx.deps.env },
           { bundledSkillsRoot },
@@ -3420,7 +3437,7 @@ const authoringModule: CommandModule = {
   register(parent, ctx) {
     const group = parent
       .command("authoring")
-      .description("inspect WPM authoring support without changing client configuration");
+      .description("inspect clients and reconcile workspace-local WPM authoring integration");
     const clients = group
       .command("clients [id]")
       .description(
@@ -3463,6 +3480,41 @@ const authoringModule: CommandModule = {
       {
         command: "wpm authoring clients claude-code --json",
         note: "inspect one client as structured data; omit the id to list both selectable clients",
+      },
+    ]);
+
+    const integrate = group
+      .command("integrate")
+      .description(
+        "apply or reapply WPM authoring integration for an explicit workspace client selection",
+      )
+      .option(
+        "--client <id>",
+        "select codex or claude-code (repeatable; at least one is required)",
+        (value: string, previous: string[] = []) => [...previous, value],
+      )
+      .action((options: { client?: string[] }) => {
+        const { workspaceRoot } = requireProject(ctx, parent);
+        const result = integrateWorkspaceAuthoring(
+          {
+            fs: ctx.deps.fs,
+            backlog: ctx.deps.backlog,
+            builtinTemplatesRoot: ctx.deps.builtinTemplatesRoot,
+            bundledSkillsRoot: requireBundledSkillsRoot(ctx.deps),
+          },
+          {
+            workspaceRoot,
+            clientIds: options.client ?? [],
+            integrationVersion: VERSION,
+          },
+        );
+        ctx.io.out.write(formatWorkspaceAuthoringIntegration(result));
+      });
+
+    withExamples(integrate, [
+      {
+        command: "wpm authoring integrate --client codex --client claude-code",
+        note: "reconcile both native workspace scopes from the installed WPM package",
       },
     ]);
   },

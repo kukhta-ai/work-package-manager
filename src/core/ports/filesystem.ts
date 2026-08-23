@@ -36,6 +36,24 @@ export type AliasResult =
   | { readonly kind: "copy"; readonly warning: string };
 
 /**
+ * A no-follow inspection of one filesystem path. Workspace-integration ownership checks must distinguish a
+ * regular file/directory from a symbolic link (including a broken link) before they authorize a write; the
+ * existing `exists` probe intentionally follows links and therefore cannot supply that evidence.
+ */
+export type PathInspection =
+  | { readonly kind: "missing" }
+  | { readonly kind: "file" }
+  | { readonly kind: "directory" }
+  | { readonly kind: "symbolic-link"; readonly target: string }
+  | { readonly kind: "other" };
+
+/** One immutable UTF-8 read bound to the digest of those exact bytes. */
+export interface DigestedText {
+  readonly content: string;
+  readonly sha256: string;
+}
+
+/**
  * The file-system operations the builder needs, as a replaceable, synchronous abstraction (doc 13 §3).
  */
 export interface FileSystem {
@@ -53,7 +71,8 @@ export interface FileSystem {
    *
    * The write either fully succeeds or leaves a pre-existing file at `path` intact — an interrupted write
    * never leaves a partial or corrupt file observable at `path` (the real adapter writes to a temp file in
-   * the same directory, then renames over the target).
+   * the same directory, then renames over the target). If the adapter created missing parents for a failed
+   * write, it removes only those that remain empty so an initial bootstrap write can be retried safely.
    *
    * @param path - The destination file path.
    * @param content - The full contents to write.
@@ -67,6 +86,34 @@ export interface FileSystem {
    * @returns `true` if something exists at `path`.
    */
   exists(path: string): boolean;
+
+  /**
+   * Inspect a path without following its final symbolic link.
+   *
+   * @param path - The path to inspect.
+   * @returns Its concrete kind, or `missing`; symbolic links include their stored target.
+   */
+  inspectPath(path: string): PathInspection;
+
+  /**
+   * Compute the SHA-256 digest of one readable file's bytes. Used only as durable exact-content ownership
+   * evidence; callers still inspect the path kind first.
+   *
+   * @param path - The file to digest.
+   * @returns A lowercase hexadecimal SHA-256 digest.
+   * @throws If the path is missing or not a readable file.
+   */
+  digestFile(path: string): string;
+
+  /** Read one regular UTF-8 file and hash the exact same captured bytes. */
+  readWithDigest(path: string): DigestedText;
+
+  /**
+   * Resolve an existing path through every symbolic-link ancestor to its absolute canonical identity.
+   * Workspace integration uses this only to bind a durable root and prevent managed descendants escaping
+   * through an aliased ancestor.
+   */
+  canonicalPath(path: string): string;
 
   /**
    * Create a directory and any missing parents (like `mkdir -p`). A no-op if it already exists.

@@ -1,7 +1,14 @@
-import { join } from "node:path";
+import { dirname, isAbsolute, join, relative } from "node:path";
 import { toPosix } from "../../util/posix-path.js";
 import { parseYaml } from "../../util/yaml.js";
-import { ConflictError, NotFoundError } from "../errors.js";
+import {
+  type MutationBoundary,
+  MutationFailure,
+  type MutationLifecycleBeat,
+  NotFoundError,
+  type WorkspaceIntegrationBlocker,
+  WorkspaceIntegrationPreflightError,
+} from "../errors.js";
 import {
   AUTHORING_BACKLOG_DIR,
   AUTHORING_TASK_PREFIX,
@@ -9,16 +16,23 @@ import {
   type BundleManifest,
   type OperationResult,
   type Project,
-  type TemplateFile,
 } from "../model/index.js";
 import type { BacklogMd, FileSystem } from "../ports/index.js";
 import { EXECUTOR_FRONT_DOOR_PATH } from "../services/derived-artefacts.js";
-import { materialiseAuthoringTasks } from "../services/materialisation.js";
-import { renderSnippet, renderTree } from "../services/render.js";
+import { hashTextContent } from "../services/integrity.js";
+import { type RenderedFile, renderTree } from "../services/render.js";
 import { parseBundleManifest, parseManifest } from "../services/schema/index.js";
 import { resolveTemplate } from "../services/template-resolver.js";
-import { ensureBundleBacklogAlias, perBundleAuthoringTasks } from "./create-bundle.js";
+import { WORKSPACE_INTEGRATION_STATE_PATH } from "../services/workspace-authoring-integration.js";
+import { perBundleAuthoringTasks } from "./create-bundle.js";
 import { makeArtefactDeriver } from "./derive-artefacts-capability.js";
+import {
+  authorizeFreshWorkspaceAuthoringPlan,
+  type FreshWorkspaceAuthoringPlan,
+  type FreshWorkspaceAuthoringPlanSeed,
+  planFreshWorkspaceAuthoringIntegration,
+  type WorkspaceAuthoringIntegrationResult,
+} from "./workspace-authoring-integration.js";
 
 /**
  * `initProject` — the `wpm init` use case (doc 10 §"Per-command actions", the `init` row), and the architecture's
@@ -82,20 +96,6 @@ const EXECUTOR_FRONT_DOOR = "_AGENTS.md";
  */
 const DERIVED_EXECUTOR_FRONT_DOOR_PATH = EXECUTOR_FRONT_DOOR_PATH;
 /**
- * The canonical name of the workspace-root **authoring front door** (docs 04, 12) and its symlink alias.
- * The authoring front door addresses the *authoring* agent (AC#4); it ships nothing and is distinct from the
- * deliverable's executor front door.
- */
-const AUTHORING_FRONT_DOOR = "AGENTS.md";
-/** The symlink alias for the authoring front door (Claude Code reads `CLAUDE.md`; doc 12). */
-const AUTHORING_FRONT_DOOR_ALIAS = "CLAUDE.md";
-/**
- * The project-template snippet the authoring front door is rendered from (doc 10/12: front-door content is
- * builder-provided template content, mechanically substituted — never prose invented in the pure core). The
- * snippet path is matched tolerating a trailing `.tmpl` (the repo's template-content convention).
- */
-const AUTHORING_FRONT_DOOR_SNIPPET = "authoring-front-door.md";
-/**
  * The hidden authoring-backlog root + its task-prefix (doc 10 step 6; doc 11) come from the shared model
  * constants ({@link AUTHORING_BACKLOG_DIR}, {@link AUTHORING_TASK_PREFIX}) so `init` (which creates the root)
  * and the task-25 lifecycle (which materialises into it) can never disagree about where it lives — the
@@ -115,6 +115,8 @@ export interface InitProjectInput {
    * `project-name`. Unreferenced extras are harmless (the render service throws only on UNRESOLVED placeholders).
    */
   readonly params?: ReadonlyMap<string, string>;
+  /** Explicit non-empty authoring-client selection; never inferred from HOME or deliverable targets. */
+  readonly authoringClientIds: readonly string[];
 }
 
 /** The dependencies {@link initProject} needs: the two ports + the built-in templates root. */
@@ -125,6 +127,16 @@ export interface InitProjectDeps {
   readonly backlog: BacklogMd;
   /** The built-in templates root shipped with the package. */
   readonly builtinTemplatesRoot: string;
+  /** Exact packaged source of the five workspace-local WPM authoring skills. */
+  readonly bundledSkillsRoot: string;
+  /** Installed WPM version recorded coherently across managed workspace integration. */
+  readonly integrationVersion: string;
+}
+
+/** Fresh-init outcome, including the workspace-local integration result and an explicit no-handoff claim. */
+export interface InitProjectResult extends OperationResult {
+  readonly authoringIntegration: WorkspaceAuthoringIntegrationResult;
+  readonly handoffPrepared: false;
 }
 
 /**
@@ -200,8 +212,13 @@ export function projectWideAuthoringTasks(): AuthoringTaskSpec[] {
  * @returns The projection.
  * @throws If the rendered `manifest.yml` or a pre-included `bundle.yml` is malformed (a template-authoring bug).
  */
-function buildProjection(fs: FileSystem, targetDir: string): Project {
-  const manifestResult = parseManifest(parseYaml(fs.read(join(targetDir, "manifest.yml"))));
+function buildProjection(files: readonly RenderedFile[], targetDir: string): Project {
+  const byPath = new Map(files.map((file) => [file.path, file.content]));
+  const manifestText = byPath.get("manifest.yml");
+  if (manifestText === undefined) {
+    throw new NotFoundError("internal: rendered project template has no manifest.yml");
+  }
+  const manifestResult = parseManifest(parseYaml(manifestText));
   if (!manifestResult.ok) {
     throw new NotFoundError(
       `internal: rendered manifest.yml is invalid: ${manifestResult.problem.message}`,
@@ -211,9 +228,13 @@ function buildProjection(fs: FileSystem, targetDir: string): Project {
 
   const bundles = new Map<(typeof manifest.bundles)[number], BundleManifest>();
   for (const id of manifest.bundles) {
-    const bundleResult = parseBundleManifest(
-      parseYaml(fs.read(join(targetDir, "bundles", id, "bundle.yml"))),
-    );
+    const bundleText = byPath.get(`bundles/${id}/bundle.yml`);
+    if (bundleText === undefined) {
+      throw new NotFoundError(
+        `internal: rendered project template has no bundles/${id}/bundle.yml`,
+      );
+    }
+    const bundleResult = parseBundleManifest(parseYaml(bundleText));
     if (!bundleResult.ok) {
       throw new NotFoundError(
         `internal: pre-included bundle '${id}' has an invalid bundle.yml: ${bundleResult.problem.message}`,
@@ -225,30 +246,420 @@ function buildProjection(fs: FileSystem, targetDir: string): Project {
   return { rootPath: targetDir, manifest, bundles };
 }
 
-/**
- * Select the **authoring front-door** snippet from a resolved project template's `snippets/` tree (doc 12: the
- * workspace-root front door that flips an agent into authoring mode). Matched by its conventional path,
- * tolerating a trailing `.tmpl`. A missing snippet is a template-authoring bug → a thrown {@link NotFoundError}.
- * Keeping the front-door PROSE in the template (not the core) is what keeps `init` pure (doc 13 §1): the core
- * only selects and substitutes, it never authors content.
- *
- * @param template - The resolved project template.
- * @returns The authoring front-door snippet (its `{{project-name}}` placeholder is substituted by the caller).
- * @throws {NotFoundError} If the template ships no authoring front-door snippet.
- */
-function selectAuthoringFrontDoorSnippet(template: {
-  snippets: readonly TemplateFile[];
-}): TemplateFile {
-  const snippet = template.snippets.find(
-    (s) =>
-      s.path === AUTHORING_FRONT_DOOR_SNIPPET || s.path === `${AUTHORING_FRONT_DOOR_SNIPPET}.tmpl`,
+function initBlocker(
+  code: string,
+  surface: WorkspaceIntegrationBlocker["surface"],
+  message: string,
+  recovery: string,
+): WorkspaceIntegrationBlocker {
+  return { code, surface, message, recovery };
+}
+
+function validateAuthoringTaskPlan(
+  specs: readonly AuthoringTaskSpec[],
+): WorkspaceIntegrationBlocker[] {
+  const blockers: WorkspaceIntegrationBlocker[] = [];
+  const titles = new Set<string>();
+  for (const spec of specs) {
+    if (spec.title.trim().length === 0 || spec.acceptanceCriteria.length === 0) {
+      blockers.push(
+        initBlocker(
+          "authoring-task-plan-invalid",
+          "authoring-task-plan",
+          "the mandatory authoring-task plan contains an empty title or acceptance-criteria set",
+          "repair the packaged task plan before creating the workspace",
+        ),
+      );
+    }
+    if (titles.has(spec.title)) {
+      blockers.push(
+        initBlocker(
+          "authoring-task-plan-duplicate",
+          "authoring-task-plan",
+          `the mandatory authoring-task plan repeats ${JSON.stringify(spec.title)}`,
+          "repair the packaged task plan so every title is a stable unique identity",
+        ),
+      );
+    }
+    titles.add(spec.title);
+  }
+  return blockers;
+}
+
+interface PlannedInitFile {
+  readonly id: string;
+  readonly path: string;
+  readonly content: string;
+  readonly description: string;
+  readonly beat?: MutationLifecycleBeat;
+}
+
+interface PlannedInitDirectory {
+  readonly id: string;
+  readonly path: string;
+  readonly description: string;
+}
+
+interface PlannedInitAlias {
+  readonly id: string;
+  readonly target: string;
+  readonly path: string;
+  readonly description: string;
+  readonly beat?: MutationLifecycleBeat;
+}
+
+interface PlannedInitAction extends MutationBoundary {
+  readonly perform: () => void;
+  readonly beat: MutationLifecycleBeat;
+  readonly materialisedTitle?: string;
+}
+
+function freshInitRequestKey(
+  input: {
+    readonly name: string;
+    readonly templateName: string;
+    readonly params: ReadonlyMap<string, string>;
+    readonly clients: readonly string[];
+    readonly integrationVersion: string;
+    readonly completeStateText: string;
+  },
+  files: Iterable<PlannedInitFile>,
+  directories: Iterable<PlannedInitDirectory>,
+  aliases: Iterable<PlannedInitAlias>,
+  tasks: readonly AuthoringTaskSpec[],
+): string {
+  const byPathAndId = <T extends { readonly path: string; readonly id: string }>(
+    left: T,
+    right: T,
+  ): number => left.path.localeCompare(right.path) || left.id.localeCompare(right.id);
+  const fingerprint = hashTextContent(
+    JSON.stringify({
+      request: {
+        name: input.name,
+        templateName: input.templateName,
+        params: [...input.params].sort(([left], [right]) => left.localeCompare(right)),
+        clients: input.clients,
+        integrationVersion: input.integrationVersion,
+      },
+      completeState: hashTextContent(input.completeStateText),
+      files: [...files].sort(byPathAndId).map(({ id, path, content, beat }) => ({
+        id,
+        path: toPosix(path),
+        sha256: hashTextContent(content),
+        beat: beat ?? "APPLY",
+      })),
+      directories: [...directories]
+        .sort(byPathAndId)
+        .map(({ id, path }) => ({ id, path: toPosix(path) })),
+      aliases: [...aliases].sort(byPathAndId).map(({ id, path, target, beat }) => ({
+        id,
+        path: toPosix(path),
+        target: toPosix(target),
+        beat: beat ?? "APPLY",
+      })),
+      tasks,
+    }),
   );
-  if (snippet === undefined) {
-    throw new NotFoundError(
-      `project template is missing the authoring front-door snippet ("${AUTHORING_FRONT_DOOR_SNIPPET}")`,
+  return `init|${fingerprint}`;
+}
+
+function initAction(
+  id: string,
+  path: string,
+  description: string,
+  perform: () => void,
+  materialisedTitle?: string,
+  beat: MutationLifecycleBeat = "APPLY",
+): PlannedInitAction {
+  return {
+    id,
+    path: toPosix(path),
+    description,
+    perform,
+    beat,
+    ...(materialisedTitle !== undefined ? { materialisedTitle } : {}),
+  };
+}
+
+function executeInitPlan(actions: readonly PlannedInitAction[]): {
+  readonly changedPaths: readonly string[];
+  readonly materialisedTaskTitles: readonly string[];
+} {
+  const completed: MutationBoundary[] = [];
+  const changedPaths: string[] = [];
+  const materialisedTaskTitles: string[] = [];
+  for (let index = 0; index < actions.length; index += 1) {
+    const planned = actions[index] as PlannedInitAction;
+    try {
+      planned.perform();
+      const evidence = {
+        id: planned.id,
+        path: planned.path,
+        description: planned.description,
+      } satisfies MutationBoundary;
+      completed.push(evidence);
+      if (!changedPaths.includes(planned.path as string)) changedPaths.push(planned.path as string);
+      if (planned.materialisedTitle !== undefined) {
+        materialisedTaskTitles.push(planned.materialisedTitle);
+      }
+    } catch (cause) {
+      throw new MutationFailure({
+        operation: "authoring workspace init",
+        failedBeat: planned.beat,
+        completed,
+        failed: {
+          id: planned.id,
+          path: planned.path,
+          description: planned.description,
+        },
+        unattempted: actions.slice(index + 1).map(({ id, path, description }) => ({
+          id,
+          path,
+          description,
+        })),
+        recovery:
+          "make the failed boundary recoverable, then repeat the identical init request; completed WPM-planned bytes are verified before any retry write and no rollback or generic resume is claimed",
+        cause,
+      });
+    }
+  }
+  return { changedPaths, materialisedTaskTitles };
+}
+
+function isContained(root: string, path: string): boolean {
+  const rel = relative(root, path);
+  return (
+    rel === "" ||
+    (!isAbsolute(rel) && rel !== ".." && !rel.startsWith("../") && !rel.startsWith("..\\"))
+  );
+}
+
+function inspectProspectiveTarget(
+  fs: FileSystem,
+  targetDir: string,
+  blockers: WorkspaceIntegrationBlocker[],
+): void {
+  let current = targetDir;
+  while (true) {
+    try {
+      const inspection = fs.inspectPath(current);
+      if (inspection.kind === "missing") {
+        const parent = dirname(current);
+        if (parent === current) {
+          blockers.push(
+            initBlocker(
+              "workspace-target-ancestor-missing",
+              "target",
+              `no existing canonical ancestor was found for ${JSON.stringify(targetDir)}`,
+              "choose a target beneath an existing real directory",
+            ),
+          );
+          return;
+        }
+        current = parent;
+        continue;
+      }
+      if (inspection.kind !== "directory") {
+        blockers.push(
+          initBlocker(
+            "workspace-target-ancestor-ambiguous",
+            "target",
+            `${JSON.stringify(current)} is ${inspection.kind}, not a real target ancestor`,
+            "choose a target whose existing ancestors are real directories rather than aliases or special paths",
+          ),
+        );
+        return;
+      }
+      const canonical = fs.canonicalPath(current);
+      if (toPosix(canonical) !== toPosix(current)) {
+        blockers.push(
+          initBlocker(
+            "workspace-target-ancestor-noncanonical",
+            "target",
+            `${JSON.stringify(current)} resolves to ${JSON.stringify(canonical)}`,
+            "repeat with a canonical target path that cannot escape through an aliased ancestor",
+          ),
+        );
+      }
+      return;
+    } catch (error) {
+      blockers.push(
+        initBlocker(
+          "workspace-target-ancestor-unreadable",
+          "target",
+          `${JSON.stringify(current)} cannot be inspected: ${error instanceof Error ? error.message : String(error)}`,
+          "make every existing target ancestor inspectable before repeating init",
+        ),
+      );
+      return;
+    }
+  }
+}
+
+function inspectExistingRootIdentity(
+  fs: FileSystem,
+  targetDir: string,
+  blockers: WorkspaceIntegrationBlocker[],
+): void {
+  try {
+    const canonical = fs.canonicalPath(targetDir);
+    if (toPosix(canonical) !== toPosix(targetDir)) {
+      blockers.push(
+        initBlocker(
+          "workspace-target-noncanonical",
+          "target",
+          `${JSON.stringify(targetDir)} resolves to ${JSON.stringify(canonical)}`,
+          "repeat from the exact canonical workspace root recorded by the applying request",
+        ),
+      );
+    }
+  } catch (error) {
+    blockers.push(
+      initBlocker(
+        "workspace-target-unreadable",
+        "target",
+        error instanceof Error ? error.message : String(error),
+        "make the applying workspace root inspectable before retrying",
+      ),
     );
   }
-  return snippet;
+}
+
+function inspectPlannedAncestors(
+  fs: FileSystem,
+  targetDir: string,
+  path: string,
+  blockers: WorkspaceIntegrationBlocker[],
+): void {
+  const rel = relative(targetDir, path);
+  if (!isContained(targetDir, path)) {
+    blockers.push(
+      initBlocker(
+        "workspace-plan-path-escapes",
+        "packaged-content",
+        `planned path ${JSON.stringify(path)} escapes ${JSON.stringify(targetDir)}`,
+        "repair the selected template or packaged integration path",
+      ),
+    );
+    return;
+  }
+  let current = targetDir;
+  for (const segment of rel.split(/[\\/]/).slice(0, -1)) {
+    if (segment.length === 0) continue;
+    current = join(current, segment);
+    try {
+      const inspection = fs.inspectPath(current);
+      if (inspection.kind === "missing") return;
+      if (inspection.kind === "directory") continue;
+      blockers.push(
+        initBlocker(
+          "workspace-plan-ancestor-ambiguous",
+          "destination",
+          `${JSON.stringify(current)} is ${inspection.kind}, not a real workspace directory`,
+          "restore the exact applying workspace with real directory ancestors before retrying",
+        ),
+      );
+      return;
+    } catch (error) {
+      blockers.push(
+        initBlocker(
+          "workspace-plan-ancestor-unreadable",
+          "destination",
+          `${JSON.stringify(current)} cannot be inspected: ${error instanceof Error ? error.message : String(error)}`,
+          "make every planned destination ancestor inspectable before retrying",
+        ),
+      );
+      return;
+    }
+  }
+}
+
+function directoryTreeIsExact(fs: FileSystem, source: string, destination: string): boolean {
+  try {
+    if (
+      fs.inspectPath(source).kind !== "directory" ||
+      fs.inspectPath(destination).kind !== "directory"
+    ) {
+      return false;
+    }
+    const sourceEntries = [...fs.list(source)].sort((a, b) => a.name.localeCompare(b.name));
+    const destinationEntries = [...fs.list(destination)].sort((a, b) =>
+      a.name.localeCompare(b.name),
+    );
+    if (JSON.stringify(sourceEntries) !== JSON.stringify(destinationEntries)) return false;
+    for (const entry of sourceEntries) {
+      const sourcePath = join(source, entry.name);
+      const destinationPath = join(destination, entry.name);
+      if (
+        fs.inspectPath(sourcePath).kind !== entry.kind ||
+        fs.inspectPath(destinationPath).kind !== entry.kind
+      ) {
+        return false;
+      }
+      if (entry.kind === "directory") {
+        if (!directoryTreeIsExact(fs, sourcePath, destinationPath)) return false;
+      } else if (fs.read(sourcePath) !== fs.read(destinationPath)) {
+        return false;
+      }
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function inspectRetryTree(
+  fs: FileSystem,
+  root: string,
+  allowedPaths: ReadonlySet<string>,
+  opaqueDirectories: ReadonlySet<string>,
+  blockers: WorkspaceIntegrationBlocker[],
+): void {
+  const visit = (directory: string): void => {
+    let entries: ReturnType<FileSystem["list"]>;
+    try {
+      entries = fs.list(directory);
+    } catch (error) {
+      blockers.push(
+        initBlocker(
+          "workspace-partial-tree-unreadable",
+          "destination",
+          `${JSON.stringify(directory)} cannot be inventoried: ${error instanceof Error ? error.message : String(error)}`,
+          "make the exact partial workspace tree inspectable before retrying",
+        ),
+      );
+      return;
+    }
+    for (const entry of entries) {
+      const path = join(directory, entry.name);
+      if (!allowedPaths.has(path)) {
+        blockers.push(
+          initBlocker(
+            "workspace-partial-unplanned-path",
+            "ownership",
+            `${JSON.stringify(path)} is not an output authorized by the applying init request`,
+            "preserve or remove the unplanned content before retrying the exact init request",
+          ),
+        );
+        continue;
+      }
+      try {
+        if (fs.inspectPath(path).kind === "directory" && !opaqueDirectories.has(path)) {
+          visit(path);
+        }
+      } catch (error) {
+        blockers.push(
+          initBlocker(
+            "workspace-partial-tree-unreadable",
+            "destination",
+            `${JSON.stringify(path)} cannot be inventoried: ${error instanceof Error ? error.message : String(error)}`,
+            "make the exact partial workspace tree inspectable before retrying",
+          ),
+        );
+      }
+    }
+  };
+  visit(root);
 }
 
 /**
@@ -256,8 +667,9 @@ function selectAuthoringFrontDoorSnippet(template: {
  * `minimal`). The shipped bundle-project skeleton nests under the deliverable subdirectory `wip/`.
  *
  * Steps (doc 10 §"Per-command actions" `init` row; docs 06/12 for the workspace layout):
- * 1. Resolve the chosen project template (→ {@link NotFoundError} if it is missing).
- * 2. Refuse if the target path already exists (→ {@link ConflictError}), creating nothing.
+ * 1. Capture and validate the complete project-template, bundle-template, Backlog.md, selected-client, packaged
+ *    skill, destination, and ownership plan; aggregate every predictable blocker before the first write.
+ * 2. Refuse an existing target unless it carries the exact applying record for this immutable init plan.
  * 3. Render the template's `files/` into the deliverable subdir `wip/`, substituting `{{project-name}}` + `--param`.
  * 4. (manifest) The template's `manifest.yml` snippet is part of `files/`, so it is instantiated by step 3.
  * 5. Materialise the default bundle template at `wip/bundles/bundle-template/` (its `files/` tree, verbatim).
@@ -266,193 +678,900 @@ function selectAuthoringFrontDoorSnippet(template: {
  * 7. Create one scope-alias per declared target (none for `minimal`) under `wip/`, via the deriver's alias plan.
  * 8. Render the `<name>-installer/SKILL.md` orchestrator under `wip/`, and the author-owned executor front door
  *    to `wip/_AGENTS.md` (the reserved build-stripped prefix — written once, not re-derived later).
- * 9. Render the **authoring** front door + its `CLAUDE.md` alias at the workspace root from a template snippet.
+ * 9. Install the exact five WPM authoring skills and native root front door for each explicitly selected client.
  * 10. Materialise the project-wide authoring task set (doc 11) into the workspace-root authoring backlog, plus a
  *     per-bundle set for every bundle the template pre-includes (idempotent by title).
  * 11. Record `.authoring-backlog/` and `builds/` in the workspace `.gitignore`.
  * 12. Return a summary naming the workspace path and the number of materialised tasks.
  *
- * @param deps - The filesystem + backlog ports and the built-in templates root.
- * @param input - The target directory, the project name, the chosen template, and extra `--param` substitutions.
- * @returns The {@link OperationResult}: a summary, the changed paths, and the materialised authoring-task titles.
- * @throws {NotFoundError} If the chosen project (or default bundle) template cannot be resolved.
- * @throws {ConflictError} If the target directory already exists.
+ * @param deps - The filesystem + backlog ports and exact packaged template/skill sources.
+ * @param input - The target, project/template parameters, and explicit workspace authoring-client selection.
+ * @returns The init result, including the selected-client integration result and an explicit no-handoff claim.
+ * @throws {WorkspaceIntegrationPreflightError} For aggregated predictable blockers before mutation.
+ * @throws {MutationFailure} For typed progress when an unforeseen planned effect fails.
  */
-export function initProject(deps: InitProjectDeps, input: InitProjectInput): OperationResult {
+export function initProject(deps: InitProjectDeps, input: InitProjectInput): InitProjectResult {
   const { fs, backlog, builtinTemplatesRoot } = deps;
   const { targetDir, name } = input;
   const templateName = input.templateName ?? DEFAULT_PROJECT_TEMPLATE;
-
-  // 1. Resolve the chosen project template (project-local would shadow built-in, but init has no project yet).
-  const resolution = resolveTemplate(templateName, "project", { fs, builtinTemplatesRoot });
-  if (!resolution.found) {
-    throw new NotFoundError(
-      `project template "${templateName}" not found (searched: ${resolution.searched.join(", ")})`,
-    );
-  }
-
-  // 2. Refuse if the target path already exists (AC#5) — creating NOTHING. The skeleton refused only on a
-  // manifest.yml; the contract is to refuse when the target PATH exists, so the check is broadened to that.
-  if (fs.exists(targetDir)) {
-    throw new ConflictError(
-      `cannot create a project at "${targetDir}": the path already exists — pick a target that does not exist`,
-    );
-  }
-
-  const changedPaths: string[] = [];
-
-  // The deliverable subdir: everything the shipped skeleton needs nests under `<workspace>/wip` (docs 06/12).
   const wip = join(targetDir, DELIVERABLE_DIR);
-
-  // 3. Render the template files/ into the DELIVERABLE subdir (`wip/`), substituting {{project-name}} + --param.
   const params = new Map<string, string>([["project-name", name]]);
   for (const [key, value] of input.params ?? []) {
     params.set(key, value);
   }
-  for (const file of renderTree(resolution.template.files, params)) {
-    const abs = join(wip, file.path);
-    fs.write(abs, file.content);
-    changedPaths.push(abs);
+
+  // Complete predictable preflight. Every source, destination, task, alias, and ownership fact is inspected
+  // before the first write; the immutable values captured here are the only bytes the plan can later apply.
+  const blockers: WorkspaceIntegrationBlocker[] = [];
+  let authoringSeed: FreshWorkspaceAuthoringPlanSeed | undefined;
+  try {
+    authoringSeed = planFreshWorkspaceAuthoringIntegration(
+      {
+        fs,
+        backlog,
+        bundledSkillsRoot: deps.bundledSkillsRoot,
+      },
+      {
+        workspaceRoot: targetDir,
+        clientIds: input.authoringClientIds,
+        integrationVersion: deps.integrationVersion,
+      },
+    );
+  } catch (error) {
+    if (error instanceof WorkspaceIntegrationPreflightError) blockers.push(...error.blockers);
+    else throw error;
   }
 
-  // 5. Materialise the default bundle template at wip/bundles/bundle-template/ (doc 10 step 5). Copy the default
-  // bundle template's files/ tree VERBATIM (no substitution — the scaffold keeps its placeholders for `bundle
-  // new` to fill). This is the live default `bundle new` clones (closing the create-bundle divergence).
-  const bundleTemplate = resolveTemplate(DEFAULT_BUNDLE_TEMPLATE, "bundle", {
-    fs,
-    builtinTemplatesRoot,
-  });
-  if (!bundleTemplate.found) {
-    throw new NotFoundError(
-      `bundle template "${DEFAULT_BUNDLE_TEMPLATE}" not found (searched: ${bundleTemplate.searched.join(", ")})`,
+  // Inspect the target independently so a bad package/selection/backlog still reports the predictable target
+  // conflict in the same aggregate. Exact applying-state authorization waits until the full plan is bound.
+  let targetInspection: ReturnType<FileSystem["inspectPath"]> | undefined;
+  try {
+    targetInspection = fs.inspectPath(targetDir);
+    if (targetInspection.kind === "missing") {
+      inspectProspectiveTarget(fs, targetDir, blockers);
+    } else if (targetInspection.kind !== "directory") {
+      blockers.push(
+        initBlocker(
+          "workspace-target-exists",
+          "target",
+          `cannot create a project at ${JSON.stringify(targetDir)}: found ${targetInspection.kind}`,
+          "pick an absent target path and repeat the complete creation request",
+        ),
+      );
+    } else if (authoringSeed === undefined) {
+      const statePath = join(targetDir, WORKSPACE_INTEGRATION_STATE_PATH);
+      const stateInspection = fs.inspectPath(statePath);
+      blockers.push(
+        initBlocker(
+          stateInspection.kind === "file"
+            ? "workspace-partial-request-mismatch"
+            : "workspace-target-exists",
+          stateInspection.kind === "file" ? "managed-state" : "target",
+          stateInspection.kind === "file"
+            ? `existing ${WORKSPACE_INTEGRATION_STATE_PATH} cannot be authorized without a complete immutable init plan`
+            : `cannot create a project at ${JSON.stringify(targetDir)}: found an existing directory without the exact applying record`,
+          stateInspection.kind === "file"
+            ? "repair the packaged request blockers, then repeat the exact original init plan"
+            : "pick an absent target path, or recover a prior WPM applying request before retrying",
+        ),
+      );
+    }
+  } catch (error) {
+    blockers.push(
+      initBlocker(
+        "workspace-target-unreadable",
+        "target",
+        `${JSON.stringify(targetDir)} cannot be inspected: ${error instanceof Error ? error.message : String(error)}`,
+        "make the target and its managed-state path inspectable before repeating init",
+      ),
     );
   }
+
+  let resolution: ReturnType<typeof resolveTemplate> | undefined;
+  try {
+    resolution = resolveTemplate(templateName, "project", { fs, builtinTemplatesRoot });
+  } catch (error) {
+    blockers.push(
+      initBlocker(
+        "project-template-unreadable",
+        "packaged-content",
+        error instanceof Error ? error.message : String(error),
+        "repair the selected project template before creating the workspace",
+      ),
+    );
+  }
+  if (resolution !== undefined && !resolution.found) {
+    blockers.push(
+      initBlocker(
+        "project-template-missing",
+        "packaged-content",
+        `project template ${JSON.stringify(templateName)} was not found (searched: ${resolution.searched.join(", ")})`,
+        "select an available project template or repair the WPM package",
+      ),
+    );
+  }
+
+  let bundleTemplate: ReturnType<typeof resolveTemplate> | undefined;
+  try {
+    bundleTemplate = resolveTemplate(DEFAULT_BUNDLE_TEMPLATE, "bundle", {
+      fs,
+      builtinTemplatesRoot,
+    });
+  } catch (error) {
+    blockers.push(
+      initBlocker(
+        "default-bundle-template-unreadable",
+        "packaged-content",
+        error instanceof Error ? error.message : String(error),
+        "repair the WPM package so the default bundle template is readable",
+      ),
+    );
+  }
+  if (bundleTemplate !== undefined && !bundleTemplate.found) {
+    blockers.push(
+      initBlocker(
+        "default-bundle-template-missing",
+        "packaged-content",
+        `bundle template ${JSON.stringify(DEFAULT_BUNDLE_TEMPLATE)} was not found (searched: ${bundleTemplate.searched.join(", ")})`,
+        "repair the WPM package so the default bundle template is available",
+      ),
+    );
+  }
+
+  let renderedProject: RenderedFile[] | undefined;
+  let projection: Project | undefined;
+  let desired: ReturnType<ReturnType<typeof makeArtefactDeriver>> | undefined;
+  let specs: AuthoringTaskSpec[] | undefined;
+  if (resolution?.found) {
+    try {
+      renderedProject = renderTree(resolution.template.files, params);
+      projection = buildProjection(renderedProject, wip);
+      desired = makeArtefactDeriver({
+        fs,
+        builtinTemplatesRoot,
+        projectTemplateName: templateName,
+      })(projection);
+      specs = [...projectWideAuthoringTasks()];
+      for (const id of projection.manifest.bundles) {
+        specs.push(...perBundleAuthoringTasks(id, { advisor: true }));
+      }
+      blockers.push(...validateAuthoringTaskPlan(specs));
+    } catch (error) {
+      blockers.push(
+        initBlocker(
+          "project-template-invalid",
+          "packaged-content",
+          error instanceof Error ? error.message : String(error),
+          "repair the selected project template before creating the workspace",
+        ),
+      );
+    }
+  }
+
+  if (
+    !resolution?.found ||
+    !bundleTemplate?.found ||
+    renderedProject === undefined ||
+    projection === undefined ||
+    desired === undefined ||
+    specs === undefined ||
+    authoringSeed === undefined
+  ) {
+    if (targetInspection?.kind === "directory" && authoringSeed !== undefined) {
+      try {
+        const stateInspection = fs.inspectPath(join(targetDir, WORKSPACE_INTEGRATION_STATE_PATH));
+        blockers.push(
+          initBlocker(
+            stateInspection.kind === "file"
+              ? "workspace-partial-request-mismatch"
+              : "workspace-target-exists",
+            stateInspection.kind === "file" ? "managed-state" : "target",
+            stateInspection.kind === "file"
+              ? `existing ${WORKSPACE_INTEGRATION_STATE_PATH} cannot be authorized without a complete immutable init plan`
+              : `cannot create a project at ${JSON.stringify(targetDir)}: found an existing directory without the exact applying record`,
+            stateInspection.kind === "file"
+              ? "repair the packaged request blockers, then repeat the exact original init plan"
+              : "pick an absent target path, or recover a prior WPM applying request before retrying",
+          ),
+        );
+      } catch (error) {
+        blockers.push(
+          initBlocker(
+            "workspace-target-unreadable",
+            "target",
+            `${JSON.stringify(targetDir)} cannot be inspected: ${error instanceof Error ? error.message : String(error)}`,
+            "make the target and its managed-state path inspectable before repeating init",
+          ),
+        );
+      }
+    }
+    if (blockers.length > 0) throw new WorkspaceIntegrationPreflightError(blockers);
+    throw new Error("internal: successful init preflight produced no complete immutable plan");
+  }
+
+  const plannedFiles = new Map<string, PlannedInitFile>();
+  const plannedDirectories = new Map<string, PlannedInitDirectory>();
+  const plannedAliases = new Map<string, PlannedInitAlias>();
+  const addFile = (file: PlannedInitFile, owningRoot: string = targetDir): void => {
+    if (!isContained(owningRoot, file.path)) {
+      blockers.push(
+        initBlocker(
+          "workspace-plan-path-escapes",
+          "packaged-content",
+          `planned file ${JSON.stringify(file.path)} escapes its owning output root ${JSON.stringify(owningRoot)}`,
+          "repair the selected template or packaged integration path",
+        ),
+      );
+      return;
+    }
+    const existing = plannedFiles.get(file.path);
+    if (existing !== undefined && existing.content !== file.content) {
+      blockers.push(
+        initBlocker(
+          "workspace-plan-path-collision",
+          "packaged-content",
+          `two packaged sources produce different bytes for ${JSON.stringify(file.path)}`,
+          "repair the colliding template/integration sources before creating the workspace",
+        ),
+      );
+      return;
+    }
+    if (existing === undefined) plannedFiles.set(file.path, file);
+  };
+  const addDirectory = (directory: PlannedInitDirectory): void => {
+    if (!isContained(targetDir, directory.path)) {
+      blockers.push(
+        initBlocker(
+          "workspace-plan-path-escapes",
+          "packaged-content",
+          `planned directory ${JSON.stringify(directory.path)} escapes the workspace root`,
+          "repair the selected template before creating the workspace",
+        ),
+      );
+      return;
+    }
+    plannedDirectories.set(directory.path, directory);
+  };
+  const addAlias = (alias: PlannedInitAlias, owningRoot: string = targetDir): void => {
+    if (
+      !isContained(owningRoot, alias.path) ||
+      (isAbsolute(alias.target) && !isContained(owningRoot, alias.target))
+    ) {
+      blockers.push(
+        initBlocker(
+          "workspace-plan-path-escapes",
+          "packaged-content",
+          `planned alias ${JSON.stringify(alias.path)} or its target escapes owning output root ${JSON.stringify(owningRoot)}`,
+          "repair the selected template before creating the workspace",
+        ),
+      );
+      return;
+    }
+    const existing = plannedAliases.get(alias.path);
+    if (existing !== undefined && toPosix(existing.target) !== toPosix(alias.target)) {
+      blockers.push(
+        initBlocker(
+          "workspace-plan-alias-collision",
+          "packaged-content",
+          `two packaged sources target ${JSON.stringify(alias.path)} at different destinations`,
+          "repair the colliding template alias plans before creating the workspace",
+        ),
+      );
+      return;
+    }
+    if (existing === undefined) plannedAliases.set(alias.path, alias);
+  };
+
+  for (const file of renderedProject) {
+    const abs = join(wip, file.path);
+    addFile(
+      {
+        id: `project-file:${toPosix(file.path)}`,
+        path: abs,
+        content: file.content,
+        description: `write rendered project file ${toPosix(file.path)}`,
+      },
+      wip,
+    );
+  }
+
   const bundleTemplateDir = join(wip, "bundles", BUNDLE_TEMPLATE_DIR);
   for (const file of bundleTemplate.template.files) {
     const abs = join(bundleTemplateDir, file.path);
-    fs.write(abs, file.content);
-    changedPaths.push(abs);
+    addFile(
+      {
+        id: `bundle-template-file:${toPosix(file.path)}`,
+        path: abs,
+        content: file.content,
+        description: `write default bundle-template file ${toPosix(file.path)}`,
+      },
+      bundleTemplateDir,
+    );
   }
-  // The bundle-template scaffold ships an install-backlog too, so it carries the same `backlog →
-  // install-backlog` relative alias every bundle does (TASK-102): a `bundle new` clone inherits a working link
-  // and the always-shipped scaffold itself resolves under the Backlog.md CLI.
-  changedPaths.push(ensureBundleBacklogAlias(fs, bundleTemplateDir));
-  changedPaths.push(join(wip, "bundles"));
+  addAlias(
+    {
+      id: "bundle-template-backlog-alias",
+      target: "install-backlog",
+      path: join(bundleTemplateDir, "backlog"),
+      description: "create the bundle-template backlog alias",
+    },
+    bundleTemplateDir,
+  );
 
-  // 6. Create the empty installer-skills/ + templates/ dirs under wip/ (the manifest's empty registries; the
-  // .authoring-backlog/ root is created in step 10). makeDirectories is a no-op if a file already placed them.
-  fs.makeDirectories(join(wip, "installer-skills"));
-  fs.makeDirectories(join(wip, "templates"));
-  changedPaths.push(join(wip, "installer-skills"), join(wip, "templates"));
+  for (const [id, path, description] of [
+    ["deliverable-bundles-directory", join(wip, "bundles"), "create the bundles directory"],
+    [
+      "deliverable-installer-skills-directory",
+      join(wip, "installer-skills"),
+      "create the installer-skills directory",
+    ],
+    ["deliverable-templates-directory", join(wip, "templates"), "create the templates directory"],
+    [
+      "workspace-builds-directory",
+      join(targetDir, BUILDS_DIR),
+      "create the build-output directory",
+    ],
+    [
+      "authoring-backlog-directory",
+      join(targetDir, AUTHORING_BACKLOG_DIR),
+      "create the authoring-backlog directory",
+    ],
+  ] as const) {
+    addDirectory({ id, path, description });
+  }
 
-  // 6. Create the empty build-output directory `builds/` at the workspace root (AC#2; docs 06/12). It stays
-  // empty until `wpm build` writes archives into it — isolated from both the authoring surface and `wip/`.
-  const buildsDir = join(targetDir, BUILDS_DIR);
-  fs.makeDirectories(buildsDir);
-  changedPaths.push(buildsDir);
-
-  // 7 + 8. Build the project projection FROM `wip/` (its rendered manifest.yml lives there), then derive the
-  // orchestrator + executor front door (step 8) AND the scope aliases (step 7) from ONE deriver call — keeping
-  // the derived skill byte-identical to every later mutation (the single-source discipline). The deriver still
-  // yields the executor front door at the canonical path `AGENTS.md`; init RELOCATES it to the reserved
-  // `wip/_AGENTS.md` (author-owned, build-stripped; AC#8) so an authoring agent never reads it as a directive
-  // (doc 12). Every other derived file (the orchestrator skill) is written under `wip/` as-is.
-  const projection = buildProjection(fs, wip);
-  const deriveArtefacts = makeArtefactDeriver({
-    fs,
-    builtinTemplatesRoot,
-    projectTemplatesRoot: join(wip, "templates"),
-    projectTemplateName: templateName,
-  });
-  const desired = deriveArtefacts(projection);
   for (const file of desired.files) {
     const abs =
       file.path === DERIVED_EXECUTOR_FRONT_DOOR_PATH
         ? join(wip, EXECUTOR_FRONT_DOOR)
         : join(wip, file.path);
-    fs.write(abs, file.content);
-    if (!changedPaths.includes(abs)) {
-      changedPaths.push(abs);
-    }
+    addFile(
+      {
+        id: `derived-file:${toPosix(file.path)}`,
+        path: abs,
+        content: file.content,
+        description: `write derived deliverable file ${toPosix(file.path)}`,
+        beat: "RERENDER",
+      },
+      wip,
+    );
   }
   for (const alias of desired.aliasPlan.aliases) {
-    fs.ensureAlias(join(wip, alias.aliasTo), join(wip, alias.linkPath));
-    changedPaths.push(join(wip, alias.linkPath));
+    addAlias(
+      {
+        id: `deliverable-alias:${toPosix(alias.linkPath)}`,
+        target: join(wip, alias.aliasTo),
+        path: join(wip, alias.linkPath),
+        description: `create deliverable scope alias ${toPosix(alias.linkPath)}`,
+        beat: "RERENDER",
+      },
+      wip,
+    );
   }
 
-  // Per-bundle `backlog → install-backlog` relative alias for every bundle the template pre-includes (TASK-102;
-  // `minimal` pre-includes none, so this is empty for it). Each bundle's dir + install-backlog were rendered
-  // from the template's files/ in step 3; the bundle-template scaffold's link is created in step 5 above.
   for (const id of projection.manifest.bundles) {
-    changedPaths.push(ensureBundleBacklogAlias(fs, join(wip, "bundles", id)));
+    addAlias(
+      {
+        id: `bundle-backlog-alias:${id}`,
+        target: "install-backlog",
+        path: join(wip, "bundles", id, "backlog"),
+        description: `create ${id} backlog alias`,
+      },
+      wip,
+    );
   }
 
-  // 9. Render the AUTHORING front door (+ a CLAUDE.md symlink alias) at the WORKSPACE ROOT from the template's
-  // authoring front-door snippet (AC#1/#4). Distinct from the deliverable's executor front door: it addresses
-  // the AUTHORING agent (author the deliverable under wip/, not install it). Content is builder-provided
-  // template prose substituted with {{project-name}} — the core authors nothing (doc 13 §1).
-  const authoringFrontDoor = renderSnippet(
-    selectAuthoringFrontDoorSnippet(resolution.template),
-    params,
-  );
-  const authoringFrontDoorPath = join(targetDir, AUTHORING_FRONT_DOOR);
-  fs.write(authoringFrontDoorPath, authoringFrontDoor.content);
-  changedPaths.push(authoringFrontDoorPath);
-  const authoringAliasPath = join(targetDir, AUTHORING_FRONT_DOOR_ALIAS);
-  fs.ensureAlias(authoringFrontDoorPath, authoringAliasPath);
-  changedPaths.push(authoringAliasPath);
+  for (const file of authoringSeed.files) {
+    addFile({
+      id: `workspace-authoring:${file.client}:${file.path}`,
+      path: join(targetDir, file.path),
+      content: file.content,
+      description: `install ${file.client} workspace authoring file ${file.path}`,
+    });
+  }
 
-  // 10. Initialise the .authoring-backlog/ Backlog.md root (task_prefix=authoring) at the WORKSPACE ROOT — it is
-  // the authoring surface, never part of the deliverable, so it stays beside the authoring front door, not under
-  // wip/ (docs 06/11). The directory must exist
-  // before the backlog is initialised in it (the real adapter shells out to `backlog init` with the root as
-  // cwd), so create it through the FileSystem port first.
+  addFile({
+    id: "workspace-gitignore",
+    path: join(targetDir, ".gitignore"),
+    content: `${AUTHORING_BACKLOG_DIR}/\n${BUILDS_DIR}/\n`,
+    description: "write workspace builder exclusions",
+  });
+
+  const managedStatePath = join(targetDir, WORKSPACE_INTEGRATION_STATE_PATH);
   const authoringRoot = join(targetDir, AUTHORING_BACKLOG_DIR);
-  fs.makeDirectories(authoringRoot);
-  backlog.init(authoringRoot, { taskPrefix: AUTHORING_TASK_PREFIX });
-  changedPaths.push(authoringRoot);
-
-  // 9 + 10. Materialise the project-wide authoring task set (doc 11) plus, for every bundle the template
-  // pre-includes (projection.manifest.bundles — empty for `minimal`), its per-bundle set. The task-21
-  // materialiser is title-idempotent (the same engine the six-beat ⑤ uses), so an overlapping title is created
-  // once and a re-run would create nothing.
-  const specs: AuthoringTaskSpec[] = [...projectWideAuthoringTasks()];
-  for (const id of projection.manifest.bundles) {
-    specs.push(...perBundleAuthoringTasks(id, { advisor: true }));
-  }
-  const materialised = materialiseAuthoringTasks(backlog, authoringRoot, specs);
-  const materialisedTitles = materialised.created.map((task) => task.title);
-
-  // 11. Record the builder-time regions in the workspace .gitignore (AC#3): both the authoring backlog AND the
-  // build-output directory `builds/` — neither is part of what the deliverable ships (docs 06/12). Append any
-  // missing entry to a template-shipped .gitignore (minimal ships none) or create it. Idempotent per line: a
-  // .gitignore that already ignores an entry is left alone, so no entry can ever be duplicated.
-  const gitignorePath = join(targetDir, ".gitignore");
-  const ignoreLines = [`${AUTHORING_BACKLOG_DIR}/`, `${BUILDS_DIR}/`];
-  let gitignore = fs.exists(gitignorePath) ? fs.read(gitignorePath) : undefined;
-  for (const ignoreLine of ignoreLines) {
-    if (gitignore === undefined) {
-      gitignore = `${ignoreLine}\n`;
-    } else if (!gitignore.split("\n").some((l) => l.trim() === ignoreLine)) {
-      const sep = gitignore.endsWith("\n") || gitignore === "" ? "" : "\n";
-      gitignore = `${gitignore}${sep}${ignoreLine}\n`;
+  const kindByPath = new Map<string, Set<"file" | "directory" | "alias">>();
+  const recordKind = (path: string, kind: "file" | "directory" | "alias"): void => {
+    const kinds = kindByPath.get(path) ?? new Set();
+    kinds.add(kind);
+    kindByPath.set(path, kinds);
+  };
+  for (const { path } of plannedFiles.values()) recordKind(path, "file");
+  for (const { path } of plannedDirectories.values()) recordKind(path, "directory");
+  for (const { path } of plannedAliases.values()) recordKind(path, "alias");
+  recordKind(managedStatePath, "file");
+  for (const path of [
+    ...plannedFiles.keys(),
+    ...plannedAliases.keys(),
+    ...plannedDirectories.keys(),
+  ]) {
+    if (path === managedStatePath || isContained(managedStatePath, path)) {
+      blockers.push(
+        initBlocker(
+          "workspace-plan-managed-path-collision",
+          "packaged-content",
+          `${JSON.stringify(path)} collides with WPM's reserved managed-state path`,
+          "repair the selected template so only WPM owns the integration state path",
+        ),
+      );
+    }
+    if (path !== authoringRoot && isContained(authoringRoot, path)) {
+      blockers.push(
+        initBlocker(
+          "workspace-plan-managed-path-collision",
+          "packaged-content",
+          `${JSON.stringify(path)} collides with the Backlog.md-owned authoring root`,
+          "repair the selected template so only Backlog.md owns the authoring-backlog subtree",
+        ),
+      );
     }
   }
-  if (gitignore !== undefined) {
-    fs.write(gitignorePath, gitignore);
-    if (!changedPaths.includes(gitignorePath)) {
-      changedPaths.push(gitignorePath);
+  for (const [path, kinds] of kindByPath) {
+    if (kinds.size <= 1) continue;
+    blockers.push(
+      initBlocker(
+        "workspace-plan-path-kind-collision",
+        "packaged-content",
+        `${JSON.stringify(path)} is planned as multiple incompatible kinds: ${[...kinds].join(", ")}`,
+        "repair the selected template so every output path has one concrete kind",
+      ),
+    );
+  }
+  const plannedPaths = [...kindByPath.keys()];
+  for (const ancestor of [...plannedFiles.values(), ...plannedAliases.values()]) {
+    for (const descendant of plannedPaths) {
+      if (descendant === ancestor.path) continue;
+      const rel = relative(ancestor.path, descendant);
+      if (
+        rel !== "" &&
+        !isAbsolute(rel) &&
+        rel !== ".." &&
+        !rel.startsWith("../") &&
+        !rel.startsWith("..\\")
+      ) {
+        blockers.push(
+          initBlocker(
+            "workspace-plan-nondirectory-ancestor",
+            "packaged-content",
+            `${JSON.stringify(ancestor.path)} is planned as a non-directory ancestor of ${JSON.stringify(descendant)}`,
+            "repair the selected template so descendants have only directory ancestors",
+          ),
+        );
+      }
     }
   }
 
-  // 12. Return the structured result; the command layer formats the summary (incl. the `materialised: N` line).
-  // `changedPaths` is a LOGICAL observability list (the command prints its count; tests compare its entries as
-  // portable strings). The real fs writes/aliases above already used the OS-native absolute paths; here we only
-  // RECORD them, so each is POSIX-normalized to read with `/` on every OS (a no-op on Linux/macOS). This matches
-  // how the six-beat lifecycle normalizes its own `changedPaths`.
+  // Bind the applying record to the exact immutable output/task plan, not merely to the caller's flags. A
+  // partial retry may therefore use only the same captured package/template revision; newly resolved bytes
+  // cannot be mixed with already-completed boundaries from an earlier plan.
+  const pendingRequestKey = freshInitRequestKey(
+    {
+      name,
+      templateName,
+      params,
+      clients: authoringSeed.clients,
+      integrationVersion: deps.integrationVersion,
+      completeStateText: authoringSeed.completeStateText,
+    },
+    plannedFiles.values(),
+    plannedDirectories.values(),
+    plannedAliases.values(),
+    specs,
+  );
+  const authoringPlan: FreshWorkspaceAuthoringPlan = authorizeFreshWorkspaceAuthoringPlan(
+    authoringSeed,
+    pendingRequestKey,
+  );
+
+  let retrying = false;
+  try {
+    if (targetInspection?.kind === "directory") {
+      const stateInspection = fs.inspectPath(managedStatePath);
+      if (
+        stateInspection.kind === "file" &&
+        fs.read(managedStatePath) === authoringPlan.applyingStateText
+      ) {
+        retrying = true;
+        inspectExistingRootIdentity(fs, targetDir, blockers);
+      } else {
+        blockers.push(
+          initBlocker(
+            stateInspection.kind === "file"
+              ? "workspace-partial-request-mismatch"
+              : "workspace-target-exists",
+            stateInspection.kind === "file" ? "managed-state" : "target",
+            stateInspection.kind === "file"
+              ? `existing ${WORKSPACE_INTEGRATION_STATE_PATH} does not authorize this exact immutable init plan`
+              : `cannot create a project at ${JSON.stringify(targetDir)}: found an existing directory without the exact applying record`,
+            stateInspection.kind === "file"
+              ? "repeat the exact init request with the original packaged plan or preserve/recover the partial workspace explicitly"
+              : "pick an absent target path, or recover a prior WPM applying request before retrying",
+          ),
+        );
+      }
+    }
+  } catch (error) {
+    blockers.push(
+      initBlocker(
+        "workspace-target-unreadable",
+        "target",
+        `${JSON.stringify(targetDir)} cannot be inspected: ${error instanceof Error ? error.message : String(error)}`,
+        "make the target and its managed-state path inspectable before repeating init",
+      ),
+    );
+  }
+
+  const filesToWrite: PlannedInitFile[] = [];
+  const directoriesToCreate: PlannedInitDirectory[] = [];
+  const aliasesToCreate: PlannedInitAlias[] = [];
+  if (retrying) {
+    for (const planned of [
+      ...plannedFiles.values(),
+      ...plannedDirectories.values(),
+      ...plannedAliases.values(),
+    ]) {
+      inspectPlannedAncestors(fs, targetDir, planned.path, blockers);
+    }
+  }
+
+  for (const planned of plannedFiles.values()) {
+    if (!retrying) {
+      filesToWrite.push(planned);
+      continue;
+    }
+    try {
+      const inspection = fs.inspectPath(planned.path);
+      if (inspection.kind === "missing") {
+        filesToWrite.push(planned);
+      } else if (inspection.kind !== "file" || fs.read(planned.path) !== planned.content) {
+        blockers.push(
+          initBlocker(
+            "workspace-partial-file-conflict",
+            "destination",
+            `${JSON.stringify(planned.path)} does not match the exact planned partial-init bytes`,
+            "restore/remove only the proven partial output or preserve the changed content before retrying",
+          ),
+        );
+      }
+    } catch (error) {
+      blockers.push(
+        initBlocker(
+          "workspace-partial-file-unreadable",
+          "destination",
+          `${JSON.stringify(planned.path)} cannot be verified: ${error instanceof Error ? error.message : String(error)}`,
+          "make the planned destination inspectable before retrying",
+        ),
+      );
+    }
+  }
+
+  for (const planned of plannedDirectories.values()) {
+    if (!retrying) {
+      directoriesToCreate.push(planned);
+      continue;
+    }
+    try {
+      const inspection = fs.inspectPath(planned.path);
+      if (inspection.kind === "missing") directoriesToCreate.push(planned);
+      else if (inspection.kind !== "directory") {
+        blockers.push(
+          initBlocker(
+            "workspace-partial-directory-conflict",
+            "destination",
+            `${JSON.stringify(planned.path)} is ${inspection.kind}, not the planned directory`,
+            "preserve or remove the conflicting path before retrying the exact request",
+          ),
+        );
+      }
+    } catch (error) {
+      blockers.push(
+        initBlocker(
+          "workspace-partial-directory-unreadable",
+          "destination",
+          `${JSON.stringify(planned.path)} cannot be verified: ${error instanceof Error ? error.message : String(error)}`,
+          "make the planned directory inspectable before retrying",
+        ),
+      );
+    }
+  }
+
+  for (const planned of plannedAliases.values()) {
+    if (!retrying) {
+      aliasesToCreate.push(planned);
+      continue;
+    }
+    try {
+      const inspection = fs.inspectPath(planned.path);
+      if (inspection.kind === "missing") {
+        aliasesToCreate.push(planned);
+      } else if (
+        inspection.kind === "symbolic-link" &&
+        toPosix(inspection.target) === toPosix(planned.target)
+      ) {
+        // Exact POSIX alias already completed.
+      } else if (
+        inspection.kind === "directory" &&
+        directoryTreeIsExact(
+          fs,
+          isAbsolute(planned.target) ? planned.target : join(dirname(planned.path), planned.target),
+          planned.path,
+        )
+      ) {
+        // Exact Windows copy fallback already completed.
+      } else {
+        blockers.push(
+          initBlocker(
+            "workspace-partial-alias-conflict",
+            "destination",
+            `${JSON.stringify(planned.path)} is not the exact planned alias/copy`,
+            "preserve or remove the conflicting alias output after establishing ownership, then retry",
+          ),
+        );
+      }
+    } catch (error) {
+      blockers.push(
+        initBlocker(
+          "workspace-partial-alias-unreadable",
+          "destination",
+          `${JSON.stringify(planned.path)} cannot be verified: ${error instanceof Error ? error.message : String(error)}`,
+          "make the planned alias destination inspectable before retrying",
+        ),
+      );
+    }
+  }
+
+  let initialiseBacklog = !retrying;
+  const existingTaskTitles = new Set<string>();
+  if (retrying) {
+    try {
+      const rootInspection = fs.inspectPath(authoringRoot);
+      if (rootInspection.kind === "missing") {
+        initialiseBacklog = true;
+      } else if (rootInspection.kind === "directory") {
+        const inspected = backlog.inspectRoot(authoringRoot);
+        if (inspected.valid && inspected.taskPrefix === AUTHORING_TASK_PREFIX) {
+          const tasks = backlog.listTasks(authoringRoot);
+          const inventory = backlog.inspectTaskInventory(authoringRoot);
+          const listedIds = tasks.map(({ id }) => id).sort();
+          if (
+            !inventory.configurationMatchesFreshDefaults ||
+            JSON.stringify([...inventory.activeEntries].sort()) !== JSON.stringify(listedIds) ||
+            inventory.inactiveEntries.length > 0 ||
+            inventory.unexpectedEntries.length > 0
+          ) {
+            blockers.push(
+              initBlocker(
+                "workspace-partial-backlog-conflict",
+                "backlog",
+                "partial authoring backlog contains inactive, unlisted, malformed, or unexpected task-store content",
+                "preserve/recover the changed task history before retrying the exact init request",
+              ),
+            );
+          }
+          for (const [index, task] of tasks.entries()) {
+            const expected = specs[index];
+            const record = backlog.readTask(authoringRoot, task.id);
+            const criteriaMatch =
+              expected !== undefined &&
+              record.acceptanceCriteria.length === expected.acceptanceCriteria.length &&
+              record.acceptanceCriteria.every(
+                (criterion, index) =>
+                  !criterion.checked && criterion.text === expected.acceptanceCriteria[index],
+              );
+            if (
+              expected === undefined ||
+              existingTaskTitles.has(task.title) ||
+              task.id !== `${AUTHORING_TASK_PREFIX}-${index + 1}` ||
+              task.title !== expected.title ||
+              task.status !== "To Do" ||
+              record.id !== task.id ||
+              record.title !== task.title ||
+              record.status !== task.status ||
+              record.ordinal !== (index + 1) * 1000 ||
+              record.description !== null ||
+              record.definitionOfDone.length !== 0 ||
+              record.dependencies.length !== 0 ||
+              record.labels.length !== 0 ||
+              record.extraMetadata.length !== 0 ||
+              record.extraSections.length !== 0 ||
+              !criteriaMatch
+            ) {
+              blockers.push(
+                initBlocker(
+                  "workspace-partial-backlog-conflict",
+                  "backlog",
+                  `partial authoring backlog contains an unexpected, duplicate, or changed task ${JSON.stringify(task.title)}`,
+                  "preserve/recover the changed task history before retrying the exact init request",
+                ),
+              );
+            }
+            existingTaskTitles.add(task.title);
+          }
+        } else if (!inspected.valid) {
+          const entries = fs.list(authoringRoot);
+          if (entries.length === 0 || backlog.inspectEmptyInitialisationResidue(authoringRoot)) {
+            initialiseBacklog = true;
+          } else {
+            blockers.push(
+              initBlocker(
+                "workspace-partial-backlog-invalid",
+                "backlog",
+                `partial authoring backlog is not the exact root: ${inspected.reason}`,
+                "restore or remove only the proven partial backlog before retrying",
+              ),
+            );
+          }
+        } else {
+          blockers.push(
+            initBlocker(
+              "workspace-partial-backlog-invalid",
+              "backlog",
+              `partial authoring backlog uses task prefix ${JSON.stringify(inspected.taskPrefix)}`,
+              "restore or remove only the proven partial backlog before retrying",
+            ),
+          );
+        }
+      }
+    } catch (error) {
+      blockers.push(
+        initBlocker(
+          "workspace-partial-backlog-unreadable",
+          "backlog",
+          error instanceof Error ? error.message : String(error),
+          "make the exact partial authoring backlog inspectable before retrying",
+        ),
+      );
+    }
+  }
+
+  if (retrying) {
+    const allowedPaths = new Set<string>([
+      targetDir,
+      join(targetDir, WORKSPACE_INTEGRATION_STATE_PATH),
+      ...kindByPath.keys(),
+    ]);
+    for (const path of [...allowedPaths]) {
+      let parent = dirname(path);
+      while (parent !== targetDir && isContained(targetDir, parent)) {
+        allowedPaths.add(parent);
+        const next = dirname(parent);
+        if (next === parent) break;
+        parent = next;
+      }
+    }
+    inspectRetryTree(
+      fs,
+      targetDir,
+      allowedPaths,
+      new Set([authoringRoot, ...plannedAliases.keys()]),
+      blockers,
+    );
+  }
+
+  if (blockers.length > 0) throw new WorkspaceIntegrationPreflightError(blockers);
+
+  const actions: PlannedInitAction[] = [];
+  if (!retrying) {
+    actions.push(
+      initAction(
+        "managed-state:applying",
+        managedStatePath,
+        "record the exact whole-init applying request",
+        () => fs.write(managedStatePath, authoringPlan.applyingStateText),
+      ),
+    );
+  }
+  for (const directory of directoriesToCreate) {
+    actions.push(
+      initAction(directory.id, directory.path, directory.description, () =>
+        fs.makeDirectories(directory.path),
+      ),
+    );
+  }
+  for (const file of filesToWrite.filter(({ beat }) => beat !== "RERENDER")) {
+    actions.push(
+      initAction(file.id, file.path, file.description, () => fs.write(file.path, file.content)),
+    );
+  }
+  for (const alias of aliasesToCreate.filter(({ beat }) => beat !== "RERENDER")) {
+    actions.push(
+      initAction(alias.id, alias.path, alias.description, () =>
+        fs.ensureAlias(alias.target, alias.path),
+      ),
+    );
+  }
+  if (initialiseBacklog) {
+    actions.push(
+      initAction(
+        "authoring-backlog:init",
+        authoringRoot,
+        "initialise the exact authoring backlog",
+        () => backlog.init(authoringRoot, { taskPrefix: AUTHORING_TASK_PREFIX }),
+      ),
+    );
+  }
+  for (const file of filesToWrite.filter(({ beat }) => beat === "RERENDER")) {
+    actions.push(
+      initAction(
+        file.id,
+        file.path,
+        file.description,
+        () => fs.write(file.path, file.content),
+        undefined,
+        "RERENDER",
+      ),
+    );
+  }
+  for (const alias of aliasesToCreate.filter(({ beat }) => beat === "RERENDER")) {
+    actions.push(
+      initAction(
+        alias.id,
+        alias.path,
+        alias.description,
+        () => fs.ensureAlias(alias.target, alias.path),
+        undefined,
+        "RERENDER",
+      ),
+    );
+  }
+  for (const spec of specs) {
+    if (existingTaskTitles.has(spec.title)) continue;
+    actions.push(
+      initAction(
+        `authoring-task:${spec.title}`,
+        authoringRoot,
+        `materialise authoring task ${spec.title}`,
+        () => {
+          backlog.createTask(authoringRoot, spec);
+        },
+        spec.title,
+        "MATERIALISE",
+      ),
+    );
+  }
+  actions.push(
+    initAction(
+      "managed-state:complete",
+      managedStatePath,
+      "publish the complete workspace-authoring handshake",
+      () => fs.write(managedStatePath, authoringPlan.completeStateText),
+      undefined,
+      "MATERIALISE",
+    ),
+  );
+
+  const executed = executeInitPlan(actions);
+  const integrationPaths = new Set([
+    toPosix(managedStatePath),
+    ...authoringPlan.files.map(({ path }) => toPosix(join(targetDir, path))),
+  ]);
+  const integrationChangedPaths = executed.changedPaths.filter((path) =>
+    integrationPaths.has(path),
+  );
+  const authoringIntegration: WorkspaceAuthoringIntegrationResult = {
+    summary: `workspace authoring integration applied for ${authoringPlan.clients.join(", ")}`,
+    selectedClients: authoringPlan.clients,
+    integrationVersion: authoringPlan.integrationVersion,
+    origin: "created",
+    statePath: WORKSPACE_INTEGRATION_STATE_PATH,
+    changedPaths: integrationChangedPaths,
+    handoffPrepared: false,
+  };
+
   return {
     summary: `created authoring workspace ${name} at ${targetDir} (deliverable under ${DELIVERABLE_DIR}/)`,
-    changedPaths: changedPaths.map(toPosix),
-    materialisedTaskTitles: materialisedTitles,
+    changedPaths: executed.changedPaths,
+    materialisedTaskTitles: executed.materialisedTaskTitles,
+    authoringIntegration,
+    handoffPrepared: false,
   };
 }

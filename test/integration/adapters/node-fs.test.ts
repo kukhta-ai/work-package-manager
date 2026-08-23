@@ -1,6 +1,7 @@
 import {
   existsSync,
   lstatSync,
+  mkdirSync,
   readdirSync,
   readFileSync,
   readlinkSync,
@@ -49,6 +50,18 @@ describe("NodeFileSystem (the real FileSystem adapter, against a real tmpdir)", 
       expect(fs.read(p)).toBe("ORIGINAL");
       // No temp residue in either directory.
       expect(readdirSync(dir).filter((n) => n.endsWith(".tmp"))).toEqual([]);
+    });
+  });
+
+  it("a failed first write removes only the empty parent directories it created", async () => {
+    await withTempDir((dir) => {
+      const fs = new NodeFileSystem();
+      const createdParent = join(dir, "bootstrap", "workspace");
+      const invalidLeaf = "x".repeat(300);
+
+      expect(() => fs.write(join(createdParent, invalidLeaf), "cannot rename here")).toThrow();
+      expect(existsSync(join(dir, "bootstrap"))).toBe(false);
+      expect(readdirSync(dir).filter((name) => name.endsWith(".tmp"))).toEqual([]);
     });
   });
 
@@ -184,6 +197,26 @@ describe("NodeFileSystem (the real FileSystem adapter, against a real tmpdir)", 
       // It is a real copy (not a symlink) and the content is present.
       expect(lstatSync(link).isSymbolicLink()).toBe(false);
       expect(fs.read(join(link, "SKILL.md"))).toBe("# s");
+    });
+  });
+
+  it("a failed Windows fallback copy leaves neither a partial alias nor a temporary sibling", async () => {
+    await withTempDir((dir) => {
+      const fs = new NodeFileSystem({
+        platform: "win32",
+        copy: (_from, to) => {
+          mkdirSync(to, { recursive: true });
+          writeFileSync(join(to, "partial.txt"), "partial");
+          throw new Error("injected copy failure");
+        },
+      });
+      const target = join(dir, "skills");
+      fs.write(join(target, "SKILL.md"), "# s");
+      const link = join(dir, "alias");
+
+      expect(() => fs.ensureAlias(target, link)).toThrow("injected copy failure");
+      expect(existsSync(link)).toBe(false);
+      expect(readdirSync(dir).filter((name) => name.startsWith("alias.wpm-"))).toEqual([]);
     });
   });
 });

@@ -79,6 +79,8 @@ function complete(deps: CliDeps, words: string[]): string[] {
     builtinTemplatesRoot: deps.builtinTemplatesRoot,
     registry: defaultRegistry(),
     specs: {
+      init: { options: { "--authoring-client": "authoring-client-ids" } },
+      "authoring integrate": { options: { "--client": "authoring-client-ids" } },
       "bundle new": { options: { "--template": "bundle-template-names" }, args: [undefined] },
       "completion install": { options: { "--shell": "shells" } },
     },
@@ -179,6 +181,19 @@ describe("AC#2 — options with a fixed set of valid values complete to those va
     expect(registry.resolve("confirmation-levels", ctx(""))).toEqual(["safe", "dangerous"]);
     expect(registry.resolve("task-kinds", ctx(""))).toEqual(["kind:state", "kind:migration"]);
     expect(registry.resolve("template-scopes", ctx(""))).toEqual(["project", "bundle"]);
+    expect(registry.resolve("authoring-client-ids", ctx(""))).toEqual(["codex", "claude-code"]);
+  });
+
+  it("both workspace-integration selection flags complete from the shared client catalog", () => {
+    const deps = seededDeps();
+    expect(complete(deps, ["init", "demo", "--authoring-client", ""])).toEqual([
+      "codex",
+      "claude-code",
+    ]);
+    expect(complete(deps, ["authoring", "integrate", "--client", "c"])).toEqual([
+      "codex",
+      "claude-code",
+    ]);
   });
 
   it("a live option completes to its fixed enum end-to-end (`completion install --shell <tab>`)", () => {

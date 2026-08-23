@@ -22,6 +22,10 @@ import { join } from "node:path";
  */
 export function initWorkspace(builtCli: string, parentDir: string, name = "demo"): string {
   const workspace = join(parentDir, name);
-  execFileSync(process.execPath, [builtCli, "init", name, "--at", workspace], { encoding: "utf8" });
+  execFileSync(
+    process.execPath,
+    [builtCli, "init", name, "--at", workspace, "--authoring-client", "codex"],
+    { encoding: "utf8" },
+  );
   return workspace;
 }

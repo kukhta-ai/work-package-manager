@@ -114,7 +114,7 @@ function bundleFiles(fs: MemoryFileSystem, id: string): string[] {
   const walk = (dir: string): void => {
     for (const entry of fs.list(dir)) {
       const child = `${dir}/${entry.name}`;
-      if (entry.kind === "directory") {
+      if (fs.inspectPath(child).kind === "directory") {
         walk(child);
       } else {
         out.push(child);
@@ -349,9 +349,16 @@ describe("default bundle template — createBundle end-to-end (doc 06/07/08/09)"
     for (const path of bundleFiles(fs, SAMPLE_ID)) {
       // The PATH carries no unresolved marker (task-16 substitutes placeholders in paths too):
       expect(path, `unresolved marker in produced path ${path}`).not.toMatch(/\{\{[^}]*\}\}/);
-      // The CONTENT carries no unresolved marker:
-      const content = fs.read(path);
-      expect(content, `unresolved marker in produced file ${path}`).not.toMatch(/\{\{[^}]*\}\}/);
+      const inspection = fs.inspectPath(path);
+      if (inspection.kind === "symbolic-link") {
+        expect(inspection.target, `unresolved marker in produced alias ${path}`).not.toMatch(
+          /\{\{[^}]*\}\}/,
+        );
+      } else {
+        // The regular-file CONTENT carries no unresolved marker:
+        const content = fs.read(path);
+        expect(content, `unresolved marker in produced file ${path}`).not.toMatch(/\{\{[^}]*\}\}/);
+      }
     }
   });
 

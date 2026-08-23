@@ -16,9 +16,10 @@ import {
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join, resolve } from "node:path";
+import { delimiter, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
+import { resolveInstalledExecutableInvocation } from "../../../distribution-preparation/packed-install.js";
 import { resolveNpmInvocation } from "../../../distribution-preparation/prepare-package.js";
 import { ACTIVATION_FACT_KEYS } from "../../../distribution-preparation/readiness.js";
 
@@ -29,6 +30,13 @@ const NPM_REPOSITORY = {
   url: "https://github.com/example/work-package-manager.git",
   directory: null,
 };
+const WORKSPACE_SKILL_NAMES = [
+  "wpm-author",
+  "wpm-author-bundle",
+  "wpm-author-recipe",
+  "wpm-author-skill",
+  "wpm-review-package",
+] as const;
 
 function temporaryRoot(prefix: string): string {
   const root = mkdtempSync(join(tmpdir(), prefix));
@@ -286,6 +294,78 @@ describe("fresh local packed-install and inactive-candidate journey", () => {
     expect(readFileSync(join(consumer, "workspace", "CLAUDE.md"), "utf8")).toContain(
       "preserve-claude-workspace",
     );
+
+    const installedWpm = result.executables.find(({ name }) => name === "wpm");
+    expect(installedWpm).toBeDefined();
+    if (installedWpm === undefined) throw new Error("accepted packed install did not expose wpm");
+    const installedWorkspace = join(consumer, "accepted-authoring-workspace");
+    const installedInvocation = resolveInstalledExecutableInvocation(
+      process.platform,
+      installedWpm.shimPath,
+      [
+        "init",
+        "accepted-authoring-workspace",
+        "--at",
+        installedWorkspace,
+        "--authoring-client",
+        "codex",
+        "--authoring-client",
+        "claude-code",
+      ],
+    );
+    const pathKey = Object.keys(process.env).find((key) => key.toLowerCase() === "path") ?? "PATH";
+    const installedInit = spawnSync(installedInvocation.executable, installedInvocation.args, {
+      cwd: consumer,
+      encoding: "utf8",
+      timeout: 180_000,
+      env: {
+        ...process.env,
+        [pathKey]: [
+          dirname(installedInvocation.shimPath),
+          process.env[pathKey] ?? process.env.PATH ?? "",
+        ]
+          .filter((entry) => entry !== "")
+          .join(delimiter),
+      },
+    });
+    expect({ status: installedInit.status, stderr: installedInit.stderr }).toEqual({
+      status: 0,
+      stderr: "",
+    });
+    const installedState = JSON.parse(
+      readFileSync(join(installedWorkspace, ".wpm-authoring.json"), "utf8"),
+    ) as {
+      status: string;
+      integrationVersion: string;
+      selectedClients: string[];
+    };
+    expect(installedState).toMatchObject({
+      status: "complete",
+      integrationVersion: inspection.package.version,
+      selectedClients: ["codex", "claude-code"],
+    });
+    for (const nativeScope of [".agents", ".claude"]) {
+      for (const skillName of WORKSPACE_SKILL_NAMES) {
+        expect(
+          readFileSync(
+            join(installedWorkspace, nativeScope, "skills", skillName, "SKILL.md"),
+            "utf8",
+          ),
+        ).toBe(
+          readFileSync(
+            join(result.environment.packageRoot, "agent-skills", skillName, "SKILL.md"),
+            "utf8",
+          ),
+        );
+      }
+    }
+    const installedAgents = readFileSync(join(installedWorkspace, "AGENTS.md"), "utf8");
+    const installedClaude = readFileSync(join(installedWorkspace, "CLAUDE.md"), "utf8");
+    expect(installedAgents).toContain("<!-- wpm:workspace-authoring:start -->");
+    expect(installedAgents).toContain("$wpm-author");
+    expect(installedClaude).toContain("<!-- wpm:workspace-authoring:start -->");
+    expect(installedClaude).toContain("/wpm-author");
+    expect(existsSync(source)).toBe(false);
 
     const installReportPath = join(root, "packed-install-report.json");
     const qualityPath = join(root, "quality-report.json");

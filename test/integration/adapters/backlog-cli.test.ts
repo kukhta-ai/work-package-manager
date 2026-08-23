@@ -1,3 +1,5 @@
+import { appendFileSync, mkdirSync, renameSync, symlinkSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 import { execaSync } from "execa";
 import { describe, expect, it } from "vitest";
 import { BacklogCli } from "../../../src/adapters/backlog-cli.js";
@@ -47,6 +49,13 @@ describeIfBacklog(
       await withTempDir((dir) => {
         const bl = new BacklogCli("backlog", isolatedEnv(dir));
         bl.init(dir, { taskPrefix: "authoring" });
+        expect(bl.inspectRoot(dir)).toEqual({ valid: true, taskPrefix: "authoring" });
+        expect(bl.inspectTaskInventory(dir)).toEqual({
+          configurationMatchesFreshDefaults: true,
+          activeEntries: [],
+          inactiveEntries: [],
+          unexpectedEntries: [],
+        });
 
         const base = bl.createTask(dir, { title: "Base task" });
         expect(base.id).toBe("authoring-1");
@@ -54,11 +63,35 @@ describeIfBacklog(
 
         const rich = bl.createTask(dir, {
           title: "Rich task",
+          description: "Exact description",
           acceptanceCriteria: ["Does X", "Does Y"],
+          definitionOfDone: ["Done X"],
           dependencies: [base.id],
           labels: ["kind:state", "step:foo"],
         });
         expect(rich.id).toBe("authoring-2");
+        expect(bl.readTask(dir, rich.id)).toEqual({
+          id: "authoring-2",
+          title: "Rich task",
+          status: "To Do",
+          ordinal: 2000,
+          description: "Exact description",
+          acceptanceCriteria: [
+            { text: "Does X", checked: false },
+            { text: "Does Y", checked: false },
+          ],
+          definitionOfDone: [{ text: "Done X", checked: false }],
+          dependencies: ["authoring-1"],
+          labels: ["kind:state", "step:foo"],
+          extraMetadata: [],
+          extraSections: [],
+        });
+        expect(bl.inspectTaskInventory(dir)).toEqual({
+          configurationMatchesFreshDefaults: true,
+          activeEntries: ["authoring-1", "authoring-2"],
+          inactiveEntries: [],
+          unexpectedEntries: [],
+        });
 
         // list returns parsed summaries (not raw text), with prefixed ids + statuses (AC#1).
         const list = bl.listTasks(dir).sort((a, b) => a.id.localeCompare(b.id));
@@ -75,6 +108,9 @@ describeIfBacklog(
         expect(detail).toContain("step:foo");
         // The dependency on authoring-1 is recorded.
         expect(detail.toLowerCase()).toContain("authoring-1");
+
+        appendFileSync(join(dir, "backlog", "config.yml"), "unexpected_setting: true\n");
+        expect(bl.inspectTaskInventory(dir).configurationMatchesFreshDefaults).toBe(false);
       });
     });
 
@@ -84,9 +120,19 @@ describeIfBacklog(
         bl.init(dir, { taskPrefix: "authoring" });
         const t = bl.createTask(dir, { title: "Edit me", acceptanceCriteria: ["A"] });
 
-        bl.editTask(dir, t.id, { status: "Done", checkAcceptanceCriteria: [1] });
+        bl.editTask(dir, t.id, {
+          status: "Done",
+          checkAcceptanceCriteria: [1],
+          notes: "user-authored note",
+          addLabels: ["changed"],
+        });
         const done = bl.listTasks(dir, { status: "Done" });
         expect(done).toEqual([{ id: "authoring-1", title: "Edit me", status: "Done" }]);
+        expect(bl.readTask(dir, t.id).acceptanceCriteria).toEqual([{ text: "A", checked: true }]);
+        expect(bl.readTask(dir, t.id)).toMatchObject({
+          labels: ["changed"],
+          extraSections: [{ heading: "Implementation Notes", content: "user-authored note" }],
+        });
         // The acceptance criterion is checked in the real file.
         expect(taskDetail(dir, "authoring-1")).toMatch(/\[x\]\s*#1/);
       });
@@ -102,6 +148,12 @@ describeIfBacklog(
         bl.archiveTask(dir, drop.id);
         const remaining = bl.listTasks(dir);
         expect(remaining).toEqual([{ id: keep.id, title: "Keep", status: "To Do" }]);
+        expect(bl.inspectTaskInventory(dir)).toEqual({
+          configurationMatchesFreshDefaults: true,
+          activeEntries: [keep.id],
+          inactiveEntries: [drop.id],
+          unexpectedEntries: [],
+        });
       });
     });
 
@@ -120,6 +172,76 @@ describeIfBacklog(
           expect(bl.listTasks(a)).toEqual([{ id: "aaa-1", title: "in A", status: "To Do" }]);
           expect(bl.listTasks(b)).toEqual([{ id: "bbb-1", title: "in B", status: "To Do" }]);
         });
+      });
+    });
+
+    it("rejects an ambient parent backlog when the exact requested root is uninitialised", async () => {
+      await withTempDir((dir) => {
+        const bl = new BacklogCli("backlog", isolatedEnv(dir));
+        bl.init(dir, { taskPrefix: "ambient" });
+        const nested = join(dir, "nested");
+        mkdirSync(nested);
+
+        expect(bl.inspectRoot(nested)).toEqual({
+          valid: false,
+          reason: "the exact backlog root has no real backlog directory",
+        });
+
+        symlinkSync(
+          join(dir, "backlog"),
+          join(nested, "backlog"),
+          process.platform === "win32" ? "junction" : "dir",
+        );
+        expect(bl.inspectRoot(nested)).toEqual({
+          valid: false,
+          reason: "the exact backlog root has no real backlog directory",
+        });
+      });
+    });
+
+    it("rejects root-config discovery overrides and aliased task stores", async () => {
+      await withTempDir((overrideRoot) => {
+        const overrideBacklog = new BacklogCli("backlog", isolatedEnv(overrideRoot));
+        overrideBacklog.init(overrideRoot, { taskPrefix: "authoring" });
+        writeFileSync(
+          join(overrideRoot, "backlog.config.yml"),
+          'project_name: "Redirected"\ntask_prefix: "other"\n',
+        );
+        expect(overrideBacklog.inspectRoot(overrideRoot)).toEqual({
+          valid: false,
+          reason: "the exact backlog root does not contain only its real backlog directory",
+        });
+      });
+
+      await withTempDir((aliasRoot) => {
+        const aliasBacklog = new BacklogCli("backlog", isolatedEnv(aliasRoot));
+        aliasBacklog.init(aliasRoot, { taskPrefix: "authoring" });
+        const tasks = join(aliasRoot, "backlog", "tasks");
+        const movedTasks = join(aliasRoot, "backlog", "tasks-real");
+        renameSync(tasks, movedTasks);
+        symlinkSync(movedTasks, tasks, process.platform === "win32" ? "junction" : "dir");
+        expect(aliasBacklog.inspectRoot(aliasRoot)).toMatchObject({ valid: false });
+        const inspection = aliasBacklog.inspectRoot(aliasRoot);
+        expect(inspection.valid ? "" : inspection.reason).toContain("not a real directory");
+      });
+    });
+
+    it("recognizes and completes only an empty canonical init-directory residue", async () => {
+      await withTempDir((dir) => {
+        const bl = new BacklogCli("backlog", isolatedEnv(dir));
+        mkdirSync(join(dir, "backlog", "archive", "tasks"), { recursive: true });
+        mkdirSync(join(dir, "backlog", "tasks"), { recursive: true });
+        expect(bl.inspectEmptyInitialisationResidue(dir)).toBe(true);
+
+        bl.init(dir, { taskPrefix: "authoring" });
+        expect(bl.inspectRoot(dir)).toEqual({ valid: true, taskPrefix: "authoring" });
+      });
+
+      await withTempDir((dir) => {
+        const bl = new BacklogCli("backlog", isolatedEnv(dir));
+        mkdirSync(join(dir, "backlog", "tasks"), { recursive: true });
+        writeFileSync(join(dir, "backlog", "tasks", "USER.md"), "preserve\n");
+        expect(bl.inspectEmptyInitialisationResidue(dir)).toBe(false);
       });
     });
   },

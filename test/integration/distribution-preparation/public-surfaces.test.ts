@@ -14,7 +14,9 @@ import type { CliIo, OutputSink } from "../../../src/util/exit.js";
 
 const REPO_ROOT = fileURLToPath(new URL("../../..", import.meta.url));
 const REAL_TEMPLATES = join(REPO_ROOT, "templates");
+const REAL_SKILLS = join(REPO_ROOT, "agent-skills");
 const BUILTIN_TEMPLATES = "/builtin-templates";
+const BUNDLED_SKILLS = "/bundled-skills";
 const WORKSPACE = "/workspace";
 const INACTIVE_MARKER = "Public distribution is inactive";
 const PREPARATION_FILES = [
@@ -101,6 +103,7 @@ function deps(fs = new MemoryFileSystem()): CliDeps {
     clock: new FixedClock("2026-01-01T00:00:00.000Z"),
     env: new FakeEnvironment({ cwd: "/elsewhere" }),
     builtinTemplatesRoot: BUILTIN_TEMPLATES,
+    bundledSkillsRoot: BUNDLED_SKILLS,
   };
 }
 
@@ -161,8 +164,9 @@ function filesUnder(fs: MemoryFileSystem, directory: string): string[] {
   const walk = (current: string): void => {
     for (const entry of fs.list(current)) {
       const child = join(current, entry.name);
-      if (entry.kind === "directory") walk(child);
-      else paths.push(child);
+      const inspection = fs.inspectPath(child);
+      if (inspection.kind === "directory") walk(child);
+      else if (inspection.kind === "file") paths.push(child);
     }
   };
   walk(directory);
@@ -477,10 +481,16 @@ describe("inactive distribution public-surface contract", () => {
   it("audits the rendered authoring front door and proves preparation tooling never enters a deliverable", () => {
     const fs = new MemoryFileSystem();
     mirrorTemplates(fs);
-    initProject(deps(fs), { targetDir: WORKSPACE, name: "truthful-demo" });
+    mirrorTemplates(fs, REAL_SKILLS, BUNDLED_SKILLS);
+    initProject(
+      { ...deps(fs), integrationVersion: "0.1.0", bundledSkillsRoot: BUNDLED_SKILLS },
+      { targetDir: WORKSPACE, name: "truthful-demo", authoringClientIds: ["codex"] },
+    );
 
     const renderedFrontDoor = fs.read(join(WORKSPACE, "AGENTS.md"));
-    expect(renderedFrontDoor).toContain("truthful-demo");
+    expect(renderedFrontDoor).toContain("<!-- wpm:workspace-authoring:start -->");
+    expect(renderedFrontDoor).toContain(".wpm-authoring.json");
+    expect(renderedFrontDoor).toContain("$wpm-author");
     expectNoPublicAcquisitionClaim(renderedFrontDoor);
 
     const deliverableFiles = filesUnder(fs, join(WORKSPACE, "wip"));
