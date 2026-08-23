@@ -4,8 +4,8 @@
 # (Distinct from _bmad/ — that is BMAD's own install dir; this dot-dir is our tracker.)
 
 phase: 5
-phase_name: "Autonomous build (BAUT) — Epic 2 / between stories"
-branch: feature/authoring-agent-onboarding
+phase_name: "Autonomous build (BAUT) — Epic 2 / TASK-121"
+branch: feature/authoring-agent-onboarding-task-121
 epic: authoring-agent-onboarding
 # CURRENT SCOPE (2026-08-21): planning/readiness is READY; Backlog.md now contains the
 # non-story Node-support prerequisite TASK-106 plus 21 approved stories TASK-107..TASK-127.
@@ -41,7 +41,7 @@ epic: authoring-agent-onboarding
 # Stories: 96 (AC what-not-how contract ref) + 97 (native-surfaces ref) = Story A; 98 (name the bet + executor loop + done-gate + how-to-use close) + 99 (drift/correctness fixes: skill install, no-rerender, wip/ paths, build rows, drop non-existent templates) = Story B; 100 (dogfood-verify) = Story C. 101 = human-gated docs/templates reconcile (build templates vs fix docs/10-11 + doc-05).
 # DECISIONS (proceeding defaults; user said "proceed"): teach current truth in the skill; DEFER building templates + editing human-owned docs (05/10/11) -> TASK-101 human-gated. EPIC-3 below.
 # === EPIC-3 (authoring-workspace) COMPLETE — PR #2 open (feature/authoring-workspace -> feature/cli), awaiting HUMAN merge. Details retained below. ===
-active_story: null
+active_story: task-121
 review_cycle: 0
 # *** ALL 10 EPIC-3 STORIES DONE + merged --no-ff into feature/authoring-workspace: 85, 92, 86, 87, 91, 88, 94, 89, 90, 93. ***
 # Follow-up TASK-95 created (deferred --format git reconciliation; pre-existing, outside task-90 scope). PHASE 6 epic gate IN PROGRESS.
@@ -251,7 +251,7 @@ specialists:
   architect:    {spawned: true,  id: "af0958eff0e1846e5", role: "architecture conformance vs docs/12-13", status: "P3 done — architecture/epics/readiness=PASS; RESUME if a task reveals a design gap"}
   tea:          {spawned: true,  id: "/root/onboarding_tea", role: "authoring-agent-onboarding trace/nfr/cold gate", last_skill: "bmad-testarch-trace @ onboarding Epic 1 (final PASS)", status: "46/46 AC FULL; NFR PASS/LOW; cold exact-head 1473/1473; 0 concerns."}
   sm:           {spawned: true,  id: "/root/sprint_tracker_worker", role: "authoring-agent-onboarding sprint setup + tracker coordination", last_skill: "bmad-sprint-planning @ authoring-agent-onboarding (live tracker rotation)", status: "Live generic tracker validated: 3 epics, 21 stories (7/11/3), all backlog; foundation tracker archived exactly."}
-  worker:       {spawned: true,  id: "/root/onboarding_worker3", role: "replacement persistent authoring-agent-onboarding story worker", last_skill: "bmad-qa-generate-e2e-tests @ task-120", status: "TASK-120 integrated after APPROVE; ready to resume at TASK-121."}
+  worker:       {spawned: true,  id: "/root/onboarding_worker3", role: "replacement persistent authoring-agent-onboarding story worker", last_skill: "bmad-qa-generate-e2e-tests @ task-120", status: "TASK-121 claimed; final reviewed TASK-120 reread required before literal create-story."}
   # CROSS-CUTTING FIX in flight (worker #3): the task-25 lifecycle ⑤ MATERIALISE used ctx.root, but the real authoring backlog is
   # <project>/.authoring-backlog -- so every materialising command (targets add; createBundle/bundle new later) FAILED on a real
   # project (BacklogCli shells out cwd=root; project root isn't a backlog root). Hidden by FakeBacklog-at-project-root tests; CAUGHT
@@ -263,8 +263,17 @@ specialists:
   retro:        {spawned: true, id: "/root/onboarding_retro", role: "authoring-agent-onboarding epic retrospective", last_skill: "bmad-retrospective @ onboarding Epic 1", status: "GREEN; no blockers or Epic 2 replan; artifact validated."}
 
 gates_pending: []
+delivery_policy:
+  revision: "fast-gates-v1"
+  approved_at: "2026-08-23"
+  source: "_bmad-output/planning-artifacts/sprint-change-proposal-2026-08-23.md"
+  effective_from: "TASK-121"
+  resume_rule: "Worker and reviewer must compare this revision on every resume; if new or unread, reread AGENTS.md Fast feedback and proportional review, this policy block, and the current story before choosing gates."
+  per_story: "Literal create/dev/QA/review workflows; focused tests, typecheck, Biome, relevant build, and one hash-bound exact archive/source-free acceptance only when the ship boundary changed. No ordinary-story exact full npm test or live-client behavior matrix."
+  evidence_reuse: "An earlier worker/QA archive/source-free run may be accepted without repetition only when review changes no product/test byte and the evidence binds the same stable behavior hash."
+  final_gate: "After TASK-127, one clean exact revision runs dependency install, typecheck, repository lint, build, one exact full npm test, exact package/candidate/channel rebinding, and fresh live Codex plus externally authenticated live Claude six-skill parity."
 deferred_gates:
-  - "FINAL POST-IMPLEMENTATION COLD GATE after TASK-127 / Story 3.3: externally authenticated fresh Claude Code discovery, explicit invocation, natural-language trigger, non-trigger, and representative outcome for all six WPM-owned skills against one exact final packed revision. This blocks final handoff/activation, not intermediate skill stories; WPM does not own authentication."
+  - "FINAL POST-IMPLEMENTATION COLD GATE after TASK-127 / Story 3.3: from one clean exact revision, run dependency install, typecheck, repository lint, build, and the exact full npm test once; rebind exact package/candidate/channel evidence; then run fresh live Codex and externally authenticated live Claude discovery, explicit invocation, natural-language trigger, non-trigger, and representative outcome for all six exact packaged WPM skills. This blocks final handoff/activation, not intermediate stories; WPM does not own host authentication or sessions."
 # GOAL EXTENDED (2026-06-01): "complete to task 33 ... full SDLC; THEN merge to dev and start the same SDLC
 # from it with the CLI tasks pushed there (update from remote) and go to task 84 (to the end)." So:
 #   (1) finish the foundation epic 23-33 + the Phase-6 epic gate;
@@ -286,4 +295,4 @@ tooling:
   tool_target: "claude-code"
   claude_code_skills: ".claude/skills (56 skills)"
 
-last_updated: "2026-08-23T13:55:00Z"
+last_updated: "2026-08-23T13:56:00Z"

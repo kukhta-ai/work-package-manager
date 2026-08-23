@@ -1,9 +1,10 @@
 ---
 id: TASK-121
 title: Prepare and Verify a Fresh-Agent Handoff
-status: To Do
+status: In Progress
 assignee: []
 created_date: '2026-08-21 15:01'
+updated_date: '2026-08-23 14:12'
 labels:
   - onboarding-epic-2
   - authoring-onboarding
@@ -42,6 +43,12 @@ Non-goals: Spawning, authenticating, or owning an agent process; claiming agent 
 - [ ] #6 Given an unforeseen failure after handoff writes begin; when preparation ends; then a typed, non-zero mutation non-success—not success or a generic internal error—identifies completed, failed, and unattempted boundaries in deterministic plan order, retains completed-boundary evidence, supplies actionable forward recovery, and makes no rollback or generic resume/reconciliation claim.
 - [ ] #7 Given a reported partial handoff write and the same authorized request; when the failed boundary becomes recoverable and the request is repeated; then managed handoff state converges without duplicate or corrupted content.
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Delivery policy fast-gates-v1 is effective immediately: focused tests, typecheck, Biome, relevant build, and one stable-hash package proof only if needed. The exact full npm test and live-client matrix are post-TASK127 Phase-6 gates, not TASK-121 review gates.
+<!-- SECTION:NOTES:END -->
 
 ## Definition of Done
 <!-- DOD:BEGIN -->

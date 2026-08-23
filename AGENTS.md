@@ -26,6 +26,11 @@ mandatory, not optional skimming:
 Treat this as loading the project's source of truth into your head. Everything below — the BMAD process, the
 state machine, the per-task loop — presupposes you have done this read and can cite the docs by number.
 
+This full preload is **once per persistent specialist per source revision**, not once per workflow call. Record
+the revision that was read. On resume, read the state tracker and only documents changed since that revision; a
+replacement specialist must do the full preload. Do not spawn a nested agent merely to repeat work that the
+persistent specialist can invoke directly.
+
 ---
 
 ## What is fixed vs. what is open to refinement
@@ -104,6 +109,12 @@ workflow can't hide behind plausible output. If a skill genuinely cannot run una
 to **surface** (name the blocker, drive the step from the docs as a stated fallback, record it) — never a
 silent substitution. Confirm *once*, at Step 0's confirmation step, that a spawned specialist can actually
 invoke its skill; never assume it.
+
+**Execution ownership and retry budget.** The persistent specialist for a role invokes its workflow directly.
+An outer `story-automator` session is optional coordination, not another worker/reviewer layer; never run it in
+a way that duplicates already-active specialists. Give a deterministic launcher, authentication, sandbox, or
+configuration failure one diagnosis. Then record the deviation and continue with the same workflow in the
+persistent specialist. Retries are reserved for demonstrably transient failures.
 
 ---
 
@@ -216,11 +227,16 @@ within its lifetime (the diagram's SPAWN vs RESUME distinction).
      create-architecture, create-epics-and-stories, check-implementation-readiness`.
    - **TEA** (test architecture) — agent `tea` (Murat) and the `testarch-*` workflows the diagram names:
      `test-design, framework, ci, trace, nfr, atdd, automate, test-review`.
-2. **Install the autonomous build loop** (the diagram's "automator" / story-automator-review in Phase 5):
+2. **Install the review workflow and optional autonomous coordinator** (the diagram's
+   `story-automator-review` / `story-automator` in Phase 5):
    ```
    npx bmad-method install --modules automator        # bmad-automator: bmad-story-automator + -review skills
    ```
    If the registry resolves automator to a pre-release channel, pin a stable build rather than tracking HEAD.
+   Direct persistent worker/reviewer sessions are the default execution path. Enable the outer coordinator and
+   its stop hook only after a smoke test proves its launcher, authentication, sandbox, and monitor work in the
+   current environment. On a deterministic failure, disable the hook and use the direct path; do not nest a
+   second worker or reviewer underneath the existing one.
 3. **If any package fails to resolve or its commands are unknown, STOP and clone the source to learn the real
    surface before proceeding** — do not invent agent names or workflow steps:
    - `git clone https://github.com/bmad-code-org/BMAD-METHOD`
@@ -228,9 +244,10 @@ within its lifetime (the diagram's SPAWN vs RESUME distinction).
    - `git clone https://github.com/bmad-code-org/bmad-automator`
    Read each module's `module.yaml` / agent definitions / workflow folders to confirm the exact commands.
 4. **Spawn the persistent specialists** you will resume throughout (one session each, kept alive):
-   `analyst, pm, ux-designer, architect, tea, sm`, plus the build **worker** and **investigator** roles
-   (spun from `dev`/`qa`) and **retro** (from the retrospective workflow). Record, in the state file below,
-   that each is initialized and what role it plays. Resume them by their session rather than re-spawning.
+   `analyst, pm, ux-designer, architect, tea, sm`, plus the build **worker**, independent **reviewer**, and
+   **investigator** roles (spun from `dev`/`qa`) and **retro** (from the retrospective workflow). Record, in
+   the state file below, that each is initialized and what role it plays. Resume them by their session rather
+   than re-spawning.
 5. **Confirm** the install *and that a subagent can drive it*: the BMAD agents respond to their commands, the
    `testarch-*` and `story-automator` workflows are present, `bmad-help` (if available) reports the modules —
    and, decisively, **a spawned specialist subagent can itself invoke its skill** (run one persona's skill from
@@ -265,6 +282,7 @@ re-read it on every resume. Keep two things in sync:
      tea:       {spawned: true,  role: "test design / trace / nfr / gate",  last_skill: "testarch-test-design"}
      sm:        {spawned: true,  role: "story prep from backlog tasks",     last_skill: "create-story"}
      worker:    {spawned: true,  role: "dev-story implementation",          last_skill: "dev-story @ task-12"}
+     reviewer:  {spawned: true,  role: "independent story review",          last_skill: "story-automator-review @ task-12"}
    gates_pending: []                      # any user gate you are waiting on
    last_updated: "<timestamp>"
    ```
@@ -334,15 +352,18 @@ Update `.bmad/sdlc-state.yaml` at every phase boundary.
 - Commit any story files + `sprint-status.yaml` on `feature/foundation`.
 - (check) human marks the sprint ready to build.
 
-**Phase 5 — Autonomous build (BAUT)** · branch `feature/foundation` -> per-story sub-branches · personas `worker` (dev), `tea`, `retro`
-- Configure the **automator** (Step 0.2). Then, **per backlog task**, run the story loop below.
+**Phase 5 — Autonomous build (BAUT)** · branch `feature/foundation` -> per-story sub-branches · personas `worker` (dev), `reviewer`, `tea`, `retro`
+- Use the persistent worker and independent reviewer directly. The outer **automator** is optional and may be
+  enabled only after the Step 0 smoke test. Then, **per backlog task**, run the story loop below.
 - After the epic's tasks are Done (culminating in the walking skeleton, task-33), spawn `retro` to run the
   `retrospective` workflow; commit `retrospective-epic-1` on `feature/foundation`.
 
 **Phase 6 — Epic gate** · branch `feature/foundation` (+ `fix/foundation/<issue>` if needed) · personas `tea`, `investigator`, `worker`
 - `tea`: `testarch-trace` (initial coverage matrix + interim gate) and `testarch-nfr` (NFR report).
-- Reset to a clean environment (e.g. compose down/up) and run the whole E2E suite **cold**, the way CI does —
-  a fresh checkout, nothing warm.
+- After the current scoped implementation is complete (TASK-127 for authoring onboarding), reset to a clean
+  exact revision and run dependency installation, typecheck, repository lint, build, and the exact full test
+  suite **once**, cold, the way CI does. Produce/rebind any exact package/candidate evidence from those bytes
+  and run the required live supported-client matrix there, not in each story.
 - On failure: spawn `investigator` (systematic debugging) -> root cause + fix plan -> `git checkout -b
   fix/foundation/<issue>` -> `worker` applies the fix (re-spawn `dev-story`) -> commit on the fix branch ->
   `git checkout feature/foundation; merge --no-ff fix; branch -d fix` -> re-run cold-start E2E. Repeat until green.
@@ -358,6 +379,33 @@ Update `.bmad/sdlc-state.yaml` at every phase boundary.
 
 ---
 
+## Fast feedback and proportional review
+
+Keep correctness gates, but run each at the point where it produces useful information:
+
+- `.bmad/sdlc-state.yaml` carries the active `delivery_policy.revision`. On every resume, worker and reviewer
+  compare that token with the last policy they read. A new or unread revision requires rereading this section,
+  the state policy block, and the current story before selecting any gate; it does not require a full doc preload.
+
+- During implementation, run the smallest relevant test files plus typecheck/lint for touched boundaries.
+  Build only when generated output, package boundaries, or built-CLI behavior is affected.
+- QA runs the focused acceptance/E2E band it adds or changes; it does not automatically repeat the full suite.
+- Use one independent reviewer by default. Finish the complete audit and all fixes before accepting expensive
+  artifact evidence. When a story changes a package/ship boundary, accept exact archive/source-free evidence
+  once against the stable product/test hash. The reviewer may adopt an earlier worker/QA run without repeating
+  it only when the audit changed no product/test byte and the evidence is bound to that exact hash; otherwise
+  run it once after fixes stabilize.
+- Do not run the exact full CI-equivalent suite or live supported-client behavior matrix in an ordinary story
+  cycle. Run them once at the Phase-6 cold gate after scoped implementation is complete. If executable source
+  or test behavior changes to fix that gate, rerun focused checks and then one new complete gate. Story,
+  QA-record, status, or comment-only changes reuse stable product/test hashes.
+- Add another reviewer or review cycle only for a concrete unresolved finding or demonstrated high-risk seam
+  such as security, external authority, concurrency, or platform behavior—not as a ritual.
+- Cold-environment and full platform-matrix confirmation remain Phase 6/CI gates; do not duplicate them in
+  every story cycle.
+
+---
+
 ## The per-story loop (Phase 5, applied to one backlog task)
 
 Pick the **next task whose dependencies are all Done** (`backlog sequence list`; ids are in dependency order).
@@ -370,14 +418,17 @@ Then:
 3. **create-story (worker).** The worker **invokes the `create-story` skill** (the Skill tool) — not a
    hand-written spec (Rule 3) — to turn the task into a concrete work spec grounded in the docs, steered from
    `13`/`10` and the task's AC. (The task is the story; this fleshes the implementation plan.)
-4. **dev-story (worker).** The worker **invokes `dev-story`** to implement the task with its tests together —
-   the DoD requires type-clean, lint-clean (incl. the core-boundary rule), and green tests.
+4. **dev-story (worker).** The worker **invokes `dev-story`** to implement the task with its tests together.
+   Use focused checks while the diff is moving; the stable-diff gate below proves the full DoD.
 5. **qa-generate-e2e-tests (worker / tea).** **Invoke `qa-generate-e2e-tests`** to add the end-to-end/acceptance
-   tests for the task's behavior.
+   tests for the task's behavior, then run its focused acceptance band.
 6. **story-automator-review cycle (reviewer — a *separate* subagent, never the worker self-reviewing).** The
-   reviewer **invokes `story-automator-review`** + runs the full local check suite (the same lint/type/test gate
-   CI runs). Treat findings as blocking; bump `review_cycle`. Loop dev-story -> review **until clean**, up to ~5
-   cycles. If it won't converge, record why via `--notes` and raise it.
+   reviewer **invokes `story-automator-review`**, completes the audit, and auto-fixes or returns concrete
+   findings. Treat real findings as blocking and bump `review_cycle`; loop dev-story -> review until clean.
+   Run focused/static/build checks and, only for a changed ship boundary, accept one hash-bound exact
+   archive/source-free proof under the policy above. Defer the exact full suite and live-client matrix to
+   Phase 6. Record and raise a
+   genuinely non-converging review; do not multiply cycles for evidence-only edits.
 7. **Verify against acceptance criteria.** Criterion by criterion, each observably true; tick as they pass
    (`--check-ac <n>`). Never tick what you haven't shown.
 8. **Record & close.** Tick DoD items (`--check-dod <n>`), record in `--notes` which BMAD skills this story

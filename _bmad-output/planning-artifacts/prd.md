@@ -374,12 +374,14 @@ The terms in this addendum have narrow meanings:
   skill-authoring helper at implementation time and record the helper and host versions, then-current official
   source links and access date, deterministic native-path, frontmatter, discovery and explicit-invocation
   identity, trigger/non-trigger contract, and source-free portability evidence for Codex and Claude Code,
-  exact packed/source-free availability, generated-deliverable non-leakage, and live Codex discovery,
-  explicit-invocation, natural-language trigger, non-trigger, and observable-outcome evidence.
-- After all scoped implementation, authenticated live Claude Code discovery, explicit-invocation,
-  natural-language trigger, non-trigger, and representative-outcome parity for all six WPM-owned skills is
-  proven once against the exact final packed revision before final handoff or activation. Authentication is an
-  external prerequisite for that final gate and is not a WPM capability.
+  exact packed availability, and generated-deliverable non-leakage.
+- Within one skill-story cycle, exact archive/source-free evidence is accepted once against the stabilized
+  product/test hash. Independent review may adopt an earlier worker/QA run only when the audit changes no
+  product/test byte and the evidence is bound to that exact hash; otherwise it runs the proof once after fixes.
+- After all scoped implementation, fresh live Codex and externally authenticated live Claude Code discovery,
+  explicit invocation, natural-language trigger, non-trigger, and representative-outcome parity for all six
+  WPM-owned skills are proven once against the exact final packed revision before final handoff or activation.
+  Authentication is an external prerequisite for that final gate and is not a WPM capability.
 - Each skill story owns packed-install availability and generated-deliverable non-leakage evidence for its
   artifact; later family-level verification does not substitute for that evidence.
 - Bootstrap and workspace skills reuse supplied or retained facts, ask only for unresolved decisions, and
