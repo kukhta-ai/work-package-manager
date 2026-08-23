@@ -1,4 +1,5 @@
-import { cpSync, mkdirSync, symlinkSync } from "node:fs";
+import { randomBytes } from "node:crypto";
+import { cpSync, mkdirSync, renameSync, rmSync, symlinkSync } from "node:fs";
 import { dirname, isAbsolute, resolve } from "node:path";
 import type { AliasResult } from "../core/ports/filesystem.js";
 
@@ -20,6 +21,12 @@ export interface SymlinkStrategyOptions {
   readonly symlink?: (target: string, linkPath: string) => void;
   /** The recursive-copy primitive; defaults to `node:fs` `cpSync` (recursive). */
   readonly copy?: (from: string, to: string) => void;
+  /** Atomic sibling rename used to publish a completed Windows fallback copy. */
+  readonly rename?: (from: string, to: string) => void;
+  /** Recursive cleanup used only for an unpublished temporary fallback copy. */
+  readonly remove?: (path: string) => void;
+  /** Test seam for the unique sibling path; production uses a cryptographically random suffix. */
+  readonly temporaryPath?: (linkPath: string) => string;
   /** The make-directories primitive (`mkdir -p`), used for the link's parent; defaults to `node:fs`. */
   readonly makeDirectories?: (path: string) => void;
 }
@@ -37,6 +44,18 @@ function defaultSymlink(target: string, linkPath: string): void {
 /** Default `mkdir -p` primitive. */
 function defaultMakeDirectories(path: string): void {
   mkdirSync(path, { recursive: true });
+}
+
+function defaultRename(from: string, to: string): void {
+  renameSync(from, to);
+}
+
+function defaultRemove(path: string): void {
+  rmSync(path, { recursive: true, force: true });
+}
+
+function defaultTemporaryPath(linkPath: string): string {
+  return `${linkPath}.wpm-${randomBytes(8).toString("hex")}.tmp`;
 }
 
 /**
@@ -64,12 +83,25 @@ export function ensureSymlinkOrCopy(
   const platform = options.platform ?? process.platform;
   if (platform === "win32") {
     const copy = options.copy ?? defaultCopy;
+    const rename = options.rename ?? defaultRename;
+    const remove = options.remove ?? defaultRemove;
     // A RELATIVE target (e.g. the per-bundle `backlog → install-backlog` link, TASK-102) is resolved against
     // the link's PARENT directory — POSIX symlink semantics — so the copy duplicates the SAME tree the
     // symlink would have pointed at, not a cwd-relative path. Absolute targets (the scope aliases) are copied
     // verbatim, so this is a no-op for every pre-existing caller.
     const copyFrom = isAbsolute(target) ? target : resolve(dirname(linkPath), target);
-    copy(copyFrom, linkPath);
+    const temporaryPath = (options.temporaryPath ?? defaultTemporaryPath)(linkPath);
+    try {
+      copy(copyFrom, temporaryPath);
+      rename(temporaryPath, linkPath);
+    } catch (error) {
+      try {
+        remove(temporaryPath);
+      } catch {
+        // Never let best-effort cleanup hide the original copy/publish error.
+      }
+      throw error;
+    }
     return {
       kind: "copy",
       warning: `Copied "${target}" to "${linkPath}" instead of symlinking (symlinks need elevation on Windows). Re-run to refresh the copy after the source changes.`,

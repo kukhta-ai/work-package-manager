@@ -812,12 +812,16 @@ describeIfBuilt("`wpm build package` E2E (task-83, through dist/cli.js)", () => 
       const originalArchiveDigest = createHash("sha256")
         .update(readFileSync(originalArchive))
         .digest("hex");
-      const authoringFrontDoorMarker = "This is an authoring workspace, not a project to install.";
+      const authoringFrontDoorMarker = "<!-- wpm:workspace-authoring:start -->";
       expect(readFileSync(join(proj, "AGENTS.md"), "utf8")).toContain(authoringFrontDoorMarker);
+      expect(JSON.parse(readFileSync(join(proj, ".wpm-authoring.json"), "utf8"))).toMatchObject({
+        status: "complete",
+        selectedClients: ["codex"],
+      });
+      expect(existsSync(join(proj, "CLAUDE.md"))).toBe(false);
 
       // Establish the immutable subject baseline BEFORE copying or planting any review-only marker.
       const before = snapshotTree(proj);
-      const originalAliasTarget = readlinkSync(join(proj, "CLAUDE.md"));
       const reviewCopy = join(dir, "isolated-review", "workspace");
       mkdirSync(join(dir, "isolated-review"));
       cpSync(proj, reviewCopy, {
@@ -830,8 +834,7 @@ describeIfBuilt("`wpm build package` E2E (task-83, through dist/cli.js)", () => 
       expect(snapshotTree(reviewCopy)).toEqual(before);
       expect(snapshotTree(proj)).toEqual(before);
       expect(gitTopLevel(reviewCopy)).toBeUndefined();
-      expect(lstatSync(join(reviewCopy, "CLAUDE.md")).isSymbolicLink()).toBe(true);
-      expect(readlinkSync(join(reviewCopy, "CLAUDE.md"))).toBe(originalAliasTarget);
+      expect(existsSync(join(reviewCopy, "CLAUDE.md"))).toBe(false);
 
       // Copied archives are stale input, never proof of this review. Every format must create absent output.
       rmSync(join(reviewCopy, "builds"), { recursive: true, force: true });
@@ -907,18 +910,47 @@ describeIfBuilt("`wpm build package` E2E (task-83, through dist/cli.js)", () => 
       const proj = initProject(dir);
       expect(cli(["project", "targets", "add", "claude-code", "-C", proj], dir).code).toBe(0);
       expect(cli(["bundle", "new", "web", "-C", proj], dir).code).toBe(0);
+      expect(
+        cli(
+          ["authoring", "integrate", "--client", "codex", "--client", "claude-code", "-C", proj],
+          dir,
+        ).code,
+      ).toBe(0);
 
       const ROOT_SENTINEL = "TASK95-ROOT-EXECUTOR-3f8c";
       const BUNDLE_SENTINEL = "TASK95-BUNDLE-EXECUTOR-b247";
       const WRAPPER_SENTINEL = "TASK95-WORKSPACE-WRAPPER-MUST-NOT-SHIP-91ad";
       const PREPARATION_SENTINEL = "TASK108-DISTRIBUTION-PREPARATION-MUST-NOT-SHIP-2e4c";
-      const AUTHOR_ROUTER_SKILL_SENTINEL =
-        "Treat orientation and selection as one fail-closed workflow.";
-      const AUTHORING_SKILL_SENTINEL = "Turn the request into four short lists:";
-      const RECIPE_AUTHORING_SKILL_SENTINEL =
-        "The bundle's install backlog is the single recipe task source:";
-      const SKILL_AUTHORING_SKILL_SENTINEL =
-        "Classify all requested artifacts and existing collisions before changing state.";
+      const FRONTDOOR_SENTINEL = "TASK120-MANAGED-FRONT-DOOR-MUST-NOT-SHIP-53fe";
+      const workspaceSkillEvidence = [
+        [
+          "wpm-author",
+          authorRouterSkill,
+          "Treat orientation and selection as one fail-closed workflow.",
+        ],
+        ["wpm-author-bundle", authoringBundleSkill, "Turn the request into four short lists:"],
+        [
+          "wpm-author-recipe",
+          authoringRecipeSkill,
+          "The bundle's install backlog is the single recipe task source:",
+        ],
+        [
+          "wpm-author-skill",
+          authoringSkillSkill,
+          "Classify all requested artifacts and existing collisions before changing state.",
+        ],
+        ["wpm-review-package", reviewPackageSkill, "## Evaluate the complete bounded catalog"],
+      ] as const;
+      const integrationStateText = readFileSync(join(proj, ".wpm-authoring.json"), "utf8");
+      const integrationState = JSON.parse(integrationStateText) as {
+        workspaceRoot: string;
+        selectedClients: string[];
+      };
+      expect(integrationState).toMatchObject({
+        workspaceRoot: proj,
+        selectedClients: ["codex", "claude-code"],
+      });
+      const STATE_SENTINEL = integrationState.workspaceRoot;
       writeFileSync(join(proj, "wip", "_AGENTS.md"), `# root\n${ROOT_SENTINEL}\n`);
       writeFileSync(
         join(proj, "wip", "bundles", "web", "_AGENTS.md"),
@@ -931,54 +963,54 @@ describeIfBuilt("`wpm build package` E2E (task-83, through dist/cli.js)", () => 
         join(proj, "distribution-preparation", "package-boundary.js"),
         PREPARATION_SENTINEL,
       );
-      const nativeAuthorRouter = readFileSync(authorRouterSkill, "utf8");
-      expect(nativeAuthorRouter).toContain(AUTHOR_ROUTER_SKILL_SENTINEL);
-      for (const nativeAuthorRouterDir of [
-        join(proj, ".agents", "skills", "wpm-author"),
-        join(proj, ".claude", "skills", "wpm-author"),
-      ]) {
-        mkdirSync(nativeAuthorRouterDir, { recursive: true });
-        writeFileSync(join(nativeAuthorRouterDir, "SKILL.md"), nativeAuthorRouter);
+      for (const frontDoor of ["AGENTS.md", "CLAUDE.md"]) {
+        const frontDoorPath = join(proj, frontDoor);
+        writeFileSync(
+          frontDoorPath,
+          `${FRONTDOOR_SENTINEL}\n${readFileSync(frontDoorPath, "utf8")}`,
+        );
       }
-      const nativeAuthoringSkillDir = join(proj, ".agents", "skills", "wpm-author-bundle");
-      mkdirSync(nativeAuthoringSkillDir, { recursive: true });
-      const nativeAuthoringSkill = readFileSync(authoringBundleSkill, "utf8");
-      expect(nativeAuthoringSkill).toContain(AUTHORING_SKILL_SENTINEL);
-      writeFileSync(join(nativeAuthoringSkillDir, "SKILL.md"), nativeAuthoringSkill);
-      const nativeRecipeSkillDir = join(proj, ".claude", "skills", "wpm-author-recipe");
-      mkdirSync(nativeRecipeSkillDir, { recursive: true });
-      const nativeRecipeSkill = readFileSync(authoringRecipeSkill, "utf8");
-      expect(nativeRecipeSkill).toContain(RECIPE_AUTHORING_SKILL_SENTINEL);
-      writeFileSync(join(nativeRecipeSkillDir, "SKILL.md"), nativeRecipeSkill);
-      const nativeSkillAuthoringDir = join(proj, ".agents", "skills", "wpm-author-skill");
-      mkdirSync(nativeSkillAuthoringDir, { recursive: true });
-      const nativeClaudeSkillAuthoringDir = join(proj, ".claude", "skills", "wpm-author-skill");
-      mkdirSync(nativeClaudeSkillAuthoringDir, { recursive: true });
-      const nativeSkillAuthoring = readFileSync(authoringSkillSkill, "utf8");
-      expect(nativeSkillAuthoring).toContain(SKILL_AUTHORING_SKILL_SENTINEL);
-      writeFileSync(join(nativeSkillAuthoringDir, "SKILL.md"), nativeSkillAuthoring);
-      writeFileSync(join(nativeClaudeSkillAuthoringDir, "SKILL.md"), nativeSkillAuthoring);
+      for (const [skillName, sourcePath, sentinel] of workspaceSkillEvidence) {
+        const expectedBytes = readFileSync(sourcePath, "utf8");
+        expect(expectedBytes).toContain(sentinel);
+        for (const nativeRoot of [".agents", ".claude"]) {
+          expect(
+            readFileSync(join(proj, nativeRoot, "skills", skillName, "SKILL.md"), "utf8"),
+          ).toBe(expectedBytes);
+        }
+      }
+
+      const assertNoWorkspaceIntegration = (layout: string[], extractedRoot: string): void => {
+        expect(layout).not.toContain(".wpm-authoring.json");
+        expect(
+          layout.some((path) => path.startsWith(".agents/") || path.startsWith(".claude/")),
+        ).toBe(false);
+        for (const [skillName] of workspaceSkillEvidence) {
+          expect(layout.some((path) => path.includes(skillName))).toBe(false);
+        }
+        const extractedBytes = concatAllFiles(extractedRoot);
+        expect(extractedBytes).not.toContain(STATE_SENTINEL);
+        expect(extractedBytes).not.toContain(FRONTDOOR_SENTINEL);
+        for (const [, , sentinel] of workspaceSkillEvidence) {
+          expect(extractedBytes).not.toContain(sentinel);
+        }
+      };
 
       const sourceDeliverableBefore = snapshotTree(join(proj, "wip"));
       expect(sourceDeliverableBefore.some((entry) => entry.includes("wpm-author/SKILL.md"))).toBe(
         false,
       );
-      expect(concatAllFiles(join(proj, "wip"))).not.toContain(AUTHOR_ROUTER_SKILL_SENTINEL);
+      for (const [, , sentinel] of workspaceSkillEvidence) {
+        expect(concatAllFiles(join(proj, "wip"))).not.toContain(sentinel);
+      }
 
       const tgz = join(proj, "builds", "demo-0.1.0.tgz");
       expect(cli(["build", "package", "--format", "tarball", "-C", proj], dir).code).toBe(0);
       const tarballLayout = archiveLayout(tgz);
-      expect(tarballLayout.some((path) => path.includes("wpm-author/SKILL.md"))).toBe(false);
-      expect(tarballLayout.some((path) => path.includes("wpm-author-bundle"))).toBe(false);
-      expect(tarballLayout.some((path) => path.includes("wpm-author-recipe"))).toBe(false);
-      expect(tarballLayout.some((path) => path.includes("wpm-author-skill"))).toBe(false);
       const tarballExtracted = join(dir, "task95-tarball-extracted");
       mkdirSync(tarballExtracted);
       execFileSync("tar", ["-xzf", tgz, "-C", tarballExtracted]);
-      expect(concatAllFiles(tarballExtracted)).not.toContain(AUTHOR_ROUTER_SKILL_SENTINEL);
-      expect(concatAllFiles(tarballExtracted)).not.toContain(AUTHORING_SKILL_SENTINEL);
-      expect(concatAllFiles(tarballExtracted)).not.toContain(RECIPE_AUTHORING_SKILL_SENTINEL);
-      expect(concatAllFiles(tarballExtracted)).not.toContain(SKILL_AUTHORING_SKILL_SENTINEL);
+      assertNoWorkspaceIntegration(tarballLayout, tarballExtracted);
 
       // The workspace created by init is intentionally NOT initialized as its own Git repository. Git format
       // must package the prepared ship set, not require/ascend to an enclosing repository's raw HEAD.
@@ -1002,10 +1034,6 @@ describeIfBuilt("`wpm build package` E2E (task-83, through dist/cli.js)", () => 
       expect(gitLayout.some((path) => path.startsWith(".authoring-backlog/"))).toBe(false);
       expect(gitLayout.some((path) => path.startsWith("builds/"))).toBe(false);
       expect(gitLayout.some((path) => path.startsWith("distribution-preparation/"))).toBe(false);
-      expect(gitLayout.some((path) => path.includes("wpm-author/SKILL.md"))).toBe(false);
-      expect(gitLayout.some((path) => path.includes("wpm-author-bundle"))).toBe(false);
-      expect(gitLayout.some((path) => path.includes("wpm-author-recipe"))).toBe(false);
-      expect(gitLayout.some((path) => path.includes("wpm-author-skill"))).toBe(false);
       expect(gitLayout).not.toContain("task95-leak.txt");
 
       const extracted = join(dir, "task95-git-extracted");
@@ -1018,10 +1046,7 @@ describeIfBuilt("`wpm build package` E2E (task-83, through dist/cli.js)", () => 
       expect(lstatSync(join(extracted, "CLAUDE.md")).isSymbolicLink()).toBe(true);
       expect(concatAllFiles(extracted)).not.toContain(WRAPPER_SENTINEL);
       expect(concatAllFiles(extracted)).not.toContain(PREPARATION_SENTINEL);
-      expect(concatAllFiles(extracted)).not.toContain(AUTHOR_ROUTER_SKILL_SENTINEL);
-      expect(concatAllFiles(extracted)).not.toContain(AUTHORING_SKILL_SENTINEL);
-      expect(concatAllFiles(extracted)).not.toContain(RECIPE_AUTHORING_SKILL_SENTINEL);
-      expect(concatAllFiles(extracted)).not.toContain(SKILL_AUTHORING_SKILL_SENTINEL);
+      assertNoWorkspaceIntegration(gitLayout, extracted);
 
       // AC#4: zip is part of the same parity assertion when both authoring and listing tools are available.
       if (hasZip() && hasUnzip()) {
@@ -1031,14 +1056,13 @@ describeIfBuilt("`wpm build package` E2E (task-83, through dist/cli.js)", () => 
         const zipExtracted = join(dir, "task95-zip-extracted");
         mkdirSync(zipExtracted);
         execFileSync("unzip", ["-q", zip, "-d", zipExtracted]);
-        expect(concatAllFiles(zipExtracted)).not.toContain(AUTHOR_ROUTER_SKILL_SENTINEL);
-        expect(concatAllFiles(zipExtracted)).not.toContain(AUTHORING_SKILL_SENTINEL);
-        expect(concatAllFiles(zipExtracted)).not.toContain(RECIPE_AUTHORING_SKILL_SENTINEL);
-        expect(concatAllFiles(zipExtracted)).not.toContain(SKILL_AUTHORING_SKILL_SENTINEL);
+        assertNoWorkspaceIntegration(tarballLayout, zipExtracted);
       }
 
       expect(snapshotTree(join(proj, "wip"))).toEqual(sourceDeliverableBefore);
-      expect(concatAllFiles(join(proj, "wip"))).not.toContain(AUTHOR_ROUTER_SKILL_SENTINEL);
+      for (const [, , sentinel] of workspaceSkillEvidence) {
+        expect(concatAllFiles(join(proj, "wip"))).not.toContain(sentinel);
+      }
     });
   });
 

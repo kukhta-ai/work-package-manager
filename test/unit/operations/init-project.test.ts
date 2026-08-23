@@ -4,14 +4,20 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { FakeBacklog } from "../../../src/adapters/fake-backlog.js";
 import { MemoryFileSystem } from "../../../src/adapters/memory-fs.js";
-import { ConflictError, NotFoundError } from "../../../src/core/errors.js";
+import { MutationFailure, WorkspaceIntegrationPreflightError } from "../../../src/core/errors.js";
 import { perBundleAuthoringTasks } from "../../../src/core/operations/create-bundle.js";
 import { makeArtefactDeriver } from "../../../src/core/operations/derive-artefacts-capability.js";
 import {
-  initProject,
+  initProject as executeInitProject,
+  type InitProjectDeps,
+  type InitProjectInput,
   projectWideAuthoringTasks,
 } from "../../../src/core/operations/init-project.js";
 import { parseManifest } from "../../../src/core/services/schema/index.js";
+import {
+  WORKSPACE_INTEGRATION_STATE_PATH,
+  WORKSPACE_SKILL_NAMES,
+} from "../../../src/core/services/workspace-authoring-integration.js";
 import { parseYaml } from "../../../src/util/yaml.js";
 
 /**
@@ -26,13 +32,14 @@ import { parseYaml } from "../../../src/util/yaml.js";
  */
 
 const REAL_TEMPLATES = fileURLToPath(new URL("../../../templates", import.meta.url));
+const REAL_SKILLS = fileURLToPath(new URL("../../../agent-skills", import.meta.url));
 const BUILTIN = "/builtin-templates";
+const BUNDLED_SKILLS = "/bundled-skills";
 const TARGET = "/proj"; // the WORKSPACE ROOT
 const WIP = `${TARGET}/wip`; // the deliverable subdir
 
 /** Mirror the real `templates/` tree into a fresh MemoryFileSystem at {@link BUILTIN}. */
-function seedTemplates(): MemoryFileSystem {
-  const fs = new MemoryFileSystem();
+function seedTemplates(fs: MemoryFileSystem = new MemoryFileSystem()): MemoryFileSystem {
   const mirror = (srcDir: string, destDir: string): void => {
     for (const entry of readdirSync(srcDir, { withFileTypes: true })) {
       const src = join(srcDir, entry.name);
@@ -42,11 +49,172 @@ function seedTemplates(): MemoryFileSystem {
     }
   };
   mirror(REAL_TEMPLATES, BUILTIN);
+  mirror(REAL_SKILLS, BUNDLED_SKILLS);
   return fs;
 }
 
+class InitBoundaryController {
+  private armedAt: number | undefined;
+  private mutations = 0;
+
+  arm(at: number): void {
+    this.armedAt = at;
+    this.mutations = 0;
+  }
+
+  disarm(): void {
+    this.armedAt = undefined;
+  }
+
+  count(): number {
+    return this.mutations;
+  }
+
+  hit(boundary: string): void {
+    if (this.armedAt === undefined) return;
+    this.mutations += 1;
+    if (this.mutations === this.armedAt) {
+      this.armedAt = undefined;
+      throw new Error(`injected init failure at ${boundary}`);
+    }
+  }
+}
+
+class InitBoundaryFileSystem extends MemoryFileSystem {
+  constructor(private readonly controller: InitBoundaryController) {
+    super();
+  }
+
+  override write(path: string, content: string): void {
+    this.controller.hit(`write:${path}`);
+    super.write(path, content);
+  }
+
+  override makeDirectories(path: string): void {
+    this.controller.hit(`mkdir:${path}`);
+    super.makeDirectories(path);
+  }
+
+  override ensureAlias(target: string, linkPath: string) {
+    this.controller.hit(`alias:${linkPath}`);
+    return super.ensureAlias(target, linkPath);
+  }
+}
+
+class FailOnceAtInitPathFileSystem extends MemoryFileSystem {
+  private failed = false;
+
+  constructor(private readonly failurePath: string) {
+    super();
+  }
+
+  override write(path: string, content: string): void {
+    if (!this.failed && path === this.failurePath) {
+      this.failed = true;
+      throw new Error(`injected init failure at ${path}`);
+    }
+    super.write(path, content);
+  }
+}
+
+class InitBoundaryBacklog extends FakeBacklog {
+  constructor(private readonly controller: InitBoundaryController) {
+    super();
+  }
+
+  override init(root: string, options: Parameters<FakeBacklog["init"]>[1]): void {
+    this.controller.hit(`backlog-init:${root}`);
+    super.init(root, options);
+  }
+
+  override createTask(root: string, input: Parameters<FakeBacklog["createTask"]>[1]) {
+    this.controller.hit(`backlog-task:${input.title}`);
+    return super.createTask(root, input);
+  }
+}
+
+class PartialInitialisationBacklog extends FakeBacklog {
+  private leftResidue = false;
+
+  constructor(private readonly fs: MemoryFileSystem) {
+    super();
+  }
+
+  override init(root: string, options: Parameters<FakeBacklog["init"]>[1]): void {
+    if (!this.leftResidue) {
+      this.leftResidue = true;
+      this.fs.makeDirectories(`${root}/backlog/archive/tasks`);
+      this.fs.makeDirectories(`${root}/backlog/tasks`);
+      throw new Error("injected Backlog config publication failure");
+    }
+    this.leftResidue = false;
+    super.init(root, options);
+  }
+
+  override inspectEmptyInitialisationResidue(_root: string): boolean {
+    return this.leftResidue;
+  }
+}
+
+class CorruptiblePartialBacklog extends FakeBacklog {
+  private failed = false;
+  private corruptReads = false;
+  private corruptConfig = false;
+
+  corruptAcceptanceReads(): void {
+    this.corruptReads = true;
+  }
+
+  corruptConfiguration(): void {
+    this.corruptConfig = true;
+  }
+
+  override createTask(root: string, input: Parameters<FakeBacklog["createTask"]>[1]) {
+    if (!this.failed && input.title === "Confirm target agents") {
+      this.failed = true;
+      throw new Error("injected task boundary failure");
+    }
+    return super.createTask(root, input);
+  }
+
+  override readTask(root: string, id: string) {
+    const record = super.readTask(root, id);
+    return this.corruptReads && record.title === "Set project metadata"
+      ? {
+          ...record,
+          acceptanceCriteria: [{ text: "user-modified criterion", checked: false }],
+        }
+      : record;
+  }
+
+  override inspectTaskInventory(root: string) {
+    const inventory = super.inspectTaskInventory(root);
+    return this.corruptConfig
+      ? { ...inventory, configurationMatchesFreshDefaults: false }
+      : inventory;
+  }
+}
+
 function deps(fs: MemoryFileSystem, backlog: FakeBacklog) {
-  return { fs, backlog, builtinTemplatesRoot: BUILTIN };
+  return {
+    fs,
+    backlog,
+    builtinTemplatesRoot: BUILTIN,
+    bundledSkillsRoot: BUNDLED_SKILLS,
+    integrationVersion: "0.1.0",
+  };
+}
+
+function initProject(
+  dependencies: InitProjectDeps,
+  input: Omit<InitProjectInput, "authoringClientIds"> & {
+    readonly authoringClientIds?: readonly string[];
+  },
+) {
+  return executeInitProject(dependencies, {
+    authoringClientIds: ["codex"],
+    ...input,
+  });
 }
 
 /** Collect every file path under `dir` in the MemoryFileSystem. */
@@ -150,15 +318,38 @@ describe("initProject — scaffolds an authoring workspace (task-87; docs 06/10/
     initProject(deps(fs, new FakeBacklog()), { targetDir: TARGET, name: "hermes-handoff" });
 
     const authoring = fs.read(`${TARGET}/AGENTS.md`);
-    expect(authoring).toContain("hermes-handoff"); // {{project-name}} substituted
-    expect(authoring.toLowerCase()).toContain("authoring agent"); // its stance
+    expect(authoring).toContain("$wpm-author"); // selected Codex-native invocation
+    expect(authoring).toContain(".wpm-authoring.json"); // exact managed-state handshake
     expect(authoring).toContain("wip/"); // points at the deliverable subdir
-    expect(authoring).toContain(".authoring-backlog"); // points at the authoring backlog
     // It must NOT adopt the executor's stance (that is the wip/_AGENTS.md front door's job):
     expect(authoring.toLowerCase()).not.toContain("executing agent");
 
-    // A CLAUDE.md alias points at the authoring front door:
-    expect(fs.aliasTarget(`${TARGET}/CLAUDE.md`)).toBe(`${TARGET}/AGENTS.md`);
+    // Only the explicitly selected native client receives a root front door.
+    expect(fs.inspectPath(`${TARGET}/CLAUDE.md`).kind).toBe("missing");
+  });
+
+  it("installs both explicitly selected native authoring clients during the same fresh plan", () => {
+    const fs = seedTemplates();
+    initProject(deps(fs, new FakeBacklog()), {
+      targetDir: TARGET,
+      name: "hermes-handoff",
+      authoringClientIds: ["claude-code", "codex"],
+    });
+
+    for (const scope of [".agents/skills", ".claude/skills"]) {
+      for (const skill of WORKSPACE_SKILL_NAMES) {
+        expect(fs.read(`${TARGET}/${scope}/${skill}/SKILL.md`)).toBe(
+          fs.read(`${BUNDLED_SKILLS}/${skill}/SKILL.md`),
+        );
+      }
+    }
+    expect(fs.inspectPath(`${TARGET}/AGENTS.md`).kind).toBe("file");
+    expect(fs.inspectPath(`${TARGET}/CLAUDE.md`).kind).toBe("file");
+    expect(JSON.parse(fs.read(`${TARGET}/${WORKSPACE_INTEGRATION_STATE_PATH}`))).toMatchObject({
+      status: "complete",
+      selectedClients: ["codex", "claude-code"],
+      origin: "created",
+    });
   });
 
   it("AC#8 — wip/ has the rendered installer skill + the executor front door under the reserved prefix", () => {
@@ -240,7 +431,28 @@ describe("initProject — scaffolds an authoring workspace (task-87; docs 06/10/
     expect(fs.exists(`${WIP}/manifest.yml`)).toBe(true);
   });
 
-  it("AC#5 — refuses when the target PATH already exists (ConflictError), creating nothing", () => {
+  it("rejects a rendered filename that escapes wip toward the managed-state path before mutation", () => {
+    const fs = seedTemplates();
+    fs.write(`${BUILTIN}/project/minimal/files/{{escape}}.tmpl`, "template escape\n");
+
+    let caught: unknown;
+    try {
+      initProject(deps(fs, new FakeBacklog()), {
+        targetDir: TARGET,
+        name: "hermes-handoff",
+        params: new Map([["escape", `../${WORKSPACE_INTEGRATION_STATE_PATH}`]]),
+      });
+    } catch (error) {
+      caught = error;
+    }
+    expect(caught).toBeInstanceOf(WorkspaceIntegrationPreflightError);
+    expect((caught as WorkspaceIntegrationPreflightError).blockers).toEqual(
+      expect.arrayContaining([expect.objectContaining({ code: "workspace-plan-path-escapes" })]),
+    );
+    expect(fs.inspectPath(TARGET).kind).toBe("missing");
+  });
+
+  it("AC#5 — refuses when the target PATH already exists during aggregate preflight, creating nothing", () => {
     const fs = seedTemplates();
     // Pre-create the target path (not necessarily a project — any existing path triggers the refusal).
     fs.makeDirectories(TARGET);
@@ -248,11 +460,44 @@ describe("initProject — scaffolds an authoring workspace (task-87; docs 06/10/
     const backlog = new FakeBacklog();
     expect(() =>
       initProject(deps(fs, backlog), { targetDir: TARGET, name: "hermes-handoff" }),
-    ).toThrow(ConflictError);
+    ).toThrow(WorkspaceIntegrationPreflightError);
     // Nothing was scaffolded over the existing path:
     expect(fs.exists(`${WIP}/manifest.yml`)).toBe(false);
     expect(fs.exists(`${WIP}`)).toBe(false);
     expect(fs.exists(`${TARGET}/builds`)).toBe(false);
+  });
+
+  it("aggregates independent selection, package, Backlog.md, and target blockers before every write", () => {
+    const fs = seedTemplates();
+    const backlog = new FakeBacklog();
+    backlog.setAvailability({ available: false, reason: "not installed" });
+    fs.remove(`${BUNDLED_SKILLS}/wpm-author-skill`);
+    fs.makeDirectories(TARGET);
+    fs.write(`${TARGET}/user-file`, "preserve me\n");
+    const before = filesUnder(fs, TARGET).map((path) => [path, fs.read(path)] as const);
+
+    let caught: unknown;
+    try {
+      initProject(deps(fs, backlog), {
+        targetDir: TARGET,
+        name: "hermes-handoff",
+        authoringClientIds: ["openclaw"],
+      });
+    } catch (error) {
+      caught = error;
+    }
+
+    expect(caught).toBeInstanceOf(WorkspaceIntegrationPreflightError);
+    expect((caught as WorkspaceIntegrationPreflightError).blockers.map(({ code }) => code)).toEqual(
+      expect.arrayContaining([
+        "authoring-client-unsupported",
+        "packaged-skill-shape-invalid",
+        "backlog-unavailable",
+        "workspace-target-exists",
+      ]),
+    );
+    expect((caught as WorkspaceIntegrationPreflightError).handoffPrepared).toBe(false);
+    expect(filesUnder(fs, TARGET).map((path) => [path, fs.read(path)] as const)).toEqual(before);
   });
 
   it("AC#5 — re-running init on an existing workspace refuses and does not change the manifest", () => {
@@ -262,29 +507,38 @@ describe("initProject — scaffolds an authoring workspace (task-87; docs 06/10/
     const manifestBefore = fs.read(`${WIP}/manifest.yml`);
 
     expect(() => initProject(deps(fs, backlog), { targetDir: TARGET, name: "other" })).toThrow(
-      ConflictError,
+      WorkspaceIntegrationPreflightError,
     );
     expect(fs.read(`${WIP}/manifest.yml`)).toBe(manifestBefore); // unchanged
   });
 
-  it("raises NotFoundError when the chosen project template is missing", () => {
+  it("aggregates a missing chosen project template before mutation", () => {
     const fs = new MemoryFileSystem(); // no templates seeded
     expect(() =>
       initProject(deps(fs, new FakeBacklog()), { targetDir: TARGET, name: "x" }),
-    ).toThrow(NotFoundError);
+    ).toThrow(WorkspaceIntegrationPreflightError);
   });
 
-  it("raises NotFoundError when an explicit --template does not resolve", () => {
+  it("aggregates an unresolved explicit --template before mutation", () => {
     const fs = seedTemplates();
-    expect(() =>
+    fs.makeDirectories(TARGET);
+    fs.write(`${TARGET}/user-file`, "preserve\n");
+    let caught: unknown;
+    try {
       initProject(deps(fs, new FakeBacklog()), {
         targetDir: TARGET,
         name: "x",
         templateName: "does-not-exist",
-      }),
-    ).toThrow(NotFoundError);
-    // nothing created:
+      });
+    } catch (error) {
+      caught = error;
+    }
+    expect(caught).toBeInstanceOf(WorkspaceIntegrationPreflightError);
+    expect((caught as WorkspaceIntegrationPreflightError).blockers.map(({ code }) => code)).toEqual(
+      expect.arrayContaining(["project-template-missing", "workspace-target-exists"]),
+    );
     expect(fs.exists(`${WIP}/manifest.yml`)).toBe(false);
+    expect(fs.read(`${TARGET}/user-file`)).toBe("preserve\n");
   });
 
   it("changedPaths lists every produced path (the observability contract the command's formatResult uses)", () => {
@@ -302,7 +556,6 @@ describe("initProject — scaffolds an authoring workspace (task-87; docs 06/10/
       `${WIP}/installer-skills/hermes-handoff-installer/references/journaling.md`,
       `${WIP}/bundles/bundle-template/_AGENTS.md.tmpl`,
       `${TARGET}/AGENTS.md`,
-      `${TARGET}/CLAUDE.md`,
       `${TARGET}/builds`,
       `${TARGET}/.authoring-backlog`,
       `${TARGET}/.gitignore`,
@@ -345,6 +598,325 @@ describe("initProject — scaffolds an authoring workspace (task-87; docs 06/10/
     expect(fs.read(`${WIP}/installer-skills/hermes-handoff-installer/SKILL.md`)).toBe(
       derivedOrch?.content,
     );
+  });
+
+  it("reports every fresh-init boundary and the identical authorized request converges after each failure", () => {
+    const countController = new InitBoundaryController();
+    const countFs = seedTemplates(new InitBoundaryFileSystem(countController));
+    const countBacklog = new InitBoundaryBacklog(countController);
+    countController.arm(Number.MAX_SAFE_INTEGER);
+    initProject(deps(countFs, countBacklog), {
+      targetDir: TARGET,
+      name: "hermes-handoff",
+      authoringClientIds: ["codex", "claude-code"],
+    });
+    const boundaryCount = countController.count();
+    expect(boundaryCount).toBeGreaterThan(25);
+
+    for (let at = 1; at <= boundaryCount; at += 1) {
+      const controller = new InitBoundaryController();
+      const fs = seedTemplates(new InitBoundaryFileSystem(controller));
+      const backlog = new InitBoundaryBacklog(controller);
+      controller.arm(at);
+
+      let caught: unknown;
+      try {
+        initProject(deps(fs, backlog), {
+          targetDir: TARGET,
+          name: "hermes-handoff",
+          authoringClientIds: ["codex", "claude-code"],
+        });
+      } catch (error) {
+        caught = error;
+      }
+      expect(caught, `boundary ${at}`).toBeInstanceOf(MutationFailure);
+      expect((caught as MutationFailure).failed.id.length).toBeGreaterThan(0);
+      expect((caught as MutationFailure).recovery).toMatch(/identical init request/i);
+
+      controller.disarm();
+      expect(() =>
+        initProject(deps(fs, backlog), {
+          targetDir: TARGET,
+          name: "hermes-handoff",
+          authoringClientIds: ["codex", "claude-code"],
+        }),
+      ).not.toThrow();
+      expect(JSON.parse(fs.read(`${TARGET}/${WORKSPACE_INTEGRATION_STATE_PATH}`))).toMatchObject({
+        status: "complete",
+        selectedClients: ["codex", "claude-code"],
+      });
+      expect(backlog.listTasks(`${TARGET}/.authoring-backlog`)).toHaveLength(8);
+      for (const scope of [".agents/skills", ".claude/skills"]) {
+        for (const skill of WORKSPACE_SKILL_NAMES) {
+          expect(fs.inspectPath(`${TARGET}/${scope}/${skill}/SKILL.md`).kind).toBe("file");
+        }
+      }
+    }
+  });
+
+  it("retries a Backlog init that left only its canonical empty directory skeleton", () => {
+    const fs = seedTemplates();
+    const backlog = new PartialInitialisationBacklog(fs);
+
+    let caught: unknown;
+    try {
+      initProject(deps(fs, backlog), {
+        targetDir: TARGET,
+        name: "hermes-handoff",
+        authoringClientIds: ["codex"],
+      });
+    } catch (error) {
+      caught = error;
+    }
+    expect(caught).toBeInstanceOf(MutationFailure);
+    expect((caught as MutationFailure).failed.id).toBe("authoring-backlog:init");
+    expect(fs.inspectPath(`${TARGET}/.authoring-backlog/backlog/tasks`).kind).toBe("directory");
+
+    expect(() =>
+      initProject(deps(fs, backlog), {
+        targetDir: TARGET,
+        name: "hermes-handoff",
+        authoringClientIds: ["codex"],
+      }),
+    ).not.toThrow();
+    expect(backlog.listTasks(`${TARGET}/.authoring-backlog`)).toHaveLength(8);
+  });
+
+  it("fails closed when unplanned user content appears inside an applying fresh workspace", () => {
+    const controller = new InitBoundaryController();
+    const fs = seedTemplates(new InitBoundaryFileSystem(controller));
+    const backlog = new InitBoundaryBacklog(controller);
+    controller.arm(2);
+    expect(() =>
+      initProject(deps(fs, backlog), {
+        targetDir: TARGET,
+        name: "hermes-handoff",
+        authoringClientIds: ["codex"],
+      }),
+    ).toThrow(MutationFailure);
+    controller.disarm();
+    fs.write(`${TARGET}/USER.txt`, "preserve me\n");
+
+    let caught: unknown;
+    try {
+      initProject(deps(fs, backlog), {
+        targetDir: TARGET,
+        name: "hermes-handoff",
+        authoringClientIds: ["codex"],
+      });
+    } catch (error) {
+      caught = error;
+    }
+    expect(caught).toBeInstanceOf(WorkspaceIntegrationPreflightError);
+    expect((caught as WorkspaceIntegrationPreflightError).blockers).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ code: "workspace-partial-unplanned-path" }),
+      ]),
+    );
+    expect(fs.read(`${TARGET}/USER.txt`)).toBe("preserve me\n");
+  });
+
+  it("rejects changed packaged plan bytes before continuing a partial fresh workspace", () => {
+    const fs = seedTemplates(new FailOnceAtInitPathFileSystem(`${WIP}/README.md`));
+    const backlog = new FakeBacklog();
+    const templatePath = `${BUILTIN}/project/minimal/files/README.md.tmpl`;
+    const originalTemplate = fs.read(templatePath);
+    expect(() =>
+      initProject(deps(fs, backlog), {
+        targetDir: TARGET,
+        name: "hermes-handoff",
+        authoringClientIds: ["codex"],
+      }),
+    ).toThrow(MutationFailure);
+    const partialManifest = fs.read(`${WIP}/manifest.yml`);
+    const applyingState = fs.read(`${TARGET}/${WORKSPACE_INTEGRATION_STATE_PATH}`);
+
+    fs.write(templatePath, "# {{project-name}} from a different package revision\n");
+
+    let caught: unknown;
+    try {
+      initProject(deps(fs, backlog), {
+        targetDir: TARGET,
+        name: "hermes-handoff",
+        authoringClientIds: ["codex"],
+      });
+    } catch (error) {
+      caught = error;
+    }
+    expect(caught).toBeInstanceOf(WorkspaceIntegrationPreflightError);
+    expect((caught as WorkspaceIntegrationPreflightError).blockers).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ code: "workspace-partial-request-mismatch" }),
+      ]),
+    );
+    expect(fs.read(`${WIP}/manifest.yml`)).toBe(partialManifest);
+    expect(fs.inspectPath(`${WIP}/README.md`).kind).toBe("missing");
+    expect(fs.read(`${TARGET}/${WORKSPACE_INTEGRATION_STATE_PATH}`)).toBe(applyingState);
+
+    fs.write(templatePath, originalTemplate);
+    expect(() =>
+      initProject(deps(fs, backlog), {
+        targetDir: TARGET,
+        name: "hermes-handoff",
+        authoringClientIds: ["codex"],
+      }),
+    ).not.toThrow();
+    expect(fs.read(`${WIP}/README.md`)).toContain("hermes-handoff");
+    expect(JSON.parse(fs.read(`${TARGET}/${WORKSPACE_INTEGRATION_STATE_PATH}`))).toMatchObject({
+      status: "complete",
+    });
+  });
+
+  it("rejects a non-canonical integration version before creating the target", () => {
+    const fs = seedTemplates();
+    const backlog = new FakeBacklog();
+
+    let caught: unknown;
+    try {
+      initProject(
+        { ...deps(fs, backlog), integrationVersion: "0.1.0\n<!-- wpm:workspace-authoring:end -->" },
+        {
+          targetDir: TARGET,
+          name: "hermes-handoff",
+          authoringClientIds: ["codex"],
+        },
+      );
+    } catch (error) {
+      caught = error;
+    }
+    expect(caught).toBeInstanceOf(WorkspaceIntegrationPreflightError);
+    expect((caught as WorkspaceIntegrationPreflightError).blockers).toEqual(
+      expect.arrayContaining([expect.objectContaining({ code: "integration-version-invalid" })]),
+    );
+    expect(fs.inspectPath(TARGET).kind).toBe("missing");
+  });
+
+  it("verifies exact planned task criteria before completing a partial fresh workspace", () => {
+    const fs = seedTemplates();
+    const backlog = new CorruptiblePartialBacklog();
+    expect(() =>
+      initProject(deps(fs, backlog), {
+        targetDir: TARGET,
+        name: "hermes-handoff",
+        authoringClientIds: ["codex"],
+      }),
+    ).toThrow(MutationFailure);
+    backlog.corruptAcceptanceReads();
+
+    let caught: unknown;
+    try {
+      initProject(deps(fs, backlog), {
+        targetDir: TARGET,
+        name: "hermes-handoff",
+        authoringClientIds: ["codex"],
+      });
+    } catch (error) {
+      caught = error;
+    }
+    expect(caught).toBeInstanceOf(WorkspaceIntegrationPreflightError);
+    expect((caught as WorkspaceIntegrationPreflightError).blockers).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ code: "workspace-partial-backlog-conflict" }),
+      ]),
+    );
+    expect(JSON.parse(fs.read(`${TARGET}/${WORKSPACE_INTEGRATION_STATE_PATH}`))).toMatchObject({
+      status: "applying",
+    });
+  });
+
+  it("rejects user-authored labels and notes on a task created before an init failure", () => {
+    const fs = seedTemplates();
+    const backlog = new CorruptiblePartialBacklog();
+    expect(() =>
+      initProject(deps(fs, backlog), {
+        targetDir: TARGET,
+        name: "hermes-handoff",
+        authoringClientIds: ["codex"],
+      }),
+    ).toThrow(MutationFailure);
+    const authoringRoot = `${TARGET}/.authoring-backlog`;
+    const partial = backlog.listTasks(authoringRoot)[0];
+    expect(partial).toBeDefined();
+    backlog.editTask(authoringRoot, partial?.id ?? "", {
+      notes: "user recovery note",
+      addLabels: ["user-owned"],
+    });
+
+    let caught: unknown;
+    try {
+      initProject(deps(fs, backlog), {
+        targetDir: TARGET,
+        name: "hermes-handoff",
+        authoringClientIds: ["codex"],
+      });
+    } catch (error) {
+      caught = error;
+    }
+    expect(caught).toBeInstanceOf(WorkspaceIntegrationPreflightError);
+    expect((caught as WorkspaceIntegrationPreflightError).blockers).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ code: "workspace-partial-backlog-conflict" }),
+      ]),
+    );
+    expect(backlog.taskDetail(authoringRoot, partial?.id ?? "")).toMatchObject({
+      labels: ["user-owned"],
+      notes: "user recovery note",
+    });
+  });
+
+  it("rejects an archived partial task without creating a replacement task", () => {
+    const fs = seedTemplates();
+    const backlog = new CorruptiblePartialBacklog();
+    expect(() =>
+      initProject(deps(fs, backlog), {
+        targetDir: TARGET,
+        name: "hermes-handoff",
+        authoringClientIds: ["codex"],
+      }),
+    ).toThrow(MutationFailure);
+    const authoringRoot = `${TARGET}/.authoring-backlog`;
+    const partial = backlog.listTasks(authoringRoot)[0];
+    expect(partial).toBeDefined();
+    backlog.archiveTask(authoringRoot, partial?.id ?? "");
+
+    expect(() =>
+      initProject(deps(fs, backlog), {
+        targetDir: TARGET,
+        name: "hermes-handoff",
+        authoringClientIds: ["codex"],
+      }),
+    ).toThrow(WorkspaceIntegrationPreflightError);
+    expect(backlog.inspectTaskInventory(authoringRoot)).toEqual({
+      configurationMatchesFreshDefaults: true,
+      activeEntries: [],
+      inactiveEntries: [partial?.id],
+      unexpectedEntries: [],
+    });
+    expect(backlog.taskDetail(authoringRoot, partial?.id ?? "")?.archived).toBe(true);
+  });
+
+  it("rejects changed Backlog.md configuration before creating remaining partial tasks", () => {
+    const fs = seedTemplates();
+    const backlog = new CorruptiblePartialBacklog();
+    expect(() =>
+      initProject(deps(fs, backlog), {
+        targetDir: TARGET,
+        name: "hermes-handoff",
+        authoringClientIds: ["codex"],
+      }),
+    ).toThrow(MutationFailure);
+    const authoringRoot = `${TARGET}/.authoring-backlog`;
+    expect(backlog.listTasks(authoringRoot)).toHaveLength(1);
+    backlog.corruptConfiguration();
+
+    expect(() =>
+      initProject(deps(fs, backlog), {
+        targetDir: TARGET,
+        name: "hermes-handoff",
+        authoringClientIds: ["codex"],
+      }),
+    ).toThrow(WorkspaceIntegrationPreflightError);
+    expect(backlog.listTasks(authoringRoot)).toHaveLength(1);
   });
 });
 

@@ -1,5 +1,10 @@
 import { CommanderError } from "commander";
-import { exitCodeFor, isDomainError } from "../core/errors.js";
+import {
+  exitCodeFor,
+  isDomainError,
+  isMutationFailure,
+  WorkspaceIntegrationPreflightError,
+} from "../core/errors.js";
 
 /**
  * The top-level error handler + output/exit-code mapping for the CLI (doc 12 line 144: "error formatting +
@@ -61,6 +66,41 @@ const HELP_OR_VERSION_CODES = new Set<string>([
  * @returns The formatted message, newline-terminated.
  */
 export function formatError(error: unknown, debug: boolean): string {
+  if (error instanceof WorkspaceIntegrationPreflightError) {
+    const lines = [`error: ${error.message}`, "blockers:"];
+    for (const blocker of error.blockers) {
+      lines.push(
+        `  - [${blocker.code}] ${blocker.surface}: ${blocker.message}`,
+        `    recovery: ${blocker.recovery}`,
+      );
+    }
+    lines.push("handoff prepared: no");
+    return `${lines.join("\n")}\n`;
+  }
+  if (isMutationFailure(error)) {
+    const lines = [
+      `error: ${error.message}`,
+      `failed beat: ${error.failedBeat}`,
+      "completed:",
+      ...(error.completed.length > 0
+        ? error.completed.map(
+            ({ id, path }) => `  - ${id}${path !== undefined ? ` (${path})` : ""}`,
+          )
+        : ["  - (none)"]),
+      `failed: ${error.failed.id}${error.failed.path !== undefined ? ` (${error.failed.path})` : ""}`,
+      "unattempted:",
+      ...(error.unattempted.length > 0
+        ? error.unattempted.map(
+            ({ id, path }) => `  - ${id}${path !== undefined ? ` (${path})` : ""}`,
+          )
+        : ["  - (none)"]),
+      `recovery: ${error.recovery}`,
+    ];
+    if (debug && error.underlyingCause instanceof Error) {
+      lines.push(error.underlyingCause.stack ?? error.underlyingCause.message);
+    }
+    return `${lines.join("\n")}\n`;
+  }
   if (isDomainError(error)) {
     return `error: ${error.message}\n`;
   }
@@ -113,6 +153,10 @@ export async function runWithExit(io: CliIo, body: () => Promise<void>): Promise
     if (isDomainError(error)) {
       io.err.write(formatError(error, io.debug));
       return exitCodeFor(error); // usage→2, else→1
+    }
+    if (isMutationFailure(error)) {
+      io.err.write(formatError(error, io.debug));
+      return 1;
     }
     // An unexpected failure → general error, with detail only in debug mode.
     io.err.write(formatError(error, io.debug));

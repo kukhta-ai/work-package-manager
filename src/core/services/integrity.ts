@@ -24,6 +24,11 @@ const HASH_PREFIX = "sha256:";
 /** The current `wpm.lock` format version. */
 const LOCKFILE_VERSION = 1 as const;
 
+/** Fingerprint one exact UTF-8 text value without persisting its potentially sensitive bytes. */
+export function hashTextContent(content: string): string {
+  return `${HASH_PREFIX}${createHash("sha256").update(content, "utf8").digest("hex")}`;
+}
+
 /** One file of a vendored artifact, as data: a relative path and its content. */
 export interface VendoredFile {
   /** The file's path relative to the artifact root. */

@@ -53,7 +53,7 @@ function seedProject(fs: MemoryFileSystem, backlog: FakeBacklog): void {
 
 /**
  * Snapshot the full observable filesystem state under `dir`, plus the targets of a set of known alias link
- * paths — built from the public FileSystem surface (`list`/`read`) + the documented `aliasTarget` test
+ * paths — built from the public FileSystem surface (`list`/`inspectPath`/`read`) + the documented `aliasTarget` test
  * accessor, so AC#4/AC#3 "nothing changed" can be asserted by deep-equality without a bespoke dump method.
  */
 function snapshot(fs: MemoryFileSystem, dir: string, aliasLinks: readonly string[]): unknown {
@@ -61,7 +61,10 @@ function snapshot(fs: MemoryFileSystem, dir: string, aliasLinks: readonly string
   const walk = (d: string): void => {
     for (const entry of fs.list(d)) {
       const child = `${d}/${entry.name}`;
-      if (entry.kind === "directory") {
+      const inspection = fs.inspectPath(child);
+      if (inspection.kind === "symbolic-link") {
+        // Alias identity is captured separately below; never read a directory link as a regular file.
+      } else if (inspection.kind === "directory") {
         walk(child);
       } else {
         files[child] = fs.read(child);

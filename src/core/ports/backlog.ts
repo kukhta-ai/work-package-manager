@@ -43,6 +43,43 @@ export interface TaskSummary {
   readonly status: TaskStatus;
 }
 
+/** One acceptance-criterion record as rendered by Backlog.md's exact task view. */
+export interface TaskCriterion {
+  readonly text: string;
+  readonly checked: boolean;
+}
+
+/** Concrete task identity/content evidence needed to verify an interrupted materialisation. */
+export interface TaskRecord extends TaskSummary {
+  /** Backlog.md's stable ordering value; fresh materialisation assigns 1000, 2000, ... in plan order. */
+  readonly ordinal: number;
+  /** The authored description, or `null` when Backlog.md reports no description. */
+  readonly description: string | null;
+  readonly acceptanceCriteria: readonly TaskCriterion[];
+  readonly definitionOfDone: readonly TaskCriterion[];
+  readonly dependencies: readonly TaskId[];
+  readonly labels: readonly string[];
+  /** Any user-editable metadata not otherwise represented above (assignee, priority, parent, and so on). */
+  readonly extraMetadata: readonly string[];
+  /** Any additional authored sections such as implementation notes, plan, references, or final summary. */
+  readonly extraSections: readonly {
+    readonly heading: string;
+    readonly content: string;
+  }[];
+}
+
+/** Exact active/inactive task-store inventory used to reject ambiguous interrupted materialisation. */
+export interface BacklogTaskInventory {
+  /** Whether config.yml still has the exact deterministic defaults emitted by this adapter's init contract. */
+  readonly configurationMatchesFreshDefaults: boolean;
+  /** One entry per regular active task file; duplicate ids remain duplicated and malformed entries are named. */
+  readonly activeEntries: readonly string[];
+  /** Entries in archive/draft/completed task stores; a fresh authoring plan expects none. */
+  readonly inactiveEntries: readonly string[];
+  /** Any path outside the deterministic Backlog.md task-store layout expected immediately after init. */
+  readonly unexpectedEntries: readonly string[];
+}
+
 /** Options for initialising an authoring backlog root. */
 export interface InitOptions {
   /** The `task_prefix` for the backlog (its tasks become `<taskPrefix>-<n>`). */
@@ -95,12 +132,32 @@ export interface ListFilter {
   readonly status?: TaskStatus;
 }
 
+/** Side-effect-free evidence that the configured Backlog.md executable is callable. */
+export type BacklogAvailability =
+  | { readonly available: true; readonly version: string }
+  | { readonly available: false; readonly reason: string };
+
+/** Exact-root identity/config evidence used before workspace integration mutates anything. */
+export type BacklogRootInspection =
+  | { readonly valid: true; readonly taskPrefix: string }
+  | { readonly valid: false; readonly reason: string };
+
 /**
  * The operations the builder needs from Backlog.md (doc 13 §3), each targeting an explicitly-named authoring
  * backlog `root`. See the no-mirror boundary in this module's documentation: the surface intentionally has
  * no operation that authors install-backlog content.
  */
 export interface BacklogMd {
+  /**
+   * Probe the configured Backlog.md executable without opening or mutating a backlog root.
+   *
+   * @returns Stable availability/version evidence for complete preflight.
+   */
+  inspectAvailability(): BacklogAvailability;
+
+  /** Inspect the backlog rooted at exactly `root` and report its configured task prefix. */
+  inspectRoot(root: string): BacklogRootInspection;
+
   /**
    * Initialise an authoring backlog at `root` with the given options.
    *
@@ -127,6 +184,18 @@ export interface BacklogMd {
    * @returns The matching tasks' summaries.
    */
   listTasks(root: string, filter?: ListFilter): TaskSummary[];
+
+  /** Read one exact task record, including acceptance-criterion text/check state. */
+  readTask(root: string, id: TaskId): TaskRecord;
+
+  /** Inventory exact active and inactive task-store entries without ambient-root discovery. */
+  inspectTaskInventory(root: string): BacklogTaskInventory;
+
+  /**
+   * Recognize only an empty, no-follow subset of the deterministic directory skeleton that Backlog.md init
+   * may leave before publishing config.yml. Used solely to retry that applying init boundary.
+   */
+  inspectEmptyInitialisationResidue(root: string): boolean;
 
   /**
    * Edit a task in the backlog at `root`.

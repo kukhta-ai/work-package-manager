@@ -388,6 +388,27 @@ describe("clean revision package preparation", () => {
     expect(sourceFreeReviewSkill).toContain("## Evaluate the complete bounded catalog");
     expect(sourceFreeReviewSkill).not.toMatch(/\]\((?:\.\.?\/|references\/|scripts\/|assets\/)/);
 
+    const nativeCodexBundleRoot = join(
+      root,
+      "codex-host",
+      ".agents",
+      "skills",
+      "wpm-author-bundle",
+    );
+    const nativeClaudeBundleRoot = join(
+      root,
+      "claude-host",
+      ".claude",
+      "skills",
+      "wpm-author-bundle",
+    );
+    mkdirSync(nativeCodexBundleRoot, { recursive: true });
+    mkdirSync(nativeClaudeBundleRoot, { recursive: true });
+    copyFileSync(extractedSkillPath, join(nativeCodexBundleRoot, "SKILL.md"));
+    copyFileSync(extractedSkillPath, join(nativeClaudeBundleRoot, "SKILL.md"));
+    expect(readFileSync(join(nativeCodexBundleRoot, "SKILL.md"), "utf8")).toBe(sourceFreeSkill);
+    expect(readFileSync(join(nativeClaudeBundleRoot, "SKILL.md"), "utf8")).toBe(sourceFreeSkill);
+
     const nativeCodexRecipeRoot = join(
       root,
       "codex-host",
