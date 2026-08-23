@@ -282,6 +282,7 @@ describe("clean revision package preparation", () => {
         "package.json",
         "dist/cli.js",
         "agent-skills/installer-builder/SKILL.md",
+        "agent-skills/wpm-author/SKILL.md",
         "agent-skills/wpm-author-bundle/SKILL.md",
         "agent-skills/wpm-author-recipe/SKILL.md",
         "agent-skills/wpm-author-skill/SKILL.md",
@@ -305,6 +306,15 @@ describe("clean revision package preparation", () => {
     const extracted = join(root, "extracted");
     mkdirSync(extracted);
     execFileSync("tar", ["-xzf", report.artifact.path, "-C", extracted]);
+    const extractedRouterSkillRoot = join(extracted, "package", "agent-skills", "wpm-author");
+    const extractedRouterSkillPath = join(extractedRouterSkillRoot, "SKILL.md");
+    const expectedRouterSkill = readFileSync(
+      join(REPO_ROOT, "agent-skills", "wpm-author", "SKILL.md"),
+      "utf8",
+    );
+    expect(readdirSync(extractedRouterSkillRoot)).toEqual(["SKILL.md"]);
+    expect(readFileSync(extractedRouterSkillPath, "utf8")).toBe(expectedRouterSkill);
+
     const extractedSkillRoot = join(extracted, "package", "agent-skills", "wpm-author-bundle");
     const extractedSkillPath = join(extractedSkillRoot, "SKILL.md");
     const expectedSkill = readFileSync(
@@ -353,6 +363,11 @@ describe("clean revision package preparation", () => {
 
     rmSync(source, { recursive: true, force: true });
     expect(existsSync(source)).toBe(false);
+    const sourceFreeRouterSkill = readFileSync(extractedRouterSkillPath, "utf8");
+    expect(sourceFreeRouterSkill).toContain("name: wpm-author");
+    expect(sourceFreeRouterSkill).toContain("## Take one complete Backlog CLI snapshot");
+    expect(sourceFreeRouterSkill).not.toMatch(/\]\((?:\.\.?\/|references\/|scripts\/|assets\/)/);
+
     const sourceFreeSkill = readFileSync(extractedSkillPath, "utf8");
     expect(sourceFreeSkill).toContain("name: wpm-author-bundle");
     expect(sourceFreeSkill).toContain("## Establish the boundary before changing state");
@@ -440,6 +455,19 @@ describe("clean revision package preparation", () => {
     );
     expect(readFileSync(join(nativeClaudeReviewRoot, "SKILL.md"), "utf8")).toBe(
       sourceFreeReviewSkill,
+    );
+
+    const nativeCodexRouterRoot = join(root, "codex-host", ".agents", "skills", "wpm-author");
+    const nativeClaudeRouterRoot = join(root, "claude-host", ".claude", "skills", "wpm-author");
+    mkdirSync(nativeCodexRouterRoot, { recursive: true });
+    mkdirSync(nativeClaudeRouterRoot, { recursive: true });
+    copyFileSync(extractedRouterSkillPath, join(nativeCodexRouterRoot, "SKILL.md"));
+    copyFileSync(extractedRouterSkillPath, join(nativeClaudeRouterRoot, "SKILL.md"));
+    expect(readFileSync(join(nativeCodexRouterRoot, "SKILL.md"), "utf8")).toBe(
+      sourceFreeRouterSkill,
+    );
+    expect(readFileSync(join(nativeClaudeRouterRoot, "SKILL.md"), "utf8")).toBe(
+      sourceFreeRouterSkill,
     );
   }, 240_000);
 });

@@ -28,6 +28,9 @@ import { initWorkspace } from "../helpers/workspace.js";
  */
 
 const builtCli = fileURLToPath(new URL("../../dist/cli.js", import.meta.url));
+const authorRouterSkill = fileURLToPath(
+  new URL("../../agent-skills/wpm-author/SKILL.md", import.meta.url),
+);
 const authoringBundleSkill = fileURLToPath(
   new URL("../../agent-skills/wpm-author-bundle/SKILL.md", import.meta.url),
 );
@@ -909,6 +912,8 @@ describeIfBuilt("`wpm build package` E2E (task-83, through dist/cli.js)", () => 
       const BUNDLE_SENTINEL = "TASK95-BUNDLE-EXECUTOR-b247";
       const WRAPPER_SENTINEL = "TASK95-WORKSPACE-WRAPPER-MUST-NOT-SHIP-91ad";
       const PREPARATION_SENTINEL = "TASK108-DISTRIBUTION-PREPARATION-MUST-NOT-SHIP-2e4c";
+      const AUTHOR_ROUTER_SKILL_SENTINEL =
+        "Treat orientation and selection as one fail-closed workflow.";
       const AUTHORING_SKILL_SENTINEL = "Turn the request into four short lists:";
       const RECIPE_AUTHORING_SKILL_SENTINEL =
         "The bundle's install backlog is the single recipe task source:";
@@ -926,6 +931,15 @@ describeIfBuilt("`wpm build package` E2E (task-83, through dist/cli.js)", () => 
         join(proj, "distribution-preparation", "package-boundary.js"),
         PREPARATION_SENTINEL,
       );
+      const nativeAuthorRouter = readFileSync(authorRouterSkill, "utf8");
+      expect(nativeAuthorRouter).toContain(AUTHOR_ROUTER_SKILL_SENTINEL);
+      for (const nativeAuthorRouterDir of [
+        join(proj, ".agents", "skills", "wpm-author"),
+        join(proj, ".claude", "skills", "wpm-author"),
+      ]) {
+        mkdirSync(nativeAuthorRouterDir, { recursive: true });
+        writeFileSync(join(nativeAuthorRouterDir, "SKILL.md"), nativeAuthorRouter);
+      }
       const nativeAuthoringSkillDir = join(proj, ".agents", "skills", "wpm-author-bundle");
       mkdirSync(nativeAuthoringSkillDir, { recursive: true });
       const nativeAuthoringSkill = readFileSync(authoringBundleSkill, "utf8");
@@ -945,23 +959,34 @@ describeIfBuilt("`wpm build package` E2E (task-83, through dist/cli.js)", () => 
       writeFileSync(join(nativeSkillAuthoringDir, "SKILL.md"), nativeSkillAuthoring);
       writeFileSync(join(nativeClaudeSkillAuthoringDir, "SKILL.md"), nativeSkillAuthoring);
 
+      const sourceDeliverableBefore = snapshotTree(join(proj, "wip"));
+      expect(sourceDeliverableBefore.some((entry) => entry.includes("wpm-author/SKILL.md"))).toBe(
+        false,
+      );
+      expect(concatAllFiles(join(proj, "wip"))).not.toContain(AUTHOR_ROUTER_SKILL_SENTINEL);
+
       const tgz = join(proj, "builds", "demo-0.1.0.tgz");
       expect(cli(["build", "package", "--format", "tarball", "-C", proj], dir).code).toBe(0);
       const tarballLayout = archiveLayout(tgz);
+      expect(tarballLayout.some((path) => path.includes("wpm-author/SKILL.md"))).toBe(false);
       expect(tarballLayout.some((path) => path.includes("wpm-author-bundle"))).toBe(false);
       expect(tarballLayout.some((path) => path.includes("wpm-author-recipe"))).toBe(false);
       expect(tarballLayout.some((path) => path.includes("wpm-author-skill"))).toBe(false);
       const tarballExtracted = join(dir, "task95-tarball-extracted");
       mkdirSync(tarballExtracted);
       execFileSync("tar", ["-xzf", tgz, "-C", tarballExtracted]);
+      expect(concatAllFiles(tarballExtracted)).not.toContain(AUTHOR_ROUTER_SKILL_SENTINEL);
       expect(concatAllFiles(tarballExtracted)).not.toContain(AUTHORING_SKILL_SENTINEL);
       expect(concatAllFiles(tarballExtracted)).not.toContain(RECIPE_AUTHORING_SKILL_SENTINEL);
       expect(concatAllFiles(tarballExtracted)).not.toContain(SKILL_AUTHORING_SKILL_SENTINEL);
 
       // The workspace created by init is intentionally NOT initialized as its own Git repository. Git format
       // must package the prepared ship set, not require/ascend to an enclosing repository's raw HEAD.
+      rmSync(tgz);
+      expect(existsSync(tgz)).toBe(false);
       const gitBuild = cli(["build", "package", "--format", "git", "-C", proj], dir);
       expect(gitBuild.code).toBe(0);
+      expect(existsSync(tgz)).toBe(true);
       const gitLayout = archiveLayout(tgz);
       expect(gitLayout).toEqual(tarballLayout);
 
@@ -977,6 +1002,7 @@ describeIfBuilt("`wpm build package` E2E (task-83, through dist/cli.js)", () => 
       expect(gitLayout.some((path) => path.startsWith(".authoring-backlog/"))).toBe(false);
       expect(gitLayout.some((path) => path.startsWith("builds/"))).toBe(false);
       expect(gitLayout.some((path) => path.startsWith("distribution-preparation/"))).toBe(false);
+      expect(gitLayout.some((path) => path.includes("wpm-author/SKILL.md"))).toBe(false);
       expect(gitLayout.some((path) => path.includes("wpm-author-bundle"))).toBe(false);
       expect(gitLayout.some((path) => path.includes("wpm-author-recipe"))).toBe(false);
       expect(gitLayout.some((path) => path.includes("wpm-author-skill"))).toBe(false);
@@ -992,6 +1018,7 @@ describeIfBuilt("`wpm build package` E2E (task-83, through dist/cli.js)", () => 
       expect(lstatSync(join(extracted, "CLAUDE.md")).isSymbolicLink()).toBe(true);
       expect(concatAllFiles(extracted)).not.toContain(WRAPPER_SENTINEL);
       expect(concatAllFiles(extracted)).not.toContain(PREPARATION_SENTINEL);
+      expect(concatAllFiles(extracted)).not.toContain(AUTHOR_ROUTER_SKILL_SENTINEL);
       expect(concatAllFiles(extracted)).not.toContain(AUTHORING_SKILL_SENTINEL);
       expect(concatAllFiles(extracted)).not.toContain(RECIPE_AUTHORING_SKILL_SENTINEL);
       expect(concatAllFiles(extracted)).not.toContain(SKILL_AUTHORING_SKILL_SENTINEL);
@@ -1004,10 +1031,14 @@ describeIfBuilt("`wpm build package` E2E (task-83, through dist/cli.js)", () => 
         const zipExtracted = join(dir, "task95-zip-extracted");
         mkdirSync(zipExtracted);
         execFileSync("unzip", ["-q", zip, "-d", zipExtracted]);
+        expect(concatAllFiles(zipExtracted)).not.toContain(AUTHOR_ROUTER_SKILL_SENTINEL);
         expect(concatAllFiles(zipExtracted)).not.toContain(AUTHORING_SKILL_SENTINEL);
         expect(concatAllFiles(zipExtracted)).not.toContain(RECIPE_AUTHORING_SKILL_SENTINEL);
         expect(concatAllFiles(zipExtracted)).not.toContain(SKILL_AUTHORING_SKILL_SENTINEL);
       }
+
+      expect(snapshotTree(join(proj, "wip"))).toEqual(sourceDeliverableBefore);
+      expect(concatAllFiles(join(proj, "wip"))).not.toContain(AUTHOR_ROUTER_SKILL_SENTINEL);
     });
   });
 
