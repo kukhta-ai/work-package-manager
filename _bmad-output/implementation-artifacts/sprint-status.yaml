@@ -63,7 +63,7 @@ development_status:
   2-8-prepare-and-verify-a-fresh-agent-handoff: done
   2-9-guide-package-creation-with-wpm-create-package: done
   2-10-configure-personal-authoring-clients-in-one-setup-action: done
-  2-11-complete-the-cold-packed-install-to-handoff-journey: backlog
+  2-11-complete-the-cold-packed-install-to-handoff-journey: done
   epic-2-retrospective: optional
 
   epic-3: backlog

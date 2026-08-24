@@ -928,6 +928,7 @@ describeIfBuilt("`wpm build package` E2E (task-83, through dist/cli.js)", () => 
       const FRONTDOOR_SENTINEL = "TASK120-MANAGED-FRONT-DOOR-MUST-NOT-SHIP-53fe";
       const PERSONAL_SKILL_SENTINEL = "TASK122-WPM-CREATE-PACKAGE-MUST-NOT-SHIP-4c8e";
       const PERSONAL_STATE_SENTINEL = "TASK123-PERSONAL-SETUP-STATE-MUST-NOT-SHIP-87d1";
+      const PERSONAL_QUARANTINE_SENTINEL = "TASK124-PERSONAL-SETUP-QUARANTINE-MUST-NOT-SHIP-16cf";
       const workspaceSkillEvidence = [
         [
           "wpm-author",
@@ -1007,11 +1008,21 @@ describeIfBuilt("`wpm build package` E2E (task-83, through dist/cli.js)", () => 
         join(proj, ".wpm", "authoring-setup.json"),
         `${JSON.stringify({ marker: PERSONAL_STATE_SENTINEL })}\n`,
       );
+      mkdirSync(join(proj, ".wpm", "authoring-setup-quarantine", "request"), {
+        recursive: true,
+      });
+      writeFileSync(
+        join(proj, ".wpm", "authoring-setup-quarantine", "request", "evidence.json"),
+        `${JSON.stringify({ marker: PERSONAL_QUARANTINE_SENTINEL })}\n`,
+      );
 
       const assertNoWorkspaceIntegration = (layout: string[], extractedRoot: string): void => {
         expect(layout).not.toContain(".wpm-authoring.json");
         expect(layout).not.toContain(".wpm-handoff.json");
         expect(layout).not.toContain(".wpm/authoring-setup.json");
+        expect(layout.some((path) => path.startsWith(".wpm/authoring-setup-quarantine/"))).toBe(
+          false,
+        );
         expect(
           layout.some((path) => path.startsWith(".agents/") || path.startsWith(".claude/")),
         ).toBe(false);
@@ -1025,6 +1036,7 @@ describeIfBuilt("`wpm build package` E2E (task-83, through dist/cli.js)", () => 
         expect(extractedBytes).not.toContain(FRONTDOOR_SENTINEL);
         expect(extractedBytes).not.toContain(PERSONAL_SKILL_SENTINEL);
         expect(extractedBytes).not.toContain(PERSONAL_STATE_SENTINEL);
+        expect(extractedBytes).not.toContain(PERSONAL_QUARANTINE_SENTINEL);
         for (const [, , sentinel] of workspaceSkillEvidence) {
           expect(extractedBytes).not.toContain(sentinel);
         }
@@ -1040,6 +1052,7 @@ describeIfBuilt("`wpm build package` E2E (task-83, through dist/cli.js)", () => 
       expect(concatAllFiles(join(proj, "wip"))).not.toContain(HANDOFF_SENTINEL);
       expect(concatAllFiles(join(proj, "wip"))).not.toContain(PERSONAL_SKILL_SENTINEL);
       expect(concatAllFiles(join(proj, "wip"))).not.toContain(PERSONAL_STATE_SENTINEL);
+      expect(concatAllFiles(join(proj, "wip"))).not.toContain(PERSONAL_QUARANTINE_SENTINEL);
 
       const tgz = join(proj, "builds", "demo-0.1.0.tgz");
       expect(cli(["build", "package", "--format", "tarball", "-C", proj], dir).code).toBe(0);
@@ -1102,9 +1115,16 @@ describeIfBuilt("`wpm build package` E2E (task-83, through dist/cli.js)", () => 
       }
       expect(concatAllFiles(join(proj, "wip"))).not.toContain(PERSONAL_SKILL_SENTINEL);
       expect(concatAllFiles(join(proj, "wip"))).not.toContain(PERSONAL_STATE_SENTINEL);
+      expect(concatAllFiles(join(proj, "wip"))).not.toContain(PERSONAL_QUARANTINE_SENTINEL);
       expect(readFileSync(join(proj, ".wpm", "authoring-setup.json"), "utf8")).toContain(
         PERSONAL_STATE_SENTINEL,
       );
+      expect(
+        readFileSync(
+          join(proj, ".wpm", "authoring-setup-quarantine", "request", "evidence.json"),
+          "utf8",
+        ),
+      ).toContain(PERSONAL_QUARANTINE_SENTINEL);
     });
   });
 

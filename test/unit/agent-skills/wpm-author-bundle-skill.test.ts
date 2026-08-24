@@ -1,5 +1,6 @@
-import { existsSync, readdirSync, readFileSync } from "node:fs";
-import { basename, dirname } from "node:path";
+import { cpSync, existsSync, mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { basename, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { parseYaml } from "../../../src/util/yaml.js";
@@ -155,5 +156,26 @@ describe("wpm-author-bundle workspace skill", () => {
     expect(text).not.toMatch(/\{\{[^}]+\}\}/);
     expect(text).not.toMatch(/\]\((?:\.\.?\/|references\/|scripts\/|assets\/)/);
     expect(basename(SKILL_DIR)).toBe("wpm-author-bundle");
+  });
+
+  it("uses identical source-free bytes at Codex and Claude Code native paths", () => {
+    const root = mkdtempSync(join(tmpdir(), "wpm-author-bundle-native-"));
+    try {
+      const source = readSkill();
+      for (const nativeRoot of [
+        join(root, ".agents", "skills", "wpm-author-bundle"),
+        join(root, ".claude", "skills", "wpm-author-bundle"),
+      ]) {
+        cpSync(SKILL_DIR, nativeRoot, { recursive: true });
+        const text = readFileSync(join(nativeRoot, "SKILL.md"), "utf8");
+        expect(text).toBe(source);
+        expect(basename(nativeRoot)).toBe("wpm-author-bundle");
+        expect(
+          (parseYaml(splitFrontmatter(text).frontmatter) as Record<string, unknown>).name,
+        ).toBe("wpm-author-bundle");
+      }
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 });
