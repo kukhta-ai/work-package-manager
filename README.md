@@ -147,6 +147,13 @@ interpolation, arbitrary template parameters, and cross-template dependencies ar
 inspection renders symbolic previews (`<project-name>`, `<bundle-id>`, `<bundle-version>`) and reports all
 declaration, context, collision, dependency, and cycle findings together.
 
+On a fresh `wpm init`, WPM combines the selected project template's valid contribution with mandatory project
+work. For every bundle pre-included by that project template, it also combines the default bundle template's
+contribution with that concrete bundle's mandatory work. The complete dependency-ordered plan is written once
+to the shared authoring backlog; template origin, revision, and local key remain authoring-only task metadata.
+Changing or removing the source template later never rewrites an initialized workspace, and neither task
+definitions nor their provenance enter a built deliverable.
+
 ## What's in here
 
 ```

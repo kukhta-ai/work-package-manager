@@ -275,6 +275,15 @@ function readString(
     issue(problems, code, path, `${path} must be a non-empty string`);
     return undefined;
   }
+  if (value !== value.trim()) {
+    issue(
+      problems,
+      code,
+      path,
+      `${path} must not contain leading or trailing whitespace because task text is materialised literally`,
+    );
+    return undefined;
+  }
   return value;
 }
 

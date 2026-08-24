@@ -186,7 +186,7 @@ export class BacklogCli implements BacklogMd {
 
   /** @inheritdoc */
   createTask(root: string, input: CreateTaskInput): TaskSummary {
-    const args = ["task", "create", input.title, "--plain", "--no-dod-defaults"];
+    const args = ["task", "create", "--plain", "--no-dod-defaults"];
     if (input.description !== undefined) {
       args.push("--description", input.description);
     }
@@ -202,6 +202,9 @@ export class BacklogCli implements BacklogMd {
     if (input.labels && input.labels.length > 0) {
       args.push("--labels", input.labels.join(","));
     }
+    // Template-defined titles are inert text and may legitimately begin with `-`. Keep every option before
+    // Commander's end-of-options marker so such a title can never be reinterpreted as Backlog CLI authority.
+    args.push("--", input.title);
     const { stdout } = runSync(this.executable, args, this.opts(root));
     const summary = parseCreatedTask(stdout);
     if (summary === undefined) {

@@ -114,6 +114,24 @@ describeIfBacklog(
       });
     });
 
+    it("treats an option-looking task title as inert text", async () => {
+      await withTempDir((dir) => {
+        const bl = new BacklogCli("backlog", isolatedEnv(dir));
+        bl.init(dir, { taskPrefix: "authoring" });
+
+        const created = bl.createTask(dir, {
+          title: "--help",
+          acceptanceCriteria: ["--help remains a literal criterion"],
+        });
+
+        expect(created).toEqual({ id: "authoring-1", title: "--help", status: "To Do" });
+        expect(bl.readTask(dir, created.id)).toMatchObject({
+          title: "--help",
+          acceptanceCriteria: [{ text: "--help remains a literal criterion", checked: false }],
+        });
+      });
+    });
+
     it("edits status to Done and filters by status (AC#1)", async () => {
       await withTempDir((dir) => {
         const bl = new BacklogCli("backlog", isolatedEnv(dir));

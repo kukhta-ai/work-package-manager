@@ -21,6 +21,10 @@ import {
 import { setupPersonalAuthoring } from "../../../src/core/operations/personal-authoring-setup.js";
 import { verifyWorkspaceHandoff } from "../../../src/core/operations/workspace-handoff.js";
 import { PERSONAL_AUTHORING_STATE_PATH } from "../../../src/core/services/personal-authoring-setup.js";
+import {
+  TEMPLATE_TASK_LABEL,
+  templateTaskProvenanceLabels,
+} from "../../../src/core/services/project-authoring-task-plan.js";
 import { parseManifest } from "../../../src/core/services/schema/index.js";
 import {
   WORKSPACE_INTEGRATION_STATE_PATH,
@@ -129,6 +133,23 @@ class FailOnceAtInitPathFileSystem extends MemoryFileSystem {
   }
 }
 
+class MutateProjectAfterBundleResolutionFileSystem extends MemoryFileSystem {
+  static readonly sentinel = "TASK126-SECOND-PROJECT-READ-MUST-NOT-MIX-SNAPSHOTS";
+  private mutated = false;
+
+  override read(path: string): string {
+    const content = super.read(path);
+    if (!this.mutated && path === `${BUILTIN}/bundle/default/template.yml`) {
+      this.mutated = true;
+      super.write(
+        `${BUILTIN}/project/minimal/snippets/AGENTS.md`,
+        `# changed after project LOAD\n${MutateProjectAfterBundleResolutionFileSystem.sentinel}\n`,
+      );
+    }
+    return content;
+  }
+}
+
 class InitBoundaryBacklog extends FakeBacklog {
   constructor(private readonly controller: InitBoundaryController) {
     super();
@@ -142,6 +163,55 @@ class InitBoundaryBacklog extends FakeBacklog {
   override createTask(root: string, input: Parameters<FakeBacklog["createTask"]>[1]) {
     this.controller.hit(`backlog-task:${input.title}`);
     return super.createTask(root, input);
+  }
+}
+
+class FailOnceAtTaskTitleBacklog extends FakeBacklog {
+  private failed = false;
+
+  constructor(private readonly failureTitle: string) {
+    super();
+  }
+
+  override createTask(root: string, input: Parameters<FakeBacklog["createTask"]>[1]) {
+    if (!this.failed && input.title === this.failureTitle) {
+      this.failed = true;
+      throw new Error(`injected task-plan failure at ${input.title}`);
+    }
+    return super.createTask(root, input);
+  }
+}
+
+class CorruptibleInitBoundaryBacklog extends InitBoundaryBacklog {
+  private corruption: "dependencies" | "labels" | undefined;
+
+  corruptTemplateTask(field: "dependencies" | "labels"): void {
+    this.corruption = field;
+  }
+
+  override readTask(root: string, id: string) {
+    const record = super.readTask(root, id);
+    if (id !== "authoring-10" || this.corruption === undefined) return record;
+    return this.corruption === "dependencies"
+      ? { ...record, dependencies: ["authoring-2"] }
+      : { ...record, labels: [...record.labels, "user-modified"] };
+  }
+}
+
+class CorruptAfterFinalTaskBacklog extends FakeBacklog {
+  private corruptReads = false;
+
+  override createTask(root: string, input: Parameters<FakeBacklog["createTask"]>[1]) {
+    const created = super.createTask(root, input);
+    if (input.title === "Verify beta shared work") this.corruptReads = true;
+    return created;
+  }
+
+  override readTask(root: string, id: string) {
+    const record = super.readTask(root, id);
+    return this.corruptReads && id === "authoring-9"
+      ? { ...record, labels: [...record.labels, "concurrent-change"] }
+      : record;
   }
 }
 
@@ -673,6 +743,22 @@ describe("initProject — scaffolds an authoring workspace (task-87; docs 06/10/
     );
   });
 
+  it("TASK-126 — files, task plan, and derived artefacts use one resolved project-template snapshot", () => {
+    const fs = seedTemplates(new MutateProjectAfterBundleResolutionFileSystem());
+    initProject(deps(fs, new FakeBacklog()), {
+      targetDir: TARGET,
+      name: "snapshot-demo",
+    });
+
+    expect(fs.read(`${BUILTIN}/project/minimal/snippets/AGENTS.md`)).toContain(
+      MutateProjectAfterBundleResolutionFileSystem.sentinel,
+    );
+    expect(fs.read(`${WIP}/_AGENTS.md`)).not.toContain(
+      MutateProjectAfterBundleResolutionFileSystem.sentinel,
+    );
+    expect(fs.read(`${WIP}/_AGENTS.md`)).toContain("snapshot-demo");
+  });
+
   it("reports every fresh-init boundary and the identical authorized request converges after each failure", () => {
     const countController = new InitBoundaryController();
     const countFs = seedTemplates(new InitBoundaryFileSystem(countController));
@@ -1190,6 +1276,84 @@ describe("initProject — honors a template that DECLARES targets / pre-includes
     return fs;
   }
 
+  function seedTemplateWithCompleteTaskPacks(
+    fs: MemoryFileSystem = seedTemplates(),
+  ): MemoryFileSystem {
+    fs.write(
+      `${BUILTIN}/project/minimal/files/manifest.yml.tmpl`,
+      [
+        "project:",
+        "  name: {{project-name}}",
+        "  version: 0.1.0",
+        "targets: []",
+        "bundles:",
+        "  - alpha",
+        "  - beta",
+        "",
+      ].join("\n"),
+    );
+    for (const [id, version] of [
+      ["alpha", "1.0.0"],
+      ["beta", "2.0.0"],
+    ] as const) {
+      fs.write(
+        `${BUILTIN}/project/minimal/files/bundles/${id}/bundle.yml`,
+        `id: ${id}\nversion: ${version}\nsummary: ${id} bundle\nconfirmation: safe\nrequires: {}\n`,
+      );
+      fs.write(`${BUILTIN}/project/minimal/files/bundles/${id}/installer-skills/.keep`, "");
+    }
+    fs.write(
+      `${BUILTIN}/project/minimal/template.yml`,
+      [
+        "name: minimal",
+        "scope: project",
+        'revision: "project-r1"',
+        "parameters:",
+        "  - name: project-name",
+        "authoring-tasks:",
+        "  - key: verify-shared-work",
+        "    title: Verify shared project work for {{wpm.project.name}}",
+        "    acceptance-criteria:",
+        "      - The shared project work is observable",
+        "    depends-on:",
+        "      - self:shared-work",
+        "      - wpm:project:set-metadata",
+        "  - key: shared-work",
+        "    title: Prepare shared project work for {{wpm.project.name}}",
+        "    acceptance-criteria:",
+        "      - The shared project work is prepared",
+        "",
+      ].join("\n"),
+    );
+    fs.write(
+      `${BUILTIN}/bundle/default/template.yml`,
+      [
+        "name: default",
+        "scope: bundle",
+        'revision: "bundle-r2"',
+        "parameters:",
+        "  - name: bundle-id",
+        "  - name: version",
+        "  - name: project-name",
+        "authoring-tasks:",
+        "  - key: verify-shared-work",
+        "    title: Verify {{wpm.bundle.id}} shared work",
+        "    acceptance-criteria:",
+        "      - The {{wpm.bundle.id}} work at {{wpm.bundle.version}} is observable",
+        "    depends-on:",
+        "      - self:shared-work",
+        "  - key: shared-work",
+        "    title: Prepare {{wpm.bundle.id}} shared work",
+        "    acceptance-criteria:",
+        "      - The {{wpm.bundle.id}} work for {{wpm.project.name}} is prepared",
+        "    depends-on:",
+        "      - wpm:bundle:plan",
+        "",
+      ].join("\n"),
+    );
+    return fs;
+  }
+
   it("AC#1 + — creates one scope-alias per declared target under wip/ (root + per pre-included bundle)", () => {
     const fs = seedTemplateWithTargetAndBundle();
     initProject(deps(fs, new FakeBacklog()), { targetDir: TARGET, name: "demo" });
@@ -1220,6 +1384,364 @@ describe("initProject — honors a template that DECLARES targets / pre-includes
     }
     // 8 project-wide + 12 per-bundle = 20 materialised (titles are disjoint here):
     expect(result.materialisedTaskTitles).toHaveLength(20);
+  });
+
+  it("TASK-126 — materialises project + per-bundle packs with exact provenance and returned-ID dependencies", () => {
+    const fs = seedTemplateWithCompleteTaskPacks();
+    const backlog = new FakeBacklog();
+    const result = initProject(deps(fs, backlog), { targetDir: TARGET, name: "demo" });
+    const root = `${TARGET}/.authoring-backlog`;
+    const tasks = backlog.listTasks(root);
+
+    expect(result.materialisedTaskTitles).toHaveLength(38);
+    expect(tasks).toHaveLength(38);
+    expect(tasks.slice(0, 8).map(({ title }) => title)).toEqual(
+      projectWideAuthoringTasks().map(({ title }) => title),
+    );
+    expect(tasks[8]?.title).toBe("Prepare shared project work for demo");
+    expect(tasks[9]?.title).toBe("Verify shared project work for demo");
+    expect(backlog.readTask(root, "authoring-9")).toMatchObject({
+      labels: templateTaskProvenanceLabels({
+        producer: { source: "built-in", scope: "project", name: "minimal" },
+        revision: "project-r1",
+        key: "shared-work",
+      }),
+      dependencies: [],
+    });
+    expect(backlog.readTask(root, "authoring-10")).toMatchObject({
+      labels: expect.arrayContaining([TEMPLATE_TASK_LABEL, "wpm:template-key:verify-shared-work"]),
+      dependencies: ["authoring-9", "authoring-1"],
+    });
+
+    expect(tasks[22]?.title).toBe("Prepare alpha shared work");
+    expect(tasks[23]?.title).toBe("Verify alpha shared work");
+    expect(backlog.readTask(root, "authoring-23")).toMatchObject({
+      labels: templateTaskProvenanceLabels({
+        producer: { source: "built-in", scope: "bundle", name: "default" },
+        revision: "bundle-r2",
+        key: "shared-work",
+        bundleId: "alpha",
+      }),
+      dependencies: ["authoring-11"],
+    });
+    expect(backlog.readTask(root, "authoring-24")).toMatchObject({
+      dependencies: ["authoring-23"],
+    });
+    expect(tasks[36]?.title).toBe("Prepare beta shared work");
+    expect(tasks[37]?.title).toBe("Verify beta shared work");
+    expect(backlog.readTask(root, "authoring-37")).toMatchObject({
+      labels: expect.arrayContaining(["wpm:bundle:beta", "wpm:template-key:shared-work"]),
+      dependencies: ["authoring-25"],
+    });
+    expect(backlog.readTask(root, "authoring-38")).toMatchObject({
+      dependencies: ["authoring-37"],
+    });
+  });
+
+  it("TASK-126 — verifies the complete exact task store before publishing handoff preparation", () => {
+    const fs = seedTemplateWithCompleteTaskPacks();
+    const backlog = new CorruptAfterFinalTaskBacklog();
+
+    let caught: unknown;
+    try {
+      initProject(deps(fs, backlog), { targetDir: TARGET, name: "demo" });
+    } catch (error) {
+      caught = error;
+    }
+
+    expect(caught).toBeInstanceOf(MutationFailure);
+    expect(caught).toMatchObject({
+      failedBeat: "MATERIALISE",
+      failed: { id: "authoring-task-plan:verify" },
+      completed: expect.arrayContaining([
+        expect.objectContaining({
+          id: "authoring-task:template:built-in:bundle:default@bundle-r2:verify-shared-work#bundle:beta",
+        }),
+      ]),
+      unattempted: expect.arrayContaining([
+        expect.objectContaining({ id: "handoff-receipt:preparing" }),
+      ]),
+    });
+    expect(fs.inspectPath(`${TARGET}/${WORKSPACE_HANDOFF_RECEIPT_PATH}`).kind).toBe("missing");
+    expect(JSON.parse(fs.read(`${TARGET}/${WORKSPACE_INTEGRATION_STATE_PATH}`))).toMatchObject({
+      status: "applying",
+    });
+  });
+
+  it.each([
+    "Prepare shared project work for demo",
+    "Verify shared project work for demo",
+    "Prepare alpha shared work",
+    "Verify alpha shared work",
+    "Prepare beta shared work",
+    "Verify beta shared work",
+  ])("TASK-126 — every additional task boundary is typed and the identical request converges: %s", (failureTitle) => {
+    const fs = seedTemplateWithCompleteTaskPacks();
+    const backlog = new FailOnceAtTaskTitleBacklog(failureTitle);
+    const input = { targetDir: TARGET, name: "demo" } as const;
+
+    let caught: unknown;
+    try {
+      initProject(deps(fs, backlog), input);
+    } catch (error) {
+      caught = error;
+    }
+    expect(caught).toBeInstanceOf(MutationFailure);
+    const failure = caught as MutationFailure;
+    expect(failure.failed.id).toContain("authoring-task:");
+    expect(failure.failedBeat).toBe("MATERIALISE");
+    expect(failure.completed.map(({ id }) => id)).toContain("authoring-backlog:init");
+    expect(failure.unattempted.length).toBeGreaterThan(0);
+    expect(failure.recovery).toMatch(/identical init request/i);
+    expect(failure.recovery).toContain("no rollback or generic resume is claimed");
+    expect(failure.recovery).not.toMatch(
+      /will roll back|resume from|reconcil|successfully initialized/i,
+    );
+
+    expect(() => initProject(deps(fs, backlog), input)).not.toThrow();
+    expect(backlog.listTasks(`${TARGET}/.authoring-backlog`)).toHaveLength(38);
+    expect(backlog.readTask(`${TARGET}/.authoring-backlog`, "authoring-38")).toMatchObject({
+      title: "Verify beta shared work",
+      dependencies: ["authoring-37"],
+    });
+  });
+
+  it.each([
+    "dependencies",
+    "labels",
+  ] as const)("TASK-126 — final receipt retry rejects changed template-task %s without further mutation", (field) => {
+    const countController = new InitBoundaryController();
+    const countFs = seedTemplateWithCompleteTaskPacks(
+      seedTemplates(new InitBoundaryFileSystem(countController)),
+    );
+    const countBacklog = new InitBoundaryBacklog(countController);
+    countController.arm(Number.MAX_SAFE_INTEGER);
+    initProject(deps(countFs, countBacklog), { targetDir: TARGET, name: "demo" });
+
+    const controller = new InitBoundaryController();
+    const fs = seedTemplateWithCompleteTaskPacks(
+      seedTemplates(new InitBoundaryFileSystem(controller)),
+    );
+    const backlog = new CorruptibleInitBoundaryBacklog(controller);
+    controller.arm(countController.count());
+    let caught: unknown;
+    try {
+      initProject(deps(fs, backlog), { targetDir: TARGET, name: "demo" });
+    } catch (error) {
+      caught = error;
+    }
+    expect(caught).toBeInstanceOf(MutationFailure);
+    expect((caught as MutationFailure).failed.id).toBe("handoff-receipt:prepared");
+    backlog.corruptTemplateTask(field);
+    controller.disarm();
+    const receiptBefore = fs.read(`${TARGET}/${WORKSPACE_HANDOFF_RECEIPT_PATH}`);
+
+    expect(() => initProject(deps(fs, backlog), { targetDir: TARGET, name: "demo" })).toThrow(
+      WorkspaceIntegrationPreflightError,
+    );
+    expect(fs.read(`${TARGET}/${WORKSPACE_HANDOFF_RECEIPT_PATH}`)).toBe(receiptBefore);
+    expect(backlog.listTasks(`${TARGET}/.authoring-backlog`)).toHaveLength(38);
+  });
+
+  it("TASK-126 — a changed task contribution cannot continue an applying prefix", () => {
+    const fs = seedTemplateWithCompleteTaskPacks();
+    const backlog = new FailOnceAtTaskTitleBacklog("Prepare alpha shared work");
+    const input = { targetDir: TARGET, name: "demo" } as const;
+    expect(() => initProject(deps(fs, backlog), input)).toThrow(MutationFailure);
+    const root = `${TARGET}/.authoring-backlog`;
+    const existingBefore = backlog.listTasks(root).map(({ id }) => backlog.readTask(root, id));
+    const stateBefore = fs.read(`${TARGET}/${WORKSPACE_INTEGRATION_STATE_PATH}`);
+    fs.write(
+      `${BUILTIN}/project/minimal/template.yml`,
+      fs
+        .read(`${BUILTIN}/project/minimal/template.yml`)
+        .replace('revision: "project-r1"', 'revision: "project-r3"'),
+    );
+
+    let caught: unknown;
+    try {
+      initProject(deps(fs, backlog), input);
+    } catch (error) {
+      caught = error;
+    }
+    expect(caught).toBeInstanceOf(WorkspaceIntegrationPreflightError);
+    expect((caught as WorkspaceIntegrationPreflightError).blockers).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ code: "workspace-partial-request-mismatch" }),
+      ]),
+    );
+    expect(backlog.listTasks(root).map(({ id }) => backlog.readTask(root, id))).toEqual(
+      existingBefore,
+    );
+    expect(fs.read(`${TARGET}/${WORKSPACE_INTEGRATION_STATE_PATH}`)).toBe(stateBefore);
+  });
+
+  it("TASK-126 — rejects manifest/path/rendered bundle identity disagreement before any effect", () => {
+    const fs = seedTemplateWithCompleteTaskPacks();
+    const backlog = new FakeBacklog();
+    fs.write(
+      `${BUILTIN}/project/minimal/files/bundles/alpha/bundle.yml`,
+      "id: other\nversion: 1.0.0\nsummary: mismatched bundle\nconfirmation: safe\nrequires: {}\n",
+    );
+
+    let caught: unknown;
+    try {
+      initProject(deps(fs, backlog), { targetDir: TARGET, name: "demo" });
+    } catch (error) {
+      caught = error;
+    }
+    expect(caught).toBeInstanceOf(WorkspaceIntegrationPreflightError);
+    expect((caught as WorkspaceIntegrationPreflightError).blockers).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: "template-task-bundle-identity-mismatch",
+          message: expect.stringContaining("#bundle:alpha"),
+        }),
+      ]),
+    );
+    expect(fs.inspectPath(TARGET).kind).toBe("missing");
+    expect(backlog.inspectRoot(`${TARGET}/.authoring-backlog`).valid).toBe(false);
+  });
+
+  it("TASK-126 — aggregates project/bundle contribution findings with an independent target blocker before writes", () => {
+    const fs = seedTemplateWithTargetAndBundle();
+    const backlog = new FakeBacklog();
+    fs.write(
+      `${BUILTIN}/project/minimal/template.yml`,
+      [
+        "name: minimal",
+        "scope: project",
+        'revision: "1"',
+        "authoring-tasks:",
+        "  - key: broken-project",
+        "    title: Bad {{wpm.bundle.id}}",
+        "    acceptance-criteria: []",
+        "    depends-on: [self:missing]",
+        "",
+      ].join("\n"),
+    );
+    fs.write(
+      `${BUILTIN}/bundle/default/template.yml`,
+      [
+        "name: default",
+        "scope: bundle",
+        'revision: "1"',
+        "authoring-tasks:",
+        "  - key: collide-advisor",
+        "    title: Write advisor content for core",
+        "    acceptance-criteria:",
+        "      - The collision is observable",
+        "",
+      ].join("\n"),
+    );
+    fs.remove(`${BUILTIN}/project/minimal/snippets/AGENTS.md`);
+    fs.write(`${TARGET}/USER.txt`, "preserve\n");
+    const before = filesUnder(fs, TARGET).map((path) => [path, fs.read(path)] as const);
+
+    let caught: unknown;
+    try {
+      initProject(deps(fs, backlog), { targetDir: TARGET, name: "demo" });
+    } catch (error) {
+      caught = error;
+    }
+    expect(caught).toBeInstanceOf(WorkspaceIntegrationPreflightError);
+    const blockers = (caught as WorkspaceIntegrationPreflightError).blockers;
+    expect(blockers.map(({ code }) => code)).toEqual(
+      expect.arrayContaining([
+        "workspace-target-exists",
+        "project-derived-plan-invalid",
+        "template-task-acceptance-criteria-empty",
+        "template-task-unavailable-context",
+        "template-task-unresolved-dependency",
+        "template-task-rendered-title-collision",
+      ]),
+    );
+    expect(
+      blockers.find(({ code }) => code === "template-task-unavailable-context")?.message,
+    ).toContain("template:built-in:project:minimal@1");
+    expect(
+      blockers.find(({ code }) => code === "template-task-rendered-title-collision")?.message,
+    ).toContain("#bundle:core");
+    expect(filesUnder(fs, TARGET).map((path) => [path, fs.read(path)] as const)).toEqual(before);
+    expect(backlog.inspectRoot(`${TARGET}/.authoring-backlog`).valid).toBe(false);
+  });
+
+  it("TASK-126 — still inspects the project contribution when bundle projection is invalid", () => {
+    const fs = seedTemplateWithCompleteTaskPacks();
+    const backlog = new FakeBacklog();
+    fs.write(
+      `${BUILTIN}/project/minimal/template.yml`,
+      [
+        "name: minimal",
+        "scope: project",
+        'revision: "invalid-projection-r1"',
+        "parameters:",
+        "  - name: project-name",
+        "authoring-tasks:",
+        "  - key: broken-project",
+        "    title: Broken project work for {{wpm.project.name}}",
+        "    acceptance-criteria: []",
+        "    depends-on: [self:missing]",
+        "",
+      ].join("\n"),
+    );
+    fs.write(
+      `${BUILTIN}/bundle/default/template.yml`,
+      [
+        "name: default",
+        "scope: bundle",
+        'revision: "invalid-bundle-r1"',
+        "parameters:",
+        "  - name: bundle-id",
+        "  - name: version",
+        "  - name: project-name",
+        "authoring-tasks:",
+        "  - key: broken-bundle",
+        "    title: Broken {{wpm.bundle.id}} work",
+        "    acceptance-criteria: []",
+        "    depends-on: [self:missing]",
+        "",
+      ].join("\n"),
+    );
+    fs.remove(`${BUILTIN}/project/minimal/files/bundles/alpha/bundle.yml`);
+
+    let caught: unknown;
+    try {
+      initProject(deps(fs, backlog), { targetDir: TARGET, name: "demo" });
+    } catch (error) {
+      caught = error;
+    }
+    expect(caught).toBeInstanceOf(WorkspaceIntegrationPreflightError);
+    expect((caught as WorkspaceIntegrationPreflightError).blockers.map(({ code }) => code)).toEqual(
+      expect.arrayContaining([
+        "project-template-invalid",
+        "template-task-bundle-context-invalid",
+        "template-task-acceptance-criteria-empty",
+        "template-task-unresolved-dependency",
+      ]),
+    );
+    const messages = (caught as WorkspaceIntegrationPreflightError).blockers.map(
+      ({ message }) => message,
+    );
+    expect(messages.some((message) => message.includes("#bundle:alpha"))).toBe(true);
+    expect(messages.some((message) => message.includes("#bundle:beta"))).toBe(true);
+    expect(fs.inspectPath(TARGET).kind).toBe("missing");
+    expect(backlog.inspectRoot(`${TARGET}/.authoring-backlog`).valid).toBe(false);
+  });
+
+  it("TASK-126 — completed workspace tasks do not depend on later template-source availability", () => {
+    const fs = seedTemplateWithCompleteTaskPacks();
+    const backlog = new FakeBacklog();
+    initProject(deps(fs, backlog), { targetDir: TARGET, name: "demo" });
+    const root = `${TARGET}/.authoring-backlog`;
+    const before = backlog.listTasks(root).map(({ id }) => backlog.readTask(root, id));
+
+    fs.remove(`${BUILTIN}/project/minimal`);
+    fs.remove(`${BUILTIN}/bundle/default`);
+    expect(() => initProject(deps(fs, backlog), { targetDir: TARGET, name: "demo" })).toThrow(
+      WorkspaceIntegrationPreflightError,
+    );
+    expect(backlog.listTasks(root).map(({ id }) => backlog.readTask(root, id))).toEqual(before);
   });
 });
 

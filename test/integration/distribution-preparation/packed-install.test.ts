@@ -283,6 +283,54 @@ describe("fresh local packed-install and inactive-candidate journey", () => {
       >;
       sourcePackage.repository = NPM_REPOSITORY;
       writeFileSync(sourcePackagePath, `${JSON.stringify(sourcePackage, undefined, 2)}\n`);
+
+      // TASK-126 source-free fixture: pack a second project descriptor whose complete init plan includes one
+      // project contribution and one concrete pre-included-bundle contribution. The source checkout is deleted
+      // before this template is selected below, so the installed archive is the only possible definition source.
+      const packedTaskTemplate = join(source, "templates", "project", "task126-plan");
+      cpSync(join(source, "templates", "project", "minimal"), packedTaskTemplate, {
+        recursive: true,
+      });
+      writeFileSync(
+        join(packedTaskTemplate, "template.yml"),
+        [
+          "name: task126-plan",
+          "scope: project",
+          'revision: "packed-project-r1"',
+          "parameters:",
+          "  - name: project-name",
+          "authoring-tasks:",
+          "  - key: inspect-packed-source",
+          "    title: Inspect packed source for {{wpm.project.name}}",
+          "    acceptance-criteria:",
+          "      - The packed project contribution is observable",
+          "    depends-on:",
+          "      - wpm:project:set-metadata",
+          "",
+        ].join("\n"),
+      );
+      writeFileSync(
+        join(packedTaskTemplate, "files", "manifest.yml.tmpl"),
+        [
+          "project:",
+          "  name: {{project-name}}",
+          "  version: 0.1.0",
+          "targets: []",
+          "bundles:",
+          "  - core",
+          "",
+        ].join("\n"),
+      );
+      mkdirSync(join(packedTaskTemplate, "files", "bundles", "core"), { recursive: true });
+      writeFileSync(
+        join(packedTaskTemplate, "files", "bundles", "core", "bundle.yml"),
+        "id: core\nversion: 1.2.3\nsummary: core bundle\nconfirmation: safe\nrequires: {}\n",
+      );
+      const packedBundleTemplate = join(source, "templates", "bundle", "default", "template.yml");
+      writeFileSync(
+        packedBundleTemplate,
+        `${readFileSync(packedBundleTemplate, "utf8").trimEnd()}\nrevision: "packed-bundle-r2"\nauthoring-tasks:\n  - key: inspect-packed-runtime\n    title: Inspect {{wpm.bundle.id}} packed runtime\n    acceptance-criteria:\n      - The {{wpm.bundle.id}} {{wpm.bundle.version}} packed runtime is observable\n    depends-on:\n      - wpm:bundle:plan\n`,
+      );
       initializeGit(source);
 
       const dependencies = npm(source, "ci", "--ignore-scripts", "--no-audit", "--no-fund");
@@ -578,6 +626,49 @@ describe("fresh local packed-install and inactive-candidate journey", () => {
           env: { ...installedEnv, HOME: home, USERPROFILE: home, PWD: cwd },
         });
       };
+
+      const packedPlanHome = join(consumer, "home-task126-packed-plan");
+      const packedPlanWorkspace = join(consumer, "workspace-task126-packed-plan");
+      mkdirSync(packedPlanHome, { recursive: true });
+      const packedPlanInit = runInstalledWpm(
+        [
+          "init",
+          "task126-packed-plan",
+          "--at",
+          packedPlanWorkspace,
+          "--template",
+          "task126-plan",
+          "--authoring-client",
+          "codex",
+        ],
+        consumer,
+        packedPlanHome,
+      );
+      expect({ status: packedPlanInit.status, stderr: packedPlanInit.stderr }).toEqual({
+        status: 0,
+        stderr: "",
+      });
+      expect(String(packedPlanInit.stdout)).toMatch(/materialised: 22 authoring task/);
+      const packedPlanTaskRoot = join(
+        packedPlanWorkspace,
+        ".authoring-backlog",
+        "backlog",
+        "tasks",
+      );
+      expect(readdirSync(packedPlanTaskRoot).filter((entry) => entry.endsWith(".md"))).toHaveLength(
+        22,
+      );
+      const packedPlanTaskBytes = allRegularFileBytes(packedPlanTaskRoot);
+      expect(packedPlanTaskBytes).toContain("Inspect packed source for task126-packed-plan");
+      expect(packedPlanTaskBytes).toContain("wpm:template-origin:built-in:project:task126-plan");
+      expect(packedPlanTaskBytes).toContain("wpm:template-revision:packed-project-r1");
+      expect(packedPlanTaskBytes).toContain("wpm:template-key:inspect-packed-source");
+      expect(packedPlanTaskBytes).toContain("Inspect core packed runtime");
+      expect(packedPlanTaskBytes).toContain("wpm:template-origin:built-in:bundle:default");
+      expect(packedPlanTaskBytes).toContain("wpm:template-revision:packed-bundle-r2");
+      expect(packedPlanTaskBytes).toContain("wpm:bundle:core");
+      expect(packedPlanTaskBytes).toMatch(/dependencies:\s*\n\s*- AUTHORING-1\b/);
+      expect(packedPlanTaskBytes).toMatch(/dependencies:\s*\n\s*- AUTHORING-10\b/);
 
       for (const cell of [
         {

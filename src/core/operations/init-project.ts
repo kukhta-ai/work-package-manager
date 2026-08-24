@@ -22,8 +22,14 @@ import {
 import type { BacklogMd, Environment, FileSystem } from "../ports/index.js";
 import { EXECUTOR_FRONT_DOOR_PATH } from "../services/derived-artefacts.js";
 import { hashTextContent } from "../services/integrity.js";
+import {
+  compileProjectAuthoringTaskPlan,
+  type PlannedProjectAuthoringTask,
+  type ProjectAuthoringTaskPlanProblem,
+} from "../services/project-authoring-task-plan.js";
 import { type RenderedFile, renderTree } from "../services/render.js";
 import { parseBundleManifest, parseManifest } from "../services/schema/index.js";
+import { inspectTemplateAuthoringTasks } from "../services/template-authoring-tasks.js";
 import { resolveTemplate } from "../services/template-resolver.js";
 import { WORKSPACE_INTEGRATION_STATE_PATH } from "../services/workspace-authoring-integration.js";
 import {
@@ -31,8 +37,8 @@ import {
   serializeWorkspaceHandoffReceipt,
   WORKSPACE_HANDOFF_RECEIPT_PATH,
 } from "../services/workspace-handoff.js";
-import { perBundleAuthoringTasks } from "./create-bundle.js";
-import { makeArtefactDeriver } from "./derive-artefacts-capability.js";
+import { perBundleAuthoringTaskCatalog, perBundleAuthoringTasks } from "./create-bundle.js";
+import { deriveArtefactsFromTemplateSnapshot } from "./derive-artefacts-capability.js";
 import { readPersonalAuthoringDefaults } from "./personal-authoring-setup.js";
 import {
   authorizeFreshWorkspaceAuthoringPlan,
@@ -283,35 +289,15 @@ function initBlocker(
   return { code, surface, message, recovery };
 }
 
-function validateAuthoringTaskPlan(
-  specs: readonly AuthoringTaskSpec[],
-): WorkspaceIntegrationBlocker[] {
-  const blockers: WorkspaceIntegrationBlocker[] = [];
-  const titles = new Set<string>();
-  for (const spec of specs) {
-    if (spec.title.trim().length === 0 || spec.acceptanceCriteria.length === 0) {
-      blockers.push(
-        initBlocker(
-          "authoring-task-plan-invalid",
-          "authoring-task-plan",
-          "the mandatory authoring-task plan contains an empty title or acceptance-criteria set",
-          "repair the packaged task plan before creating the workspace",
-        ),
-      );
-    }
-    if (titles.has(spec.title)) {
-      blockers.push(
-        initBlocker(
-          "authoring-task-plan-duplicate",
-          "authoring-task-plan",
-          `the mandatory authoring-task plan repeats ${JSON.stringify(spec.title)}`,
-          "repair the packaged task plan so every title is a stable unique identity",
-        ),
-      );
-    }
-    titles.add(spec.title);
-  }
-  return blockers;
+function authoringTaskPlanBlocker(
+  problem: ProjectAuthoringTaskPlanProblem,
+): WorkspaceIntegrationBlocker {
+  return initBlocker(
+    `template-task-${problem.code}`,
+    "authoring-task-plan",
+    `${problem.contribution} ${problem.path}: ${problem.message}`,
+    "repair the affected template contribution or packaged mandatory catalog before creating the workspace",
+  );
 }
 
 interface PlannedInitFile {
@@ -340,6 +326,7 @@ interface PlannedInitAction extends MutationBoundary {
   readonly perform: () => void;
   readonly beat: MutationLifecycleBeat;
   readonly materialisedTitle?: string;
+  readonly recordsChange: boolean;
 }
 
 function freshInitRequestKey(
@@ -355,7 +342,7 @@ function freshInitRequestKey(
   files: Iterable<PlannedInitFile>,
   directories: Iterable<PlannedInitDirectory>,
   aliases: Iterable<PlannedInitAlias>,
-  tasks: readonly AuthoringTaskSpec[],
+  tasks: readonly PlannedProjectAuthoringTask[],
 ): string {
   const byPathAndId = <T extends { readonly path: string; readonly id: string }>(
     left: T,
@@ -400,6 +387,7 @@ function initAction(
   perform: () => void,
   materialisedTitle?: string,
   beat: MutationLifecycleBeat = "APPLY",
+  recordsChange = true,
 ): PlannedInitAction {
   return {
     id,
@@ -407,6 +395,7 @@ function initAction(
     description,
     perform,
     beat,
+    recordsChange,
     ...(materialisedTitle !== undefined ? { materialisedTitle } : {}),
   };
 }
@@ -428,9 +417,12 @@ function executeInitPlan(actions: readonly PlannedInitAction[]): {
         description: planned.description,
       } satisfies MutationBoundary;
       completed.push(evidence);
-      if (!changedPaths.includes(planned.path as string)) changedPaths.push(planned.path as string);
-      if (planned.materialisedTitle !== undefined) {
-        materialisedTaskTitles.push(planned.materialisedTitle);
+      if (planned.recordsChange) {
+        if (!changedPaths.includes(planned.path as string))
+          changedPaths.push(planned.path as string);
+        if (planned.materialisedTitle !== undefined) {
+          materialisedTaskTitles.push(planned.materialisedTitle);
+        }
       }
     } catch (cause) {
       throw new MutationFailure({
@@ -454,6 +446,70 @@ function executeInitPlan(actions: readonly PlannedInitAction[]): {
     }
   }
   return { changedPaths, materialisedTaskTitles };
+}
+
+function assertExactMaterialisedTaskPlan(
+  backlog: BacklogMd,
+  authoringRoot: string,
+  taskPlan: readonly PlannedProjectAuthoringTask[],
+  taskIdByIdentity: ReadonlyMap<string, string>,
+): void {
+  const tasks = backlog.listTasks(authoringRoot);
+  const inventory = backlog.inspectTaskInventory(authoringRoot);
+  const listedIds = tasks.map(({ id }) => id).sort();
+  if (
+    tasks.length !== taskPlan.length ||
+    !inventory.configurationMatchesFreshDefaults ||
+    JSON.stringify([...inventory.activeEntries].sort()) !== JSON.stringify(listedIds) ||
+    inventory.inactiveEntries.length > 0 ||
+    inventory.unexpectedEntries.length > 0
+  ) {
+    throw new Error("materialised authoring backlog does not have the exact fresh task inventory");
+  }
+
+  for (const [index, expected] of taskPlan.entries()) {
+    const task = tasks[index];
+    const expectedId = taskIdByIdentity.get(expected.identity);
+    if (task === undefined || expectedId === undefined || task.id !== expectedId) {
+      throw new Error(
+        `materialised authoring task ${JSON.stringify(expected.identity)} is unavailable`,
+      );
+    }
+    const record = backlog.readTask(authoringRoot, task.id);
+    const dependencyIds = expected.dependencyIdentities.map((identity) =>
+      taskIdByIdentity.get(identity),
+    );
+    const criteriaMatch =
+      record.acceptanceCriteria.length === expected.acceptanceCriteria.length &&
+      record.acceptanceCriteria.every(
+        (criterion, criterionIndex) =>
+          !criterion.checked && criterion.text === expected.acceptanceCriteria[criterionIndex],
+      );
+    if (
+      dependencyIds.some((dependency) => dependency === undefined) ||
+      task.title !== expected.title ||
+      task.status !== "To Do" ||
+      record.id !== task.id ||
+      record.title !== task.title ||
+      record.status !== task.status ||
+      record.ordinal !== (index + 1) * 1000 ||
+      record.description !== null ||
+      record.definitionOfDone.length !== 0 ||
+      record.dependencies.length !== dependencyIds.length ||
+      record.dependencies.some(
+        (dependency, dependencyIndex) => dependency !== dependencyIds[dependencyIndex],
+      ) ||
+      record.labels.length !== expected.labels.length ||
+      record.labels.some((label, labelIndex) => label !== expected.labels[labelIndex]) ||
+      record.extraMetadata.length !== 0 ||
+      record.extraSections.length !== 0 ||
+      !criteriaMatch
+    ) {
+      throw new Error(
+        `materialised authoring task ${JSON.stringify(expected.identity)} differs from the immutable init plan`,
+      );
+    }
+  }
 }
 
 function isContained(root: string, path: string): boolean {
@@ -874,22 +930,12 @@ export function initProject(deps: InitProjectDeps, input: InitProjectInput): Ini
 
   let renderedProject: RenderedFile[] | undefined;
   let projection: Project | undefined;
-  let desired: ReturnType<ReturnType<typeof makeArtefactDeriver>> | undefined;
-  let specs: AuthoringTaskSpec[] | undefined;
+  let desired: ReturnType<typeof deriveArtefactsFromTemplateSnapshot> | undefined;
+  let taskPlan: readonly PlannedProjectAuthoringTask[] | undefined;
   if (resolution?.found) {
     try {
       renderedProject = renderTree(resolution.template.files, params);
       projection = buildProjection(renderedProject, wip);
-      desired = makeArtefactDeriver({
-        fs,
-        builtinTemplatesRoot,
-        projectTemplateName: templateName,
-      })(projection);
-      specs = [...projectWideAuthoringTasks()];
-      for (const id of projection.manifest.bundles) {
-        specs.push(...perBundleAuthoringTasks(id, { advisor: true }));
-      }
-      blockers.push(...validateAuthoringTaskPlan(specs));
     } catch (error) {
       blockers.push(
         initBlocker(
@@ -902,13 +948,205 @@ export function initProject(deps: InitProjectDeps, input: InitProjectInput): Ini
     }
   }
 
+  if (resolution?.found && projection !== undefined) {
+    try {
+      const concreteProject = projection;
+      desired = deriveArtefactsFromTemplateSnapshot(concreteProject, resolution.template);
+    } catch (error) {
+      blockers.push(
+        initBlocker(
+          "project-derived-plan-invalid",
+          "packaged-content",
+          error instanceof Error ? error.message : String(error),
+          "repair the selected project template or packaged derivation sources before creating the workspace",
+        ),
+      );
+    }
+
+    try {
+      const concreteProject = projection;
+      const projectInspection = inspectTemplateAuthoringTasks({
+        template: resolution.template,
+        producer: {
+          source: resolution.source,
+          scope: "project",
+          name: resolution.template.name,
+        },
+        mandatoryTasks: projectWideAuthoringTaskCatalog(),
+        context: { "wpm.project.name": concreteProject.manifest.meta.name },
+      });
+      const bundleContributions = bundleTemplate?.found
+        ? concreteProject.manifest.bundles.map((id) => {
+            const bundle = concreteProject.bundles.get(id);
+            if (bundle === undefined) {
+              throw new Error(`internal: pre-included bundle ${id} is absent from the projection`);
+            }
+            if (bundle.id !== id) {
+              blockers.push(
+                initBlocker(
+                  "template-task-bundle-identity-mismatch",
+                  "authoring-task-plan",
+                  `template:${bundleTemplate.source}:bundle:${bundleTemplate.template.name}#bundle:${id} is selected by manifest id ${JSON.stringify(id)} but its rendered bundle.yml declares ${JSON.stringify(bundle.id)}`,
+                  "repair the project template so every pre-included bundle directory, manifest entry, and rendered bundle id agree",
+                ),
+              );
+            }
+            return {
+              id,
+              // Story 3.1 deliberately excludes the conditional advisor reference from the documented
+              // dependency vocabulary. The complete-plan compiler receives advisor-inclusive actual work
+              // separately, so its title still participates in whole-plan collision checks.
+              inspection: inspectTemplateAuthoringTasks({
+                template: bundleTemplate.template,
+                producer: {
+                  source: bundleTemplate.source,
+                  scope: "bundle",
+                  name: bundleTemplate.template.name,
+                },
+                mandatoryTasks: perBundleAuthoringTaskCatalog(id, { advisor: false }),
+                context: {
+                  "wpm.project.name": concreteProject.manifest.meta.name,
+                  "wpm.bundle.id": id,
+                  "wpm.bundle.version": bundle.version,
+                },
+              }),
+              mandatoryTasks: perBundleAuthoringTaskCatalog(id, { advisor: true }),
+            };
+          })
+        : [];
+      const compiled = compileProjectAuthoringTaskPlan({
+        project: {
+          inspection: projectInspection,
+          mandatoryTasks: projectWideAuthoringTaskCatalog(),
+        },
+        bundles: bundleContributions,
+      });
+      if (!compiled.ok) {
+        blockers.push(...compiled.problems.map(authoringTaskPlanBlocker));
+      } else if (bundleTemplate?.found) {
+        taskPlan = compiled.tasks;
+      }
+    } catch (error) {
+      blockers.push(
+        initBlocker(
+          "authoring-task-plan-invalid",
+          "authoring-task-plan",
+          error instanceof Error ? error.message : String(error),
+          "repair the selected template task contribution or packaged mandatory catalog before creating the workspace",
+        ),
+      );
+    }
+  }
+
+  // A broken rendered projection prevents construction of the complete plan, but it does not make the
+  // selected project's descriptor contribution unreadable. Inspect that independently available evidence so
+  // structural task findings are not hidden behind a separate manifest/bundle projection blocker. This
+  // diagnostic-only fallback never exposes tasks or authorizes a write; a valid plan still requires the exact
+  // rendered project context above.
+  if (resolution?.found && projection === undefined) {
+    try {
+      const diagnosticProjectInspection = inspectTemplateAuthoringTasks({
+        template: resolution.template,
+        producer: {
+          source: resolution.source,
+          scope: "project",
+          name: resolution.template.name,
+        },
+        mandatoryTasks: projectWideAuthoringTaskCatalog(),
+        context: { "wpm.project.name": name },
+      });
+      const diagnosticBundles: Array<{
+        readonly id: string;
+        readonly inspection: ReturnType<typeof inspectTemplateAuthoringTasks>;
+        readonly mandatoryTasks: readonly MandatoryAuthoringTask[];
+      }> = [];
+      const manifestText = renderedProject?.find(({ path }) => path === "manifest.yml")?.content;
+      if (manifestText !== undefined && bundleTemplate?.found) {
+        let manifestResult: ReturnType<typeof parseManifest> | undefined;
+        try {
+          manifestResult = parseManifest(parseYaml(manifestText));
+        } catch {
+          // The project-template blocker above already retains this parse failure. Project contribution
+          // inspection remains independently useful and must still reach the compiler below.
+        }
+        if (manifestResult?.ok) {
+          for (const id of manifestResult.value.bundles) {
+            const bundleText = renderedProject?.find(
+              ({ path }) => path === `bundles/${id}/bundle.yml`,
+            )?.content;
+            let version = "";
+            let contextProblem: string | undefined;
+            if (bundleText === undefined) {
+              contextProblem = `rendered bundles/${id}/bundle.yml is missing`;
+            } else {
+              try {
+                const bundleResult = parseBundleManifest(parseYaml(bundleText));
+                if (bundleResult.ok) version = bundleResult.value.version;
+                else contextProblem = bundleResult.problem.message;
+              } catch (error) {
+                contextProblem = error instanceof Error ? error.message : String(error);
+              }
+            }
+            if (contextProblem !== undefined) {
+              blockers.push(
+                initBlocker(
+                  "template-task-bundle-context-invalid",
+                  "authoring-task-plan",
+                  `template:${bundleTemplate.source}:bundle:${bundleTemplate.template.name}#bundle:${id} has no valid concrete bundle context: ${contextProblem}`,
+                  `repair the rendered bundles/${id}/bundle.yml before creating the workspace`,
+                ),
+              );
+            }
+            diagnosticBundles.push({
+              id,
+              inspection: inspectTemplateAuthoringTasks({
+                template: bundleTemplate.template,
+                producer: {
+                  source: bundleTemplate.source,
+                  scope: "bundle",
+                  name: bundleTemplate.template.name,
+                },
+                mandatoryTasks: perBundleAuthoringTaskCatalog(id, { advisor: false }),
+                context: {
+                  "wpm.project.name": manifestResult.value.meta.name,
+                  "wpm.bundle.id": id,
+                  "wpm.bundle.version": version,
+                },
+              }),
+              mandatoryTasks: perBundleAuthoringTaskCatalog(id, { advisor: true }),
+            });
+          }
+        }
+      }
+      const diagnosticPlan = compileProjectAuthoringTaskPlan({
+        project: {
+          inspection: diagnosticProjectInspection,
+          mandatoryTasks: projectWideAuthoringTaskCatalog(),
+        },
+        bundles: diagnosticBundles,
+      });
+      if (!diagnosticPlan.ok) {
+        blockers.push(...diagnosticPlan.problems.map(authoringTaskPlanBlocker));
+      }
+    } catch (error) {
+      blockers.push(
+        initBlocker(
+          "authoring-task-plan-invalid",
+          "authoring-task-plan",
+          error instanceof Error ? error.message : String(error),
+          "repair the selected template task contribution or packaged mandatory catalog before creating the workspace",
+        ),
+      );
+    }
+  }
+
   if (
     !resolution?.found ||
     !bundleTemplate?.found ||
     renderedProject === undefined ||
     projection === undefined ||
     desired === undefined ||
-    specs === undefined ||
+    taskPlan === undefined ||
     authoringSeed === undefined
   ) {
     if (targetInspection?.kind === "directory" && authoringSeed !== undefined) {
@@ -1240,7 +1478,7 @@ export function initProject(deps: InitProjectDeps, input: InitProjectInput): Ini
     plannedFiles.values(),
     plannedDirectories.values(),
     plannedAliases.values(),
-    specs,
+    taskPlan,
   );
   const authoringPlan: FreshWorkspaceAuthoringPlan = authorizeFreshWorkspaceAuthoringPlan(
     authoringSeed,
@@ -1497,6 +1735,7 @@ export function initProject(deps: InitProjectDeps, input: InitProjectInput): Ini
 
   let initialiseBacklog = !retrying;
   const existingTaskTitles = new Set<string>();
+  const taskIdByIdentity = new Map<string, string>();
   let taskSetObserved = false;
   if (retrying) {
     try {
@@ -1537,7 +1776,7 @@ export function initProject(deps: InitProjectDeps, input: InitProjectInput): Ini
             );
           }
           for (const [index, task] of tasks.entries()) {
-            const expected = specs[index];
+            const expected = taskPlan[index];
             const record = backlog.readTask(authoringRoot, task.id);
             const criteriaMatch =
               expected !== undefined &&
@@ -1546,10 +1785,25 @@ export function initProject(deps: InitProjectDeps, input: InitProjectInput): Ini
                 (criterion, index) =>
                   !criterion.checked && criterion.text === expected.acceptanceCriteria[index],
               );
+            const expectedDependencyIds = expected?.dependencyIdentities.map((identity) =>
+              taskIdByIdentity.get(identity),
+            );
+            const dependenciesResolved =
+              expectedDependencyIds?.every((dependency) => dependency !== undefined) ?? false;
+            const dependenciesMatch =
+              dependenciesResolved &&
+              record.dependencies.length === expectedDependencyIds?.length &&
+              record.dependencies.every(
+                (dependency, dependencyIndex) =>
+                  dependency === expectedDependencyIds?.[dependencyIndex],
+              );
+            const labelsMatch =
+              expected !== undefined &&
+              record.labels.length === expected.labels.length &&
+              record.labels.every((label, labelIndex) => label === expected.labels[labelIndex]);
             if (
               expected === undefined ||
               existingTaskTitles.has(task.title) ||
-              task.id !== `${AUTHORING_TASK_PREFIX}-${index + 1}` ||
               task.title !== expected.title ||
               task.status !== "To Do" ||
               record.id !== task.id ||
@@ -1558,8 +1812,8 @@ export function initProject(deps: InitProjectDeps, input: InitProjectInput): Ini
               record.ordinal !== (index + 1) * 1000 ||
               record.description !== null ||
               record.definitionOfDone.length !== 0 ||
-              record.dependencies.length !== 0 ||
-              record.labels.length !== 0 ||
+              !dependenciesMatch ||
+              !labelsMatch ||
               record.extraMetadata.length !== 0 ||
               record.extraSections.length !== 0 ||
               !criteriaMatch
@@ -1574,6 +1828,9 @@ export function initProject(deps: InitProjectDeps, input: InitProjectInput): Ini
               );
             }
             existingTaskTitles.add(task.title);
+            if (expected !== undefined) {
+              taskIdByIdentity.set(expected.identity, task.id);
+            }
           }
         } else if (!inspected.valid) {
           const entries = fs.list(authoringRoot);
@@ -1640,13 +1897,13 @@ export function initProject(deps: InitProjectDeps, input: InitProjectInput): Ini
   }
 
   if (retrying && !repairing && taskSetObserved) {
-    for (const spec of specs) {
-      if (existingTaskTitles.has(spec.title)) continue;
+    for (const planned of taskPlan) {
+      if (existingTaskTitles.has(planned.title)) continue;
       blockers.push(
         initBlocker(
           "workspace-complete-task-missing",
           "backlog",
-          `mandatory authoring task ${JSON.stringify(spec.title)} is missing after handoff preparation began`,
+          `authoring task ${JSON.stringify(planned.title)} is missing after handoff preparation began`,
           "restore the exact completed authoring task plan before finalizing the prepared handoff",
         ),
       );
@@ -1719,22 +1976,48 @@ export function initProject(deps: InitProjectDeps, input: InitProjectInput): Ini
       ),
     );
   }
-  for (const spec of specs) {
-    if (existingTaskTitles.has(spec.title)) continue;
+  for (const planned of taskPlan) {
+    if (existingTaskTitles.has(planned.title)) continue;
     if (retrying && !repairing) continue;
     actions.push(
       initAction(
-        `authoring-task:${spec.title}`,
+        `authoring-task:${planned.identity}`,
         authoringRoot,
-        `materialise authoring task ${spec.title}`,
+        `materialise authoring task ${planned.title}`,
         () => {
-          backlog.createTask(authoringRoot, spec);
+          const dependencyIds = planned.dependencyIdentities.map((identity) => {
+            const dependencyId = taskIdByIdentity.get(identity);
+            if (dependencyId === undefined) {
+              throw new Error(
+                `internal: dependency ${JSON.stringify(identity)} was not materialised before ${JSON.stringify(planned.identity)}`,
+              );
+            }
+            return dependencyId;
+          });
+          const created = backlog.createTask(authoringRoot, {
+            title: planned.title,
+            acceptanceCriteria: planned.acceptanceCriteria,
+            ...(dependencyIds.length > 0 ? { dependencies: dependencyIds } : {}),
+            ...(planned.labels.length > 0 ? { labels: planned.labels } : {}),
+          });
+          taskIdByIdentity.set(planned.identity, created.id);
         },
-        spec.title,
+        planned.title,
         "MATERIALISE",
       ),
     );
   }
+  actions.push(
+    initAction(
+      "authoring-task-plan:verify",
+      authoringRoot,
+      "verify the exact complete authoring task plan before handoff preparation",
+      () => assertExactMaterialisedTaskPlan(backlog, authoringRoot, taskPlan, taskIdByIdentity),
+      undefined,
+      "MATERIALISE",
+      false,
+    ),
+  );
   if (!handoffReceiptAlreadyPreparing) {
     actions.push(
       initAction(
