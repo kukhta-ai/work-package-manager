@@ -272,6 +272,13 @@ describe("source-independent child environment", () => {
         npm_package_json: join(sourceRoot, "package.json"),
         npm_lifecycle_event: "package:verify-install",
         NPM_TOKEN: "must-not-cross-boundary",
+        CODEX_HOME: join(sourceRoot, "host-codex-home"),
+        CODEX_SESSION_ID: "host-codex-session",
+        CODEX_THREAD_ID: "host-codex-thread",
+        CODEX_MANAGED_PACKAGE_ROOT: join(sourceRoot, "host-codex-package"),
+        CLAUDE_CONFIG_DIR: join(sourceRoot, "host-claude-config"),
+        CLAUDE_CODE_SSE_PORT: "43123",
+        CLAUDECODE: "1",
         SAFE_CONTEXT: "preserved",
       },
     );
@@ -291,6 +298,13 @@ describe("source-independent child environment", () => {
       "npm_package_json",
       "npm_lifecycle_event",
       "NPM_TOKEN",
+      "CODEX_HOME",
+      "CODEX_SESSION_ID",
+      "CODEX_THREAD_ID",
+      "CODEX_MANAGED_PACKAGE_ROOT",
+      "CLAUDE_CONFIG_DIR",
+      "CLAUDE_CODE_SSE_PORT",
+      "CLAUDECODE",
     ]) {
       expect(key in env, key).toBe(false);
     }

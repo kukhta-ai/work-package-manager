@@ -29,6 +29,7 @@ import {
 import { resolveNpmInvocation } from "./prepare-package.js";
 
 const SOURCE_ROOT = realpathSync(fileURLToPath(new URL("..", import.meta.url)));
+const COLD_PACKAGE_INSTALL_TIMEOUT_MS = 600_000;
 
 /**
  * @typedef OutputSink
@@ -93,8 +94,9 @@ function isPathWithin(root, candidate) {
 
 /**
  * Build the child environment used by npm and the installed commands. Besides isolating npm state, remove
- * npm-run context and Node injection/search variables, and remove source-checkout entries from PATH so an
- * installed executable cannot silently load or launch repository-side code.
+ * npm-run context, Node injection/search variables, and ambient supported-client config/session variables,
+ * and remove source-checkout entries from PATH so an installed executable cannot silently load repository
+ * code or inherit a prior coding-agent conversation.
  *
  * @param {{home: string, workspace: string, cache: string, prefix: string, userConfig: string, sourceRoot: string}} input
  * @param {NodeJS.ProcessEnv=} ambient
@@ -122,9 +124,14 @@ export function createIsolatedEnvironment(input, ambient = process.env) {
         normalized.includes("secret") ||
         normalized.endsWith("_api_key") ||
         normalized.endsWith("_access_key");
+      const codingClientContext =
+        normalized.startsWith("codex_") ||
+        normalized.startsWith("claude_") ||
+        normalized === "claudecode";
       return (
         !excluded.has(normalized) &&
         !credentialLike &&
+        !codingClientContext &&
         !normalized.startsWith("npm_config_") &&
         !normalized.startsWith("npm_package_") &&
         !normalized.startsWith("npm_lifecycle_")
@@ -209,6 +216,7 @@ function probeNpm(options) {
 /**
  * @typedef Snapshot
  * @property {"symlink" | "directory" | "file"} kind
+ * @property {number} mode
  * @property {string=} target
  * @property {Record<string, Snapshot>=} entries
  * @property {string=} content
@@ -217,10 +225,13 @@ function probeNpm(options) {
 /** @param {string} path @returns {Snapshot} */
 function snapshotPath(path) {
   const stat = lstatSync(path);
-  if (stat.isSymbolicLink()) return { kind: "symlink", target: readlinkSync(path) };
+  if (stat.isSymbolicLink()) {
+    return { kind: "symlink", mode: stat.mode, target: readlinkSync(path) };
+  }
   if (stat.isDirectory()) {
     return {
       kind: "directory",
+      mode: stat.mode,
       entries: Object.fromEntries(
         readdirSync(path)
           .sort()
@@ -228,7 +239,7 @@ function snapshotPath(path) {
       ),
     };
   }
-  return { kind: "file", content: readFileSync(path).toString("base64") };
+  return { kind: "file", mode: stat.mode, content: readFileSync(path).toString("base64") };
 }
 
 /**
@@ -349,6 +360,10 @@ export function runPackedInstallVerification(args, stdout, stderr) {
     const beforeConfiguration = new Map(
       configurationPaths.map((path) => [path, JSON.stringify(snapshotPath(path))]),
     );
+    const configurationRoots = [home, workspace];
+    const beforeConfigurationRoots = new Map(
+      configurationRoots.map((path) => [path, JSON.stringify(snapshotPath(path))]),
+    );
     const realRoot = realpathSync(root);
     const env = createIsolatedEnvironment({
       home,
@@ -379,7 +394,7 @@ export function runPackedInstallVerification(args, stdout, stderr) {
           frozenPath,
         ],
       },
-      { cwd: workspace, env },
+      { cwd: workspace, env, timeout: COLD_PACKAGE_INSTALL_TIMEOUT_MS },
     );
     if (install.status !== 0 || install.error !== undefined) {
       throw new PackedInstallPrerequisiteError(
@@ -488,6 +503,17 @@ export function runPackedInstallVerification(args, stdout, stderr) {
         .join(", ");
       throw new Error(`package installation changed coding-agent configuration: ${changed}`);
     }
+    const configurationRootSurfaces = configurationRoots.map((path) => ({
+      path,
+      unchanged: beforeConfigurationRoots.get(path) === JSON.stringify(snapshotPath(path)),
+    }));
+    if (configurationRootSurfaces.some(({ unchanged }) => !unchanged)) {
+      const changed = configurationRootSurfaces
+        .filter(({ unchanged }) => !unchanged)
+        .map(({ path }) => path)
+        .join(", ");
+      throw new Error(`package installation changed a coding-agent configuration root: ${changed}`);
+    }
 
     stdout.write(
       `${JSON.stringify(
@@ -524,7 +550,11 @@ export function runPackedInstallVerification(args, stdout, stderr) {
               output: String(probe.stdout).trim(),
             },
           },
-          configuration: { status: "unchanged", surfaces: configurationSurfaces },
+          configuration: {
+            status: "unchanged",
+            surfaces: configurationSurfaces,
+            roots: configurationRootSurfaces,
+          },
         },
         undefined,
         2,
