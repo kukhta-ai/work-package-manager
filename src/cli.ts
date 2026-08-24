@@ -67,9 +67,16 @@ import {
   readBundleVersionSpec,
   setBundleVersionSpec,
 } from "./core/operations/bundle-version.js";
-import { createBundleSpec } from "./core/operations/create-bundle.js";
+import {
+  createBundleSpec,
+  perBundleAuthoringTaskCatalog,
+} from "./core/operations/create-bundle.js";
 import { makeArtefactDeriver } from "./core/operations/derive-artefacts-capability.js";
-import { type InitProjectResult, initProject } from "./core/operations/init-project.js";
+import {
+  type InitProjectResult,
+  initProject,
+  projectWideAuthoringTaskCatalog,
+} from "./core/operations/init-project.js";
 import {
   attachProjectInstallerSkillSpec,
   conventionalProjectSkillPath,
@@ -134,6 +141,10 @@ import {
   PAYLOAD_SKILL_PATH_REQUIREMENT,
   payloadSkillPackageRoot,
 } from "./core/services/skill-ref-path.js";
+import {
+  inspectTemplateAuthoringTasks,
+  type TemplateAuthoringTaskInspection,
+} from "./core/services/template-authoring-tasks.js";
 import {
   listTemplates,
   resolveTemplate,
@@ -2621,21 +2632,66 @@ function formatTemplateList(
   return `${lines.join("\n")}\n`;
 }
 
-/** Render the `template show` output: the template's metadata + a tree summary of its `files/`. */
-function formatTemplateShow(template: Template, source: "built-in" | "project-local"): string {
+/** Render one aggregate authoring-task inspection below the existing template metadata/tree. */
+function formatTemplateAuthoringTasks(inspection: TemplateAuthoringTaskInspection): string[] {
+  if (inspection.status === "none") return ["Additional authoring tasks: none"];
+  const producer = inspection.producer;
+  const lines = [
+    inspection.status === "valid"
+      ? "Additional authoring tasks: valid (append-only; mandatory work remains)"
+      : "Additional authoring tasks: invalid",
+    `Producer: ${escapeHumanText(producer.source)}/${escapeHumanText(producer.scope)}/${escapeHumanText(producer.name)}  Revision: ${escapeHumanText(inspection.revision ?? "(invalid)")}`,
+    `Materialisation: ${inspection.materialisationScope}`,
+  ];
+  if (inspection.status === "invalid") {
+    lines.push("Findings:");
+    for (const problem of inspection.problems) {
+      lines.push(
+        `  - ${escapeHumanText(problem.code)} ${escapeHumanText(problem.path)}: ${escapeHumanText(problem.message)}`,
+      );
+    }
+    return lines;
+  }
+  for (const task of inspection.tasks) {
+    lines.push(`  - ${escapeHumanText(task.key)}  [${escapeHumanText(task.identity)}]`);
+    lines.push(`    Title: ${escapeHumanText(task.title)}`);
+    lines.push("    Acceptance outcomes:");
+    for (const criterion of task.acceptanceCriteria) {
+      lines.push(`      - ${escapeHumanText(criterion)}`);
+    }
+    lines.push("    Dependencies:");
+    if (task.dependencies.length === 0) lines.push("      (none)");
+    for (const dependency of task.dependencies) {
+      lines.push(
+        `      - ${escapeHumanText(dependency.reference)} -> ${escapeHumanText(dependency.resolvedIdentity)}`,
+      );
+    }
+    lines.push(
+      `    Context: ${task.contextKeys.length === 0 ? "(literal only)" : task.contextKeys.map(escapeHumanText).join(", ")}`,
+    );
+  }
+  return lines;
+}
+
+/** Render the `template show` output: metadata, file tree, and inert authoring-task inspection. */
+function formatTemplateShow(
+  template: Template,
+  source: "built-in" | "project-local",
+  inspection: TemplateAuthoringTaskInspection,
+): string {
   const lines: string[] = [
-    `Template: ${template.name}  (scope: ${template.scope}, source: ${source})`,
+    `Template: ${escapeHumanText(template.name)}  (scope: ${template.scope}, source: ${source})`,
   ];
   // The top-level description (doc-10 "print metadata"), only when the template.yml declares one.
   if (template.description !== undefined) {
-    lines.push(`Description: ${template.description}`);
+    lines.push(`Description: ${escapeHumanText(template.description)}`);
   }
   if (template.parameters.length > 0) {
     lines.push("Parameters:");
     for (const p of template.parameters) {
       const desc = p.description !== undefined ? `  ${p.description}` : "";
       const def = p.default !== undefined ? ` (default: ${p.default})` : "";
-      lines.push(`  ${p.name}${desc}${def}`);
+      lines.push(`  ${escapeHumanText(p.name)}${escapeHumanText(desc)}${escapeHumanText(def)}`);
     }
   }
   lines.push("Files:");
@@ -2643,8 +2699,9 @@ function formatTemplateShow(template: Template, source: "built-in" | "project-lo
     lines.push("  (none)");
   }
   for (const f of [...template.files].map((f) => f.path).sort()) {
-    lines.push(`  ${f}`);
+    lines.push(`  ${escapeHumanText(f)}`);
   }
+  lines.push(...formatTemplateAuthoringTasks(inspection));
   return `${lines.join("\n")}\n`;
 }
 
@@ -2693,7 +2750,9 @@ const templateModule: CommandModule = {
     // ── template show <name> [--scope project|bundle] ───────────────────────────────────────────────────
     const showLeaf = group
       .command("show")
-      .description("print a template's metadata and a tree summary of its files (doc 10)")
+      .description(
+        "inspect a template's metadata, file tree, and inert additional authoring tasks (doc 10)",
+      )
       .argument("<name>", "the template name to inspect")
       .addOption(
         new Option("--scope <scope>", "disambiguate a project-vs-bundle name clash").choices([
@@ -2711,14 +2770,12 @@ const templateModule: CommandModule = {
         // The scopes to try: the one `--scope` names, else both (project then bundle).
         const scopes: TemplateScope[] =
           opts.scope !== undefined ? [opts.scope] : [...TEMPLATE_SCOPES];
-        const matches = scopes.filter((s) => resolveTemplate(name, s, resolverDeps).found);
+        const observations = scopes.map((scope) => resolveTemplate(name, scope, resolverDeps));
+        const matches = observations.filter((observation) => observation.found);
 
         if (matches.length === 0) {
-          const searched = scopes
-            .map((s) => {
-              const r = resolveTemplate(name, s, resolverDeps);
-              return r.found ? "" : r.searched.join(", ");
-            })
+          const searched = observations
+            .map((observation) => (observation.found ? "" : observation.searched.join(", ")))
             .filter((s) => s.length > 0)
             .join("; ");
           throw new NotFoundError(`template "${name}" not found (searched: ${searched})`);
@@ -2730,22 +2787,23 @@ const templateModule: CommandModule = {
           );
         }
 
-        const scope = matches[0] as TemplateScope;
-        const resolution = resolveTemplate(name, scope, resolverDeps);
-        // (resolution.found is true — `scope` came from `matches`.)
-        if (!resolution.found) {
+        const resolution = matches[0];
+        if (resolution === undefined || !resolution.found)
           throw new NotFoundError(`template "${name}" not found`);
+        const scope = resolution.template.scope;
+        const mandatoryTasks =
+          scope === "project"
+            ? projectWideAuthoringTaskCatalog()
+            : perBundleAuthoringTaskCatalog("<bundle-id>", { advisor: false });
+        const inspection = inspectTemplateAuthoringTasks({
+          template: resolution.template,
+          producer: { source: resolution.source, scope, name },
+          mandatoryTasks,
+        });
+        ctx.io.out.write(formatTemplateShow(resolution.template, resolution.source, inspection));
+        if (inspection.status === "invalid") {
+          throw new ValidationError("template authoring-task contribution is invalid");
         }
-        // The source is project-local iff a project-only resolution finds it (else built-in).
-        const source: "built-in" | "project-local" =
-          projectTemplatesRoot !== undefined &&
-          resolveTemplate(name, scope, {
-            fs: ctx.deps.fs,
-            builtinTemplatesRoot: projectTemplatesRoot,
-          }).found
-            ? "project-local"
-            : "built-in";
-        ctx.io.out.write(formatTemplateShow(resolution.template, source));
       });
     withExamples(showLeaf, [
       {

@@ -2,6 +2,8 @@ import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
+import { perBundleAuthoringTaskCatalog } from "../../../src/core/operations/create-bundle.js";
+import { projectWideAuthoringTaskCatalog } from "../../../src/core/operations/init-project.js";
 
 /**
  * Cross-artifact acceptance guard for TASK-101. The package README and every Markdown file below `docs/` ship
@@ -194,5 +196,29 @@ describe("worked documentation sessions remain internally coherent (TASK-101)", 
 
     expect(coreVersion, "doc 11 must create core at an explicit version").toBeDefined();
     expect(coreTaskMilestone, "doc 11 must version the core recipe task").toBe(coreVersion);
+  });
+});
+
+describe("template authoring-task declaration contract remains documented (TASK-125)", () => {
+  const readme = readFileSync(join(REPO_ROOT, "README.md"), "utf8");
+
+  it("documents the inert descriptor and exact context vocabulary", () => {
+    expect(readme).toContain('revision: "rev-1"');
+    expect(readme).toContain("authoring-tasks:");
+    expect(readme).toContain("acceptance-criteria:");
+    expect(readme).toContain("depends-on:");
+    for (const context of ["wpm.project.name", "wpm.bundle.id", "wpm.bundle.version"]) {
+      expect(readme).toContain(`{{${context}}}`);
+    }
+    expect(readme).toContain("cannot replace or disable WPM's mandatory work");
+  });
+
+  it("documents every unconditional stable mandatory reference and no conditional advisor reference", () => {
+    const references = [
+      ...projectWideAuthoringTaskCatalog(),
+      ...perBundleAuthoringTaskCatalog("<bundle-id>", { advisor: false }),
+    ].map(({ reference }) => reference);
+    for (const reference of references) expect(readme).toContain(`\`${reference}\``);
+    expect(readme).not.toContain("`wpm:bundle:write-advisor-content`");
   });
 });

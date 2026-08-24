@@ -14,6 +14,16 @@ export interface AuthoringTaskSpec {
 }
 
 /**
+ * One mandatory WPM authoring task with the documented stable reference template contributions may depend
+ * on. Operations still materialise the inherited title/criteria bytes; the reference is inspection and
+ * dependency identity, not a replacement materialisation engine.
+ */
+export interface MandatoryAuthoringTask extends AuthoringTaskSpec {
+  /** Stable dependency reference such as `wpm:project:set-metadata`. */
+  readonly reference: string;
+}
+
+/**
  * The result of validating a {@link Project} (doc 13 §2): an overall ok flag and the list of problems found.
  * `ok` is `true` exactly when `problems` is empty. Built by the validate service (task-20) from the same
  * {@link ValidationProblem}s the model's parsers produce.

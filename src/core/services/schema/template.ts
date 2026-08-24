@@ -11,11 +11,9 @@ import { isPlainObject, optionalString, requireArray, requireString } from "./pr
 const TEMPLATE_SCOPES: readonly TemplateScope[] = ["project", "bundle"];
 
 /**
- * The plain-object shape of a `template.yml` **descriptor** (doc 06; doc 10 `template`). This is only the
- * descriptor — name, scope, declared parameters — and deliberately carries no file tree: the `files` and
- * `snippets` of a {@link Template} are populated from disk by the template resolver (task-17), not from
- * `template.yml`. So {@link serializeTemplateDescriptor} omits them and {@link parseTemplateDescriptor}
- * leaves them empty.
+ * The plain-object shape of a `template.yml` **descriptor** (doc 06; doc 10 `template`). It carries metadata,
+ * declared scaffold parameters, and an optional inert authoring-task source, but deliberately carries no file
+ * tree: the `files` and `snippets` of a {@link Template} are populated from disk by the template resolver.
  */
 export interface TemplateDescriptorData {
   readonly name: string;
@@ -26,15 +24,19 @@ export interface TemplateDescriptorData {
     readonly description?: string;
     readonly default?: string;
   }[];
+  /** Opaque revision retained with a declared authoring-task contribution. */
+  readonly revision?: unknown;
+  /** Inert authoring-task declaration retained for aggregate validation by its dedicated inspector. */
+  readonly "authoring-tasks"?: unknown;
 }
 
 const CTX = "template";
 
 /**
  * Parse already-parsed `template.yml` descriptor data into a {@link Template} (doc 13 §4). Validates the
- * descriptor fields — name, scope (`project`|`bundle`), and the declared parameters — and returns a
- * {@link Template} whose `files` and `snippets` are **empty** (the resolver fills them from disk later, task
- * 17). Pure and total; fails at the first problem with a field-precise message.
+ * base descriptor fields — name, scope (`project`|`bundle`), and declared parameters — and returns a
+ * {@link Template} whose `files` and `snippets` are **empty**. An `authoring-tasks` value is retained exactly
+ * for the dedicated aggregate inspector rather than parsed fail-fast here. Pure and total.
  *
  * @param data - Already-parsed template-descriptor data, of unknown shape.
  * @returns The parsed {@link Template} (descriptor portion), or a {@link ValidationProblem}.
@@ -102,13 +104,21 @@ export function parseTemplateDescriptor(data: unknown): Parsed<Template> {
     parameters,
     files: [],
     snippets: [],
+    ...("authoring-tasks" in data
+      ? {
+          authoringTaskSource: {
+            revision: data.revision,
+            tasks: data["authoring-tasks"],
+          },
+        }
+      : {}),
   });
 }
 
 /**
  * Serialize a {@link Template}'s **descriptor** portion back into plain {@link TemplateDescriptorData} for the
- * YAML layer (doc 13 §4). Only name, scope, and parameters are emitted — the `files`/`snippets` trees are not
- * part of `template.yml`. Round-trips with {@link parseTemplateDescriptor} for the descriptor fields. Pure.
+ * YAML layer (doc 13 §4). Metadata, parameters, and any inert authoring-task source are emitted; the
+ * `files`/`snippets` trees are not part of `template.yml`. Pure and round-trippable.
  *
  * @param template - The template whose descriptor to serialize.
  * @returns The plain-object descriptor representation.
@@ -123,5 +133,11 @@ export function serializeTemplateDescriptor(template: Template): TemplateDescrip
       ...(p.description !== undefined ? { description: p.description } : {}),
       ...(p.default !== undefined ? { default: p.default } : {}),
     })),
+    ...(template.authoringTaskSource !== undefined
+      ? {
+          revision: template.authoringTaskSource.revision,
+          "authoring-tasks": template.authoringTaskSource.tasks,
+        }
+      : {}),
   };
 }
