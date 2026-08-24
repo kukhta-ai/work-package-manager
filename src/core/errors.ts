@@ -1,3 +1,5 @@
+import type { PersonalSetupOutcome } from "./services/personal-authoring-setup.js";
+
 /**
  * The core's typed error model and the single exit-code mapping (doc 13 §7).
  *
@@ -80,6 +82,29 @@ export interface HandoffBlocker {
 export interface HandoffClientValidity {
   readonly id: string;
   readonly status: "valid" | "invalid";
+}
+
+/** One predictable blocker from the complete personal authoring-setup preflight. */
+export interface PersonalAuthoringSetupBlocker {
+  readonly code: string;
+  readonly surface:
+    | "selection"
+    | "home"
+    | "packaged-content"
+    | "managed-state"
+    | "destination"
+    | "ownership";
+  readonly client?: string;
+  readonly path?: string;
+  readonly message: string;
+  readonly recovery: string;
+}
+
+/** One selected-client boundary in setup's typed progress report. */
+export interface PersonalAuthoringSetupClientProgress {
+  readonly id: string;
+  readonly destination: string;
+  readonly outcome: PersonalSetupOutcome;
 }
 
 /**
@@ -228,6 +253,20 @@ export class HandoffVerificationError extends DomainError {
   }
 }
 
+/** Aggregate, deterministic, no-write failure for one complete personal setup request. */
+export class PersonalAuthoringSetupPreflightError extends DomainError {
+  readonly blockers: readonly PersonalAuthoringSetupBlocker[];
+  readonly setupApplied = false as const;
+
+  constructor(blockers: readonly PersonalAuthoringSetupBlocker[]) {
+    super(
+      blockers.some(({ surface }) => surface === "selection") ? "usage" : "conflict",
+      `personal authoring setup preflight failed with ${blockers.length} blocker(s): ${blockers.map(({ code }) => code).join(", ")}`,
+    );
+    this.blockers = [...blockers];
+  }
+}
+
 /** A named effect boundary from one operation-specific ordered mutation plan. */
 export interface MutationBoundary {
   /** Stable boundary identity, in plan order. */
@@ -271,6 +310,40 @@ export class MutationFailure extends Error {
     this.unattempted = [...input.unattempted];
     this.recovery = input.recovery;
     this.underlyingCause = input.cause;
+    Object.setPrototypeOf(this, new.target.prototype);
+    this.name = new.target.name;
+  }
+}
+
+/** Setup-specific typed partial result with explicit client/destination progress. */
+export class PersonalAuthoringSetupMutationFailure extends MutationFailure {
+  readonly completedClients: readonly PersonalAuthoringSetupClientProgress[];
+  readonly failedClient: PersonalAuthoringSetupClientProgress | null;
+  readonly unattemptedClients: readonly PersonalAuthoringSetupClientProgress[];
+  readonly setupApplied = false as const;
+
+  constructor(input: {
+    readonly completedClients: readonly PersonalAuthoringSetupClientProgress[];
+    readonly failedClient: PersonalAuthoringSetupClientProgress | null;
+    readonly unattemptedClients: readonly PersonalAuthoringSetupClientProgress[];
+    readonly failed: MutationBoundary;
+    readonly completed: readonly MutationBoundary[];
+    readonly unattempted: readonly MutationBoundary[];
+    readonly recovery: string;
+    readonly cause: unknown;
+  }) {
+    super({
+      operation: "personal authoring setup",
+      failedBeat: "APPLY",
+      completed: input.completed,
+      failed: input.failed,
+      unattempted: input.unattempted,
+      recovery: input.recovery,
+      cause: input.cause,
+    });
+    this.completedClients = [...input.completedClients];
+    this.failedClient = input.failedClient;
+    this.unattemptedClients = [...input.unattemptedClients];
     Object.setPrototypeOf(this, new.target.prototype);
     this.name = new.target.name;
   }

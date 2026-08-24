@@ -6,6 +6,7 @@ import {
   MutationFailure,
   type MutationLifecycleBeat,
   NotFoundError,
+  PersonalAuthoringSetupPreflightError,
   type WorkspaceIntegrationBlocker,
   WorkspaceIntegrationPreflightError,
 } from "../errors.js";
@@ -17,7 +18,7 @@ import {
   type OperationResult,
   type Project,
 } from "../model/index.js";
-import type { BacklogMd, FileSystem } from "../ports/index.js";
+import type { BacklogMd, Environment, FileSystem } from "../ports/index.js";
 import { EXECUTOR_FRONT_DOOR_PATH } from "../services/derived-artefacts.js";
 import { hashTextContent } from "../services/integrity.js";
 import { type RenderedFile, renderTree } from "../services/render.js";
@@ -31,6 +32,7 @@ import {
 } from "../services/workspace-handoff.js";
 import { perBundleAuthoringTasks } from "./create-bundle.js";
 import { makeArtefactDeriver } from "./derive-artefacts-capability.js";
+import { readPersonalAuthoringDefaults } from "./personal-authoring-setup.js";
 import {
   authorizeFreshWorkspaceAuthoringPlan,
   type FreshWorkspaceAuthoringPlan,
@@ -121,8 +123,8 @@ export interface InitProjectInput {
    * `project-name`. Unreferenced extras are harmless (the render service throws only on UNRESOLVED placeholders).
    */
   readonly params?: ReadonlyMap<string, string>;
-  /** Explicit non-empty authoring-client selection; never inferred from HOME or deliverable targets. */
-  readonly authoringClientIds: readonly string[];
+  /** Explicit selection; when absent only, canonical personal setup defaults are consulted. */
+  readonly authoringClientIds?: readonly string[];
 }
 
 /** The dependencies {@link initProject} needs: the two ports + the built-in templates root. */
@@ -131,6 +133,8 @@ export interface InitProjectDeps {
   readonly fs: FileSystem;
   /** The Backlog.md port — used to initialise + materialise into the `.authoring-backlog/` root (doc 13 §3). */
   readonly backlog: BacklogMd;
+  /** Environment used only to locate canonical personal defaults when the input selection is absent. */
+  readonly env: Environment;
   /** The built-in templates root shipped with the package. */
   readonly builtinTemplatesRoot: string;
   /** Exact packaged source of the five workspace-local WPM authoring skills. */
@@ -703,6 +707,26 @@ export function initProject(deps: InitProjectDeps, input: InitProjectInput): Ini
   const { fs, backlog, builtinTemplatesRoot } = deps;
   const { targetDir, name } = input;
   const templateName = input.templateName ?? DEFAULT_PROJECT_TEMPLATE;
+  const blockers: WorkspaceIntegrationBlocker[] = [];
+  let defaultResolutionFailed = false;
+  let authoringClientIds = input.authoringClientIds;
+  if (authoringClientIds === undefined) {
+    try {
+      authoringClientIds = readPersonalAuthoringDefaults({ fs, env: deps.env }) ?? [];
+    } catch (error) {
+      if (!(error instanceof PersonalAuthoringSetupPreflightError)) throw error;
+      defaultResolutionFailed = true;
+      blockers.push(
+        ...error.blockers.map((blocker) => ({
+          code: blocker.code,
+          surface: "managed-state" as const,
+          message: blocker.message,
+          recovery: `${blocker.recovery}; alternatively pass an explicit --authoring-client selection`,
+        })),
+      );
+      authoringClientIds = [];
+    }
+  }
   const wip = join(targetDir, DELIVERABLE_DIR);
   const params = new Map<string, string>([["project-name", name]]);
   for (const [key, value] of input.params ?? []) {
@@ -711,7 +735,6 @@ export function initProject(deps: InitProjectDeps, input: InitProjectInput): Ini
 
   // Complete predictable preflight. Every source, destination, task, alias, and ownership fact is inspected
   // before the first write; the immutable values captured here are the only bytes the plan can later apply.
-  const blockers: WorkspaceIntegrationBlocker[] = [];
   let authoringSeed: FreshWorkspaceAuthoringPlanSeed | undefined;
   try {
     authoringSeed = planFreshWorkspaceAuthoringIntegration(
@@ -722,13 +745,18 @@ export function initProject(deps: InitProjectDeps, input: InitProjectInput): Ini
       },
       {
         workspaceRoot: targetDir,
-        clientIds: input.authoringClientIds,
+        clientIds: authoringClientIds,
         integrationVersion: deps.integrationVersion,
       },
     );
   } catch (error) {
-    if (error instanceof WorkspaceIntegrationPreflightError) blockers.push(...error.blockers);
-    else throw error;
+    if (error instanceof WorkspaceIntegrationPreflightError) {
+      blockers.push(
+        ...error.blockers.filter(
+          ({ code }) => !(defaultResolutionFailed && code === "authoring-clients-empty"),
+        ),
+      );
+    } else throw error;
   }
 
   // Inspect the target independently so a bad package/selection/backlog still reports the predictable target

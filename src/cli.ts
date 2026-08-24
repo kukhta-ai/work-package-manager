@@ -17,6 +17,8 @@ import {
   HandoffVerificationError,
   isMutationFailure,
   NotFoundError,
+  PersonalAuthoringSetupMutationFailure,
+  PersonalAuthoringSetupPreflightError,
   UsageError,
   ValidationError,
 } from "./core/errors.js";
@@ -69,10 +71,6 @@ import { createBundleSpec } from "./core/operations/create-bundle.js";
 import { makeArtefactDeriver } from "./core/operations/derive-artefacts-capability.js";
 import { type InitProjectResult, initProject } from "./core/operations/init-project.js";
 import {
-  type InstallAuthoringSkillResult,
-  installAuthoringSkill,
-} from "./core/operations/install-authoring-skill.js";
-import {
   attachProjectInstallerSkillSpec,
   conventionalProjectSkillPath,
   isReservedInstallerSkillName,
@@ -94,6 +92,11 @@ import {
   SCRIPTS_DESCRIPTOR,
   TEMPLATES_DESCRIPTOR,
 } from "./core/operations/payload-refs.js";
+import {
+  type PersonalAuthoringSetupResult,
+  preparePersonalAuthoringSetup,
+  setupPersonalAuthoring,
+} from "./core/operations/personal-authoring-setup.js";
 import { editProjectMetaSpec } from "./core/operations/project-meta.js";
 import {
   type ProjectOrientation,
@@ -138,13 +141,18 @@ import {
 } from "./core/services/template-resolver.js";
 import { withExamples } from "./help/examples.js";
 import { installCompletion, type Shell } from "./util/completion-install.js";
-import { readConfirmation } from "./util/confirm.js";
+import {
+  createInputLineSession,
+  isAffirmativeConfirmation,
+  readConfirmation,
+} from "./util/confirm.js";
 import {
   type CliIo,
   escapeHumanText,
   formatHumanValue,
   JsonCliFailure,
   runWithExit,
+  stringifyCliJson,
 } from "./util/exit.js";
 import { toPosix } from "./util/posix-path.js";
 import { parseYaml } from "./util/yaml.js";
@@ -178,10 +186,9 @@ export interface CliDeps {
   /** The built-in templates root shipped with the package (project-local templates shadow these). */
   readonly builtinTemplatesRoot: string;
   /**
-   * The bundled `agent-skills/` root shipped with the package — the source `wpm skill install` copies the
-   * `installer-builder/` authoring skill from (doc 12). Threaded exactly like {@link builtinTemplatesRoot} and
-   * always populated by {@link makeRealDeps}; OPTIONAL only so the many existing test deps-literals that never
-   * exercise `skill install` need not all supply it (the command raises a clear internal error if it is absent).
+   * The bundled `agent-skills/` root shipped with the package — personal setup reads the exact
+   * `wpm-create-package/` bytes and legacy migration signature from it. Threaded like
+   * {@link builtinTemplatesRoot}; optional only for older command tests that do not exercise these surfaces.
    */
   readonly bundledSkillsRoot?: string;
 }
@@ -225,6 +232,59 @@ function requireBundledSkillsRoot(deps: CliDeps): string {
     throw new Error("internal: bundledSkillsRoot was not assembled");
   }
   return deps.bundledSkillsRoot;
+}
+
+function formatPersonalAuthoringSetup(result: PersonalAuthoringSetupResult): string {
+  const lines = [
+    escapeHumanText(result.summary),
+    `defaults: ${result.defaults.join(", ")}`,
+    `state: ${formatHumanValue(result.statePath)}`,
+  ];
+  for (const client of result.clients) {
+    lines.push(
+      `${client.id}: ${client.outcome} at ${formatHumanValue(client.destination)}`,
+      `  legacy installer-builder: ${client.legacy}`,
+    );
+    if (client.reloadGuidance !== undefined) {
+      lines.push(`  reload: ${escapeHumanText(client.reloadGuidance)}`);
+    }
+    lines.push(`  next action: ${client.nextAction}`);
+  }
+  lines.push("workspace/handoff: not created or claimed");
+  return `${lines.join("\n")}\n`;
+}
+
+function throwJsonPersonalSetupFailure(error: unknown): never {
+  if (error instanceof PersonalAuthoringSetupPreflightError) {
+    throw new JsonCliFailure(
+      {
+        status: "failed",
+        operation: "personal-authoring-setup",
+        setupApplied: false,
+        blockers: error.blockers,
+      },
+      exitCodeFor(error),
+    );
+  }
+  if (error instanceof PersonalAuthoringSetupMutationFailure) {
+    throw new JsonCliFailure(
+      {
+        status: "failed",
+        operation: "personal-authoring-setup",
+        setupApplied: false,
+        failedBeat: error.failedBeat,
+        completedClients: error.completedClients,
+        failedClient: error.failedClient,
+        unattemptedClients: error.unattemptedClients,
+        completed: error.completed,
+        failed: error.failed,
+        unattempted: error.unattempted,
+        recovery: error.recovery,
+      },
+      1,
+    );
+  }
+  throw error;
 }
 
 function formatWorkspaceAuthoringIntegration(result: WorkspaceAuthoringIntegrationResult): string {
@@ -2439,7 +2499,7 @@ const initModule: CommandModule = {
       )
       .option(
         "--authoring-client <id>",
-        "install workspace authoring integration for codex or claude-code (repeatable; required)",
+        "select codex or claude-code workspace integration (repeatable; retained personal defaults apply only when omitted)",
         (value: string, previous: string[] = []) => [...previous, value],
       )
       .action(
@@ -2473,6 +2533,7 @@ const initModule: CommandModule = {
             {
               fs: ctx.deps.fs,
               backlog: ctx.deps.backlog,
+              env: ctx.deps.env,
               builtinTemplatesRoot: ctx.deps.builtinTemplatesRoot,
               bundledSkillsRoot: requireBundledSkillsRoot(ctx.deps),
               integrationVersion: VERSION,
@@ -2482,7 +2543,9 @@ const initModule: CommandModule = {
               name,
               ...(opts.template !== undefined ? { templateName: opts.template } : {}),
               params,
-              authoringClientIds: opts.authoringClient ?? [],
+              ...(opts.authoringClient === undefined
+                ? {}
+                : { authoringClientIds: opts.authoringClient }),
             },
           );
           ctx.io.out.write(formatInitResult(result));
@@ -3086,7 +3149,7 @@ const projectModule: CommandModule = {
           undefined,
         );
         ctx.io.out.write(
-          opts.json === true ? `${JSON.stringify(value, null, 2)}\n` : formatOrientation(value),
+          opts.json === true ? `${stringifyCliJson(value, 2)}\n` : formatOrientation(value),
         );
       });
     withExamples(showLeaf, [
@@ -3432,6 +3495,9 @@ export const COMPLETION_SPECS: CompletionSpecs = {
   "authoring integrate": {
     options: { "--client": "authoring-client-ids" },
   },
+  "authoring setup": {
+    options: { "--client": "authoring-client-ids" },
+  },
   "authoring handoff verify": {
     options: { "--client": "authoring-client-ids" },
   },
@@ -3501,50 +3567,30 @@ export const COMPLETION_SPECS: CompletionSpecs = {
  * from the `"shells"` fixed-enum source (dogfooding AC#2).
  */
 /**
- * Render the `skill install` result (output lives in the shell, not the core — doc 13 §3). Names every scope
- * written and whether each was a fresh install or an update (AC#2, AC#5), e.g.:
- *
- *   installed installer-builder into 2 agent scope(s):
- *     installed  /home/me/.claude/skills/installer-builder  (claude-code)
- *     updated    /home/me/.agents/skills/installer-builder  (codex)
- */
-function formatInstallAuthoringSkill(result: InstallAuthoringSkillResult): string {
-  const lines = [`installed ${result.skillName} into ${result.installed.length} agent scope(s):`];
-  for (const record of result.installed) {
-    lines.push(`  ${record.status.padEnd(9)} ${record.destination}  (${record.agent})`);
-  }
-  return `${lines.join("\n")}\n`;
-}
-
-/**
- * The `skill` group (doc 12 line 349: `installer skill install`) — manage the bundled `installer-builder`
- * authoring skill. Project-independent (like {@link completionModule}): it writes to the machine-wide user
- * agent scope under HOME, so it needs no project context and never touches a workspace deliverable (AC#6).
+ * Compatibility group for the retired ambient detected-all installer. It cannot authorize personal writes;
+ * callers must use the one explicit/interactive setup action instead.
  */
 const skillModule: CommandModule = {
-  register(parent, ctx) {
+  register(parent, _ctx) {
     const group = parent
       .command("skill")
-      .description("manage the bundled installer-builder authoring skill (doc 12)");
+      .description("legacy compatibility commands for personal authoring setup");
 
     const installLeaf = group
       .command("install")
       .description(
-        "copy the bundled installer-builder authoring skill into the detected agents' user skill scope (doc 12)",
+        "retired: use authoring setup with an explicit client selection or interactive consent",
       )
       .action(() => {
-        const bundledSkillsRoot = requireBundledSkillsRoot(ctx.deps);
-        const result = installAuthoringSkill(
-          { fs: ctx.deps.fs, env: ctx.deps.env },
-          { bundledSkillsRoot },
+        throw new UsageError(
+          "wpm skill install is retired because detection cannot authorize personal writes; use `wpm authoring setup --client codex` and/or `--client claude-code`",
         );
-        ctx.io.out.write(formatInstallAuthoringSkill(result));
       });
 
     withExamples(installLeaf, [
       {
-        command: "wpm skill install",
-        note: "copy the installer-builder skill into your agent's user skill scope (~/.claude/skills, ~/.agents/skills, …)",
+        command: "wpm authoring setup --client codex",
+        note: "replace the retired ambient command with one explicit authorized client selection",
       },
     ]);
   },
@@ -3558,7 +3604,7 @@ function formatAuthoringClient(client: InspectedAuthoringClient): string {
   const detection =
     client.currentDetection.status === "unavailable"
       ? "unavailable (HOME is not set to an absolute path)"
-      : `${client.currentDetection.status === "detected" ? "personal config directory detected" : "personal config directory not detected"} (${JSON.stringify(client.currentDetection.observedPath)})`;
+      : `${client.currentDetection.status === "detected" ? "personal config directory detected" : "personal config directory not detected"} (${formatHumanValue(client.currentDetection.observedPath)})`;
   return [
     `${client.displayName} (${client.id})`,
     `  support:          ${client.supportStatus}`,
@@ -3570,6 +3616,116 @@ function formatAuthoringClient(client: InspectedAuthoringClient): string {
     `  launch:           ${client.launch.command} (from the workspace root)`,
     `  reload:           ${reloadGuidance(client)}`,
   ].join("\n");
+}
+
+function chooserSelection(answer: string): readonly string[] {
+  const aliases = new Map([
+    ["1", "codex"],
+    ["codex", "codex"],
+    ["2", "claude-code"],
+    ["claude-code", "claude-code"],
+  ]);
+  const raw = answer
+    .trim()
+    .toLowerCase()
+    .split(/[\s,]+/)
+    .filter((value) => value.length > 0);
+  const selected = raw.map((value) => aliases.get(value));
+  if (selected.some((value) => value === undefined)) {
+    throw new UsageError(
+      "invalid personal authoring-client choice; select 1/codex and/or 2/claude-code",
+    );
+  }
+  return [...new Set(selected as string[])];
+}
+
+async function runPersonalAuthoringSetupCommand(
+  ctx: CommandContext,
+  options: { readonly client?: string[]; readonly json?: boolean },
+): Promise<void> {
+  let selected = options.client ?? [];
+  const deps = { fs: ctx.deps.fs, env: ctx.deps.env };
+  const input = (clientIds: readonly string[]) => ({
+    bundledSkillsRoot: requireBundledSkillsRoot(ctx.deps),
+    clientIds,
+    setupVersion: VERSION,
+  });
+
+  try {
+    let authorizedPlan: ReturnType<typeof preparePersonalAuthoringSetup> | undefined;
+    if (selected.length === 0) {
+      if (options.json === true) {
+        throw new JsonCliFailure(
+          {
+            status: "failed",
+            operation: "personal-authoring-setup",
+            setupApplied: false,
+            blockers: [
+              {
+                code: "personal-clients-required",
+                surface: "selection",
+                message: "structured setup requires one or more explicit --client values",
+                recovery: "repeat --client codex and/or --client claude-code",
+              },
+            ],
+          },
+          2,
+        );
+      }
+      if (ctx.io.in === undefined || ctx.io.interactive !== true) {
+        throw new UsageError(
+          "personal setup without --client requires a direct interactive terminal; headless callers must pass --client codex and/or --client claude-code",
+        );
+      }
+      const session = createInputLineSession(ctx.io.in);
+      const clients = inspectAuthoringClients(deps);
+      ctx.io.err.write(
+        `${[
+          "Select personal authoring clients (comma-separated):",
+          ...clients.map(
+            (client, index) =>
+              `  ${index + 1}. ${client.displayName} (${client.id}) — detection: ${client.currentDetection.status}`,
+          ),
+          "choice [blank cancels]: ",
+        ].join("\n")}`,
+      );
+      const answer = await session.readLine();
+      if (answer === undefined || answer.trim().length === 0) {
+        ctx.io.out.write("cancelled — personal authoring setup made no changes\n");
+        return;
+      }
+      selected = [...chooserSelection(answer)];
+      authorizedPlan = preparePersonalAuthoringSetup(deps, input(selected));
+      const preview = authorizedPlan.preview;
+      ctx.io.err.write(
+        `${[
+          "Authorize this complete personal setup selection:",
+          ...preview.clients.map(
+            (client) => `  ${client.id}: ${client.outcome} ${formatHumanValue(client.destination)}`,
+          ),
+          `  state: ${formatHumanValue(preview.statePath)}`,
+          "continue? [y/N] ",
+        ].join("\n")}`,
+      );
+      if (!isAffirmativeConfirmation(await session.readLine())) {
+        ctx.io.out.write("cancelled — personal authoring setup made no changes\n");
+        return;
+      }
+    }
+
+    const result =
+      authorizedPlan === undefined
+        ? setupPersonalAuthoring(deps, input(selected))
+        : authorizedPlan.apply();
+    ctx.io.out.write(
+      options.json === true
+        ? `${stringifyCliJson(result)}\n`
+        : formatPersonalAuthoringSetup(result),
+    );
+  } catch (error) {
+    if (options.json === true) throwJsonPersonalSetupFailure(error);
+    throw error;
+  }
 }
 
 /** Read-only authoring-client inventory; it is independent of deliverable `manifest.yml.targets`. */
@@ -3588,7 +3744,7 @@ const authoringModule: CommandModule = {
         if (id !== undefined) {
           const result = inspectAuthoringClient({ fs: ctx.deps.fs, env: ctx.deps.env }, id);
           if (options.json === true) {
-            ctx.io.out.write(`${JSON.stringify(result)}\n`);
+            ctx.io.out.write(`${stringifyCliJson(result)}\n`);
             return;
           }
           if (result.supportStatus === "selectable") {
@@ -3597,7 +3753,7 @@ const authoringModule: CommandModule = {
           }
           ctx.io.out.write(
             [
-              `${result.id.length > 0 ? JSON.stringify(result.id) : "(empty)"}`,
+              `${result.id.length > 0 ? formatHumanValue(result.id) : "(empty)"}`,
               `  support:    ${result.supportStatus}`,
               `  selectable: no`,
               `  configured: no`,
@@ -3610,7 +3766,7 @@ const authoringModule: CommandModule = {
 
         const result = inspectAuthoringClients({ fs: ctx.deps.fs, env: ctx.deps.env });
         if (options.json === true) {
-          ctx.io.out.write(`${JSON.stringify({ clients: result })}\n`);
+          ctx.io.out.write(`${stringifyCliJson({ clients: result })}\n`);
           return;
         }
         ctx.io.out.write(`${result.map(formatAuthoringClient).join("\n\n")}\n`);
@@ -3620,6 +3776,28 @@ const authoringModule: CommandModule = {
       {
         command: "wpm authoring clients claude-code --json",
         note: "inspect one client as structured data; omit the id to list both selectable clients",
+      },
+    ]);
+
+    const setup = group
+      .command("setup")
+      .description(
+        "configure wpm-create-package for Codex and/or Claude Code; explicit IDs are prompt-free and detection is advisory only",
+      )
+      .option(
+        "--client <id>",
+        "authorize codex or claude-code (repeatable; omit only for an interactive chooser)",
+        (value: string, previous: string[] = []) => [...previous, value],
+      )
+      .option("--json", "print the stable machine-readable setup result")
+      .action(async (options: { client?: string[]; json?: boolean }) => {
+        await runPersonalAuthoringSetupCommand(ctx, options);
+      });
+
+    withExamples(setup, [
+      {
+        command: "wpm authoring setup --client codex --client claude-code",
+        note: "configure only the complete explicitly authorized personal client set",
       },
     ]);
 
@@ -3678,7 +3856,7 @@ const authoringModule: CommandModule = {
             { workspaceRoot, integrationVersion: VERSION },
           );
           ctx.io.out.write(
-            options.json === true ? `${JSON.stringify(result)}\n` : formatPreparedHandoff(result),
+            options.json === true ? `${stringifyCliJson(result)}\n` : formatPreparedHandoff(result),
           );
         } catch (error) {
           if (options.json === true) throwJsonHandoffFailure(error);
@@ -3717,7 +3895,7 @@ const authoringModule: CommandModule = {
             },
           );
           ctx.io.out.write(
-            options.json === true ? `${JSON.stringify(result)}\n` : formatVerifiedHandoff(result),
+            options.json === true ? `${stringifyCliJson(result)}\n` : formatVerifiedHandoff(result),
           );
         } catch (error) {
           if (options.json === true) throwJsonHandoffFailure(error);
@@ -4072,6 +4250,7 @@ if (isMainModule()) {
     // The confirmation input source for destructive commands (`bundle remove`); reading stdin lives in the shell
     // (doc 13 §3). Tests pass a `Readable.from([...])` instead.
     in: process.stdin,
+    interactive: process.stdin.isTTY === true,
   };
   void run(process.argv.slice(2), deps, io).then((code) => process.exit(code));
 }

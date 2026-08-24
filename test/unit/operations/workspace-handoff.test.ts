@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { FakeBacklog } from "../../../src/adapters/fake-backlog.js";
+import { FakeEnvironment } from "../../../src/adapters/fake-env.js";
 import { MemoryFileSystem } from "../../../src/adapters/memory-fs.js";
 import {
   HandoffPreparationPreflightError,
@@ -79,6 +80,7 @@ function makeWorkspace(
     {
       fs,
       backlog,
+      env: new FakeEnvironment({ env: {} }),
       builtinTemplatesRoot: TEMPLATES,
       bundledSkillsRoot: SKILLS,
       integrationVersion: "0.1.0",

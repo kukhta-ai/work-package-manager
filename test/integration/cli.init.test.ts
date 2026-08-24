@@ -1,15 +1,25 @@
 import { execFileSync } from "node:child_process";
-import { existsSync, lstatSync, readdirSync, readFileSync, readlinkSync } from "node:fs";
+import {
+  existsSync,
+  lstatSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  readlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { execaSync } from "execa";
 import { describe, expect, it } from "vitest";
 import { BacklogCli } from "../../src/adapters/backlog-cli.js";
 import { FakeBacklog } from "../../src/adapters/fake-backlog.js";
+import { FakeEnvironment } from "../../src/adapters/fake-env.js";
 import { FixedClock } from "../../src/adapters/fixed-clock.js";
 import { NodeFileSystem } from "../../src/adapters/node-fs.js";
 import { ProcessEnvironment } from "../../src/adapters/process-env.js";
 import { type CliDeps, run } from "../../src/cli.js";
+import { PERSONAL_AUTHORING_STATE_PATH } from "../../src/core/services/personal-authoring-setup.js";
 import { parseManifest } from "../../src/core/services/schema/index.js";
 import {
   WORKSPACE_INTEGRATION_STATE_PATH,
@@ -49,12 +59,16 @@ function io(): CliIo & { out: ReturnType<typeof collector>; err: ReturnType<type
 }
 
 /** Real ports, but a FakeBacklog so the always-on E2E doesn't depend on the `backlog` CLI being installed. */
-function realDeps(): CliDeps {
+function realDeps(home?: string): CliDeps {
   return {
     fs: new NodeFileSystem(),
     backlog: new FakeBacklog(),
     clock: new FixedClock("2026-01-01T00:00:00.000Z"),
-    env: new ProcessEnvironment(),
+    env: new FakeEnvironment({
+      cwd: process.cwd(),
+      env: home === undefined ? {} : { HOME: home },
+      platform: process.platform,
+    }),
     builtinTemplatesRoot: BUILTIN_TEMPLATES,
     bundledSkillsRoot: BUNDLED_SKILLS,
   };
@@ -208,6 +222,53 @@ describe("`wpm init` FULL — drives a real change through every layer (task-34)
       expect(await run(["init", "demo", "--at", proj], realDeps(), i)).toBe(2);
       expect(i.err.text).toContain("authoring-clients-empty");
       expect(existsSync(proj)).toBe(false);
+    });
+  });
+
+  it("uses retained personal setup defaults when init flags are omitted", async () => {
+    await withTempDir(async (dir) => {
+      const home = join(dir, "home");
+      const proj = join(dir, "proj");
+      mkdirSync(home);
+      const dependencies = realDeps(home);
+      expect(
+        await run(
+          ["authoring", "setup", "--client", "codex", "--client", "claude-code"],
+          dependencies,
+          io(),
+        ),
+      ).toBe(0);
+
+      expect(await run(["init", "defaults-demo", "--at", proj], dependencies, io())).toBe(0);
+      expect(existsSync(join(proj, "AGENTS.md"))).toBe(true);
+      expect(existsSync(join(proj, "CLAUDE.md"))).toBe(true);
+    });
+  });
+
+  it("explicit init selection bypasses malformed personal state while omission fails closed", async () => {
+    await withTempDir(async (dir) => {
+      const home = join(dir, "home");
+      const state = join(home, PERSONAL_AUTHORING_STATE_PATH);
+      mkdirSync(join(home, ".wpm"), { recursive: true });
+      writeFileSync(state, "user-modified\n");
+      const dependencies = realDeps(home);
+      const blocked = join(dir, "blocked");
+      const blockedIo = io();
+      expect(await run(["init", "blocked", "--at", blocked], dependencies, blockedIo)).toBe(1);
+      expect(blockedIo.err.text).toContain("personal-state-invalid");
+      expect(existsSync(blocked)).toBe(false);
+
+      const explicit = join(dir, "explicit");
+      expect(
+        await run(
+          ["init", "explicit", "--at", explicit, "--authoring-client", "claude-code"],
+          dependencies,
+          io(),
+        ),
+      ).toBe(0);
+      expect(existsSync(join(explicit, "CLAUDE.md"))).toBe(true);
+      expect(existsSync(join(explicit, "AGENTS.md"))).toBe(false);
+      expect(readFileSync(state, "utf8")).toBe("user-modified\n");
     });
   });
 

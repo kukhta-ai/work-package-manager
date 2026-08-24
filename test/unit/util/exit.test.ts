@@ -7,10 +7,19 @@ import {
   HandoffVerificationError,
   MutationFailure,
   NotFoundError,
+  PersonalAuthoringSetupMutationFailure,
+  PersonalAuthoringSetupPreflightError,
   UsageError,
   ValidationError,
 } from "../../../src/core/errors.js";
-import { type CliIo, formatError, type OutputSink, runWithExit } from "../../../src/util/exit.js";
+import {
+  type CliIo,
+  formatError,
+  formatHumanValue,
+  type OutputSink,
+  runWithExit,
+  stringifyCliJson,
+} from "../../../src/util/exit.js";
 
 /** A string-collecting {@link OutputSink}. */
 function collector(): OutputSink & { text: string } {
@@ -193,5 +202,74 @@ describe("formatError", () => {
     expect(rendered).not.toContain("\u001b");
     expect(rendered).not.toContain("$(touch injected)");
     expect(rendered).not.toContain("`whoami`");
+  });
+
+  it("escapes Unicode format controls in human and JSON terminal bytes without changing JSON data", () => {
+    const dangerous = "/tmp/safe-\u202egnp.exe-\u2066isolated\u2069";
+    const human = formatHumanValue(dangerous);
+    const json = stringifyCliJson({ path: dangerous });
+
+    expect(human).toContain("\\u202e");
+    expect(human).toContain("\\u2066");
+    expect(human).not.toContain("\u202e");
+    expect(json).not.toContain("\u202e");
+    expect(JSON.parse(json)).toEqual({ path: dangerous });
+  });
+
+  it("renders aggregate personal setup blockers and typed client progress", () => {
+    const preflight = formatError(
+      new PersonalAuthoringSetupPreflightError([
+        {
+          code: "personal-destination-ambiguous",
+          surface: "ownership",
+          client: "codex",
+          path: "/home/author/.agents/skills/wpm-create-package",
+          message: "user bytes occupy the destination",
+          recovery: "move the user-owned path aside",
+        },
+      ]),
+      false,
+    );
+    expect(preflight).toContain("[personal-destination-ambiguous] ownership (codex)");
+    expect(preflight).toContain('"/home/author/.agents/skills/wpm-create-package"');
+    expect(preflight).toContain("personal setup applied: no");
+
+    const partial = formatError(
+      new PersonalAuthoringSetupMutationFailure({
+        completedClients: [
+          {
+            id: "codex",
+            destination: "/home/author/.agents/skills/wpm-create-package",
+            outcome: "unchanged",
+          },
+        ],
+        failedClient: {
+          id: "claude-code",
+          destination: "/home/author/.claude/skills/wpm-create-package",
+          outcome: "installed",
+        },
+        unattemptedClients: [],
+        completed: [
+          {
+            id: "personal-client:codex",
+            description: "leave Codex unchanged",
+          },
+        ],
+        failed: {
+          id: "personal-client:claude-code",
+          description: "install Claude bootstrap",
+        },
+        unattempted: [],
+        recovery: "repeat the identical request",
+        cause: new Error("disk full"),
+      }),
+      false,
+    );
+    expect(partial).toContain("codex");
+    expect(partial).toContain("unchanged");
+    expect(partial).toContain("claude-code");
+    expect(partial).toContain("install Claude bootstrap");
+    expect(partial).toContain("personal setup applied: no");
+    expect(partial).not.toContain("disk full");
   });
 });

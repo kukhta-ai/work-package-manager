@@ -53,6 +53,34 @@ export interface DigestedText {
   readonly sha256: string;
 }
 
+/** Read-only evidence that the current process can mutate one path through its existing parent chain. */
+export type MutationCapability =
+  | { readonly capable: true }
+  | { readonly capable: false; readonly reason: string };
+
+/** Exact file preimage checked inside one confined atomic write. */
+export type ConfinedWritePrecondition =
+  | {
+      readonly kind: "missing";
+      /** When set, the target's direct parent must itself be absent before this one-file tree is created. */
+      readonly parentTree?: "missing";
+    }
+  | { readonly kind: "text"; readonly content: string; readonly parentTree?: never }
+  | {
+      readonly kind: "sha256";
+      readonly sha256: string;
+      /** When set, the target's direct parent must contain this file and no sibling entries. */
+      readonly parentTree?: "one-file";
+    };
+
+/** Deterministic WPM-private residue identity for one guarded applying beat. */
+export interface ConfinedQuarantine {
+  /** Request-bound private root recorded in the applying state. */
+  readonly root: string;
+  /** Exact file/tree slot beneath {@link root} used by this beat. */
+  readonly path: string;
+}
+
 /**
  * The file-system operations the builder needs, as a replaceable, synchronous abstraction (doc 13 §3).
  */
@@ -78,6 +106,19 @@ export interface FileSystem {
    * @param content - The full contents to write.
    */
   write(path: string, content: string): void;
+
+  /**
+   * Recheck that every existing component from `confinementRoot` through `path` is a regular, no-follow
+   * descendant at the mutation boundary, bind any requested one-file parent-tree preimage, then publish the
+   * complete text without clobbering a path that appears after inspection.
+   */
+  writeConfined(
+    confinementRoot: string,
+    path: string,
+    content: string,
+    expected: ConfinedWritePrecondition,
+    quarantine?: ConfinedQuarantine,
+  ): void;
 
   /**
    * Test whether a path exists (file or directory).
@@ -116,6 +157,16 @@ export interface FileSystem {
   canonicalPath(path: string): string;
 
   /**
+   * Inspect whether a later atomic write or owned removal at `path` is predictably possible now.
+   * This performs no probe write and creates nothing; a later effect can still fail and is reported by the
+   * operation's typed partial contract.
+   */
+  inspectMutationCapability(path: string): MutationCapability;
+
+  /** Read-only proof that two effect paths resolve through existing ancestors on one filesystem/device. */
+  inspectMutationCompatibility(firstPath: string, secondPath: string): MutationCapability;
+
+  /**
    * Create a directory and any missing parents (like `mkdir -p`). A no-op if it already exists.
    *
    * @param path - The directory path to create.
@@ -148,6 +199,17 @@ export interface FileSystem {
    * @param path - The path to remove.
    */
   remove(path: string): void;
+
+  /**
+   * Recheck a no-follow descendant and its canonical no-follow tree fingerprint at the mutation boundary,
+   * detach that exact tree without replacing a raced destination, then retire only the detached owned tree.
+   */
+  removeConfined(
+    confinementRoot: string,
+    path: string,
+    expectedTreeFingerprint: string,
+    quarantine?: ConfinedQuarantine,
+  ): void;
 
   /**
    * Create a scope-alias link from `target` to `linkPath`, hiding the platform decision (doc 13 §3; doc 12).

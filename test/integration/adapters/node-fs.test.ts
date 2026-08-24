@@ -1,17 +1,302 @@
+import { createHash } from "node:crypto";
 import {
+  chmodSync,
+  closeSync,
+  cpSync,
   existsSync,
   lstatSync,
   mkdirSync,
+  openSync,
   readdirSync,
   readFileSync,
   readlinkSync,
   realpathSync,
+  renameSync,
+  rmdirSync,
+  symlinkSync,
+  unlinkSync,
   writeFileSync,
+  writeSync,
 } from "node:fs";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { NodeFileSystem } from "../../../src/adapters/node-fs.js";
 import { withTempDir } from "../../helpers/tmpdir.js";
+
+class FilePublicationRaceFileSystem extends NodeFileSystem {
+  constructor(
+    private readonly racedPath: string,
+    private readonly racedContent: string,
+  ) {
+    super();
+  }
+
+  protected override beforeConfinedFilePublication(path: string): void {
+    if (path === this.racedPath) writeFileSync(path, this.racedContent);
+  }
+}
+
+class FileArrivalDuringStagingFileSystem extends NodeFileSystem {
+  constructor(private readonly racedContent: string) {
+    super();
+  }
+
+  protected override afterConfinedFileStaging(path: string): void {
+    mkdirSync(dirname(path), { recursive: true });
+    writeFileSync(path, this.racedContent);
+  }
+}
+
+class TreeDetachmentRaceFileSystem extends NodeFileSystem {
+  constructor(private readonly racedTree: string) {
+    super();
+  }
+
+  protected override beforeConfinedTreeDetachment(path: string): void {
+    if (path === this.racedTree) writeFileSync(join(path, "USER-RACE.txt"), "USER TREE\n");
+  }
+}
+
+class TreeArrivalDuringPrivatePreparationFileSystem extends NodeFileSystem {
+  constructor(private readonly content: string) {
+    super();
+  }
+
+  protected override afterConfinedTreePrivatePreparation(path: string): void {
+    mkdirSync(path, { recursive: true });
+    writeFileSync(join(path, "SKILL.md"), this.content);
+  }
+}
+
+class FileDetachmentInterruptionFileSystem extends NodeFileSystem {
+  private interrupted = false;
+
+  constructor(
+    private readonly interruptedPath: string,
+    private readonly racedContent?: string,
+  ) {
+    super();
+  }
+
+  protected override afterConfinedFileDetachment(path: string): void {
+    if (path !== this.interruptedPath || this.interrupted) return;
+    this.interrupted = true;
+    if (this.racedContent !== undefined) writeFileSync(path, this.racedContent);
+    throw new Error("injected interruption after confined file detachment");
+  }
+}
+
+class FilePublicationInterruptionFileSystem extends NodeFileSystem {
+  private interrupted = false;
+
+  constructor(private readonly interruptedPath: string) {
+    super();
+  }
+
+  protected override afterConfinedFilePublication(path: string): void {
+    if (path !== this.interruptedPath || this.interrupted) return;
+    this.interrupted = true;
+    throw new Error("injected interruption after confined file publication");
+  }
+}
+
+class FileArrivalAfterDetachmentFileSystem extends NodeFileSystem {
+  private raced = false;
+
+  constructor(
+    private readonly racedPath: string,
+    private readonly racedContent: string,
+  ) {
+    super();
+  }
+
+  protected override afterConfinedFileDetachment(path: string): void {
+    if (path !== this.racedPath || this.raced) return;
+    this.raced = true;
+    writeFileSync(path, this.racedContent);
+  }
+}
+
+class FileReplacementDuringDetachmentFileSystem extends NodeFileSystem {
+  private raced = false;
+
+  constructor(
+    private readonly racedPath: string,
+    private readonly racedContent: string,
+  ) {
+    super();
+  }
+
+  protected override beforeConfinedFileDetachment(path: string): void {
+    if (path !== this.racedPath || this.raced) return;
+    this.raced = true;
+    unlinkSync(path);
+    writeFileSync(path, this.racedContent);
+  }
+}
+
+class FileDisplacementInterruptionFileSystem extends NodeFileSystem {
+  private interrupted = false;
+
+  constructor(private readonly interruptedPath: string) {
+    super();
+  }
+
+  protected override afterConfinedFileDisplacement(path: string): void {
+    if (path !== this.interruptedPath || this.interrupted) return;
+    this.interrupted = true;
+    throw new Error("injected interruption after atomic displacement");
+  }
+}
+
+class TreeDetachmentInterruptionFileSystem extends NodeFileSystem {
+  private interrupted = false;
+
+  constructor(private readonly interruptedPath: string) {
+    super();
+  }
+
+  protected override afterConfinedTreeDetachment(path: string): void {
+    if (path !== this.interruptedPath || this.interrupted) return;
+    this.interrupted = true;
+    throw new Error("injected interruption after confined tree detachment");
+  }
+}
+
+class TreeCaptureInterruptionFileSystem extends NodeFileSystem {
+  private interrupted = false;
+
+  constructor(private readonly interruptedPath: string) {
+    super();
+  }
+
+  protected override beforeConfinedTreeDetachment(path: string): void {
+    if (path !== this.interruptedPath || this.interrupted) return;
+    this.interrupted = true;
+    throw new Error("injected interruption after retained tree capture");
+  }
+}
+
+class TreeReplacementBeforeDetachmentFileSystem extends NodeFileSystem {
+  private raced = false;
+
+  protected override beforeConfinedTreeDetachment(path: string): void {
+    if (this.raced) return;
+    this.raced = true;
+    const original = `${path}.original`;
+    renameSync(path, original);
+    cpSync(original, path, { recursive: true });
+  }
+}
+
+class PartialTreeCleanupInterruptionFileSystem extends NodeFileSystem {
+  private interrupted = false;
+
+  protected override beforeConfinedTreeCleanup(displacedPath: string): void {
+    if (this.interrupted) return;
+    this.interrupted = true;
+    unlinkSync(join(displacedPath, "SKILL.md"));
+    throw new Error("injected partial displaced-tree cleanup");
+  }
+}
+
+class StagedCleanupInterruptionFileSystem extends NodeFileSystem {
+  private interrupted = false;
+
+  protected override afterConfinedStagedCleanup(): void {
+    if (this.interrupted) return;
+    this.interrupted = true;
+    throw new Error("injected staged cleanup interruption");
+  }
+}
+
+class PublicRaceDuringStagedCleanupFileSystem extends NodeFileSystem {
+  private raced = false;
+
+  constructor(
+    private readonly racedPath: string,
+    private readonly racedContent: string,
+  ) {
+    super();
+  }
+
+  protected override afterConfinedStagedCleanup(): void {
+    if (this.raced) return;
+    this.raced = true;
+    writeFileSync(this.racedPath, this.racedContent);
+  }
+}
+
+class ParentReplacementBeforePublicationFileSystem extends NodeFileSystem {
+  protected override beforeConfinedFilePublication(path: string): void {
+    const parent = dirname(path);
+    rmdirSync(parent);
+    mkdirSync(parent);
+  }
+}
+
+class SiblingArrivalAfterPublicationFileSystem extends NodeFileSystem {
+  protected override afterConfinedFilePublication(path: string): void {
+    writeFileSync(join(dirname(path), "USER.txt"), "USER SIBLING\n");
+  }
+}
+
+class TreeOpenHandleRaceFileSystem extends NodeFileSystem {
+  private raced = false;
+
+  constructor(
+    private readonly racedPath: string,
+    private readonly descriptor: number,
+  ) {
+    super();
+  }
+
+  protected override afterConfinedTreeDetachment(path: string): void {
+    if (path !== this.racedPath || this.raced) return;
+    this.raced = true;
+    writeSync(this.descriptor, "RACED LEGACY\n", 0, "utf8");
+  }
+}
+
+function singleFileTreeFingerprint(content: string): string {
+  const entries = [
+    {
+      path: "SKILL.md",
+      kind: "file",
+      sha256: createHash("sha256").update(content).digest("hex"),
+    },
+  ];
+  return `sha256:${createHash("sha256").update(JSON.stringify(entries), "utf8").digest("hex")}`;
+}
+
+function legacyTreeFingerprint(skillContent: string, referenceContent: string): string {
+  const entries = [
+    {
+      path: "SKILL.md",
+      kind: "file",
+      sha256: createHash("sha256").update(skillContent).digest("hex"),
+    },
+    { path: "references", kind: "directory" },
+    {
+      path: "references/workflow.md",
+      kind: "file",
+      sha256: createHash("sha256").update(referenceContent).digest("hex"),
+    },
+  ];
+  return `sha256:${createHash("sha256").update(JSON.stringify(entries), "utf8").digest("hex")}`;
+}
+
+function legacyTreeWithEmptyDirectoryFingerprint(skillContent: string): string {
+  const entries = [
+    {
+      path: "SKILL.md",
+      kind: "file",
+      sha256: createHash("sha256").update(skillContent).digest("hex"),
+    },
+    { path: "empty", kind: "directory" },
+  ];
+  return `sha256:${createHash("sha256").update(JSON.stringify(entries), "utf8").digest("hex")}`;
+}
 
 describe("NodeFileSystem (the real FileSystem adapter, against a real tmpdir)", () => {
   it("writes then reads a file round-trip", async () => {
@@ -72,6 +357,995 @@ describe("NodeFileSystem (the real FileSystem adapter, against a real tmpdir)", 
       fs.write(p, "deep");
       expect(fs.read(p)).toBe("deep");
       expect(existsSync(join(dir, "a", "b", "c"))).toBe(true);
+    });
+  });
+
+  it("rejects malformed UTF-8 when text and digest must describe the exact same bytes", async () => {
+    await withTempDir((dir) => {
+      const fs = new NodeFileSystem();
+      const path = join(dir, "invalid-utf8.md");
+      writeFileSync(path, Buffer.from([0xc3, 0x28]));
+
+      expect(() => fs.readWithDigest(path)).toThrow();
+    });
+  });
+
+  it("preserves a valid UTF-8 BOM in the exact text/digest capture", async () => {
+    await withTempDir((dir) => {
+      const fs = new NodeFileSystem();
+      const path = join(dir, "bom.md");
+      const bytes = Buffer.from([0xef, 0xbb, 0xbf, 0x61]);
+      writeFileSync(path, bytes);
+
+      const captured = fs.readWithDigest(path);
+      expect(Buffer.from(captured.content, "utf8")).toEqual(bytes);
+    });
+  });
+
+  it.runIf(process.platform !== "win32")(
+    "binds confined writes/removals to no-follow descendants at the mutation boundary",
+    async () => {
+      await withTempDir((dir) => {
+        const fs = new NodeFileSystem();
+        const home = join(dir, "home");
+        const outside = join(dir, "outside");
+        mkdirSync(home);
+        mkdirSync(outside);
+        symlinkSync(outside, join(home, ".agents"), "dir");
+
+        const escapedSkill = join(home, ".agents", "skills", "wpm-create-package", "SKILL.md");
+        expect(() =>
+          fs.writeConfined(home, escapedSkill, "must not escape\n", { kind: "missing" }),
+        ).toThrow(/symbolic link/i);
+        expect(existsSync(join(outside, "skills", "wpm-create-package", "SKILL.md"))).toBe(false);
+
+        symlinkSync(outside, join(home, ".wpm"), "dir");
+        const escapedState = join(home, ".wpm", "authoring-setup.json");
+        expect(() => fs.writeConfined(home, escapedState, "{}\n", { kind: "missing" })).toThrow(
+          /symbolic link/i,
+        );
+        expect(existsSync(join(outside, "authoring-setup.json"))).toBe(false);
+        expect(() =>
+          fs.removeConfined(home, join(home, ".agents"), `sha256:${"0".repeat(64)}`, {
+            root: join(home, ".wpm", "authoring-setup-quarantine", "request"),
+            path: join(home, ".wpm", "authoring-setup-quarantine", "request", "legacy"),
+          }),
+        ).toThrow(/symbolic link/i);
+        expect(existsSync(outside)).toBe(true);
+      });
+    },
+  );
+
+  it("publishes a missing confined file without clobbering one that races in", async () => {
+    await withTempDir((dir) => {
+      const home = join(dir, "home");
+      const destination = join(home, ".agents", "skills", "wpm-create-package");
+      const skill = join(destination, "SKILL.md");
+      const quarantineRoot = join(home, ".wpm", "authoring-setup-quarantine", "request");
+      const quarantine = join(quarantineRoot, "codex", "current.preimage");
+      mkdirSync(home);
+      const fs = new FilePublicationRaceFileSystem(skill, "USER FILE\n");
+
+      expect(() =>
+        fs.writeConfined(
+          home,
+          skill,
+          "WPM FILE\n",
+          {
+            kind: "missing",
+            parentTree: "missing",
+          },
+          { root: quarantineRoot, path: quarantine },
+        ),
+      ).toThrow();
+      expect(readFileSync(skill, "utf8")).toBe("USER FILE\n");
+      expect(readdirSync(destination)).toEqual(["SKILL.md"]);
+      expect(
+        readdirSync(join(home, ".agents", "skills")).some((name) => name.endsWith(".tmp")),
+      ).toBe(false);
+      expect(readFileSync(`${quarantine}.staged`, "utf8")).toBe("WPM FILE\n");
+    });
+  });
+
+  it("does not adopt desired-looking public bytes that arrive during private staging", async () => {
+    await withTempDir((dir) => {
+      const home = join(dir, "home");
+      const destination = join(home, ".agents", "skills", "wpm-create-package");
+      const skill = join(destination, "SKILL.md");
+      const quarantineRoot = join(home, ".wpm", "authoring-setup-quarantine", "request");
+      const quarantinePath = join(quarantineRoot, "codex", "current.preimage");
+      const desiredContent = "WPM FILE\n";
+      mkdirSync(home);
+      const fs = new FileArrivalDuringStagingFileSystem(desiredContent);
+
+      expect(() =>
+        fs.writeConfined(
+          home,
+          skill,
+          desiredContent,
+          { kind: "missing", parentTree: "missing" },
+          { root: quarantineRoot, path: quarantinePath },
+        ),
+      ).toThrow(/raced while private bytes were staged/);
+      expect(readFileSync(skill, "utf8")).toBe(desiredContent);
+      expect(readFileSync(`${quarantinePath}.staged`, "utf8")).toBe(desiredContent);
+    });
+  });
+
+  it("retains exact prior bytes when an existing public file changes during private staging", async () => {
+    await withTempDir((dir) => {
+      const home = join(dir, "home");
+      const destination = join(home, ".agents", "skills", "wpm-create-package");
+      const skill = join(destination, "SKILL.md");
+      const quarantineRoot = join(home, ".wpm", "authoring-setup-quarantine", "request");
+      const quarantinePath = join(quarantineRoot, "codex", "current.preimage");
+      const oldContent = "OWNED FILE\n";
+      const desiredContent = "NEW WPM FILE\n";
+      const racedContent = "USER RACE\n";
+      mkdirSync(destination, { recursive: true });
+      writeFileSync(skill, oldContent);
+      const fs = new FileArrivalDuringStagingFileSystem(racedContent);
+
+      expect(() =>
+        fs.writeConfined(
+          home,
+          skill,
+          desiredContent,
+          {
+            kind: "sha256",
+            sha256: createHash("sha256").update(oldContent).digest("hex"),
+            parentTree: "one-file",
+          },
+          { root: quarantineRoot, path: quarantinePath },
+        ),
+      ).toThrow(/changed while private bytes were staged/);
+      expect(readFileSync(skill, "utf8")).toBe(racedContent);
+      expect(readFileSync(quarantinePath, "utf8")).toBe(oldContent);
+      expect(readFileSync(`${quarantinePath}.staged`, "utf8")).toBe(desiredContent);
+    });
+  });
+
+  it("preserves an existing confined file that changes at publication", async () => {
+    await withTempDir((dir) => {
+      const home = join(dir, "home");
+      const destination = join(home, ".agents", "skills", "wpm-create-package");
+      const skill = join(destination, "SKILL.md");
+      const quarantineRoot = join(home, ".wpm", "authoring-setup-quarantine", "request");
+      const quarantine = join(quarantineRoot, "codex", "current.preimage");
+      mkdirSync(destination, { recursive: true });
+      writeFileSync(skill, "OWNED FILE\n");
+      const expected = createHash("sha256").update("OWNED FILE\n").digest("hex");
+      const fs = new FilePublicationRaceFileSystem(skill, "USER UPDATE\n");
+
+      expect(() =>
+        fs.writeConfined(
+          home,
+          skill,
+          "NEW WPM FILE\n",
+          {
+            kind: "sha256",
+            sha256: expected,
+            parentTree: "one-file",
+          },
+          { root: quarantineRoot, path: quarantine },
+        ),
+      ).toThrow();
+      expect(readFileSync(skill, "utf8")).toBe("USER UPDATE\n");
+      expect(readdirSync(destination)).toEqual(["SKILL.md"]);
+      expect(
+        readdirSync(join(home, ".agents", "skills")).some(
+          (name) => name.endsWith(".tmp") || name.endsWith(".preimage"),
+        ),
+      ).toBe(false);
+      expect(readFileSync(quarantine, "utf8")).toBe("OWNED FILE\n");
+      expect(readFileSync(`${quarantine}.staged`, "utf8")).toBe("NEW WPM FILE\n");
+    });
+  });
+
+  it("rejects a recreated publication parent without writing into it", async () => {
+    await withTempDir((dir) => {
+      const home = join(dir, "home");
+      const destination = join(home, ".agents", "skills", "wpm-create-package");
+      const skill = join(destination, "SKILL.md");
+      const quarantineRoot = join(home, ".wpm", "authoring-setup-quarantine", "request");
+      const quarantinePath = join(quarantineRoot, "codex", "current.preimage");
+      mkdirSync(home);
+      const fs = new ParentReplacementBeforePublicationFileSystem();
+
+      expect(() =>
+        fs.writeConfined(
+          home,
+          skill,
+          "WPM FILE\n",
+          { kind: "missing", parentTree: "missing" },
+          { root: quarantineRoot, path: quarantinePath },
+        ),
+      ).toThrow(/parent identity changed/);
+      expect(existsSync(destination)).toBe(true);
+      expect(existsSync(skill)).toBe(false);
+      expect(readFileSync(`${quarantinePath}.staged`, "utf8")).toBe("WPM FILE\n");
+    });
+  });
+
+  it("preserves retained evidence when a sibling appears after publication", async () => {
+    await withTempDir((dir) => {
+      const home = join(dir, "home");
+      const destination = join(home, ".agents", "skills", "wpm-create-package");
+      const skill = join(destination, "SKILL.md");
+      const quarantineRoot = join(home, ".wpm", "authoring-setup-quarantine", "request");
+      const quarantinePath = join(quarantineRoot, "codex", "current.preimage");
+      const oldContent = "OWNED FILE\n";
+      const desiredContent = "NEW WPM FILE\n";
+      mkdirSync(destination, { recursive: true });
+      writeFileSync(skill, oldContent);
+      const fs = new SiblingArrivalAfterPublicationFileSystem();
+
+      expect(() =>
+        fs.writeConfined(
+          home,
+          skill,
+          desiredContent,
+          {
+            kind: "sha256",
+            sha256: createHash("sha256").update(oldContent).digest("hex"),
+            parentTree: "one-file",
+          },
+          { root: quarantineRoot, path: quarantinePath },
+        ),
+      ).toThrow(/parent tree changed/);
+      expect(readFileSync(skill, "utf8")).toBe(desiredContent);
+      expect(readFileSync(join(destination, "USER.txt"), "utf8")).toBe("USER SIBLING\n");
+      expect(readFileSync(quarantinePath, "utf8")).toBe(oldContent);
+    });
+  });
+
+  it("restores a confined legacy tree when an entry races in before detachment", async () => {
+    await withTempDir((dir) => {
+      const home = join(dir, "home");
+      const legacy = join(home, ".agents", "skills", "installer-builder");
+      const quarantineRoot = join(home, ".wpm", "authoring-setup-quarantine", "request");
+      const quarantine = join(quarantineRoot, "codex", "legacy");
+      mkdirSync(legacy, { recursive: true });
+      writeFileSync(join(legacy, "SKILL.md"), "OWNED LEGACY\n");
+      const entries = [
+        {
+          path: "SKILL.md",
+          kind: "file",
+          sha256: createHash("sha256").update("OWNED LEGACY\n").digest("hex"),
+        },
+      ];
+      const fingerprint = `sha256:${createHash("sha256")
+        .update(JSON.stringify(entries), "utf8")
+        .digest("hex")}`;
+      const fs = new TreeDetachmentRaceFileSystem(legacy);
+
+      expect(() =>
+        fs.removeConfined(home, legacy, fingerprint, {
+          root: quarantineRoot,
+          path: quarantine,
+        }),
+      ).toThrow();
+      expect(readFileSync(join(legacy, "SKILL.md"), "utf8")).toBe("OWNED LEGACY\n");
+      expect(readFileSync(join(legacy, "USER-RACE.txt"), "utf8")).toBe("USER TREE\n");
+      expect(
+        readdirSync(join(home, ".agents", "skills")).some((name) =>
+          name.endsWith(".wpm-quarantine"),
+        ),
+      ).toBe(false);
+    });
+  });
+
+  it("replays an interrupted confined replacement from its deterministic retained slot", async () => {
+    await withTempDir((dir) => {
+      const home = join(dir, "home");
+      const destination = join(home, ".agents", "skills", "wpm-create-package");
+      const skill = join(destination, "SKILL.md");
+      const quarantineRoot = join(home, ".wpm", "authoring-setup-quarantine", "request");
+      const quarantinePath = join(quarantineRoot, "codex", "current.preimage");
+      const quarantine = { root: quarantineRoot, path: quarantinePath };
+      const oldContent = "OWNED FILE\n";
+      const desiredContent = "NEW WPM FILE\n";
+      const precondition = {
+        kind: "sha256" as const,
+        sha256: createHash("sha256").update(oldContent).digest("hex"),
+        parentTree: "one-file" as const,
+      };
+      mkdirSync(destination, { recursive: true });
+      writeFileSync(skill, oldContent);
+      const fs = new FileDetachmentInterruptionFileSystem(skill);
+
+      expect(() => fs.writeConfined(home, skill, desiredContent, precondition, quarantine)).toThrow(
+        /injected interruption after confined file detachment/,
+      );
+      expect(existsSync(skill)).toBe(false);
+      expect(readFileSync(quarantinePath, "utf8")).toBe(oldContent);
+      expect(readFileSync(`${quarantinePath}.staged`, "utf8")).toBe(desiredContent);
+
+      expect(() =>
+        fs.writeConfined(home, skill, desiredContent, precondition, quarantine),
+      ).not.toThrow();
+      expect(readFileSync(skill, "utf8")).toBe(desiredContent);
+      expect(existsSync(quarantineRoot)).toBe(false);
+    });
+  });
+
+  it("preserves a public user file raced in after confined detachment and fails retry closed", async () => {
+    await withTempDir((dir) => {
+      const home = join(dir, "home");
+      const destination = join(home, ".agents", "skills", "wpm-create-package");
+      const skill = join(destination, "SKILL.md");
+      const quarantineRoot = join(home, ".wpm", "authoring-setup-quarantine", "request");
+      const quarantinePath = join(quarantineRoot, "codex", "current.preimage");
+      const quarantine = { root: quarantineRoot, path: quarantinePath };
+      const oldContent = "OWNED FILE\n";
+      const desiredContent = "NEW WPM FILE\n";
+      const userContent = "USER FILE\n";
+      const precondition = {
+        kind: "sha256" as const,
+        sha256: createHash("sha256").update(oldContent).digest("hex"),
+        parentTree: "one-file" as const,
+      };
+      mkdirSync(destination, { recursive: true });
+      writeFileSync(skill, oldContent);
+      const fs = new FileArrivalAfterDetachmentFileSystem(skill, userContent);
+
+      expect(() => fs.writeConfined(home, skill, desiredContent, precondition, quarantine)).toThrow(
+        /public path raced after detachment/,
+      );
+      expect(readFileSync(skill, "utf8")).toBe(userContent);
+      expect(readFileSync(quarantinePath, "utf8")).toBe(oldContent);
+
+      expect(() =>
+        fs.writeConfined(home, skill, desiredContent, precondition, quarantine),
+      ).toThrow();
+      expect(readFileSync(skill, "utf8")).toBe(userContent);
+      expect(readFileSync(quarantinePath, "utf8")).toBe(oldContent);
+      expect(readFileSync(`${quarantinePath}.staged`, "utf8")).toBe(desiredContent);
+      expect(existsSync(quarantineRoot)).toBe(true);
+    });
+  });
+
+  it("does not adopt desired-looking bytes raced in after confined detachment", async () => {
+    await withTempDir((dir) => {
+      const home = join(dir, "home");
+      const destination = join(home, ".agents", "skills", "wpm-create-package");
+      const skill = join(destination, "SKILL.md");
+      const quarantineRoot = join(home, ".wpm", "authoring-setup-quarantine", "request");
+      const quarantinePath = join(quarantineRoot, "codex", "current.preimage");
+      const oldContent = "OWNED FILE\n";
+      const desiredContent = "NEW WPM FILE\n";
+      mkdirSync(destination, { recursive: true });
+      writeFileSync(skill, oldContent);
+      const fs = new FileArrivalAfterDetachmentFileSystem(skill, desiredContent);
+
+      expect(() =>
+        fs.writeConfined(
+          home,
+          skill,
+          desiredContent,
+          {
+            kind: "sha256",
+            sha256: createHash("sha256").update(oldContent).digest("hex"),
+            parentTree: "one-file",
+          },
+          { root: quarantineRoot, path: quarantinePath },
+        ),
+      ).toThrow(/public path raced after detachment/);
+      expect(readFileSync(skill, "utf8")).toBe(desiredContent);
+      expect(readFileSync(quarantinePath, "utf8")).toBe(oldContent);
+      expect(readFileSync(`${quarantinePath}.staged`, "utf8")).toBe(desiredContent);
+    });
+  });
+
+  it("does not adopt desired-looking bytes raced into an initially absent retry path", async () => {
+    await withTempDir((dir) => {
+      const home = join(dir, "home");
+      const destination = join(home, ".agents", "skills", "wpm-create-package");
+      const skill = join(destination, "SKILL.md");
+      const quarantineRoot = join(home, ".wpm", "authoring-setup-quarantine", "request");
+      const quarantinePath = join(quarantineRoot, "codex", "current.preimage");
+      const oldContent = "OWNED FILE\n";
+      const desiredContent = "NEW WPM FILE\n";
+      mkdirSync(destination, { recursive: true });
+      mkdirSync(dirname(quarantinePath), { recursive: true });
+      writeFileSync(quarantinePath, oldContent);
+      writeFileSync(`${quarantinePath}.staged`, desiredContent);
+      const fs = new FilePublicationRaceFileSystem(skill, desiredContent);
+
+      expect(() =>
+        fs.writeConfined(
+          home,
+          skill,
+          desiredContent,
+          {
+            kind: "sha256",
+            sha256: createHash("sha256").update(oldContent).digest("hex"),
+            parentTree: "one-file",
+          },
+          { root: quarantineRoot, path: quarantinePath },
+        ),
+      ).toThrow(/public path raced before publication|parent tree changed/);
+      expect(readFileSync(skill, "utf8")).toBe(desiredContent);
+      expect(readFileSync(quarantinePath, "utf8")).toBe(oldContent);
+      expect(readFileSync(`${quarantinePath}.staged`, "utf8")).toBe(desiredContent);
+    });
+  });
+
+  it("retains immutable prior bytes and restores a public replacement raced in during displacement", async () => {
+    await withTempDir((dir) => {
+      const home = join(dir, "home");
+      const destination = join(home, ".agents", "skills", "wpm-create-package");
+      const skill = join(destination, "SKILL.md");
+      const quarantineRoot = join(home, ".wpm", "authoring-setup-quarantine", "request");
+      const quarantinePath = join(quarantineRoot, "codex", "current.preimage");
+      const quarantine = { root: quarantineRoot, path: quarantinePath };
+      const oldContent = "OWNED FILE\n";
+      const desiredContent = "NEW WPM FILE\n";
+      const userContent = "USER REPLACEMENT\n";
+      const precondition = {
+        kind: "sha256" as const,
+        sha256: createHash("sha256").update(oldContent).digest("hex"),
+        parentTree: "one-file" as const,
+      };
+      mkdirSync(destination, { recursive: true });
+      writeFileSync(skill, oldContent);
+      const fs = new FileReplacementDuringDetachmentFileSystem(skill, userContent);
+
+      expect(() => fs.writeConfined(home, skill, desiredContent, precondition, quarantine)).toThrow(
+        /raced during displacement/,
+      );
+      expect(readFileSync(skill, "utf8")).toBe(userContent);
+      expect(readFileSync(quarantinePath, "utf8")).toBe(oldContent);
+      expect(readFileSync(`${quarantinePath}.staged`, "utf8")).toBe(desiredContent);
+      expect(existsSync(`${quarantinePath}.displaced`)).toBe(false);
+    });
+  });
+
+  it("replays exact deterministic displacement evidence after interruption", async () => {
+    await withTempDir((dir) => {
+      const home = join(dir, "home");
+      const destination = join(home, ".agents", "skills", "wpm-create-package");
+      const skill = join(destination, "SKILL.md");
+      const quarantineRoot = join(home, ".wpm", "authoring-setup-quarantine", "request");
+      const quarantinePath = join(quarantineRoot, "codex", "current.preimage");
+      const quarantine = { root: quarantineRoot, path: quarantinePath };
+      const oldContent = "OWNED FILE\n";
+      const desiredContent = "NEW WPM FILE\n";
+      const precondition = {
+        kind: "sha256" as const,
+        sha256: createHash("sha256").update(oldContent).digest("hex"),
+        parentTree: "one-file" as const,
+      };
+      mkdirSync(destination, { recursive: true });
+      writeFileSync(skill, oldContent);
+      const fs = new FileDisplacementInterruptionFileSystem(skill);
+
+      expect(() => fs.writeConfined(home, skill, desiredContent, precondition, quarantine)).toThrow(
+        /injected interruption after atomic displacement/,
+      );
+      expect(existsSync(skill)).toBe(false);
+      expect(readFileSync(quarantinePath, "utf8")).toBe(oldContent);
+      expect(readFileSync(`${quarantinePath}.displaced`, "utf8")).toBe(oldContent);
+      expect(readFileSync(`${quarantinePath}.staged`, "utf8")).toBe(desiredContent);
+
+      expect(() =>
+        fs.writeConfined(home, skill, desiredContent, precondition, quarantine),
+      ).not.toThrow();
+      expect(readFileSync(skill, "utf8")).toBe(desiredContent);
+      expect(existsSync(quarantineRoot)).toBe(false);
+    });
+  });
+
+  it("rejects a desired-looking public race while displaced evidence exists", async () => {
+    await withTempDir((dir) => {
+      const home = join(dir, "home");
+      const destination = join(home, ".agents", "skills", "wpm-create-package");
+      const skill = join(destination, "SKILL.md");
+      const quarantineRoot = join(home, ".wpm", "authoring-setup-quarantine", "request");
+      const quarantinePath = join(quarantineRoot, "codex", "current.preimage");
+      const oldContent = "OWNED FILE\n";
+      const desiredContent = "NEW WPM FILE\n";
+      mkdirSync(destination, { recursive: true });
+      writeFileSync(skill, desiredContent);
+      mkdirSync(dirname(quarantinePath), { recursive: true });
+      writeFileSync(quarantinePath, oldContent);
+      writeFileSync(`${quarantinePath}.displaced`, oldContent);
+      writeFileSync(`${quarantinePath}.staged`, desiredContent);
+      const fs = new NodeFileSystem();
+
+      expect(() =>
+        fs.writeConfined(
+          home,
+          skill,
+          desiredContent,
+          {
+            kind: "sha256",
+            sha256: createHash("sha256").update(oldContent).digest("hex"),
+            parentTree: "one-file",
+          },
+          { root: quarantineRoot, path: quarantinePath },
+        ),
+      ).toThrow(/public path raced while displaced bytes were retained/);
+      expect(readFileSync(skill, "utf8")).toBe(desiredContent);
+      expect(readFileSync(quarantinePath, "utf8")).toBe(oldContent);
+      expect(readFileSync(`${quarantinePath}.displaced`, "utf8")).toBe(oldContent);
+    });
+  });
+
+  it("replays an interruption after confined publication and cleans retained evidence", async () => {
+    await withTempDir((dir) => {
+      const home = join(dir, "home");
+      const destination = join(home, ".agents", "skills", "wpm-create-package");
+      const skill = join(destination, "SKILL.md");
+      const quarantineRoot = join(home, ".wpm", "authoring-setup-quarantine", "request");
+      const quarantinePath = join(quarantineRoot, "codex", "current.preimage");
+      const quarantine = { root: quarantineRoot, path: quarantinePath };
+      const oldContent = "OWNED FILE\n";
+      const desiredContent = "NEW WPM FILE\n";
+      const precondition = {
+        kind: "sha256" as const,
+        sha256: createHash("sha256").update(oldContent).digest("hex"),
+        parentTree: "one-file" as const,
+      };
+      mkdirSync(destination, { recursive: true });
+      writeFileSync(skill, oldContent);
+      const fs = new FilePublicationInterruptionFileSystem(skill);
+
+      expect(() => fs.writeConfined(home, skill, desiredContent, precondition, quarantine)).toThrow(
+        /injected interruption after confined file publication/,
+      );
+      expect(readFileSync(skill, "utf8")).toBe(desiredContent);
+      expect(readFileSync(quarantinePath, "utf8")).toBe(oldContent);
+      expect(existsSync(`${quarantinePath}.staged`)).toBe(false);
+
+      expect(() =>
+        fs.writeConfined(home, skill, desiredContent, precondition, quarantine),
+      ).not.toThrow();
+      expect(readFileSync(skill, "utf8")).toBe(desiredContent);
+      expect(existsSync(quarantineRoot)).toBe(false);
+    });
+  });
+
+  it("replays a new install whose desired bytes were already published", async () => {
+    await withTempDir((dir) => {
+      const home = join(dir, "home");
+      const destination = join(home, ".agents", "skills", "wpm-create-package");
+      const skill = join(destination, "SKILL.md");
+      const quarantineRoot = join(home, ".wpm", "authoring-setup-quarantine", "request");
+      const quarantinePath = join(quarantineRoot, "codex", "current.preimage");
+      const desiredContent = "NEW WPM FILE\n";
+      mkdirSync(home);
+      const fs = new FilePublicationInterruptionFileSystem(skill);
+      const request = () =>
+        fs.writeConfined(
+          home,
+          skill,
+          desiredContent,
+          { kind: "missing", parentTree: "missing" },
+          { root: quarantineRoot, path: quarantinePath },
+        );
+
+      expect(request).toThrow(/injected interruption after confined file publication/);
+      expect(readFileSync(skill, "utf8")).toBe(desiredContent);
+      expect(existsSync(`${quarantinePath}.staged`)).toBe(false);
+
+      expect(request).not.toThrow();
+      expect(readFileSync(skill, "utf8")).toBe(desiredContent);
+      expect(existsSync(quarantineRoot)).toBe(false);
+    });
+  });
+
+  it("replays a new install from exact staged bytes and its empty created parent", async () => {
+    await withTempDir((dir) => {
+      const home = join(dir, "home");
+      const destination = join(home, ".agents", "skills", "wpm-create-package");
+      const skill = join(destination, "SKILL.md");
+      const quarantineRoot = join(home, ".wpm", "authoring-setup-quarantine", "request");
+      const quarantinePath = join(quarantineRoot, "codex", "current.preimage");
+      const desiredContent = "NEW WPM FILE\n";
+      mkdirSync(destination, { recursive: true });
+      mkdirSync(dirname(quarantinePath), { recursive: true });
+      writeFileSync(`${quarantinePath}.staged`, desiredContent);
+      const fs = new NodeFileSystem();
+
+      expect(() =>
+        fs.writeConfined(
+          home,
+          skill,
+          desiredContent,
+          { kind: "missing", parentTree: "missing" },
+          { root: quarantineRoot, path: quarantinePath },
+        ),
+      ).not.toThrow();
+      expect(readFileSync(skill, "utf8")).toBe(desiredContent);
+      expect(existsSync(quarantineRoot)).toBe(false);
+    });
+  });
+
+  it("rejects desired-looking replacement bytes without their retained prior", async () => {
+    await withTempDir((dir) => {
+      const home = join(dir, "home");
+      const destination = join(home, ".agents", "skills", "wpm-create-package");
+      const skill = join(destination, "SKILL.md");
+      const quarantineRoot = join(home, ".wpm", "authoring-setup-quarantine", "request");
+      const quarantinePath = join(quarantineRoot, "codex", "current.preimage");
+      const oldContent = "OWNED FILE\n";
+      const desiredContent = "NEW WPM FILE\n";
+      mkdirSync(destination, { recursive: true });
+      mkdirSync(dirname(quarantinePath), { recursive: true });
+      writeFileSync(skill, desiredContent);
+      writeFileSync(`${quarantinePath}.staged`, desiredContent);
+      const fs = new NodeFileSystem();
+
+      expect(() =>
+        fs.writeConfined(
+          home,
+          skill,
+          desiredContent,
+          {
+            kind: "sha256",
+            sha256: createHash("sha256").update(oldContent).digest("hex"),
+            parentTree: "one-file",
+          },
+          { root: quarantineRoot, path: quarantinePath },
+        ),
+      ).toThrow(/lacks its retained prior bytes/);
+      expect(readFileSync(skill, "utf8")).toBe(desiredContent);
+      expect(readFileSync(`${quarantinePath}.staged`, "utf8")).toBe(desiredContent);
+      expect(existsSync(quarantinePath)).toBe(false);
+    });
+  });
+
+  it("replays an interrupted confined legacy-tree retirement from its deterministic slot", async () => {
+    await withTempDir((dir) => {
+      const home = join(dir, "home");
+      const legacy = join(home, ".agents", "skills", "installer-builder");
+      const quarantineRoot = join(home, ".wpm", "authoring-setup-quarantine", "request");
+      const quarantinePath = join(quarantineRoot, "codex", "legacy");
+      const quarantine = { root: quarantineRoot, path: quarantinePath };
+      const content = "OWNED LEGACY\n";
+      const fingerprint = singleFileTreeFingerprint(content);
+      mkdirSync(legacy, { recursive: true });
+      writeFileSync(join(legacy, "SKILL.md"), content);
+      const fs = new TreeDetachmentInterruptionFileSystem(legacy);
+
+      expect(() => fs.removeConfined(home, legacy, fingerprint, quarantine)).toThrow(
+        /injected interruption after confined tree detachment/,
+      );
+      expect(existsSync(legacy)).toBe(false);
+      expect(readFileSync(join(quarantinePath, "SKILL.md"), "utf8")).toBe(content);
+      expect(readFileSync(join(`${quarantinePath}.displaced`, "SKILL.md"), "utf8")).toBe(content);
+
+      expect(() => fs.removeConfined(home, legacy, fingerprint, quarantine)).not.toThrow();
+      expect(existsSync(legacy)).toBe(false);
+      expect(existsSync(quarantineRoot)).toBe(false);
+    });
+  });
+
+  it("preserves empty directories in retained legacy evidence until retry completes", async () => {
+    await withTempDir((dir) => {
+      const home = join(dir, "home");
+      const legacy = join(home, ".agents", "skills", "installer-builder");
+      const quarantineRoot = join(home, ".wpm", "authoring-setup-quarantine", "request");
+      const quarantinePath = join(quarantineRoot, "codex", "legacy");
+      const content = "OWNED LEGACY\n";
+      mkdirSync(join(legacy, "empty"), { recursive: true });
+      writeFileSync(join(legacy, "SKILL.md"), content);
+      const fs = new TreeDetachmentInterruptionFileSystem(legacy);
+      const request = () =>
+        fs.removeConfined(home, legacy, legacyTreeWithEmptyDirectoryFingerprint(content), {
+          root: quarantineRoot,
+          path: quarantinePath,
+        });
+
+      expect(request).toThrow(/injected interruption after confined tree detachment/);
+      expect(existsSync(join(quarantinePath, "empty"))).toBe(true);
+      expect(existsSync(join(`${quarantinePath}.displaced`, "empty"))).toBe(true);
+
+      expect(request).not.toThrow();
+      expect(existsSync(legacy)).toBe(false);
+      expect(existsSync(quarantineRoot)).toBe(false);
+    });
+  });
+
+  it("replays exact retained legacy evidence captured before public detachment", async () => {
+    await withTempDir((dir) => {
+      const home = join(dir, "home");
+      const legacy = join(home, ".agents", "skills", "installer-builder");
+      const quarantineRoot = join(home, ".wpm", "authoring-setup-quarantine", "request");
+      const quarantinePath = join(quarantineRoot, "codex", "legacy");
+      const quarantine = { root: quarantineRoot, path: quarantinePath };
+      const content = "OWNED LEGACY\n";
+      const fingerprint = singleFileTreeFingerprint(content);
+      mkdirSync(legacy, { recursive: true });
+      writeFileSync(join(legacy, "SKILL.md"), content);
+      const fs = new TreeCaptureInterruptionFileSystem(legacy);
+
+      expect(() => fs.removeConfined(home, legacy, fingerprint, quarantine)).toThrow(
+        /interruption after retained tree capture/,
+      );
+      expect(readFileSync(join(legacy, "SKILL.md"), "utf8")).toBe(content);
+      expect(readFileSync(join(quarantinePath, "SKILL.md"), "utf8")).toBe(content);
+
+      expect(() => fs.removeConfined(home, legacy, fingerprint, quarantine)).not.toThrow();
+      expect(existsSync(legacy)).toBe(false);
+      expect(existsSync(quarantineRoot)).toBe(false);
+    });
+  });
+
+  it("does not retire an exact-looking public legacy tree that arrives during private setup", async () => {
+    await withTempDir((dir) => {
+      const home = join(dir, "home");
+      const legacy = join(home, ".agents", "skills", "installer-builder");
+      const quarantineRoot = join(home, ".wpm", "authoring-setup-quarantine", "request");
+      const quarantinePath = join(quarantineRoot, "codex", "legacy");
+      const content = "OWNED LEGACY\n";
+      mkdirSync(quarantinePath, { recursive: true });
+      writeFileSync(join(quarantinePath, "SKILL.md"), content);
+      const fs = new TreeArrivalDuringPrivatePreparationFileSystem(content);
+
+      expect(() =>
+        fs.removeConfined(home, legacy, singleFileTreeFingerprint(content), {
+          root: quarantineRoot,
+          path: quarantinePath,
+        }),
+      ).toThrow(/raced while private evidence was prepared/);
+      expect(readFileSync(join(legacy, "SKILL.md"), "utf8")).toBe(content);
+      expect(readFileSync(join(quarantinePath, "SKILL.md"), "utf8")).toBe(content);
+    });
+  });
+
+  it("completes an exact retained-tree subset before detaching the full public legacy tree", async () => {
+    await withTempDir((dir) => {
+      const home = join(dir, "home");
+      const legacy = join(home, ".agents", "skills", "installer-builder");
+      const quarantineRoot = join(home, ".wpm", "authoring-setup-quarantine", "request");
+      const quarantinePath = join(quarantineRoot, "codex", "legacy");
+      const quarantine = { root: quarantineRoot, path: quarantinePath };
+      const skillContent = "OWNED LEGACY\n";
+      const referenceContent = "OWNED REFERENCE\n";
+      mkdirSync(join(legacy, "references"), { recursive: true });
+      writeFileSync(join(legacy, "SKILL.md"), skillContent);
+      writeFileSync(join(legacy, "references", "workflow.md"), referenceContent);
+      mkdirSync(quarantinePath, { recursive: true });
+      writeFileSync(join(quarantinePath, "SKILL.md"), skillContent);
+      const fingerprint = legacyTreeFingerprint(skillContent, referenceContent);
+      const fs = new NodeFileSystem();
+
+      expect(() => fs.removeConfined(home, legacy, fingerprint, quarantine)).not.toThrow();
+      expect(existsSync(legacy)).toBe(false);
+      expect(existsSync(quarantineRoot)).toBe(false);
+    });
+  });
+
+  it("replays an exact displaced-tree subset left by interrupted cleanup", async () => {
+    await withTempDir((dir) => {
+      const home = join(dir, "home");
+      const legacy = join(home, ".agents", "skills", "installer-builder");
+      const quarantineRoot = join(home, ".wpm", "authoring-setup-quarantine", "request");
+      const quarantinePath = join(quarantineRoot, "codex", "legacy");
+      const quarantine = { root: quarantineRoot, path: quarantinePath };
+      const skillContent = "OWNED LEGACY\n";
+      const referenceContent = "OWNED REFERENCE\n";
+      mkdirSync(join(legacy, "references"), { recursive: true });
+      writeFileSync(join(legacy, "SKILL.md"), skillContent);
+      writeFileSync(join(legacy, "references", "workflow.md"), referenceContent);
+      const fs = new PartialTreeCleanupInterruptionFileSystem();
+      const fingerprint = legacyTreeFingerprint(skillContent, referenceContent);
+
+      expect(() => fs.removeConfined(home, legacy, fingerprint, quarantine)).toThrow(
+        /partial displaced-tree cleanup/,
+      );
+      expect(existsSync(legacy)).toBe(false);
+      expect(readFileSync(join(quarantinePath, "SKILL.md"), "utf8")).toBe(skillContent);
+      expect(
+        readFileSync(join(`${quarantinePath}.displaced`, "references", "workflow.md"), "utf8"),
+      ).toBe(referenceContent);
+
+      expect(() => fs.removeConfined(home, legacy, fingerprint, quarantine)).not.toThrow();
+      expect(existsSync(quarantineRoot)).toBe(false);
+    });
+  });
+
+  it("keeps retained evidence discoverable when desired staged cleanup is interrupted", async () => {
+    await withTempDir((dir) => {
+      const home = join(dir, "home");
+      const state = join(home, ".wpm", "authoring-setup.json");
+      const quarantineRoot = join(home, ".wpm", "authoring-setup-quarantine", "request");
+      const quarantinePath = join(quarantineRoot, "state-complete.preimage");
+      const quarantine = { root: quarantineRoot, path: quarantinePath };
+      const applying = '{"status":"applying"}\n';
+      const complete = '{"status":"complete"}\n';
+      mkdirSync(join(home, ".wpm"), { recursive: true });
+      writeFileSync(state, applying);
+      const fs = new StagedCleanupInterruptionFileSystem();
+      const precondition = {
+        kind: "sha256" as const,
+        sha256: createHash("sha256").update(applying).digest("hex"),
+      };
+
+      expect(() => fs.writeConfined(home, state, complete, precondition, quarantine)).toThrow(
+        /staged cleanup interruption/,
+      );
+      expect(readFileSync(state, "utf8")).toBe(complete);
+      expect(readFileSync(quarantinePath, "utf8")).toBe(applying);
+      expect(existsSync(`${quarantinePath}.staged`)).toBe(false);
+
+      expect(() => fs.writeConfined(home, state, complete, precondition, quarantine)).not.toThrow();
+      expect(existsSync(quarantineRoot)).toBe(false);
+    });
+  });
+
+  it("preserves retained evidence when the public file changes at staged cleanup", async () => {
+    await withTempDir((dir) => {
+      const home = join(dir, "home");
+      const destination = join(home, ".agents", "skills", "wpm-create-package");
+      const skill = join(destination, "SKILL.md");
+      const quarantineRoot = join(home, ".wpm", "authoring-setup-quarantine", "request");
+      const quarantinePath = join(quarantineRoot, "codex", "current.preimage");
+      const oldContent = "OWNED FILE\n";
+      const desiredContent = "NEW WPM FILE\n";
+      const userContent = "USER FILE\n";
+      mkdirSync(destination, { recursive: true });
+      writeFileSync(skill, oldContent);
+      const fs = new PublicRaceDuringStagedCleanupFileSystem(skill, userContent);
+
+      expect(() =>
+        fs.writeConfined(
+          home,
+          skill,
+          desiredContent,
+          {
+            kind: "sha256",
+            sha256: createHash("sha256").update(oldContent).digest("hex"),
+            parentTree: "one-file",
+          },
+          { root: quarantineRoot, path: quarantinePath },
+        ),
+      ).toThrow(/changed after staged cleanup/);
+      expect(readFileSync(skill, "utf8")).toBe(userContent);
+      expect(readFileSync(quarantinePath, "utf8")).toBe(oldContent);
+      expect(existsSync(`${quarantinePath}.staged`)).toBe(false);
+    });
+  });
+
+  it("never detaches an exact public legacy tree when retained evidence conflicts", async () => {
+    await withTempDir((dir) => {
+      const home = join(dir, "home");
+      const legacy = join(home, ".agents", "skills", "installer-builder");
+      const quarantineRoot = join(home, ".wpm", "authoring-setup-quarantine", "request");
+      const quarantinePath = join(quarantineRoot, "codex", "legacy");
+      const content = "OWNED LEGACY\n";
+      mkdirSync(legacy, { recursive: true });
+      writeFileSync(join(legacy, "SKILL.md"), content);
+      mkdirSync(quarantinePath, { recursive: true });
+      writeFileSync(join(quarantinePath, "SKILL.md"), "CHANGED PRIVATE\n");
+      const fs = new NodeFileSystem();
+
+      expect(() =>
+        fs.removeConfined(home, legacy, singleFileTreeFingerprint(content), {
+          root: quarantineRoot,
+          path: quarantinePath,
+        }),
+      ).toThrow(/conflicts with public capture/);
+      expect(readFileSync(join(legacy, "SKILL.md"), "utf8")).toBe(content);
+      expect(readFileSync(join(quarantinePath, "SKILL.md"), "utf8")).toBe("CHANGED PRIVATE\n");
+    });
+  });
+
+  it("preserves an exact-content replacement raced in at legacy detachment", async () => {
+    await withTempDir((dir) => {
+      const home = join(dir, "home");
+      const legacy = join(home, ".agents", "skills", "installer-builder");
+      const quarantineRoot = join(home, ".wpm", "authoring-setup-quarantine", "request");
+      const quarantinePath = join(quarantineRoot, "codex", "legacy");
+      const content = "OWNED LEGACY\n";
+      mkdirSync(legacy, { recursive: true });
+      writeFileSync(join(legacy, "SKILL.md"), content);
+      const fs = new TreeReplacementBeforeDetachmentFileSystem();
+
+      expect(() =>
+        fs.removeConfined(home, legacy, singleFileTreeFingerprint(content), {
+          root: quarantineRoot,
+          path: quarantinePath,
+        }),
+      ).toThrow(/raced tree retained/);
+      expect(readFileSync(join(quarantinePath, "SKILL.md"), "utf8")).toBe(content);
+      expect(readFileSync(join(`${quarantinePath}.displaced.raced`, "SKILL.md"), "utf8")).toBe(
+        content,
+      );
+    });
+  });
+
+  it("retains an immutable legacy preimage when an open public handle changes displaced bytes", async () => {
+    await withTempDir((dir) => {
+      const home = join(dir, "home");
+      const legacy = join(home, ".agents", "skills", "installer-builder");
+      const legacySkill = join(legacy, "SKILL.md");
+      const quarantineRoot = join(home, ".wpm", "authoring-setup-quarantine", "request");
+      const quarantinePath = join(quarantineRoot, "codex", "legacy");
+      const quarantine = { root: quarantineRoot, path: quarantinePath };
+      const content = "OWNED LEGACY\n";
+      const descriptor = (() => {
+        mkdirSync(legacy, { recursive: true });
+        writeFileSync(legacySkill, content);
+        return openSync(legacySkill, "r+");
+      })();
+      try {
+        const fs = new TreeOpenHandleRaceFileSystem(legacy, descriptor);
+        expect(() =>
+          fs.removeConfined(home, legacy, singleFileTreeFingerprint(content), quarantine),
+        ).toThrow(/changed during displacement/);
+        expect(existsSync(legacy)).toBe(false);
+        expect(readFileSync(join(quarantinePath, "SKILL.md"), "utf8")).toBe(content);
+        expect(readFileSync(join(`${quarantinePath}.displaced.raced`, "SKILL.md"), "utf8")).toBe(
+          "RACED LEGACY\n",
+        );
+      } finally {
+        closeSync(descriptor);
+      }
+    });
+  });
+
+  it("fails closed and preserves an unexpectedly changed private retained slot", async () => {
+    await withTempDir((dir) => {
+      const home = join(dir, "home");
+      const destination = join(home, ".agents", "skills", "wpm-create-package");
+      const skill = join(destination, "SKILL.md");
+      const quarantineRoot = join(home, ".wpm", "authoring-setup-quarantine", "request");
+      const quarantinePath = join(quarantineRoot, "codex", "current.preimage");
+      const quarantine = { root: quarantineRoot, path: quarantinePath };
+      const oldContent = "OWNED FILE\n";
+      const desiredContent = "NEW WPM FILE\n";
+      const changedPrivateContent = "UNEXPECTED PRIVATE FILE\n";
+      const precondition = {
+        kind: "sha256" as const,
+        sha256: createHash("sha256").update(oldContent).digest("hex"),
+        parentTree: "one-file" as const,
+      };
+      mkdirSync(destination, { recursive: true });
+      writeFileSync(skill, oldContent);
+      const fs = new FileDetachmentInterruptionFileSystem(skill);
+      expect(() => fs.writeConfined(home, skill, desiredContent, precondition, quarantine)).toThrow(
+        /injected interruption after confined file detachment/,
+      );
+      writeFileSync(quarantinePath, changedPrivateContent);
+
+      expect(() => fs.writeConfined(home, skill, desiredContent, precondition, quarantine)).toThrow(
+        /retained preimage changed/,
+      );
+      expect(existsSync(skill)).toBe(false);
+      expect(readFileSync(quarantinePath, "utf8")).toBe(changedPrivateContent);
+      expect(readFileSync(`${quarantinePath}.staged`, "utf8")).toBe(desiredContent);
+      expect(existsSync(quarantineRoot)).toBe(true);
+    });
+  });
+
+  it("inspects mutation capability without creating the candidate path", async () => {
+    await withTempDir((dir) => {
+      const fs = new NodeFileSystem();
+      const candidate = join(dir, "personal", "skills", "demo");
+      expect(fs.inspectMutationCapability(candidate)).toEqual({ capable: true });
+      expect(existsSync(join(dir, "personal"))).toBe(false);
+
+      const restrictedParent = join(dir, "restricted-parent");
+      const writableHome = join(restrictedParent, "home");
+      mkdirSync(writableHome, { recursive: true });
+      chmodSync(writableHome, 0o700);
+      chmodSync(restrictedParent, 0o500);
+      try {
+        expect(fs.inspectMutationCapability(join(writableHome, ".wpm", "state.json"))).toEqual({
+          capable: true,
+        });
+      } finally {
+        chmodSync(restrictedParent, 0o700);
+      }
+
+      const occupiedAncestor = join(dir, "occupied");
+      writeFileSync(occupiedAncestor, "file\n");
+      expect(fs.inspectMutationCapability(join(occupiedAncestor, "child"))).toMatchObject({
+        capable: false,
+      });
     });
   });
 

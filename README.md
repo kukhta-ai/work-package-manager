@@ -58,10 +58,11 @@ npm run build
 npm link
 npm i -g backlog.md
 
-# 2. Install the authoring skill into your agent's user skill scope.
-wpm skill install
+# 2. Configure exactly the personal authoring clients you authorize.
+wpm authoring setup --client codex
+# Repeat --client claude-code on the same command to configure both.
 
-# 3. Scaffold a workspace, then enter it.
+# 3. Scaffold a workspace using those retained authoring-client defaults, then enter it.
 wpm init my-handoff
 cd my-handoff
 
@@ -74,13 +75,16 @@ wpm build dry-run        # validate + preview what would ship, producing nothing
 wpm build package        # write the distributable archive into builds/
 ```
 
-**The authoring skill is the authoring-agent's instruction surface.** `wpm skill install` copies the
-bundled `installer-builder` skill into the user (personal) skill scope of every supported agent it
-detects on your machine (`~/.claude/skills/`, `~/.agents/skills/`, …), so your agent catalogues it at
-its next session and knows how to drive the CLI idiomatically rather than guessing from `--help`. It is
-**idempotent** — re-run it any time to install or update the skill, and it reports which scopes it wrote
-to and whether each was a fresh install or an update. (`wpm init` also reminds you to run it when the
-skill isn't present yet.) The workspace's authoring front door points the agent at this skill.
+**Personal setup is explicit consent, not agent detection.** `wpm authoring setup` installs exactly one
+`wpm-create-package` skill into each selected personal scope (`~/.agents/skills/` for Codex and
+`~/.claude/skills/` for Claude Code). Repeat `--client` for the complete selection, or omit it only in a
+direct terminal to use the two-client chooser and one combined confirmation. Re-running reports each scope as
+installed, unchanged, updated, or migrated and preserves unrelated personal content. The selected IDs become
+defaults for a later `wpm init`; explicit `wpm init --authoring-client …` flags always replace those defaults.
+The old detected-all `wpm skill install` entry point is retired and performs no write.
+
+After setup, invoke `$wpm-create-package` in Codex or `/wpm-create-package` in Claude Code for the guarded
+workspace bootstrap flow. Personal setup itself does not create a workspace or claim a prepared handoff.
 
 ### The authoring workspace layout
 

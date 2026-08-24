@@ -66,7 +66,13 @@ function copyCurrentSource(destination: string): void {
     { cwd: REPO_ROOT, encoding: "utf8" },
   )
     .split("\0")
-    .filter((path) => path !== "" && path !== ".serena" && !path.startsWith(".serena/"));
+    .filter(
+      (path) =>
+        path !== "" &&
+        path !== ".serena" &&
+        !path.startsWith(".serena/") &&
+        existsSync(join(REPO_ROOT, path)),
+    );
 
   for (const relativePath of files) {
     const sourcePath = join(REPO_ROOT, relativePath);
@@ -297,21 +303,6 @@ describe("fresh local packed-install and inactive-candidate journey", () => {
     expect(readdirSync(dirname(packagedPersonalSkill))).toEqual(["SKILL.md"]);
     expect(result.resources.resolvedPaths).toContain("agent-skills/wpm-create-package/SKILL.md");
 
-    for (const personalScope of [".agents", ".claude"]) {
-      const personalSkillRoot = join(
-        consumer,
-        "home",
-        personalScope,
-        "skills",
-        PERSONAL_BOOTSTRAP_SKILL_NAME,
-      );
-      mkdirSync(personalSkillRoot, { recursive: true });
-      copyFileSync(packagedPersonalSkill, join(personalSkillRoot, "SKILL.md"));
-      expect(readFileSync(join(personalSkillRoot, "SKILL.md"), "utf8")).toBe(
-        packagedPersonalSkillText,
-      );
-    }
-
     expect(readFileSync(join(consumer, "home", ".agents", "config.toml"), "utf8")).toBe(
       'model = "preserve-codex-personal"\n',
     );
@@ -328,31 +319,107 @@ describe("fresh local packed-install and inactive-candidate journey", () => {
     const installedWpm = result.executables.find(({ name }) => name === "wpm");
     expect(installedWpm).toBeDefined();
     if (installedWpm === undefined) throw new Error("accepted packed install did not expose wpm");
+    const pathKey = Object.keys(process.env).find((key) => key.toLowerCase() === "path") ?? "PATH";
+    const installedHome = join(consumer, "home");
+    const installedEnv = {
+      ...process.env,
+      HOME: installedHome,
+      USERPROFILE: installedHome,
+      [pathKey]: [dirname(installedWpm.shimPath), process.env[pathKey] ?? process.env.PATH ?? ""]
+        .filter((entry) => entry !== "")
+        .join(delimiter),
+    };
+    const setupInvocation = resolveInstalledExecutableInvocation(
+      process.platform,
+      installedWpm.shimPath,
+      ["authoring", "setup", "--client", "codex", "--client", "claude-code", "--json"],
+    );
+    const installedSetup = spawnSync(setupInvocation.executable, setupInvocation.args, {
+      cwd: consumer,
+      encoding: "utf8",
+      timeout: 180_000,
+      env: installedEnv,
+    });
+    expect({ status: installedSetup.status, stderr: installedSetup.stderr }).toEqual({
+      status: 0,
+      stderr: "",
+    });
+    expect(JSON.parse(String(installedSetup.stdout))).toMatchObject({
+      status: "complete",
+      selectedClients: ["codex", "claude-code"],
+      setupApplied: true,
+      clients: [
+        { id: "codex", outcome: "installed" },
+        { id: "claude-code", outcome: "installed" },
+      ],
+    });
+    for (const personalScope of [".agents", ".claude"]) {
+      const personalSkill = join(
+        installedHome,
+        personalScope,
+        "skills",
+        PERSONAL_BOOTSTRAP_SKILL_NAME,
+        "SKILL.md",
+      );
+      expect(readFileSync(personalSkill, "utf8")).toBe(packagedPersonalSkillText);
+      expect(existsSync(join(dirname(dirname(personalSkill)), "installer-builder"))).toBe(false);
+    }
+    expect(existsSync(join(installedHome, ".wpm", "authoring-setup.json"))).toBe(true);
+
+    const repeatedSetup = spawnSync(setupInvocation.executable, setupInvocation.args, {
+      cwd: consumer,
+      encoding: "utf8",
+      timeout: 180_000,
+      env: installedEnv,
+    });
+    expect(repeatedSetup.status).toBe(0);
+    expect(
+      (
+        JSON.parse(String(repeatedSetup.stdout)) as { clients: Array<{ outcome: string }> }
+      ).clients.map(({ outcome }) => outcome),
+    ).toEqual(["unchanged", "unchanged"]);
+
+    const personalStatePath = join(installedHome, ".wpm", "authoring-setup.json");
+    const personalState = JSON.parse(readFileSync(personalStatePath, "utf8")) as {
+      setupVersion: string;
+      managed: Array<{ client: string; version: string; sha256: string }>;
+    };
+    const olderBytes = "OLDER WPM-OWNED PERSONAL BOOTSTRAP\n";
+    const codexPersonalSkill = join(
+      installedHome,
+      ".agents",
+      "skills",
+      PERSONAL_BOOTSTRAP_SKILL_NAME,
+      "SKILL.md",
+    );
+    writeFileSync(codexPersonalSkill, olderBytes);
+    personalState.setupVersion = "0.0.9";
+    for (const record of personalState.managed) record.version = "0.0.9";
+    const codexRecord = personalState.managed.find(({ client }) => client === "codex");
+    expect(codexRecord).toBeDefined();
+    if (codexRecord === undefined) throw new Error("personal state omitted Codex ownership");
+    codexRecord.sha256 = createHash("sha256").update(olderBytes).digest("hex");
+    writeFileSync(personalStatePath, `${JSON.stringify(personalState, undefined, 2)}\n`);
+    const updatedSetup = spawnSync(setupInvocation.executable, setupInvocation.args, {
+      cwd: consumer,
+      encoding: "utf8",
+      timeout: 180_000,
+      env: installedEnv,
+    });
+    expect(updatedSetup.status).toBe(0);
+    expect(
+      (
+        JSON.parse(String(updatedSetup.stdout)) as { clients: Array<{ outcome: string }> }
+      ).clients.map(({ outcome }) => outcome),
+    ).toEqual(["updated", "unchanged"]);
+    expect(readFileSync(codexPersonalSkill, "utf8")).toBe(packagedPersonalSkillText);
+
     const installedWorkspace = join(consumer, "accepted-authoring-workspace");
     const installedInvocation = resolveInstalledExecutableInvocation(
       process.platform,
       installedWpm.shimPath,
-      [
-        "init",
-        "accepted-authoring-workspace",
-        "--at",
-        installedWorkspace,
-        "--authoring-client",
-        "codex",
-        "--authoring-client",
-        "claude-code",
-      ],
+      ["init", "accepted-authoring-workspace", "--at", installedWorkspace],
     );
-    const pathKey = Object.keys(process.env).find((key) => key.toLowerCase() === "path") ?? "PATH";
-    const installedEnv = {
-      ...process.env,
-      [pathKey]: [
-        dirname(installedInvocation.shimPath),
-        process.env[pathKey] ?? process.env.PATH ?? "",
-      ]
-        .filter((entry) => entry !== "")
-        .join(delimiter),
-    };
     const installedInit = spawnSync(installedInvocation.executable, installedInvocation.args, {
       cwd: consumer,
       encoding: "utf8",
