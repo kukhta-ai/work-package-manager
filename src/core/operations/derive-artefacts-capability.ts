@@ -1,5 +1,5 @@
 import { NotFoundError } from "../errors.js";
-import type { Project, TemplateFile } from "../model/index.js";
+import type { Project, Template, TemplateFile } from "../model/index.js";
 import type { FileSystem } from "../ports/index.js";
 import {
   type ArtefactSnippets,
@@ -67,6 +67,25 @@ function selectArtefactSnippets(snippets: readonly TemplateFile[]): ArtefactSnip
 }
 
 /**
+ * Derive project artefacts from one already-resolved immutable template snapshot.
+ *
+ * Fresh workspace initialization uses this seam so rendered project files, template-defined tasks, semantic
+ * producer evidence, and derived snippets all come from the same resolver result. Existing-project lifecycle
+ * operations continue to use {@link makeArtefactDeriver} so they intentionally resolve their current template
+ * once per operation.
+ *
+ * @param project - The concrete project projection to render.
+ * @param template - The exact template snapshot captured during operation LOAD.
+ * @returns Desired derived artefacts rendered from that snapshot's snippets.
+ */
+export function deriveArtefactsFromTemplateSnapshot(
+  project: Project,
+  template: Pick<Template, "snippets">,
+): DesiredArtefacts {
+  return deriveArtefacts(project, selectArtefactSnippets(template.snippets));
+}
+
+/**
  * Build the concrete `deriveArtefacts` capability for the lifecycle harness (doc 13 §5 ④). The returned
  * function resolves the project template once per call (no cache — the project is re-derived fresh each
  * operation), selects its front-door + orchestrator snippets, and renders the desired artefacts via task-19.
@@ -91,7 +110,6 @@ export function makeArtefactDeriver(
         `project template "${projectTemplateName}" not found (searched: ${resolution.searched.join(", ")})`,
       );
     }
-    const snippets = selectArtefactSnippets(resolution.template.snippets);
-    return deriveArtefacts(project, snippets);
+    return deriveArtefactsFromTemplateSnapshot(project, resolution.template);
   };
 }

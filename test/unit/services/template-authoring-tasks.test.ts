@@ -258,6 +258,38 @@ describe("inspectTemplateAuthoringTasks — aggregate invalid contribution", () 
     }
   });
 
+  it("rejects surrounding whitespace that Backlog.md would normalize instead of materialising literally", () => {
+    const result = inspect(
+      subject("project", {
+        revision: "1",
+        tasks: [
+          {
+            key: "spaced-title",
+            title: " Leading title",
+            "acceptance-criteria": ["Observable title"],
+          },
+          {
+            key: "spaced-criterion",
+            title: "Canonical title",
+            "acceptance-criteria": ["Observable criterion "],
+          },
+        ],
+      }),
+    );
+
+    expect(result.status).toBe("invalid");
+    expect(result.problems).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ code: "title-invalid", path: "authoring-tasks[0].title" }),
+        expect.objectContaining({
+          code: "acceptance-criterion-invalid",
+          path: "authoring-tasks[1].acceptance-criteria[0]",
+        }),
+      ]),
+    );
+    expect(result.tasks).toEqual([]);
+  });
+
   it("rejects a rendered title collision with mandatory work", () => {
     const result = inspect(
       subject("project", {

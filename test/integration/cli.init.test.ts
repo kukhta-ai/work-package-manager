@@ -1,11 +1,13 @@
 import { execFileSync } from "node:child_process";
 import {
+  cpSync,
   existsSync,
   lstatSync,
   mkdirSync,
   readdirSync,
   readFileSync,
   readlinkSync,
+  rmSync,
   writeFileSync,
 } from "node:fs";
 import { join } from "node:path";
@@ -272,6 +274,64 @@ describe("`wpm init` FULL — drives a real change through every layer (task-34)
     });
   });
 
+  it("TASK-126 QA — reports all contribution, derivation, and target blockers before changing real disk or Backlog state", async () => {
+    await withTempDir(async (dir) => {
+      const templatesRoot = join(dir, "templates");
+      cpSync(BUILTIN_TEMPLATES, templatesRoot, { recursive: true });
+      writeFileSync(
+        join(templatesRoot, "project", "minimal", "template.yml"),
+        [
+          "name: minimal",
+          "scope: project",
+          'revision: "qa-invalid-r1"',
+          "parameters:",
+          "  - name: project-name",
+          "authoring-tasks:",
+          "  - key: invalid-context",
+          "    title: Invalid {{wpm.bundle.id}} work",
+          "    acceptance-criteria: []",
+          "    depends-on:",
+          "      - self:missing",
+          "",
+        ].join("\n"),
+      );
+      rmSync(join(templatesRoot, "project", "minimal", "snippets", "AGENTS.md"));
+      const proj = join(dir, "occupied");
+      mkdirSync(proj);
+      writeFileSync(join(proj, "USER.txt"), "preserve me\n");
+      const backlog = new FakeBacklog();
+      const dependencies: CliDeps = {
+        fs: new NodeFileSystem(),
+        backlog,
+        clock: new FixedClock("2026-01-01T00:00:00.000Z"),
+        env: new FakeEnvironment({ cwd: dir, env: {}, platform: process.platform }),
+        builtinTemplatesRoot: templatesRoot,
+        bundledSkillsRoot: BUNDLED_SKILLS,
+      };
+      const streams = io();
+      expect(
+        await run(
+          ["init", "qa-invalid", "--at", proj, "--authoring-client", "codex"],
+          dependencies,
+          streams,
+        ),
+      ).toBe(1);
+      for (const code of [
+        "workspace-target-exists",
+        "project-derived-plan-invalid",
+        "template-task-acceptance-criteria-empty",
+        "template-task-unavailable-context",
+        "template-task-unresolved-dependency",
+      ]) {
+        expect(streams.err.text).toContain(code);
+      }
+      expect(streams.err.text).toContain("template:built-in:project:minimal@qa-invalid-r1");
+      expect(readFileSync(join(proj, "USER.txt"), "utf8")).toBe("preserve me\n");
+      expect(existsSync(join(proj, "wip"))).toBe(false);
+      expect(backlog.inspectRoot(join(proj, ".authoring-backlog")).valid).toBe(false);
+    });
+  });
+
   it("installs both explicit native clients without changing empty manifest targets", async () => {
     await withTempDir(async (dir) => {
       const proj = join(dir, "proj");
@@ -487,6 +547,115 @@ describeIfBacklog(
         expect(titles).toHaveLength(8);
         const created = real.createTask(authoringRoot, { title: "probe" });
         expect(created.id).toBe("authoring-9");
+      });
+    });
+
+    it("TASK-126 — one real init publishes project and concrete bundle task packs with exact dependency/provenance records", async () => {
+      await withTempDir(async (dir) => {
+        const templatesRoot = join(dir, "templates");
+        cpSync(BUILTIN_TEMPLATES, templatesRoot, { recursive: true });
+        writeFileSync(
+          join(templatesRoot, "project", "minimal", "files", "manifest.yml.tmpl"),
+          [
+            "project:",
+            "  name: {{project-name}}",
+            "  version: 0.1.0",
+            "targets: []",
+            "bundles:",
+            "  - core",
+            "",
+          ].join("\n"),
+        );
+        mkdirSync(join(templatesRoot, "project", "minimal", "files", "bundles", "core"), {
+          recursive: true,
+        });
+        writeFileSync(
+          join(templatesRoot, "project", "minimal", "files", "bundles", "core", "bundle.yml"),
+          "id: core\nversion: 1.2.3\nsummary: core bundle\nconfirmation: safe\nrequires: {}\n",
+        );
+        writeFileSync(
+          join(templatesRoot, "project", "minimal", "template.yml"),
+          [
+            "name: minimal",
+            "scope: project",
+            'revision: "real-project-r1"',
+            "parameters:",
+            "  - name: project-name",
+            "authoring-tasks:",
+            "  - key: inspect-license",
+            "    title: Inspect license for {{wpm.project.name}}",
+            "    acceptance-criteria:",
+            "      - The license decision is observable",
+            "    depends-on:",
+            "      - wpm:project:set-metadata",
+            "",
+          ].join("\n"),
+        );
+        writeFileSync(
+          join(templatesRoot, "bundle", "default", "template.yml"),
+          [
+            "name: default",
+            "scope: bundle",
+            'revision: "real-bundle-r2"',
+            "parameters:",
+            "  - name: bundle-id",
+            "  - name: version",
+            "  - name: project-name",
+            "authoring-tasks:",
+            "  - key: inspect-runtime",
+            "    title: Inspect {{wpm.bundle.id}} runtime",
+            "    acceptance-criteria:",
+            "      - The {{wpm.bundle.id}} {{wpm.bundle.version}} runtime is observable",
+            "    depends-on:",
+            "      - wpm:bundle:plan",
+            "",
+          ].join("\n"),
+        );
+
+        const env = isolatedEnv(dir);
+        const dependencies: CliDeps = {
+          fs: new NodeFileSystem(),
+          backlog: new BacklogCli("backlog", env),
+          clock: new FixedClock("2026-01-01T00:00:00.000Z"),
+          env: new ProcessEnvironment(),
+          builtinTemplatesRoot: templatesRoot,
+          bundledSkillsRoot: BUNDLED_SKILLS,
+        };
+        const proj = join(dir, "proj");
+        const streams = io();
+        expect(
+          await run(
+            ["init", "real-plan", "--at", proj, "--authoring-client", "codex"],
+            dependencies,
+            streams,
+          ),
+        ).toBe(0);
+        expect(streams.out.text).toMatch(/materialised: 22 authoring task/);
+
+        const root = join(proj, ".authoring-backlog");
+        const real = new BacklogCli("backlog", env);
+        expect(real.listTasks(root)).toHaveLength(22);
+        expect(real.readTask(root, "authoring-9")).toMatchObject({
+          title: "Inspect license for real-plan",
+          dependencies: ["authoring-1"],
+          labels: [
+            "wpm:template-task",
+            "wpm:template-origin:built-in:project:minimal",
+            "wpm:template-revision:real-project-r1",
+            "wpm:template-key:inspect-license",
+          ],
+        });
+        expect(real.readTask(root, "authoring-22")).toMatchObject({
+          title: "Inspect core runtime",
+          dependencies: ["authoring-10"],
+          labels: [
+            "wpm:template-task",
+            "wpm:template-origin:built-in:bundle:default",
+            "wpm:template-revision:real-bundle-r2",
+            "wpm:template-key:inspect-runtime",
+            "wpm:bundle:core",
+          ],
+        });
       });
     });
   },
