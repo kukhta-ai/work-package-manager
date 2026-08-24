@@ -31,9 +31,31 @@ export interface TemplateFile {
 }
 
 /**
+ * The untrusted, inert authoring-task declaration retained from `template.yml` for aggregate inspection.
+ *
+ * The schema parser deliberately does not turn these two values into executable behavior or fail on the
+ * first malformed task. The dedicated template-authoring-task inspector validates the complete declaration
+ * and returns every safely discoverable finding together. Keeping the values unknown at this boundary makes
+ * that trust transition explicit.
+ */
+export interface TemplateAuthoringTaskSource {
+  /** The producer-defined revision exactly as declared; the inspector validates its grammar when tasks exist. */
+  readonly revision: unknown;
+  /** The exact `authoring-tasks` value; only the inspector may compile it into typed task data. */
+  readonly tasks: unknown;
+  /** Parser problems retained so malformed or unsupported YAML cannot collapse into apparently valid data. */
+  readonly yamlProblems?: readonly {
+    readonly code: string;
+    readonly token: string;
+    readonly line: number;
+    readonly column: number;
+  }[];
+}
+
+/**
  * A template as *data* (doc 13 §2; doc 06): its name, scope, declared parameters, the file tree copied at
- * init, and the on-demand snippet set rendered later by add-commands. This is the shape only — resolving and
- * rendering templates are later tasks (17 and 16).
+ * init, the on-demand snippet set rendered later by add-commands, and any inert authoring-task source retained
+ * for read-only aggregate inspection. Resolving, rendering, and task inspection remain separate services.
  */
 export interface Template {
   /** The template's name (how it is referenced on the CLI). */
@@ -48,4 +70,6 @@ export interface Template {
   readonly files: readonly TemplateFile[];
   /** On-demand single-file stubs rendered later by add-commands (the advisor / skill stubs). */
   readonly snippets: readonly TemplateFile[];
+  /** Optional inert authoring-task declaration retained for read-only inspection. */
+  readonly authoringTaskSource?: TemplateAuthoringTaskSource;
 }

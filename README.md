@@ -107,6 +107,46 @@ the archive into `builds/`. The wrapper around it — the authoring front door, 
 and `builds/` itself — is **never part of any shipped artifact**. So the deliverable is authored under
 `wip/`, not at the workspace root, and everything outside `wip/` is authoring-only scaffolding.
 
+### Declaring additional template authoring work
+
+A project or bundle template may declare an inert, revisioned list of **additional** authoring tasks in its
+`template.yml`. `wpm template show <name> --scope project|bundle` previews the contribution; inspection never
+creates a project, bundle, or Backlog task. A contribution cannot replace or disable WPM's mandatory work.
+
+```yaml
+name: example
+scope: project
+revision: "rev-1"
+authoring-tasks:
+  - key: collect-license
+    title: "Collect license for {{wpm.project.name}}"
+    acceptance-criteria:
+      - "The license for {{wpm.project.name}} is recorded"
+    depends-on:
+      - wpm:project:set-metadata
+```
+
+Keys are lowercase kebab-case and local to one template producer and revision. `self:<key>` names another
+task in the same contribution. Mandatory dependencies use the documented stable references below; raw task
+titles and Backlog IDs are not references.
+
+- Project: `wpm:project:set-metadata`, `wpm:project:confirm-target-agents`,
+  `wpm:project:verify-manifest`, `wpm:project:verify-scope-aliases`,
+  `wpm:project:verify-front-door`, `wpm:project:verify-helpers-and-advisors`,
+  `wpm:project:bump-release-version`, `wpm:project:build-dry-run`.
+- Bundle: `wpm:bundle:plan`, `wpm:bundle:fill-install-backlog`, `wpm:bundle:author-payload`,
+  `wpm:bundle:scaffold-payload-skill`, `wpm:bundle:verify-step-slugs`, `wpm:bundle:verify-dod`,
+  `wpm:bundle:verify-payload-references`, `wpm:bundle:verify-skill-registration`,
+  `wpm:bundle:verify-version-constraints`, `wpm:bundle:review-install-backlog-independence`,
+  `wpm:bundle:simulate-fresh-install`.
+
+Task text is literal except for WPM-provided context. Project contributions may use
+`{{wpm.project.name}}`; bundle contributions may additionally use `{{wpm.bundle.id}}` and
+`{{wpm.bundle.version}}`. These are separate from scaffold parameters: prompts, hooks, executable
+interpolation, arbitrary template parameters, and cross-template dependencies are unsupported. Generic
+inspection renders symbolic previews (`<project-name>`, `<bundle-id>`, `<bundle-version>`) and reports all
+declaration, context, collision, dependency, and cycle findings together.
+
 ## What's in here
 
 ```

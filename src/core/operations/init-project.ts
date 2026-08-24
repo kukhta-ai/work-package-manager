@@ -15,6 +15,7 @@ import {
   AUTHORING_TASK_PREFIX,
   type AuthoringTaskSpec,
   type BundleManifest,
+  type MandatoryAuthoringTask,
   type OperationResult,
   type Project,
 } from "../model/index.js";
@@ -159,55 +160,71 @@ export interface InitProjectResult extends OperationResult {
  *
  * @returns The eight project-wide authoring-task specs, in doc-11 reading order (meta → confirm → verify → release).
  */
-export function projectWideAuthoringTasks(): AuthoringTaskSpec[] {
+export function projectWideAuthoringTaskCatalog(): MandatoryAuthoringTask[] {
   return [
     {
+      reference: "wpm:project:set-metadata",
       title: "Set project metadata",
       acceptanceCriteria: [
         "manifest.yml.project has description, license (and ideally repository, author) set via `wpm project meta`",
       ],
     },
     {
+      reference: "wpm:project:confirm-target-agents",
       title: "Confirm target agents",
       acceptanceCriteria: [
         "manifest.yml.targets has at least one entry, added via `wpm project targets add`",
       ],
     },
     {
+      reference: "wpm:project:verify-manifest",
       title: "Verify manifest coherence",
       acceptanceCriteria: [
         "`wpm project validate` exits clean (deps resolve, targets non-empty, valid semver, no orphan bundle dirs)",
       ],
     },
     {
+      reference: "wpm:project:verify-scope-aliases",
       title: "Verify scope-alias symlinks",
       acceptanceCriteria: [
         "each scope-alias under the project root corresponds to a target agent in manifest.yml.targets and points at installer-skills/; no bare skills/ aliases exist",
       ],
     },
     {
+      reference: "wpm:project:verify-front-door",
       title: "Verify AGENTS.md and main installer skill are current",
       acceptanceCriteria: [
         "AGENTS.md and the <project>-installer/SKILL.md reflect the current manifest.yml and each enabled bundle.yml",
       ],
     },
     {
+      reference: "wpm:project:verify-helpers-and-advisors",
       title: "Verify helpers and advisors registered",
       acceptanceCriteria: [
         "every SKILL.md under installer-skills/ at root scope corresponds to a registered helper or advisor",
       ],
     },
     {
+      reference: "wpm:project:bump-release-version",
       title: "Bump project release version",
       acceptanceCriteria: [
         "manifest.yml.project.version has been advanced since the previous release tag (or set explicitly for the first release)",
       ],
     },
     {
+      reference: "wpm:project:build-dry-run",
       title: "Build dry-run",
       acceptanceCriteria: ["`wpm build dry-run` exits clean"],
     },
   ];
+}
+
+/** Mandatory project task specs with stable-reference metadata removed for the existing materialiser. */
+export function projectWideAuthoringTasks(): AuthoringTaskSpec[] {
+  return projectWideAuthoringTaskCatalog().map(({ title, acceptanceCriteria }) => ({
+    title,
+    acceptanceCriteria,
+  }));
 }
 
 /**

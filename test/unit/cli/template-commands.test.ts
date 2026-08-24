@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { FakeBacklog } from "../../../src/adapters/fake-backlog.js";
 import { FakeEnvironment } from "../../../src/adapters/fake-env.js";
 import { FixedClock } from "../../../src/adapters/fixed-clock.js";
 import { MemoryFileSystem } from "../../../src/adapters/memory-fs.js";
 import { buildProgram, type CliDeps, run } from "../../../src/cli.js";
 import { completeArgv } from "../../../src/completion/complete.js";
 import { defaultRegistry } from "../../../src/completion/registry.js";
+import type { BacklogMd } from "../../../src/core/ports/index.js";
 import type { CliIo, OutputSink } from "../../../src/util/exit.js";
 
 /**
@@ -29,6 +29,15 @@ function collector(): OutputSink & { text: string } {
 }
 function io(): CliIo & { out: ReturnType<typeof collector>; err: ReturnType<typeof collector> } {
   return { out: collector(), err: collector(), debug: false };
+}
+
+/** Any Backlog port access is a test failure: template inspection is wholly read-only and backlog-free. */
+function forbiddenBacklog(): BacklogMd {
+  return new Proxy({} as BacklogMd, {
+    get: (_target, property) => () => {
+      throw new Error(`template command unexpectedly accessed BacklogMd.${String(property)}`);
+    },
+  });
 }
 
 /**
@@ -62,6 +71,22 @@ function seed(): MemoryFileSystem {
     "name: single-bundle\nscope: project\n",
   );
   fs.write(`${BUILTIN}/bundle/default/template.yml`, "name: default\nscope: bundle\n");
+  fs.write(
+    `${BUILTIN}/project/with-tasks/template.yml`,
+    [
+      "name: with-tasks",
+      "scope: project",
+      'revision: "rev-2"',
+      "authoring-tasks:",
+      "  - key: collect-license",
+      '    title: "Collect license for {{wpm.project.name}}"',
+      "    acceptance-criteria:",
+      '      - "The license for {{wpm.project.name}} is recorded"',
+      "    depends-on:",
+      "      - wpm:project:set-metadata",
+      "",
+    ].join("\n"),
+  );
 
   // Project at /proj with a manifest + project-local templates/:
   fs.write(
@@ -85,6 +110,39 @@ function seed(): MemoryFileSystem {
   // a name that exists at BOTH project + bundle scope (for `show --scope` disambiguation):
   fs.write(`${PROJ}/wip/templates/project/clash/template.yml`, "name: clash\nscope: project\n");
   fs.write(`${PROJ}/wip/templates/bundle/clash/template.yml`, "name: clash\nscope: bundle\n");
+  fs.write(
+    `${PROJ}/wip/templates/bundle/broken-tasks/template.yml`,
+    [
+      "name: broken-tasks",
+      "scope: bundle",
+      'revision: "rev-1"',
+      "authoring-tasks:",
+      "  - key: first",
+      '    title: "Same {{wpm.bundle.id}}"',
+      "    acceptance-criteria:",
+      '      - "First is observable"',
+      "    depends-on: [self:second, wpm:bundle:no-such-task]",
+      "    prompt: ask the author",
+      "  - key: second",
+      '    title: "Same <bundle-id>"',
+      "    acceptance-criteria:",
+      '      - "Second uses {{wpm.unknown}}"',
+      "    depends-on: [self:first]",
+      "",
+    ].join("\n"),
+  );
+  fs.write(
+    `${PROJ}/wip/templates/project/safe-output/template.yml`,
+    [
+      "name: safe-output",
+      "scope: project",
+      'description: "line one\\nAdditional authoring tasks: valid"',
+      "parameters:",
+      "  - name: safe-param",
+      '    description: "bidi \\u202e text"',
+      "",
+    ].join("\n"),
+  );
 
   return fs;
 }
@@ -93,7 +151,7 @@ function seed(): MemoryFileSystem {
 function deps(fs: MemoryFileSystem, cwd = "/elsewhere"): CliDeps {
   return {
     fs,
-    backlog: new FakeBacklog(),
+    backlog: forbiddenBacklog(),
     clock: new FixedClock("2026-01-01T00:00:00.000Z"),
     env: new FakeEnvironment({ cwd }),
     builtinTemplatesRoot: BUILTIN,
@@ -220,6 +278,61 @@ describe("template show (task-36)", () => {
     expect(out).not.toContain("Description:"); // no empty description line
   });
 
+  it("TASK125 AC#1-4 — shows valid revisioned additional work with resolved context and dependencies", async () => {
+    const fs = seed();
+    const i = io();
+    expect(await run(["template", "show", "with-tasks", "--scope", "project"], deps(fs), i)).toBe(
+      0,
+    );
+    expect(i.out.text).toContain(
+      "Additional authoring tasks: valid (append-only; mandatory work remains)",
+    );
+    expect(i.out.text).toContain("Producer: built-in/project/with-tasks  Revision: rev-2");
+    expect(i.out.text).toContain("Materialisation: project-initialization");
+    expect(i.out.text).toContain("collect-license");
+    expect(i.out.text).toContain("template:built-in:project:with-tasks@rev-2:collect-license");
+    expect(i.out.text).toContain("Collect license for <project-name>");
+    expect(i.out.text).toContain("The license for <project-name> is recorded");
+    expect(i.out.text).toContain("wpm:project:set-metadata -> wpm:project:set-metadata");
+    expect(i.out.text).toContain("Context: wpm.project.name");
+  });
+
+  it("TASK125 AC#7 — explicitly reports no additional contribution", async () => {
+    const fs = seed();
+    const i = io();
+    expect(await run(["template", "show", "minimal", "--scope", "project"], deps(fs), i)).toBe(0);
+    expect(i.out.text).toContain("Additional authoring tasks: none");
+  });
+
+  it("TASK125 AC#8-9 — aggregates invalid contribution findings and remains read-only", async () => {
+    const fs = seed();
+    const before = snapshot(fs, [BUILTIN, PROJ]);
+    const i = io();
+    expect(
+      await run(["template", "show", "broken-tasks", "--scope", "bundle", "-C", PROJ], deps(fs), i),
+    ).toBe(1);
+    expect(i.out.text).toContain("Additional authoring tasks: invalid");
+    expect(i.out.text).toContain("cyclic-dependency");
+    expect(i.out.text).toContain("rendered-title-collision");
+    expect(i.out.text).toContain("unresolved-dependency");
+    expect(i.out.text).toContain("unsupported-context");
+    expect(i.out.text).toContain("unsupported-field");
+    expect(i.err.text).toContain("template authoring-task contribution is invalid");
+    expect(snapshot(fs, [BUILTIN, PROJ])).toBe(before);
+  });
+
+  it("TASK125 trust boundary — template-controlled metadata cannot counterfeit terminal lines", async () => {
+    const fs = seed();
+    const i = io();
+    expect(
+      await run(["template", "show", "safe-output", "--scope", "project", "-C", PROJ], deps(fs), i),
+    ).toBe(0);
+    expect(i.out.text).toContain("line one\\nAdditional authoring tasks: valid");
+    expect(i.out.text).not.toContain("line one\nAdditional authoring tasks: valid");
+    expect(i.out.text).toContain("bidi \\u202e text");
+    expect(i.out.text).not.toContain("\u202e");
+  });
+
   it("AC#1 — resolves the PROJECT-local template over the built-in of the same name", async () => {
     const fs = seed();
     const i = io();
@@ -271,6 +384,7 @@ describe("template show (task-36)", () => {
     expect(help).toMatch(/Usage:/);
     expect(help).toContain("<name>");
     expect(help).toContain("--scope");
+    expect(help).toContain("authoring tasks");
     expect(help).toContain("Example:");
   });
 

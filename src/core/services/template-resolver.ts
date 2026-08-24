@@ -1,7 +1,8 @@
 import { join } from "node:path";
 import { toPosix } from "../../util/posix-path.js";
-// `parseYaml` is a pure leaf (no I/O); the FS port supplies the text it parses.
-import { parseYaml } from "../../util/yaml.js";
+// `parseDocument` is a pure leaf (no I/O); retaining parser problems prevents unsafe YAML from being erased.
+import { parseDocument } from "../../util/yaml.js";
+import { ValidationError } from "../errors.js";
 import type { Template, TemplateFile, TemplateScope } from "../model/index.js";
 import type { FileSystem } from "../ports/index.js";
 import { parseTemplateDescriptor } from "./schema/index.js";
@@ -9,8 +10,8 @@ import { parseTemplateDescriptor } from "./schema/index.js";
 /**
  * The two-tier `template-resolver` service (doc 13 §4): given a template name and scope, it finds the
  * matching template directory — **project-local before built-in** (doc 10/12: "project-local templates/
- * shadow these") — reads it into a fully-populated {@link Template}, and can list the available templates
- * filtered by scope.
+ * shadow these") — reads it into a fully-populated {@link Template}, retains the selected semantic source,
+ * and can list the available templates filtered by scope.
  *
  * It is pure **over the FileSystem port** (doc 13 §4: the operation does the I/O, here through the injected
  * port). It uses `node:path` for path joins — pure string operations, which the import-boundary rule permits
@@ -57,7 +58,12 @@ export interface ListFilter {
  * thrown, because that is a template-authoring bug.)
  */
 export type TemplateResolution =
-  | { readonly found: true; readonly template: Template }
+  | {
+      readonly found: true;
+      readonly template: Template;
+      /** Which resolver tier supplied the selected producer. */
+      readonly source: "project-local" | "built-in";
+    }
   | {
       readonly found: false;
       readonly name: string;
@@ -101,20 +107,48 @@ function readTree(fs: FileSystem, baseDir: string): TemplateFile[] {
 
 /**
  * Read a template directory (known to exist) into a fully-populated {@link Template}: parse its `template.yml`
- * descriptor (name/scope/parameters), then read its `files/` and `snippets/` trees.
+ * descriptor (including any inert authoring-task source), then read its `files/` and `snippets/` trees.
  *
  * @param fs - The filesystem port.
  * @param templateDir - The template directory (`<root>/<scope>/<name>`).
  * @returns The fully-read template.
- * @throws If `template.yml` is missing or malformed (a template-authoring bug).
+ * @throws {ValidationError} If `template.yml` is malformed (a template-authoring bug).
  */
 function readTemplate(fs: FileSystem, templateDir: string): Template {
   const descriptorPath = join(templateDir, "template.yml");
-  const parsed = parseTemplateDescriptor(parseYaml(fs.read(descriptorPath)));
+  const descriptorText = fs.read(descriptorPath);
+  let descriptorData: unknown;
+  let yamlProblems: readonly {
+    readonly code: string;
+    readonly token: string;
+    readonly line: number;
+    readonly column: number;
+  }[] = [];
+  try {
+    const document = parseDocument(descriptorText);
+    yamlProblems = [...document.errors, ...document.warnings].map((problem) => ({
+      code: problem.code,
+      token: descriptorText.slice(problem.pos[0], problem.pos[1]),
+      line: problem.linePos?.[0]?.line ?? 0,
+      column: problem.linePos?.[0]?.col ?? 0,
+    }));
+    descriptorData = document.toJS();
+  } catch {
+    throw new Error("template-resolver: selected template descriptor has invalid YAML");
+  }
+  const parsed = parseTemplateDescriptor(descriptorData);
   if (!parsed.ok) {
+    if (yamlProblems.length > 0) {
+      throw new Error("template-resolver: selected template descriptor has invalid YAML");
+    }
     throw new Error(`template-resolver: invalid "${descriptorPath}" — ${parsed.problem.message}`);
   }
   const descriptor = parsed.value;
+  if (yamlProblems.length > 0 && descriptor.authoringTaskSource === undefined) {
+    throw new Error(
+      "template-resolver: selected template descriptor contains unsupported YAML content",
+    );
+  }
   return {
     name: descriptor.name,
     scope: descriptor.scope,
@@ -122,6 +156,14 @@ function readTemplate(fs: FileSystem, templateDir: string): Template {
     parameters: descriptor.parameters,
     files: readTree(fs, join(templateDir, "files")),
     snippets: readTree(fs, join(templateDir, "snippets")),
+    ...(descriptor.authoringTaskSource !== undefined
+      ? {
+          authoringTaskSource: {
+            ...descriptor.authoringTaskSource,
+            ...(yamlProblems.length > 0 ? { yamlProblems } : {}),
+          },
+        }
+      : {}),
   };
 }
 
@@ -134,25 +176,42 @@ function readTemplate(fs: FileSystem, templateDir: string): Template {
  * @param scope - The scope to resolve within (`project` or `bundle`).
  * @param deps - The injected filesystem port and template roots.
  * @returns A {@link TemplateResolution}.
- * @throws Only if a *found* template's `template.yml` is missing or malformed.
+ * @throws {ValidationError} If the requested name is non-portable or a found descriptor is malformed or
+ * mismatches its registry identity.
  */
 export function resolveTemplate(
   name: string,
   scope: TemplateScope,
   deps: ResolverDeps,
 ): TemplateResolution {
-  const candidates: string[] = [];
-  if (deps.projectTemplatesRoot !== undefined) {
-    candidates.push(join(deps.projectTemplatesRoot, scope, name));
+  if (!/^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/.test(name)) {
+    throw new ValidationError("template name must be lowercase kebab-case without path separators");
   }
-  candidates.push(join(deps.builtinTemplatesRoot, scope, name));
+  const candidates: { readonly dir: string; readonly source: "project-local" | "built-in" }[] = [];
+  if (deps.projectTemplatesRoot !== undefined) {
+    candidates.push({
+      dir: join(deps.projectTemplatesRoot, scope, name),
+      source: "project-local",
+    });
+  }
+  candidates.push({ dir: join(deps.builtinTemplatesRoot, scope, name), source: "built-in" });
 
-  for (const dir of candidates) {
-    if (deps.fs.exists(dir)) {
-      return { found: true, template: readTemplate(deps.fs, dir) };
+  for (const candidate of candidates) {
+    if (deps.fs.exists(candidate.dir)) {
+      const template = readTemplate(deps.fs, candidate.dir);
+      if (template.name !== name || template.scope !== scope) {
+        throw new Error(
+          `template-resolver: descriptor identity mismatch for registry key ${scope}/${name}`,
+        );
+      }
+      return {
+        found: true,
+        template,
+        source: candidate.source,
+      };
     }
   }
-  return { found: false, name, scope, searched: candidates.map(toPosix) };
+  return { found: false, name, scope, searched: candidates.map(({ dir }) => toPosix(dir)) };
 }
 
 /**
