@@ -19,35 +19,62 @@
  * @param input - The input stream to read the answer from (the real `process.stdin`, or a test `Readable`).
  * @returns A promise resolving `true` when the answer affirms, `false` otherwise.
  */
-export function readConfirmation(input: NodeJS.ReadableStream): Promise<boolean> {
-  return new Promise<boolean>((resolve) => {
-    let buffer = "";
-    let settled = false;
+export interface InputLineSession {
+  /** Read the next buffered line, or `undefined` after EOF/error with no line remaining. */
+  readLine(): Promise<string | undefined>;
+}
 
-    const finish = (answer: string): void => {
-      if (settled) {
-        return;
-      }
-      settled = true;
-      input.removeListener("data", onData);
-      input.removeListener("end", onEnd);
-      input.removeListener("error", onError);
-      const normalised = answer.trim().toLowerCase();
-      resolve(normalised === "y" || normalised === "yes");
-    };
+/**
+ * Create one persistent buffered line session. A single stream chunk may contain multiple answers; none are
+ * discarded between chooser and confirmation reads.
+ */
+export function createInputLineSession(input: NodeJS.ReadableStream): InputLineSession {
+  const lines: string[] = [];
+  const waiting: Array<(line: string | undefined) => void> = [];
+  let buffer = "";
+  let ended = false;
 
-    const onData = (chunk: Buffer | string): void => {
-      buffer += chunk.toString();
-      const newlineIndex = buffer.indexOf("\n");
-      if (newlineIndex >= 0) {
-        finish(buffer.slice(0, newlineIndex));
-      }
-    };
-    const onEnd = (): void => finish(buffer); // EOF with no newline: the accumulated text is the (last) answer.
-    const onError = (): void => finish(""); // A read error is treated as a decline (never destroy on failure).
-
-    input.on("data", onData);
-    input.once("end", onEnd);
-    input.once("error", onError);
+  const deliver = (line: string): void => {
+    const normalized = line.endsWith("\r") ? line.slice(0, -1) : line;
+    const waiter = waiting.shift();
+    if (waiter === undefined) lines.push(normalized);
+    else waiter(normalized);
+  };
+  const finish = (discardBuffer = false): void => {
+    if (ended) return;
+    if (!discardBuffer && buffer.length > 0) deliver(buffer);
+    buffer = "";
+    ended = true;
+    for (const waiter of waiting.splice(0)) waiter(undefined);
+  };
+  input.on("data", (chunk: Buffer | string) => {
+    buffer += chunk.toString();
+    let newline = buffer.indexOf("\n");
+    while (newline >= 0) {
+      deliver(buffer.slice(0, newline));
+      buffer = buffer.slice(newline + 1);
+      newline = buffer.indexOf("\n");
+    }
   });
+  input.once("end", () => finish());
+  input.once("error", () => finish(true));
+
+  return {
+    readLine: async () => {
+      const line = lines.shift();
+      if (line !== undefined) return line;
+      if (ended) return undefined;
+      return new Promise<string | undefined>((resolve) => waiting.push(resolve));
+    },
+  };
+}
+
+/** Parse one safe affirmative answer. */
+export function isAffirmativeConfirmation(answer: string | undefined): boolean {
+  const normalised = answer?.trim().toLowerCase();
+  return normalised === "y" || normalised === "yes";
+}
+
+export async function readConfirmation(input: NodeJS.ReadableStream): Promise<boolean> {
+  return isAffirmativeConfirmation(await createInputLineSession(input).readLine());
 }

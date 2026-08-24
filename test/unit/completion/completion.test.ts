@@ -3,7 +3,7 @@ import { FakeBacklog } from "../../../src/adapters/fake-backlog.js";
 import { FakeEnvironment } from "../../../src/adapters/fake-env.js";
 import { FixedClock } from "../../../src/adapters/fixed-clock.js";
 import { MemoryFileSystem } from "../../../src/adapters/memory-fs.js";
-import { buildProgram, type CliDeps } from "../../../src/cli.js";
+import { buildProgram, type CliDeps, COMPLETION_SPECS } from "../../../src/cli.js";
 import { completeArgv } from "../../../src/completion/complete.js";
 import { defaultRegistry } from "../../../src/completion/registry.js";
 import { type CompletionContext, CompletionRegistry } from "../../../src/completion/sources.js";
@@ -72,19 +72,12 @@ function seededDeps(): CliDeps {
 /** Run completeArgv against the real program tree + the real default registry + the CLI's specs. */
 function complete(deps: CliDeps, words: string[]): string[] {
   const program = buildProgram(deps, io());
-  // The CLI's COMPLETION_SPECS aren't exported; re-declare the one wired today for the dispatch test.
   return completeArgv(program, words, {
     fs: deps.fs,
     env: deps.env,
     builtinTemplatesRoot: deps.builtinTemplatesRoot,
     registry: defaultRegistry(),
-    specs: {
-      init: { options: { "--authoring-client": "authoring-client-ids" } },
-      "authoring integrate": { options: { "--client": "authoring-client-ids" } },
-      "authoring handoff verify": { options: { "--client": "authoring-client-ids" } },
-      "bundle new": { options: { "--template": "bundle-template-names" }, args: [undefined] },
-      "completion install": { options: { "--shell": "shells" } },
-    },
+    specs: COMPLETION_SPECS,
   });
 }
 
@@ -192,6 +185,10 @@ describe("AC#2 — options with a fixed set of valid values complete to those va
       "claude-code",
     ]);
     expect(complete(deps, ["authoring", "integrate", "--client", "c"])).toEqual([
+      "codex",
+      "claude-code",
+    ]);
+    expect(complete(deps, ["authoring", "setup", "--client", "c"])).toEqual([
       "codex",
       "claude-code",
     ]);

@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { FakeBacklog } from "../../../src/adapters/fake-backlog.js";
+import { FakeEnvironment } from "../../../src/adapters/fake-env.js";
 import { MemoryFileSystem } from "../../../src/adapters/memory-fs.js";
 import {
   HandoffVerificationError,
@@ -17,7 +18,9 @@ import {
   type InitProjectInput,
   projectWideAuthoringTasks,
 } from "../../../src/core/operations/init-project.js";
+import { setupPersonalAuthoring } from "../../../src/core/operations/personal-authoring-setup.js";
 import { verifyWorkspaceHandoff } from "../../../src/core/operations/workspace-handoff.js";
+import { PERSONAL_AUTHORING_STATE_PATH } from "../../../src/core/services/personal-authoring-setup.js";
 import { parseManifest } from "../../../src/core/services/schema/index.js";
 import {
   WORKSPACE_INTEGRATION_STATE_PATH,
@@ -234,6 +237,7 @@ function deps(fs: MemoryFileSystem, backlog: FakeBacklog) {
   return {
     fs,
     backlog,
+    env: new FakeEnvironment({ env: {} }),
     builtinTemplatesRoot: BUILTIN,
     bundledSkillsRoot: BUNDLED_SKILLS,
     integrationVersion: "0.1.0",
@@ -1237,5 +1241,74 @@ describe("projectWideAuthoringTasks (doc 11 §3 — Materialised by `wpm init`)"
     for (const t of tasks) {
       expect(t.acceptanceCriteria.length).toBeGreaterThan(0);
     }
+  });
+});
+
+describe("initProject retained personal authoring defaults", () => {
+  it("uses canonical retained defaults only when the workspace selection is absent", () => {
+    const fs = seedTemplates();
+    const backlog = new FakeBacklog();
+    const home = "/home/author";
+    fs.makeDirectories(home);
+    const env = new FakeEnvironment({ env: { HOME: home } });
+    setupPersonalAuthoring(
+      { fs, env },
+      {
+        bundledSkillsRoot: BUNDLED_SKILLS,
+        clientIds: ["codex", "claude-code"],
+        setupVersion: "0.1.0",
+      },
+    );
+
+    const result = executeInitProject(
+      { ...deps(fs, backlog), env },
+      { targetDir: TARGET, name: "defaults-demo" },
+    );
+
+    expect(result.authoringIntegration.selectedClients).toEqual(["codex", "claude-code"]);
+    expect(result.handoff.configuredClients).toEqual(["codex", "claude-code"]);
+  });
+
+  it("an explicit workspace selection bypasses and replaces malformed retained state", () => {
+    const fs = seedTemplates();
+    const backlog = new FakeBacklog();
+    const home = "/home/author";
+    fs.write(`${home}/${PERSONAL_AUTHORING_STATE_PATH}`, "user-modified state\n");
+    const env = new FakeEnvironment({ env: { HOME: home } });
+
+    const result = executeInitProject(
+      { ...deps(fs, backlog), env },
+      {
+        targetDir: TARGET,
+        name: "explicit-demo",
+        authoringClientIds: ["claude-code"],
+      },
+    );
+
+    expect(result.authoringIntegration.selectedClients).toEqual(["claude-code"]);
+    expect(fs.read(`${home}/${PERSONAL_AUTHORING_STATE_PATH}`)).toBe("user-modified state\n");
+  });
+
+  it("malformed retained state blocks an omitted selection before target creation", () => {
+    const fs = seedTemplates();
+    const home = "/home/author";
+    fs.write(`${home}/${PERSONAL_AUTHORING_STATE_PATH}`, "user-modified state\n");
+    const env = new FakeEnvironment({ env: { HOME: home } });
+
+    let error: unknown;
+    try {
+      executeInitProject(
+        { ...deps(fs, new FakeBacklog()), env },
+        { targetDir: TARGET, name: "blocked-defaults" },
+      );
+    } catch (caught) {
+      error = caught;
+    }
+
+    expect(error).toBeInstanceOf(WorkspaceIntegrationPreflightError);
+    expect((error as WorkspaceIntegrationPreflightError).blockers).toEqual(
+      expect.arrayContaining([expect.objectContaining({ code: "personal-state-invalid" })]),
+    );
+    expect(fs.inspectPath(TARGET).kind).toBe("missing");
   });
 });

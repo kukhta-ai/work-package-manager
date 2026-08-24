@@ -58,7 +58,13 @@ function copyCurrentSource(destination: string): void {
     { cwd: REPO_ROOT, encoding: "utf8" },
   )
     .split("\0")
-    .filter((path) => path !== "" && path !== ".serena" && !path.startsWith(".serena/"));
+    .filter(
+      (path) =>
+        path !== "" &&
+        path !== ".serena" &&
+        !path.startsWith(".serena/") &&
+        existsSync(join(REPO_ROOT, path)),
+    );
 
   for (const relativePath of files) {
     const sourcePath = join(REPO_ROOT, relativePath);

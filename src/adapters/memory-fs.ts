@@ -2,10 +2,14 @@ import { createHash } from "node:crypto";
 import { posix, win32 } from "node:path";
 import type {
   AliasResult,
+  ConfinedQuarantine,
+  ConfinedWritePrecondition,
   DirEntry,
   FileSystem,
+  MutationCapability,
   PathInspection,
 } from "../core/ports/filesystem.js";
+import { compareCodeUnits } from "../util/code-unit-order.js";
 import { toPosix } from "../util/posix-path.js";
 
 /**
@@ -22,8 +26,22 @@ import { toPosix } from "../util/posix-path.js";
 export class MemoryFileSystem implements FileSystem {
   private readonly files = new Map<string, string>();
   private readonly directories = new Set<string>(["/"]);
+  private readonly directoryIdentities = new Map<string, number>([["/", 0]]);
+  private nextDirectoryIdentity = 1;
   /** Recorded aliases (linkPath → target), so tests can assert what was aliased. */
   private readonly aliases = new Map<string, string>();
+
+  /** Deterministic test seam after a retained public file preimage has been detached. */
+  protected afterConfinedFileDetachment(_path: string, _quarantinePath: string): void {}
+
+  /** Deterministic test seam immediately before no-clobber public file publication. */
+  protected beforeConfinedFilePublication(_path: string): void {}
+
+  /** Deterministic test seam after desired bytes are public but before private cleanup. */
+  protected afterConfinedFilePublication(_path: string, _quarantinePath: string): void {}
+
+  /** Deterministic test seam after a retained public tree has been detached. */
+  protected afterConfinedTreeDetachment(_path: string, _quarantinePath: string): void {}
 
   /** Recognize both supported absolute-path dialects without depending on the test runner's host platform. */
   private isAbsolute(path: string): boolean {
@@ -57,10 +75,172 @@ export class MemoryFileSystem implements FileSystem {
   private recordDir(dir: string): void {
     let current = dir;
     while (true) {
-      this.directories.add(current);
+      if (!this.directories.has(current)) {
+        this.directories.add(current);
+        this.directoryIdentities.set(current, this.nextDirectoryIdentity);
+        this.nextDirectoryIdentity += 1;
+      }
       if (current === "/") break;
       current = this.parentOf(current);
     }
+  }
+
+  private removeEmptyDirectoryChain(start: string, stopAfter: string): void {
+    let current = this.normalize(start);
+    const stop = this.normalize(stopAfter);
+    let quarantineRoot = current;
+    while (this.parentOf(quarantineRoot) !== stop && quarantineRoot !== "/") {
+      quarantineRoot = this.parentOf(quarantineRoot);
+    }
+    if (this.inspectPath(quarantineRoot).kind === "directory") {
+      for (const entry of this.list(quarantineRoot)) {
+        if (entry.kind !== "directory") continue;
+        const child = `${quarantineRoot}/${entry.name}`;
+        if (this.list(child).length === 0) {
+          this.directories.delete(child);
+          this.directoryIdentities.delete(child);
+        }
+      }
+    }
+    while (current !== "/") {
+      const kind = this.inspectPath(current).kind;
+      if (kind === "directory") {
+        if (this.list(current).length > 0) return;
+        this.directories.delete(current);
+        this.directoryIdentities.delete(current);
+      } else if (kind !== "missing") {
+        return;
+      }
+      if (current === stop) return;
+      current = this.parentOf(current);
+    }
+  }
+
+  private directoryIdentity(path: string): number | undefined {
+    return this.directoryIdentities.get(this.normalize(path));
+  }
+
+  private assertDirectoryIdentity(path: string, expected: number | undefined): void {
+    const actual = this.directoryIdentity(path);
+    if (expected === undefined || actual === undefined || actual !== expected) {
+      throw new Error(`confined write parent identity changed: ${this.normalize(path)}`);
+    }
+  }
+
+  private assertConfinedMutationPath(
+    confinementRoot: string,
+    path: string,
+    finalKind: "file-or-missing" | "directory",
+  ): void {
+    const root = this.normalize(confinementRoot);
+    const target = this.normalize(path);
+    if (target === root || !target.startsWith(`${root}/`)) {
+      throw new Error(`confined mutation path escapes its root: ${target}`);
+    }
+    let current = "";
+    const segments = target.split("/").filter((segment) => segment.length > 0);
+    for (let index = 0; index < segments.length; index += 1) {
+      current += `/${segments[index] as string}`;
+      if (this.aliases.has(current)) {
+        throw new Error(`confined mutation path contains a symbolic link: ${current}`);
+      }
+      const final = index === segments.length - 1;
+      if (!final && this.files.has(current)) {
+        throw new Error(`confined mutation ancestor is not a directory: ${current}`);
+      }
+      if (final && finalKind === "file-or-missing" && this.directories.has(current)) {
+        throw new Error(`confined write target is not a regular file: ${current}`);
+      }
+      if (final && finalKind === "directory" && !this.directories.has(current)) {
+        throw new Error(`confined removal target is not a regular directory: ${current}`);
+      }
+    }
+  }
+
+  private assertQuarantine(
+    confinementRoot: string,
+    quarantine: ConfinedQuarantine,
+    finalKind: "file-or-missing" | "directory" = "file-or-missing",
+  ): { readonly root: string; readonly path: string } {
+    const confinement = this.normalize(confinementRoot);
+    const root = this.normalize(quarantine.root);
+    const path = this.normalize(quarantine.path);
+    if (
+      root === confinement ||
+      !root.startsWith(`${confinement}/`) ||
+      path === root ||
+      !path.startsWith(`${root}/`)
+    ) {
+      throw new Error(
+        "confined quarantine must be a strict descendant of HOME and its request root",
+      );
+    }
+    const inspected = this.inspectPath(path);
+    this.assertConfinedMutationPath(
+      confinement,
+      path,
+      finalKind === "directory" && inspected.kind === "directory" ? "directory" : "file-or-missing",
+    );
+    return { root, path };
+  }
+
+  private treeSnapshot(root: string): {
+    readonly entries: readonly {
+      readonly path: string;
+      readonly kind: "directory" | "file" | "symbolic-link" | "other";
+      readonly sha256?: string;
+      readonly target?: string;
+    }[];
+    readonly fingerprint: string;
+  } {
+    const entries: Array<{
+      path: string;
+      kind: "directory" | "file" | "symbolic-link" | "other";
+      sha256?: string;
+      target?: string;
+    }> = [];
+    const walk = (directory: string, relativeRoot: string): void => {
+      const listed = [...this.list(directory)].sort((left, right) =>
+        compareCodeUnits(left.name, right.name),
+      );
+      for (const entry of listed) {
+        const absolute = `${directory.replace(/\/$/, "")}/${entry.name}`;
+        const relativePath =
+          relativeRoot.length === 0 ? entry.name : `${relativeRoot}/${entry.name}`;
+        const inspected = this.inspectPath(absolute);
+        if (inspected.kind === "directory") {
+          entries.push({ path: relativePath, kind: "directory" });
+          walk(absolute, relativePath);
+        } else if (inspected.kind === "file") {
+          entries.push({ path: relativePath, kind: "file", sha256: this.digestFile(absolute) });
+        } else if (inspected.kind === "symbolic-link") {
+          entries.push({ path: relativePath, kind: "symbolic-link", target: inspected.target });
+        } else if (inspected.kind === "other") {
+          entries.push({ path: relativePath, kind: "other" });
+        } else {
+          throw new Error(`tree entry disappeared during confined inspection: ${absolute}`);
+        }
+      }
+    };
+    walk(root, "");
+    return {
+      entries,
+      fingerprint: `sha256:${createHash("sha256")
+        .update(JSON.stringify(entries), "utf8")
+        .digest("hex")}`,
+    };
+  }
+
+  private treeFingerprint(root: string): string {
+    return this.treeSnapshot(root).fingerprint;
+  }
+
+  private treeIsExactSubset(candidateRoot: string, completeRoot: string): boolean {
+    const candidate = this.treeSnapshot(candidateRoot).entries;
+    const complete = this.treeSnapshot(completeRoot).entries;
+    return candidate.every((entry) =>
+      complete.some((expected) => JSON.stringify(expected) === JSON.stringify(entry)),
+    );
   }
 
   /** @inheritdoc */
@@ -86,6 +266,276 @@ export class MemoryFileSystem implements FileSystem {
     }
     this.recordDir(this.parentOf(p));
     this.files.set(p, content);
+  }
+
+  /** @inheritdoc */
+  writeConfined(
+    confinementRoot: string,
+    path: string,
+    content: string,
+    expected: ConfinedWritePrecondition,
+    quarantine?: ConfinedQuarantine,
+  ): void {
+    const target = this.normalize(path);
+    const parent = this.parentOf(target);
+    this.assertConfinedMutationPath(confinementRoot, path, "file-or-missing");
+    const inspected = this.inspectPath(path);
+    const desiredSha256 = createHash("sha256").update(content, "utf8").digest("hex");
+    const privateSlot =
+      quarantine === undefined ? undefined : this.assertQuarantine(confinementRoot, quarantine);
+    const quarantinePath = privateSlot?.path;
+    const quarantineRoot = privateSlot?.root;
+    const displacedPath = quarantinePath === undefined ? undefined : `${quarantinePath}.displaced`;
+    if (expected.kind !== "missing" && quarantinePath === undefined) {
+      throw new Error("confined replacement requires request-bound quarantine evidence");
+    }
+    const retained = quarantinePath === undefined ? undefined : this.files.get(quarantinePath);
+    const displaced = displacedPath === undefined ? undefined : this.files.get(displacedPath);
+    const staged =
+      quarantinePath === undefined ? undefined : this.files.get(`${quarantinePath}.staged`);
+    let publicationParentIdentity = this.directoryIdentity(parent);
+    const createdPublicationDirectories: Array<{
+      readonly path: string;
+      readonly identity: number;
+    }> = [];
+    const beforeSha256 =
+      expected.kind === "missing"
+        ? undefined
+        : expected.kind === "sha256"
+          ? expected.sha256
+          : createHash("sha256").update(expected.content, "utf8").digest("hex");
+    if (
+      retained !== undefined &&
+      createHash("sha256").update(retained, "utf8").digest("hex") !== beforeSha256
+    ) {
+      throw new Error(`confined retained preimage changed: ${quarantinePath}`);
+    }
+    if (
+      displaced !== undefined &&
+      (retained === undefined ||
+        createHash("sha256").update(displaced, "utf8").digest("hex") !== beforeSha256)
+    ) {
+      throw new Error(`confined displaced public evidence changed: ${displacedPath}`);
+    }
+    const publicSha256 =
+      inspected.kind === "file"
+        ? createHash("sha256").update(this.read(path), "utf8").digest("hex")
+        : undefined;
+    if (
+      staged !== undefined &&
+      createHash("sha256").update(staged, "utf8").digest("hex") !== desiredSha256
+    ) {
+      throw new Error(`confined staged bytes changed: ${quarantinePath}.staged`);
+    }
+    const resumesEmptyCreatedParent =
+      expected.kind === "missing" &&
+      expected.parentTree === "missing" &&
+      publicSha256 === undefined &&
+      staged !== undefined &&
+      createHash("sha256").update(staged, "utf8").digest("hex") === desiredSha256 &&
+      this.inspectPath(parent).kind === "directory" &&
+      this.list(parent).length === 0;
+    if (
+      expected.parentTree === "missing" &&
+      publicSha256 !== desiredSha256 &&
+      this.inspectPath(parent).kind !== "missing" &&
+      !resumesEmptyCreatedParent
+    ) {
+      throw new Error(`confined write parent-tree preimage is not missing: ${parent}`);
+    }
+    if (expected.parentTree === "one-file") {
+      if (this.inspectPath(parent).kind !== "directory") {
+        throw new Error(`confined write parent tree is not a regular directory: ${parent}`);
+      }
+      const targetName = target.slice(parent === "/" ? 1 : parent.length + 1);
+      const entries = this.list(parent);
+      const expectedEntries = retained === undefined || publicSha256 !== undefined ? 1 : 0;
+      if (
+        entries.length !== expectedEntries ||
+        (expectedEntries === 1 && (entries[0]?.name !== targetName || entries[0]?.kind !== "file"))
+      ) {
+        throw new Error(`confined write parent tree changed: ${parent}`);
+      }
+    }
+    if (
+      retained !== undefined &&
+      publicSha256 !== undefined &&
+      publicSha256 !== desiredSha256 &&
+      publicSha256 !== beforeSha256
+    ) {
+      throw new Error(`confined public path raced while prior bytes were retained: ${path}`);
+    }
+    if (displaced !== undefined && publicSha256 !== undefined) {
+      throw new Error(`confined public path raced while displaced bytes were retained: ${path}`);
+    }
+    if (expected.kind !== "missing" && publicSha256 === desiredSha256 && retained === undefined) {
+      throw new Error(
+        `confined desired-looking public replacement lacks its retained prior bytes: ${path}`,
+      );
+    }
+    if (publicSha256 === desiredSha256) {
+      if (expected.parentTree !== undefined) {
+        const targetName = target.slice(parent === "/" ? 1 : parent.length + 1);
+        const entries = this.list(parent);
+        if (
+          entries.length !== 1 ||
+          entries[0]?.name !== targetName ||
+          entries[0]?.kind !== "file"
+        ) {
+          throw new Error(`confined write parent tree changed during publication: ${parent}`);
+        }
+      }
+      if (quarantinePath !== undefined) this.files.delete(`${quarantinePath}.staged`);
+      if (quarantinePath !== undefined) this.afterConfinedFilePublication(target, quarantinePath);
+      this.assertConfinedMutationPath(confinementRoot, path, "file-or-missing");
+      this.assertDirectoryIdentity(parent, publicationParentIdentity);
+      if (this.inspectPath(target).kind !== "file" || this.digestFile(path) !== desiredSha256) {
+        throw new Error(`confined write publication changed after final boundary: ${path}`);
+      }
+      if (expected.parentTree !== undefined) {
+        const targetName = target.slice(parent === "/" ? 1 : parent.length + 1);
+        const entries = this.list(parent);
+        if (
+          entries.length !== 1 ||
+          entries[0]?.name !== targetName ||
+          entries[0]?.kind !== "file"
+        ) {
+          throw new Error(`confined write parent tree changed during publication: ${parent}`);
+        }
+      }
+      if (displacedPath !== undefined) this.files.delete(displacedPath);
+      if (quarantinePath !== undefined) this.files.delete(quarantinePath);
+      if (quarantinePath !== undefined && quarantineRoot !== undefined) {
+        this.removeEmptyDirectoryChain(
+          this.parentOf(quarantinePath),
+          this.parentOf(quarantineRoot),
+        );
+      }
+      return;
+    }
+    if (displaced !== undefined) {
+      if (publicSha256 !== undefined) {
+        throw new Error(`confined public path raced while displaced bytes were retained: ${path}`);
+      }
+      this.files.delete(displacedPath as string);
+      this.afterConfinedFileDetachment(target, quarantinePath as string);
+    }
+    if (retained !== undefined) {
+      // The exact prior bytes are already request-bound; the public path may be absent on retry.
+    } else if (expected.kind === "missing") {
+      if (inspected.kind !== "missing") {
+        throw new Error(`confined write preimage is not missing: ${path}`);
+      }
+    } else {
+      if (inspected.kind !== "file") {
+        throw new Error(`confined write preimage is not a regular file: ${path}`);
+      }
+      if (expected.kind === "text" && this.read(path) !== expected.content) {
+        throw new Error(`confined write text preimage changed: ${path}`);
+      }
+      if (expected.kind === "sha256" && this.digestFile(path) !== expected.sha256) {
+        throw new Error(`confined write digest preimage changed: ${path}`);
+      }
+    }
+    if (quarantinePath !== undefined) {
+      this.recordDir(this.parentOf(quarantinePath));
+      this.files.set(`${quarantinePath}.staged`, content);
+      if (retained !== undefined && publicSha256 === beforeSha256) {
+        this.files.delete(target);
+        this.afterConfinedFileDetachment(target, quarantinePath);
+      }
+      if (retained === undefined && inspected.kind === "file") {
+        this.files.set(quarantinePath, this.read(path));
+        this.files.delete(target);
+        this.afterConfinedFileDetachment(target, quarantinePath);
+      }
+    }
+    this.assertConfinedMutationPath(confinementRoot, path, "file-or-missing");
+    if (this.inspectPath(target).kind !== "missing") {
+      throw new Error(`confined public path raced after detachment: ${path}`);
+    }
+    try {
+      if (this.inspectPath(parent).kind === "missing") {
+        const createdPaths: string[] = [];
+        let current = parent;
+        while (current !== "/" && this.inspectPath(current).kind === "missing") {
+          createdPaths.push(current);
+          current = this.parentOf(current);
+        }
+        this.recordDir(parent);
+        for (const createdPath of createdPaths) {
+          const identity = this.directoryIdentity(createdPath);
+          if (identity !== undefined) {
+            createdPublicationDirectories.push({ path: createdPath, identity });
+          }
+        }
+      }
+      if (publicationParentIdentity === undefined) {
+        publicationParentIdentity = this.directoryIdentity(parent);
+      }
+      this.beforeConfinedFilePublication(target);
+      this.assertConfinedMutationPath(confinementRoot, path, "file-or-missing");
+      this.assertDirectoryIdentity(parent, publicationParentIdentity);
+      if (this.inspectPath(target).kind !== "missing") {
+        throw new Error(`confined public path raced before publication: ${path}`);
+      }
+      this.write(path, content);
+      if (this.digestFile(path) !== desiredSha256) {
+        throw new Error(`confined write publication changed: ${path}`);
+      }
+      if (quarantinePath !== undefined) this.files.delete(`${quarantinePath}.staged`);
+      if (quarantinePath !== undefined) this.afterConfinedFilePublication(target, quarantinePath);
+      this.assertConfinedMutationPath(confinementRoot, path, "file-or-missing");
+      this.assertDirectoryIdentity(parent, publicationParentIdentity);
+      if (this.inspectPath(target).kind !== "file" || this.digestFile(path) !== desiredSha256) {
+        throw new Error(`confined write publication changed after final boundary: ${path}`);
+      }
+      if (expected.parentTree !== undefined) {
+        const targetName = target.slice(parent === "/" ? 1 : parent.length + 1);
+        const entries = this.list(parent);
+        if (
+          entries.length !== 1 ||
+          entries[0]?.name !== targetName ||
+          entries[0]?.kind !== "file"
+        ) {
+          throw new Error(`confined write parent tree changed during publication: ${parent}`);
+        }
+      }
+      if (quarantinePath !== undefined) {
+        if (displacedPath !== undefined) this.files.delete(displacedPath);
+        this.files.delete(quarantinePath);
+        if (quarantineRoot !== undefined) {
+          this.removeEmptyDirectoryChain(
+            this.parentOf(quarantinePath),
+            this.parentOf(quarantineRoot),
+          );
+        }
+      }
+      if (expected.parentTree !== undefined) {
+        const targetName = target.slice(parent === "/" ? 1 : parent.length + 1);
+        const entries = this.list(parent);
+        if (
+          entries.length !== 1 ||
+          entries[0]?.name !== targetName ||
+          entries[0]?.kind !== "file"
+        ) {
+          throw new Error(`confined write parent tree changed during publication: ${parent}`);
+        }
+      }
+    } catch (error) {
+      for (const created of createdPublicationDirectories) {
+        if (
+          this.directoryIdentity(created.path) !== created.identity ||
+          this.inspectPath(created.path).kind !== "directory" ||
+          this.list(created.path).length > 0
+        ) {
+          break;
+        }
+        this.directories.delete(created.path);
+        this.directoryIdentities.delete(created.path);
+      }
+      throw error;
+    }
   }
 
   /** @inheritdoc */
@@ -134,6 +584,16 @@ export class MemoryFileSystem implements FileSystem {
       return this.resolveAliasTarget(normalized, inspection.target);
     }
     return normalized;
+  }
+
+  /** @inheritdoc */
+  inspectMutationCapability(_path: string): MutationCapability {
+    return { capable: true };
+  }
+
+  /** @inheritdoc */
+  inspectMutationCompatibility(_firstPath: string, _secondPath: string): MutationCapability {
+    return { capable: true };
   }
 
   /**
@@ -244,7 +704,10 @@ export class MemoryFileSystem implements FileSystem {
     }
     for (const dirPath of [...this.directories]) {
       if (dirPath === p || dirPath.startsWith(prefix)) {
-        if (dirPath !== "/") this.directories.delete(dirPath);
+        if (dirPath !== "/") {
+          this.directories.delete(dirPath);
+          this.directoryIdentities.delete(dirPath);
+        }
       }
     }
     // Also drop any alias whose LINK path is `p` or sits beneath it — faithful to the real adapter, where
@@ -256,6 +719,125 @@ export class MemoryFileSystem implements FileSystem {
         this.aliases.delete(linkPath);
       }
     }
+  }
+
+  /** @inheritdoc */
+  removeConfined(
+    confinementRoot: string,
+    path: string,
+    expectedTreeFingerprint: string,
+    quarantine?: ConfinedQuarantine,
+  ): void {
+    if (quarantine === undefined) {
+      throw new Error("confined tree retirement requires request-bound quarantine evidence");
+    }
+    const target = this.normalize(path);
+    const privateSlot = this.assertQuarantine(confinementRoot, quarantine, "directory");
+    const quarantinePath = privateSlot.path;
+    const quarantineRoot = privateSlot.root;
+    const displacedPath = `${quarantinePath}.displaced`;
+    let publicKind = this.inspectPath(target).kind;
+    let retainedKind = this.inspectPath(quarantinePath).kind;
+    let displacedKind = this.inspectPath(displacedPath).kind;
+    if (retainedKind !== "missing" && retainedKind !== "directory") {
+      throw new Error(`confined retained tree is not a regular directory: ${quarantinePath}`);
+    }
+    if (displacedKind !== "missing" && displacedKind !== "directory") {
+      throw new Error(`confined displaced tree is not a regular directory: ${displacedPath}`);
+    }
+    if (retainedKind === "missing" && publicKind !== "missing") {
+      this.assertConfinedMutationPath(confinementRoot, path, "directory");
+      if (this.treeFingerprint(path) !== expectedTreeFingerprint) {
+        throw new Error(`confined removal tree preimage changed: ${path}`);
+      }
+      this.copyTree(target, quarantinePath);
+      retainedKind = this.inspectPath(quarantinePath).kind;
+      if (
+        retainedKind !== "directory" ||
+        this.treeFingerprint(quarantinePath) !== expectedTreeFingerprint
+      ) {
+        throw new Error(`confined retained tree changed during capture: ${quarantinePath}`);
+      }
+    } else if (
+      retainedKind === "directory" &&
+      publicKind === "directory" &&
+      this.treeFingerprint(quarantinePath) !== expectedTreeFingerprint
+    ) {
+      if (
+        this.treeFingerprint(target) !== expectedTreeFingerprint ||
+        !this.treeIsExactSubset(quarantinePath, target)
+      ) {
+        throw new Error(`confined retained tree conflicts with public capture: ${quarantinePath}`);
+      }
+      this.copyTree(target, quarantinePath);
+      if (this.treeFingerprint(quarantinePath) !== expectedTreeFingerprint) {
+        throw new Error(`confined retained tree changed during resumed capture: ${quarantinePath}`);
+      }
+    }
+    if (displacedKind !== "missing") {
+      if (
+        retainedKind !== "directory" ||
+        this.treeFingerprint(quarantinePath) !== expectedTreeFingerprint ||
+        !this.treeIsExactSubset(displacedPath, quarantinePath)
+      ) {
+        throw new Error(`confined displaced tree evidence changed: ${displacedPath}`);
+      }
+      if (publicKind !== "missing") {
+        throw new Error(`confined public tree raced while owned bytes were displaced: ${path}`);
+      }
+      this.afterConfinedTreeDetachment(target, quarantinePath);
+      if (this.inspectPath(target).kind !== "missing") {
+        throw new Error(`confined public tree raced after detachment: ${path}`);
+      }
+      this.assertConfinedMutationPath(confinementRoot, path, "file-or-missing");
+      if (!this.treeIsExactSubset(displacedPath, quarantinePath)) {
+        throw new Error(`confined displaced tree changed before cleanup: ${displacedPath}`);
+      }
+      this.remove(displacedPath);
+      displacedKind = "missing";
+    }
+    if (retainedKind === "directory" && publicKind !== "missing") {
+      this.assertConfinedMutationPath(confinementRoot, path, "directory");
+      if (this.treeFingerprint(path) !== expectedTreeFingerprint) {
+        throw new Error(`confined removal tree preimage changed: ${path}`);
+      }
+      this.copyTree(target, displacedPath);
+      this.remove(target);
+      displacedKind = this.inspectPath(displacedPath).kind;
+      publicKind = "missing";
+      this.afterConfinedTreeDetachment(target, quarantinePath);
+      if (this.inspectPath(target).kind !== "missing") {
+        throw new Error(`confined public tree raced after detachment: ${path}`);
+      }
+      this.assertConfinedMutationPath(confinementRoot, path, "file-or-missing");
+      if (
+        displacedKind !== "directory" ||
+        this.treeFingerprint(displacedPath) !== expectedTreeFingerprint
+      ) {
+        throw new Error(`confined public tree changed during displacement: ${displacedPath}`);
+      }
+      this.remove(displacedPath);
+    }
+    if (this.inspectPath(target).kind !== "missing") {
+      throw new Error(`confined public tree raced after detachment: ${path}`);
+    }
+    if (
+      this.inspectPath(quarantinePath).kind === "missing" &&
+      this.inspectPath(displacedPath).kind === "missing"
+    ) {
+      this.removeEmptyDirectoryChain(this.parentOf(quarantinePath), this.parentOf(quarantineRoot));
+      return;
+    }
+    this.assertConfinedMutationPath(confinementRoot, path, "file-or-missing");
+    if (this.treeFingerprint(quarantinePath) !== expectedTreeFingerprint) {
+      throw new Error(`confined retained tree changed before cleanup: ${quarantinePath}`);
+    }
+    if (this.inspectPath(target).kind !== "missing") {
+      throw new Error(`confined public tree raced before cleanup: ${path}`);
+    }
+    this.assertConfinedMutationPath(confinementRoot, path, "file-or-missing");
+    this.remove(quarantinePath);
+    this.removeEmptyDirectoryChain(this.parentOf(quarantinePath), this.parentOf(quarantineRoot));
   }
 
   /**
