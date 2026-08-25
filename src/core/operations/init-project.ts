@@ -20,6 +20,14 @@ import {
   type Project,
 } from "../model/index.js";
 import type { BacklogMd, Environment, FileSystem } from "../ports/index.js";
+import {
+  BUNDLE_AUTHORING_CONTRIBUTIONS_PATH,
+  type BundleAuthoringContributions,
+  bundleContributionScaffoldSha256,
+  canonicalBundleAuthoringTaskSource,
+  recordedConcreteContributionFromPlan,
+  serializeBundleAuthoringContributions,
+} from "../services/bundle-authoring-contributions.js";
 import { EXECUTOR_FRONT_DOOR_PATH } from "../services/derived-artefacts.js";
 import { hashTextContent } from "../services/integrity.js";
 import {
@@ -48,6 +56,14 @@ import {
   type WorkspaceAuthoringIntegrationResult,
 } from "./workspace-authoring-integration.js";
 import type { PreparedWorkspaceHandoffResult } from "./workspace-handoff.js";
+
+function requiredCanonicalBundleTaskSource(template: import("../model/index.js").Template) {
+  const source = canonicalBundleAuthoringTaskSource(template.authoringTaskSource);
+  if (source === undefined) {
+    throw new Error("validated bundle task source has no canonical durable producer image");
+  }
+  return source;
+}
 
 /**
  * `initProject` — the `wpm init` use case (doc 10 §"Per-command actions", the `init` row), and the architecture's
@@ -932,6 +948,7 @@ export function initProject(deps: InitProjectDeps, input: InitProjectInput): Ini
   let projection: Project | undefined;
   let desired: ReturnType<typeof deriveArtefactsFromTemplateSnapshot> | undefined;
   let taskPlan: readonly PlannedProjectAuthoringTask[] | undefined;
+  let bundleContributionStateText: string | undefined;
   if (resolution?.found) {
     try {
       renderedProject = renderTree(resolution.template.files, params);
@@ -949,6 +966,16 @@ export function initProject(deps: InitProjectDeps, input: InitProjectInput): Ini
   }
 
   if (resolution?.found && projection !== undefined) {
+    if (projection.manifest.bundles.some((id) => id === BUNDLE_TEMPLATE_DIR)) {
+      blockers.push(
+        initBlocker(
+          "bundle-id-reserved-scaffold",
+          "packaged-content",
+          `pre-included bundle id ${JSON.stringify(BUNDLE_TEMPLATE_DIR)} occupies the reserved default bundle scaffold boundary`,
+          "repair the project template so enabled bundle IDs do not use the reserved bundle-template scaffold name",
+        ),
+      );
+    }
     try {
       const concreteProject = projection;
       desired = deriveArtefactsFromTemplateSnapshot(concreteProject, resolution.template);
@@ -1025,6 +1052,54 @@ export function initProject(deps: InitProjectDeps, input: InitProjectInput): Ini
         blockers.push(...compiled.problems.map(authoringTaskPlanBlocker));
       } else if (bundleTemplate?.found) {
         taskPlan = compiled.tasks;
+        const defaultProducer = {
+          source: bundleTemplate.source,
+          scope: "bundle" as const,
+          name: bundleTemplate.template.name,
+        };
+        const defaultInspection = inspectTemplateAuthoringTasks({
+          template: bundleTemplate.template,
+          producer: defaultProducer,
+          mandatoryTasks: perBundleAuthoringTaskCatalog("bundle-preview", { advisor: false }),
+        });
+        if (defaultInspection.status === "invalid") {
+          blockers.push(
+            ...defaultInspection.problems.map((problem) =>
+              initBlocker(
+                problem.code,
+                "authoring-task-plan",
+                `default bundle contribution ${problem.path}: ${problem.message}`,
+                "repair the default bundle template contribution before creating the workspace",
+              ),
+            ),
+          );
+        } else {
+          const state: BundleAuthoringContributions = {
+            schemaVersion: 1,
+            defaultContribution: {
+              scaffoldSha256: bundleContributionScaffoldSha256(bundleTemplate.template.files),
+              contribution:
+                defaultInspection.status === "none"
+                  ? { status: "none", producer: defaultProducer }
+                  : {
+                      status: "source",
+                      producer: defaultProducer,
+                      source: requiredCanonicalBundleTaskSource(bundleTemplate.template),
+                    },
+            },
+            bundles: concreteProject.manifest.bundles
+              .map((id) => ({
+                id,
+                contribution: recordedConcreteContributionFromPlan(
+                  defaultProducer,
+                  id,
+                  compiled.tasks,
+                ),
+              }))
+              .sort((left, right) => (left.id < right.id ? -1 : left.id > right.id ? 1 : 0)),
+          };
+          bundleContributionStateText = serializeBundleAuthoringContributions(state);
+        }
       }
     } catch (error) {
       blockers.push(
@@ -1147,6 +1222,7 @@ export function initProject(deps: InitProjectDeps, input: InitProjectInput): Ini
     projection === undefined ||
     desired === undefined ||
     taskPlan === undefined ||
+    bundleContributionStateText === undefined ||
     authoringSeed === undefined
   ) {
     if (targetInspection?.kind === "directory" && authoringSeed !== undefined) {
@@ -1361,6 +1437,13 @@ export function initProject(deps: InitProjectDeps, input: InitProjectInput): Ini
       description: `install ${file.client} workspace authoring file ${file.path}`,
     });
   }
+
+  addFile({
+    id: "bundle-authoring-contribution-record",
+    path: join(targetDir, BUNDLE_AUTHORING_CONTRIBUTIONS_PATH),
+    content: bundleContributionStateText,
+    description: "record the selected default and pre-included bundle authoring contributions",
+  });
 
   addFile({
     id: "workspace-gitignore",

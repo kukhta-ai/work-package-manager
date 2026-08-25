@@ -58,6 +58,7 @@ function seedDeps(): CliDeps {
       "",
     ].join("\n"),
   );
+  fs.makeDirectories(AUTHORING);
   backlog.init(AUTHORING, { taskPrefix: "authoring" });
   fs.makeDirectories(`${ROOT}/wip/installer-skills`);
 
@@ -78,10 +79,6 @@ function seedDeps(): CliDeps {
   fs.write(
     `${BUILTIN}/bundle/default/template.yml`,
     "name: default\nscope: bundle\nparameters:\n  - name: bundle-id\n  - name: version\n",
-  );
-  fs.write(
-    `${BUILTIN}/bundle/default/files/bundle.yml`,
-    "id: {{bundle-id}}\nversion: {{version}}\n",
   );
   fs.write(`${BUILTIN}/bundle/default/files/installer-skills/.keep`, "");
   fs.write(
@@ -112,7 +109,7 @@ describe("wpm CLI — acceptance (task-27 composition root, doc 10/12/13)", () =
 
       // ...and dispatch reaches the registered leaf — `bundle new` actually creates the bundle:
       const runIo = io();
-      expect(await run(["bundle", "new", "web", "-C", ROOT], deps, runIo)).toBe(0);
+      expect(await run(["bundle", "new", "web", "-C", ROOT], deps, runIo), runIo.err.text).toBe(0);
       const manifest = parseManifest(parseYaml(deps.fs.read(`${ROOT}/wip/manifest.yml`)));
       expect(manifest.ok).toBe(true);
       if (manifest.ok) expect(manifest.value.bundles).toContain("web");
@@ -164,23 +161,24 @@ describe("wpm CLI — acceptance (task-27 composition root, doc 10/12/13)", () =
       expect(await run(["--help"], deps, io())).toBe(0);
     });
 
-    it("an unexpected error exits 1, with the stack shown ONLY in debug mode", async () => {
-      // A malformed bundle template.yml makes the resolver throw a plain Error (a template-authoring bug, per
-      // the task-17 convention) — an UNEXPECTED (non-domain) failure reached entirely through run().
+    it("a malformed selected bundle template is a typed aggregate no-write failure in both output modes", async () => {
+      // TASK-127 moves selected-template resolution into complete preflight, so this predictable authoring
+      // defect is now machine-distinguishable rather than an unexpected post-CHECK stack.
       const broken = seedDeps();
       broken.fs.write(`${BUILTIN}/bundle/default/template.yml`, "name: default\nparameters: []\n"); // no scope
 
       const plainIo = io(false);
       const plainCode = await run(["bundle", "new", "web", "-C", ROOT], broken, plainIo);
-      expect(plainCode).toBe(1); // general error
-      expect(plainIo.err.text).not.toContain("at "); // no stack without debug
+      expect(plainCode).toBe(1);
+      expect(plainIo.err.text).toContain("bundle-template-invalid");
+      expect(plainIo.err.text).toContain("bundle changed: no");
 
       const broken2 = seedDeps();
       broken2.fs.write(`${BUILTIN}/bundle/default/template.yml`, "name: default\nparameters: []\n");
       const debugIo = io(true);
       const debugCode = await run(["bundle", "new", "web", "-C", ROOT], broken2, debugIo);
       expect(debugCode).toBe(1);
-      expect(debugIo.err.text.length).toBeGreaterThan(plainIo.err.text.length); // stack appended in debug
+      expect(debugIo.err.text).toBe(plainIo.err.text);
     });
   });
 

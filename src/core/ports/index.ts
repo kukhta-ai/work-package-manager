@@ -24,6 +24,7 @@ export type { Clock } from "./clock.js";
 export type { Environment } from "./environment.js";
 export type {
   AliasResult,
+  ConfinedQuarantine,
   DigestedText,
   DirEntry,
   FileSystem,

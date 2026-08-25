@@ -50,6 +50,7 @@ function writeBundleYml(fs: MemoryFileSystem, id: string): void {
     `${PROJ}/wip/bundles/${id}/bundle.yml`,
     `id: ${id}\nversion: 0.1.0\nsummary: ${id} bundle\nconfirmation: safe\nrequires: {}\n`,
   );
+  fs.makeDirectories(`${PROJ}/wip/bundles/${id}/installer-skills`);
 }
 
 /** Seed a project at /proj with the project + bundle templates and the given enabled/disabled bundles. */
@@ -73,6 +74,7 @@ function seed(opts: SeedOptions = {}): { fs: MemoryFileSystem; backlog: FakeBack
     writeBundleYml(fs, id);
   }
   fs.makeDirectories(`${PROJ}/wip/installer-skills`);
+  fs.makeDirectories(AUTHORING);
   backlog.init(AUTHORING, { taskPrefix: "authoring" });
 
   // Built-in minimal project template snippets the deriver + the advisor scaffold resolve.

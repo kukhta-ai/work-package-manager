@@ -212,6 +212,17 @@ export interface FileSystem {
   ): void;
 
   /**
+   * Atomically detach one exact regular-file preimage beneath a no-follow confinement root. A raced public
+   * replacement is preserved and the request-owned preimage remains in quarantine for diagnosis.
+   */
+  removeFileConfined(
+    confinementRoot: string,
+    path: string,
+    expectedContent: string,
+    quarantine: ConfinedQuarantine,
+  ): void;
+
+  /**
    * Create a scope-alias link from `target` to `linkPath`, hiding the platform decision (doc 13 §3; doc 12).
    * On POSIX this is a symlink; on Windows it falls back to a recursive copy and reports a warning. The
    * caller reads the returned {@link AliasResult} and never branches on platform itself.

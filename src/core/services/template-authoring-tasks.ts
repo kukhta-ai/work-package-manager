@@ -153,6 +153,17 @@ function hasUnsafeText(text: string): boolean {
   return false;
 }
 
+/** Whether one already-rendered task text is safe to retain and materialise without parsing context again. */
+export function isSafeMaterialisedAuthoringTaskText(text: string): boolean {
+  return (
+    text.length > 0 &&
+    text === text.trim() &&
+    !hasUnsafeText(text) &&
+    !text.includes("{{") &&
+    !text.includes("}}")
+  );
+}
+
 function issue(
   problems: TemplateAuthoringTaskProblem[],
   code: TemplateAuthoringTaskProblemCode,
