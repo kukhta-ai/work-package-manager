@@ -4,11 +4,15 @@
 # (Distinct from _bmad/ — that is BMAD's own install dir; this dot-dir is our tracker.)
 
 phase: 5
-phase_name: "Autonomous build (BAUT) — Epic 3 / TASK-127"
-branch: feature/authoring-agent-onboarding-task-127
+phase_name: "Autonomous build (BAUT) — Authoring Agent Onboarding implementation complete; retrospective pending"
+branch: feature/authoring-agent-onboarding
 epic: authoring-agent-onboarding
 # CURRENT SCOPE (2026-08-21): planning/readiness is READY; Backlog.md now contains the
 # non-story Node-support prerequisite TASK-106 plus 21 approved stories TASK-107..TASK-127.
+# IMPLEMENTATION COMPLETE (2026-08-25): TASK-107..TASK-127 are Done and merged sequentially.
+# TASK-127 final review is APPROVE with 0 open findings; stable product/test hash a8e31acf;
+# final per-story gate passed 140/140 files and 1944/1944 tests. Next: literal retrospective,
+# Phase-6 trace/NFR/cold exact-final gate, then the user-deferred authenticated Claude parity gate.
 # Actual bmad-sprint-planning produced the live generic `sprint-status.yaml` for TASK-107..127.
 # The earlier scoped tracker remains a frozen Phase-4 snapshot, and the historical foundation tracker
 # is preserved byte-for-byte as `sprint-status-foundation.yaml`. Backlog.md remains authoritative.
@@ -41,8 +45,8 @@ epic: authoring-agent-onboarding
 # Stories: 96 (AC what-not-how contract ref) + 97 (native-surfaces ref) = Story A; 98 (name the bet + executor loop + done-gate + how-to-use close) + 99 (drift/correctness fixes: skill install, no-rerender, wip/ paths, build rows, drop non-existent templates) = Story B; 100 (dogfood-verify) = Story C. 101 = human-gated docs/templates reconcile (build templates vs fix docs/10-11 + doc-05).
 # DECISIONS (proceeding defaults; user said "proceed"): teach current truth in the skill; DEFER building templates + editing human-owned docs (05/10/11) -> TASK-101 human-gated. EPIC-3 below.
 # === EPIC-3 (authoring-workspace) COMPLETE — PR #2 open (feature/authoring-workspace -> feature/cli), awaiting HUMAN merge. Details retained below. ===
-active_story: task-127
-review_cycle: 1
+active_story: null
+review_cycle: 0
 # *** ALL 10 EPIC-3 STORIES DONE + merged --no-ff into feature/authoring-workspace: 85, 92, 86, 87, 91, 88, 94, 89, 90, 93. ***
 # Follow-up TASK-95 created (deferred --format git reconciliation; pre-existing, outside task-90 scope). PHASE 6 epic gate IN PROGRESS.
 # *** PHASE 6 EPIC GATE = PASS. *** Cold E2E green (tsc0/biome0/build0/vitest 1217 passed, 96 files). testarch-trace 61/61 ACs (100%, 0 gaps, P0 100%). testarch-nfr PASS (Maintainability/Reliability/Security/Fake-Real-Parity; Perf=CONCERNS note-only, pre-existing ~22min real-binary e2e). retro=GREEN w/ tracked AMBER carry-forwards. Gate artifacts committed 165a144.
@@ -286,4 +290,4 @@ tooling:
   tool_target: "claude-code"
   claude_code_skills: ".claude/skills (56 skills)"
 
-last_updated: "2026-08-25T09:28:45Z"
+last_updated: "2026-08-25T09:30:10Z"
