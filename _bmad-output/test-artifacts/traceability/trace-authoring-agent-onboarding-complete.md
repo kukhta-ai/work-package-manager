@@ -1,7 +1,7 @@
 ---
 stepsCompleted: ['step-01-load-context', 'step-02-discover-tests', 'step-03-map-criteria', 'step-04-analyze-gaps', 'step-05-gate-decision']
 lastStep: 'step-05-gate-decision'
-lastSaved: '2026-08-25T11:27:53Z'
+lastSaved: '2026-08-25T11:53:25Z'
 workflowType: 'testarch-trace'
 inputDocuments:
   - 'backlog TASK-107..TASK-127 final records (read through Backlog CLI)'
@@ -34,7 +34,8 @@ tempCoverageMatrixPath: '/tmp/tea-trace-coverage-matrix-20260825T100754Z.json'
 # Traceability Matrix & Final Phase-6 Gate Decision - Authoring Agent Onboarding (Complete Initiative)
 
 **Target:** Authoring Agent Onboarding, TASK-107 through TASK-127
-**Evidence revision:** `477c31765b7b7c7412e8461226517e6984e2bc7c`
+**Gate revision:** `59986a81bf3d9523d6a963b5891437bdb796e0ff`
+**Phase-6 execution evidence revision:** `477c31765b7b7c7412e8461226517e6984e2bc7c`
 **Exact-final candidate revision:** `c7753aa4829c758964a1c6811fc05b8d06aad4cd`
 **Date:** 2026-08-25
 **Evaluator:** Root / TEA (Murat)
@@ -61,11 +62,12 @@ All 21 tasks are Done with 192/192 AC and 69/69 DoD checked. Each story has a de
 ### Supporting context and evidence identity
 
 - The readiness report reconciles 48 functional requirements, 18 NFRs, and 3 epics / 21 stories with no critical or major planning gap.
-- The product/test tree at evidence HEAD is byte-identical to the final TASK-127 reviewed tree: product/test/package diffs are empty from `a9e0066` through exact candidate `c7753aa` and evidence HEAD `477c31765b7b7c7412e8461226517e6984e2bc7c`.
+- The product/test tree at waiver gate HEAD is byte-identical to the final TASK-127 reviewed tree: product/test/package diffs are empty from `a9e0066` through exact candidate `c7753aa`, execution-evidence HEAD `477c31765b7b7c7412e8461226517e6984e2bc7c`, and gate HEAD `59986a81bf3d9523d6a963b5891437bdb796e0ff`.
 - Stable product/test evidence hash: `a8e31acf068376d6250ad0fc35f139f61cfb76b7a68875ab33911512e066ef22`.
 - Exact-final cold result at candidate `c7753aa`: `npm ci`, typecheck, Biome over 271 files, build, 140/140 files and 1,944/1,944 tests, production audit, archive inspection, source-free install, inertness, inactive assessments, and cleanup all PASS. Vitest duration is 1,879.12 seconds.
 - Exact accepted archive: `wpm-0.1.0.tgz`, 701,280 bytes, SHA-256 `0bda2b18a1669d35d68ec1269399d73b125136e9a7e70a467f806f4fffc901ce`, 479 expected paths, zero violations.
-- Validated NFR result: 17 PASS, 1 CONCERNS, 0 FAIL. NFR10 is PASS; NFR8 remains CONCERNS because expired OAuth blocked the Claude run before all 24 required behavioral subruns.
+- Validated NFR disposition: 17 PASS, 0 CONCERNS, 0 FAIL, 1 WAIVED. NFR10 is PASS; NFR8 is human-waived with 0/24 Claude behavioral subruns executed and no inferred behavioral result.
+- Human disposition, verbatim: `i allow it not to be the blocker, continue without it`. This removes the NFR8 gate blocker without converting the missing evidence to PASS.
 - Phase-6 execution evidence SHA-256: `3f3c197cf8b75fc7550194ac3f53a916980197a262113bc0c6a8af8f6bc25967`.
 - No external requirements pointer was needed or followed (`externalPointerStatus: not_used`).
 
@@ -423,21 +425,21 @@ No acceptance-coverage remediation is required: there are no P0/P1 gaps, partial
 
 1. No ATDD or automation expansion is indicated by trace gaps.
 2. Run `bmad-testarch-test-review` only if the stable test diff changes or a future ownership/runtime concern warrants a dedicated test-quality review.
-3. Preserve the exact-final cold/package PASS and the blocked authenticated Claude parity result as distinct Phase-6 evidence; neither changes the 192/192 acceptance-coverage matrix.
+3. Preserve the exact-final cold/package PASS and the 0/24 authenticated Claude parity result as distinct Phase-6 evidence; the human waiver changes only gate disposition and neither changes the 192/192 acceptance-coverage matrix.
 
 Phase 1 is complete. Step 5 combines this exact coverage matrix with the validated NFR and Phase-6 execution evidence to issue the final integrated verdict.
 
 ## Step 5 - Final Phase-6 Gate Decision
 
-### GATE DECISION: CONCERNS
+### GATE DECISION: WAIVED
 
 **Gate type:** Epic / complete initiative
 **Decision mode:** Deterministic
 **Collection status:** COLLECTED
 **Gate scope:** Final integrated Phase-6 gate
-**Evaluated at:** 2026-08-25T11:27:53Z
+**Evaluated at:** 2026-08-25T11:53:25Z
 
-**Rationale:** Acceptance coverage and exact-final cold/package evidence pass, but one applicable NFR remains incomplete. Expired external OAuth blocked the Claude parity run before the first of 24 required behavioral subruns, so Phase 6 cannot claim final onboarding acceptance.
+**Rationale:** Acceptance coverage and exact-final cold/package evidence pass. NFR8 remains evidentially incomplete because expired external OAuth stopped the Claude parity run before all 24 required behavioral subruns, but the user explicitly waived that sole concern with `i allow it not to be the blocker, continue without it`. The final Phase-6 disposition is WAIVED, not PASS, and no Claude behavioral acceptance is claimed.
 
 | Deterministic criterion | Threshold | Actual | Status |
 | --- | ---: | ---: | --- |
@@ -446,9 +448,9 @@ Phase 1 is complete. Step 5 combines this exact coverage matrix with the validat
 | Overall coverage | ≥80% | 192/192 (100%) | MET |
 | Critical coverage gaps | 0 | 0 | MET |
 | Blocked mapped tests | 0 | 0 | MET |
-| NFR assessment | 18 applicable NFRs resolved | 17 PASS / 1 CONCERNS / 0 FAIL | CONCERNS |
+| NFR assessment | 18 applicable NFRs dispositioned | 17 PASS / 0 CONCERNS / 0 FAIL / 1 WAIVED | WAIVED |
 | Exact-final cold/package evidence | PASS | PASS at `c7753aa` | MET |
-| Authenticated Claude behavioral parity | 24/24 fresh subruns pass | 0/24 executed; OAuth 401 before cells | BLOCKED |
+| Authenticated Claude behavioral parity | 24/24 fresh subruns pass | 0/24 executed; OAuth 401 before cells; human waiver recorded | WAIVED, NOT PASS |
 
 ### Evidence summary
 
@@ -458,8 +460,9 @@ Phase 1 is complete. Step 5 combines this exact coverage matrix with the validat
 - Broader task/QA-owned feature inventory: 67 files, 815 titled declarations, 378 negative/edge-title signals.
 - Exact-final cold execution: 140/140 files and 1,944/1,944 tests passed, exit 0, Vitest 1,879.12 seconds; static/build gates and production audit also exit 0.
 - Exact package/source-free gate: accepted archive SHA-256 `0bda2b18a1669d35d68ec1269399d73b125136e9a7e70a467f806f4fffc901ce`, 479 paths, zero violations, executable/resources/inertness PASS.
-- NFR assessment: 17 PASS, 1 CONCERNS, 0 FAIL; NFR10 PASS and only NFR8 CONCERNS.
+- NFR assessment: 17 PASS, 0 CONCERNS, 0 FAIL, 1 WAIVED; NFR10 PASS and NFR8 WAIVED.
 - Claude result: corrected sole inference returns `401 OAuth access token has expired`; 0 tokens, 0 tools, 0 cost, and 0/24 behavioral subruns executed. No cell is inferred.
+- Human waiver: user instruction `i allow it not to be the blocker, continue without it`; the user is the project human gate authority, while no organizational title or expiry was supplied; scope is NFR8 and the 24-cell authenticated Claude parity matrix.
 - Final story dispositions: 21 APPROVE, 0 open findings; retrospective GREEN.
 - Product/test identity through evidence HEAD: `a8e31acf068376d6250ad0fc35f139f61cfb76b7a68875ab33911512e066ef22`.
 
@@ -467,11 +470,13 @@ Phase 1 is complete. Step 5 combines this exact coverage matrix with the validat
 
 There is one LOW, non-blocking maintainability/runtime observation: 30 of 67 feature-relevant test files exceed the workflow's generic 300-line heuristic, and the exact-final suite takes 1,879.12 seconds. The story-specific reviews remain APPROVE with no open findings, and no hard-wait pattern was found. Monitor ownership/runtime and split or optimize only if growth impairs focused execution.
 
-### Blocker and recovery
+### Human waiver and residual risk
 
-The blocker is external authentication state, not a demonstrated product defect. A human must reauthenticate Claude Code outside WPM. After that state change, an authorized executor must create a fresh isolated environment and one newly accepted exact package, prove authentication with one canary, then run all 24 fresh six-skill discovery/invocation/trigger/non-trigger/outcome subruns. WPM must not log in, refresh, retry this expired result, or infer any missing cell from fixtures or Codex evidence.
+The former blocker is external authentication state, not a demonstrated product defect. The user has accepted the resulting MEDIUM residual risk and waived NFR8 for this Phase-6 disposition. Open blocker count is therefore zero, while the evidence gap remains one and Claude behavior remains unproven.
 
-Until that recovery evidence is retained and both the NFR assessment and final trace are revalidated, no final onboarding acceptance, receiving-agent acceptance, publication eligibility, release authorization, or PASS is claimed.
+If actual Claude parity is required later, a human must reauthenticate Claude Code outside WPM. An authorized executor must then create a fresh isolated environment and one newly accepted exact package, prove authentication with one canary, and run all 24 fresh six-skill discovery/invocation/trigger/non-trigger/outcome subruns. WPM must not log in, refresh, retry this expired result, or infer any missing cell from fixtures or Codex evidence.
+
+The waiver permits continuation without that matrix; it does not claim final Claude behavioral acceptance, receiving-agent acceptance, publication eligibility, release authorization, or PASS.
 
 ### Machine-readable outputs
 
@@ -480,10 +485,11 @@ Until that recovery evidence is retained and both the NFR assessment and final t
 
 ### Integrated gate status
 
-**CONCERNS — BLOCKED ON EXPIRED EXTERNAL OAUTH.** Coverage PASS and cold/package PASS are preserved. The final integrated Phase-6 gate is not PASS because NFR8 lacks all required authenticated Claude behavioral cells. Human concern disposition and external reauthentication are required before recovery execution.
+**WAIVED — HUMAN DISPOSITION RECORDED.** Coverage PASS and cold/package PASS are preserved. NFR8 remains 0/24 and is not PASS; the user explicitly allowed continuation without the authenticated Claude matrix. No external reauthentication is required for this waived disposition, though complete fresh evidence remains necessary before any future Claude behavioral parity claim.
 
 ### Workflow provenance
 
-- Literal update: `bmad-testarch-trace`, Edit mode at evidence HEAD `477c31765b7b7c7412e8461226517e6984e2bc7c`; Validate mode follows.
+- Literal waiver update: `bmad-testarch-trace`, Edit mode at gate HEAD `59986a81bf3d9523d6a963b5891437bdb796e0ff`; Validate mode follows.
+- Human disposition consumed verbatim: `i allow it not to be the blocker, continue without it`; NFR8 remains 0/24 and no behavioral acceptance is inferred.
 - Customization: no workflow prepend or append; persistent `project-context.md` fact glob had no match.
 - No cold, package, live-client, Claude, browser, CI, or remote gate was executed by this trace update; it consumed committed evidence only.

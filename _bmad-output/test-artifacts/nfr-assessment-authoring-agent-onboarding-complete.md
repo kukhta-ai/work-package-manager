@@ -1,7 +1,7 @@
 ---
 stepsCompleted: ['step-01-load-context', 'step-02-define-thresholds', 'step-03-gather-evidence', 'step-04e-aggregate-nfr', 'step-05-generate-report']
 lastStep: 'step-05-generate-report'
-lastSaved: '2026-08-25T11:21:23Z'
+lastSaved: '2026-08-25T11:53:25Z'
 workflowType: 'testarch-nfr-assess'
 inputDocuments:
   - '_bmad/tea/config.yaml'
@@ -28,27 +28,32 @@ inputDocuments:
 
 **Date:** 2026-08-25
 **Target:** TASK-107 through TASK-127
-**Evidence revision:** `477c31765b7b7c7412e8461226517e6984e2bc7c`
+**Gate revision:** `59986a81bf3d9523d6a963b5891437bdb796e0ff`
+**Phase-6 execution evidence revision:** `477c31765b7b7c7412e8461226517e6984e2bc7c`
 **Exact-final candidate revision:** `c7753aa4829c758964a1c6811fc05b8d06aad4cd`
 **Stable product/test hash:** `a8e31acf068376d6250ad0fc35f139f61cfb76b7a68875ab33911512e066ef22`
 **Evaluator:** Root / TEA (Murat)
-**Overall Status:** **CONCERNS**
-**Overall Risk:** **MEDIUM**
+**Overall Status:** **WAIVED**
+**Overall Residual Risk:** **MEDIUM - HUMAN ACCEPTED**
 
 > This update consumes the retained Phase-6 execution artifact. The NFR workflow itself did not run tests, CI, a cold clone, package/live-client journeys, browser automation, Claude, or any remote system.
 
 ## Executive Summary
 
-**Assessment:** **17 PASS, 1 CONCERNS, 0 FAIL** across PRD NFR1-NFR18.
+**Assessment disposition:** **17 PASS, 0 CONCERNS, 0 FAIL, 1 WAIVED** across PRD NFR1-NFR18.
 
-**Gate blocker:** Authenticated live Claude behavioral parity for NFR8 remains wholly unexecuted because the corrected first inference returned `401 OAuth access token has expired`. Exact-final cold/package evidence closes NFR10. There are **zero demonstrated product-defect blockers**.
+**Human waiver:** The user disposed the sole Phase-6 concern with the exact instruction, `i allow it not to be the blocker, continue without it`. NFR8 and its 24-cell authenticated Claude parity matrix are therefore **WAIVED**, not PASS. The corrected first inference still returned `401 OAuth access token has expired`, and **0/24** required behavioral subruns executed. No discovery, invocation, trigger, non-trigger, or outcome result is inferred.
+
+**Blockers after disposition:** 0. Exact-final cold/package evidence closes NFR10, and there are zero demonstrated product-defect blockers. One waived evidence gap and its MEDIUM residual risk remain recorded.
 
 **Critical issues:** 0
 **High-priority issues:** 0
-**Waivers:** 0
+**Waivers:** 1
 **Evidence gaps:** 1
 
-**Recommendation:** retain the NFR verdict as **CONCERNS** and feed it into the final `bmad-testarch-trace` gate decision. Recovery requires a human to reauthenticate Claude Code outside WPM, followed by a fresh authorized canary and all 24 six-skill behavioral subruns. Repository governance requires human disposition while CONCERNS remains.
+**Recommendation:** feed the human-approved **WAIVED** disposition into the final `bmad-testarch-trace` gate. Do not convert NFR8 to PASS or claim Claude behavioral acceptance. If actual Claude parity is needed later, recovery still requires human reauthentication outside WPM, a fresh authorized canary, and all 24 fresh six-skill behavioral subruns.
+
+> **Workflow taxonomy note:** the installed NFR report template natively classifies evidence as PASS/CONCERNS/FAIL, while the shared risk-governance model and trace gate support WAIVED. This report uses WAIVED only as the human-approved risk disposition; the underlying NFR8 evidence state remains UNEXECUTED (0/24), never PASS.
 
 ## Evidence Basis
 
@@ -61,7 +66,7 @@ inputDocuments:
 | Cold static/build gates | `npm ci`, typecheck, Biome over 271 files, build, and production-only audit all exit 0; production vulnerabilities 0 |
 | Exact accepted package | `wpm-0.1.0.tgz`; 701,280 bytes; SHA-256 `0bda2b18a1669d35d68ec1269399d73b125136e9a7e70a467f806f4fffc901ce`; 479 paths; 0 violations |
 | Source-free install | Normal lifecycle enabled; both executable aliases report `0.1.0`; resources complete; install inert; accepted archive identity preserved |
-| Stable revision | Product/test tree unchanged from final reviewed TASK-127 merge `a9e0066` through exact candidate `c7753aa` and evidence HEAD `477c31765b7b7c7412e8461226517e6984e2bc7c` |
+| Stable revision | Product/test tree unchanged from final reviewed TASK-127 merge `a9e0066` through exact candidate `c7753aa`, execution-evidence HEAD `477c31765b7b7c7412e8461226517e6984e2bc7c`, and waiver gate HEAD `59986a81bf3d9523d6a963b5891437bdb796e0ff` |
 | Product/test identity | SHA-256 `a8e31acf068376d6250ad0fc35f139f61cfb76b7a68875ab33911512e066ef22` |
 | Architecture boundary | Current read-only scan finds no forbidden effectful import under `src/core` |
 | Retrospective | `_bmad-output/implementation-artifacts/epic-3-retro-2026-08-25.md` is GREEN with no NFR blocker |
@@ -80,7 +85,7 @@ The final readiness report reconciles 48 functional and 18 non-functional requir
 | NFR5 | PASS | Ownership/no-clobber checks, user-byte preservation, and symlink/race/confinement/changed-content fail-closed coverage |
 | NFR6 | PASS | Authoring-client and deliverable-target axes remain independent across unit, filesystem, packed, and live-Codex evidence |
 | NFR7 | PASS | Archive, Git, ZIP, and ship-set regressions exclude authoring-only state, provenance, Backlog state, and front doors |
-| NFR8 | CONCERNS | Deterministic and live-Codex evidence passes, but expired external OAuth blocked the fresh Claude run before the first of 24 required behavioral subruns; none is inferred |
+| NFR8 | WAIVED | Human waiver accepts the residual dual-client risk without evidence completion; expired external OAuth blocked the fresh Claude run before all 24 required behavioral subruns, 0/24 executed, and none is inferred or marked PASS |
 | NFR9 | PASS | Explicit prompt-free/headless selection, setup, init, handoff, and package-only journeys |
 | NFR10 | PASS | Exact detached candidate `c7753aa` passed the cold CI-equivalent sequence, production audit, archive inspection, source-free install, six-skill identity, inertness, and cleanup with clean checkout/diff evidence |
 | NFR11 | PASS | Mandatory behavior and bytes persist when contributions are absent; no inferred or duplicate contribution state |
@@ -202,11 +207,13 @@ The final readiness report reconciles 48 functional and 18 non-functional requir
 
 ### Dual-Client Skill Portability (NFR8)
 
-- **Status:** CONCERNS
+- **Disposition:** WAIVED by explicit human instruction; evidence status remains UNEXECUTED, not PASS
 - **Threshold:** All six exact final-package skills demonstrate native discovery, explicit invocation, natural triggering, non-triggering, and observable outcomes under Codex and Claude Code.
 - **Actual:** Official-contract reviews, focused disclosure tests, source-free packaging, byte-identical native placement, fixture coverage, and live Codex outcomes pass.
-- **Gap:** Authenticated live Claude behavior remains pending by approved plan.
-- **Action:** Execute the six-skill Claude parity matrix using the exact final package and retain observable results.
+- **Gap:** Authenticated live Claude behavior remains 0/24 because expired OAuth stopped execution before every required behavioral cell.
+- **Waiver:** `i allow it not to be the blocker, continue without it` - user, recorded at gate revision `59986a8`; no expiry was specified.
+- **Residual risk:** Cross-client behavioral parity under Claude is unproven and must not be claimed.
+- **Optional remediation:** If a future decision requires actual Claude parity, execute the six-skill matrix using a newly accepted exact package and retain observable results.
 
 ### Deterministic Authoring Integrity (NFR3, NFR6, NFR11, NFR13, NFR18)
 
@@ -222,7 +229,7 @@ The final readiness report reconciles 48 functional and 18 non-functional requir
 
 ## ADR Quality-Readiness Summary (Adapted to a Local CLI)
 
-Generic web-service criteria that do not apply are excluded from the denominator. The remaining initiative-specific NFR8 evidence concern is reported separately above and does not turn service-only N/A criteria into synthetic failures.
+Generic web-service criteria that do not apply are excluded from the denominator. The initiative-specific NFR8 evidence gap is retained as a human-waived residual risk and does not turn service-only N/A criteria into synthetic failures or a behavioral PASS.
 
 | Category | Applicable criteria met | Status |
 | --- | ---: | --- |
@@ -238,15 +245,15 @@ Generic web-service criteria that do not apply are excluded from the denominator
 
 ## Quick Wins
 
-No implementation quick win is required. The one open item is an external authentication/evidence gate, not a demonstrated code defect.
+No implementation quick win is required. The one remaining evidence gap is human-waived external authentication/parity evidence, not a demonstrated code defect or an open gate blocker.
 
 ## Recommended Actions
 
-### Before Final Phase 6 PASS
+### Human-Waived Residual Evidence
 
-1. **Authenticated live Claude parity (NFR8)** — required gate evidence; owner: authorized live-client executor.
-   - **Deadline:** before the final Phase 6 PASS/human gate.
-   - **Estimated effort:** one authorized six-skill Claude parity matrix plus evidence capture.
+1. **Authenticated live Claude parity (NFR8)** — waived for this Phase-6 disposition; potential owner: authorized live-client executor.
+   - **Deadline:** none imposed by the waiver; complete before any future Claude behavioral parity claim.
+   - **Estimated workload:** one authorized six-skill Claude parity matrix plus evidence capture; no wall-clock duration is inferred.
    - A human must reauthenticate Claude Code outside WPM; WPM must not retry, log in, refresh, or infer success.
    - After the external state change, use a fresh isolated execution and newly accepted exact package for all six skills.
    - First prove authentication with one canary, then retain all 24 fresh discovery, explicit invocation, natural trigger, non-trigger, and representative-outcome subruns.
@@ -255,8 +262,8 @@ No implementation quick win is required. The one open item is an external authen
 2. **Final trace verdict** — owner: TEA.
    - **Deadline:** now, against the complete retained evidence state.
    - **Estimated effort:** one final trace reconciliation/gate invocation.
-   - Re-run `bmad-testarch-trace` in final Edit+Validate mode without treating the unexecuted Claude cells as coverage.
-   - Preserve the scoped initiative trace history and issue the actual blocked/CONCERNS Phase-6 verdict with its recovery path.
+   - Re-run `bmad-testarch-trace` in final Edit+Validate mode without treating the unexecuted Claude cells as coverage or behavioral acceptance.
+   - Preserve the scoped initiative trace history and issue the actual WAIVED Phase-6 verdict with the approver, reason, residual risk, and optional remediation.
 
 ### Optional LOW Maintainability Trend
 
@@ -280,9 +287,10 @@ No remote monitoring hook is recommended. APM, service alerts, and telemetry are
 
 1. **NFR8 - Dual-client skill portability**
    - **Owner:** authorized live-Claude gate executor
-   - **Deadline:** before the final Phase 6 PASS/human gate
+   - **Disposition:** WAIVED by the user at gate revision `59986a8`
+   - **Deadline:** none imposed; evidence is required before any future Claude behavioral parity claim
    - **Suggested evidence:** authenticated live Claude result matrix for all six exact final-package skills
-   - **Impact:** blocks unconditional cross-client portability PASS
+   - **Impact:** cross-client portability under Claude remains unproven but no longer blocks continuation under the explicit waiver
 
 NFR10 is closed by the exact-final evidence artifact. No browser session was opened by this workflow, and the retained Phase-6 execution proves its disposable processes and roots were cleaned up.
 
@@ -291,7 +299,8 @@ NFR10 is closed by the exact-final evidence artifact. No browser session was ope
 ```yaml
 nfr_assessment:
   date: '2026-08-25'
-  evidence_revision: '477c31765b7b7c7412e8461226517e6984e2bc7c'
+  gate_revision: '59986a81bf3d9523d6a963b5891437bdb796e0ff'
+  phase6_execution_evidence_revision: '477c31765b7b7c7412e8461226517e6984e2bc7c'
   exact_final_candidate_revision: 'c7753aa4829c758964a1c6811fc05b8d06aad4cd'
   product_test_hash: 'a8e31acf068376d6250ad0fc35f139f61cfb76b7a68875ab33911512e066ef22'
   phase6_evidence_sha256: '3f3c197cf8b75fc7550194ac3f53a916980197a262113bc0c6a8af8f6bc25967'
@@ -300,8 +309,9 @@ nfr_assessment:
   adr_applicable_score: '13/13'
   requirement_counts:
     pass: 17
-    concerns: 1
+    concerns: 0
     fail: 0
+    waived: 1
   categories:
     performance: 'PASS (bounded CLI); service/browser SLOs N/A'
     reliability: 'PASS'
@@ -314,7 +324,7 @@ nfr_assessment:
     monitorability: 'PASS'
     qos_qoe: 'PASS (bounded CLI); latency/UI N/A'
     deployability: 'PASS'
-    dual_client_portability: 'CONCERNS (expired OAuth blocked all 24 Claude subruns before execution)'
+    dual_client_portability: 'WAIVED (human disposition; expired OAuth blocked all 24 Claude subruns before execution; not PASS)'
     deterministic_authoring_integrity: 'PASS'
   domain_risk:
     security: 'LOW'
@@ -322,17 +332,29 @@ nfr_assessment:
     reliability: 'LOW'
     scalability: 'LOW'
     dual_client_portability: 'MEDIUM'
-  overall_status: 'CONCERNS'
-  overall_risk: 'MEDIUM'
+  overall_status: 'WAIVED'
+  overall_risk: 'MEDIUM - HUMAN ACCEPTED'
   critical_issues: 0
   high_priority_issues: 0
-  medium_priority_issues: 1
-  concerns: 1
+  medium_priority_issues: 0
+  residual_medium_risks: 1
+  concerns: 0
   product_defect_blockers: 0
-  blockers: true
-  waivers: 0
+  blockers: false
+  waivers: 1
   quick_wins: 0
   evidence_gaps: 1
+  human_waiver:
+    requirement: 'NFR8'
+    approver: 'user'
+    approver_role: 'project human gate authority; organizational title not specified'
+    exact_words: 'i allow it not to be the blocker, continue without it'
+    recorded_at_revision: '59986a81bf3d9523d6a963b5891437bdb796e0ff'
+    scope: '24-cell authenticated Claude parity matrix'
+    expiry: 'none specified'
+    executed_subruns: 0
+    required_subruns: 24
+    behavioral_acceptance_claimed: false
   stable_suite:
     files: '140/140'
     tests: '1944/1944'
@@ -345,15 +367,15 @@ nfr_assessment:
     sha256: '0bda2b18a1669d35d68ec1269399d73b125136e9a7e70a467f806f4fffc901ce'
     paths: 479
     violations: 0
-  pending:
-    - 'NFR8: human reauthentication, fresh canary, then all 24 authenticated live Claude subruns'
+  waived_residual:
+    - 'NFR8: 0/24 Claude subruns; human waiver removes the blocker without supplying behavioral evidence or PASS'
   closed:
     - 'NFR10 exact-final cold/package/source-free/inertness gate PASS at c7753aa'
   recommendations:
-    - 'Issue the final bmad-testarch-trace verdict with NFR8 still CONCERNS and Phase 6 blocked.'
-    - 'A human reauthenticates Claude Code outside WPM; then run one fresh canary and all 24 fresh behavioral subruns.'
+    - 'Issue the final bmad-testarch-trace verdict as WAIVED with the exact human disposition and residual risk.'
+    - 'If actual Claude parity is needed later, a human reauthenticates outside WPM, then run one fresh canary and all 24 fresh behavioral subruns.'
     - 'Do not infer any missing Claude cell from deterministic or live-Codex evidence.'
-  next_step: 'Run final bmad-testarch-trace now; recover NFR8 only after external human reauthentication and complete fresh evidence.'
+  next_step: 'Run final bmad-testarch-trace Edit+Validate now and preserve WAIVED, 0/24, and no behavioral acceptance claim.'
 ```
 
 ## Related Artifacts
@@ -366,7 +388,7 @@ nfr_assessment:
 - Test design: `_bmad-output/test-artifacts/test-design.md`
 - Complete trace: `_bmad-output/test-artifacts/traceability/trace-authoring-agent-onboarding-complete.md`
 - Machine trace: `_bmad-output/test-artifacts/e2e-trace-summary-authoring-agent-onboarding-complete.json`
-- Interim gate: `_bmad-output/test-artifacts/gate-decision-authoring-agent-onboarding-complete.json`
+- Final gate: `_bmad-output/test-artifacts/gate-decision-authoring-agent-onboarding-complete.json`
 - Phase-6 execution evidence: `_bmad-output/test-artifacts/phase-6-execution-evidence-authoring-agent-onboarding.md`
 - Story/QA evidence: `_bmad-output/implementation-artifacts/tests/test-summary-task-107.md` through `test-summary-task-127.md`
 - Retrospective: `_bmad-output/implementation-artifacts/epic-3-retro-2026-08-25.md`
@@ -374,7 +396,8 @@ nfr_assessment:
 ## Workflow Provenance
 
 - Literal skill: `bmad-testarch-nfr`, Create mode, YOLO/noninteractive.
-- Literal update: `bmad-testarch-nfr`, Edit mode at evidence HEAD `477c31765b7b7c7412e8461226517e6984e2bc7c`; Validate mode follows this edit.
+- Literal waiver update: `bmad-testarch-nfr`, Edit mode at gate HEAD `59986a81bf3d9523d6a963b5891437bdb796e0ff`; Validate mode follows this edit.
+- Human disposition consumed verbatim: `i allow it not to be the blocker, continue without it`.
 - Customization: no workflow prepend or append; persistent `project-context.md` fact glob had no match.
 - Domain execution: sequential four-domain audit because nested agents were prohibited for this persistent TEA assignment.
 - Structured domain outputs: `/tmp/tea-nfr-security-2026-08-25T10-15-41Z.json`, `/tmp/tea-nfr-performance-2026-08-25T10-15-41Z.json`, `/tmp/tea-nfr-reliability-2026-08-25T10-15-41Z.json`, `/tmp/tea-nfr-scalability-2026-08-25T10-15-41Z.json`.
@@ -384,21 +407,21 @@ nfr_assessment:
 
 ## Recommendations Summary and Sign-Off
 
-**Release blocker:** one missing external evidence set caused by expired third-party OAuth; no demonstrated product defect.
+**Release blocker:** none after the explicit human waiver; one unexecuted external evidence set remains as accepted residual risk, with no demonstrated product defect.
 
 **High priority:** none.
 
-**Medium priority:** recover external Claude authentication and complete NFR8 live-Claude parity. NFR10 is PASS.
+**Medium residual risk:** NFR8 live-Claude parity remains unproven at 0/24 and is waived. NFR10 is PASS.
 
-**Overall NFR Status:** **CONCERNS**
-**Gate Status:** **CONCERNS - HUMAN DISPOSITION REQUIRED**
+**Overall NFR Disposition:** **WAIVED**
+**Gate Status:** **WAIVED - HUMAN DISPOSITION RECORDED**
 **Critical Issues:** 0
 **High-Priority Issues:** 0
-**Concerns:** 1
+**Concerns:** 0
 **Evidence Gaps:** 1
-**Waivers:** 0
+**Waivers:** 1
 
-**Next action:** run the final `bmad-testarch-trace` gate decision now. Recovery from its expected blocked/CONCERNS verdict requires human Claude reauthentication outside WPM, then a fresh canary and all 24 fresh behavioral subruns.
+**Next action:** run the final `bmad-testarch-trace` Edit+Validate gate as WAIVED. This disposition removes the blocker but does not assert Claude behavioral acceptance, publication eligibility, release authorization, or a PASS result.
 
 **Generated:** 2026-08-25
 **Workflow:** `bmad-testarch-nfr`

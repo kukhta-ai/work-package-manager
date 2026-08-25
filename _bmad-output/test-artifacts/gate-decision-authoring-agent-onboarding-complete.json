@@ -1,6 +1,6 @@
 {
   "schema_version": "0.1.0",
-  "evaluated_at": "2026-08-25T11:27:53Z",
+  "evaluated_at": "2026-08-25T11:53:25Z",
   "repo": "work-package-manager",
   "target": {
     "type": "epic",
@@ -10,15 +10,15 @@
   "collection_status": "COLLECTED",
   "gate_basis": "coverage_plus_nfr_plus_phase6_evidence",
   "gate_scope": "final_phase6_epic_gate",
-  "gate_status": "CONCERNS",
-  "integrated_phase6_status": "BLOCKED_EXTERNAL_OAUTH",
-  "rationale": "Coverage is 192/192 FULL and exact-final cold/package evidence passes, but NFR8 remains CONCERNS because expired Claude OAuth blocked all 24 required behavioral subruns before execution.",
+  "gate_status": "WAIVED",
+  "integrated_phase6_status": "WAIVED_HUMAN_DISPOSITION",
+  "rationale": "Coverage is 192/192 FULL and exact-final cold/package evidence passes. NFR8 remains 0/24 because expired Claude OAuth blocked execution, but the user explicitly waived that sole concern; the result is WAIVED, not PASS, and no Claude behavioral acceptance is claimed.",
   "p0_status": "MET",
   "p1_status": "MET",
   "overall_status": "MET",
   "critical_open": 0,
   "quality_observations": {
-    "blocker_issues": 1,
+    "blocker_issues": 0,
     "warning_issues": 1,
     "warnings": [
       {
@@ -30,7 +30,7 @@
     ],
     "hard_wait_patterns_found": 0
   },
-  "nfr_status_at_trace": "CONCERNS",
+  "nfr_status_at_trace": "WAIVED",
   "external_phase6_evidence": {
     "exact_final_cold_candidate": "PASS",
     "exact_final_candidate_sha": "c7753aa4829c758964a1c6811fc05b8d06aad4cd",
@@ -40,7 +40,7 @@
     "claude_executed_subruns": 0,
     "claude_error": "401 OAuth access token has expired. Re-authenticate to continue."
   },
-  "source_sha": "477c31765b7b7c7412e8461226517e6984e2bc7c",
+  "source_sha": "59986a81bf3d9523d6a963b5891437bdb796e0ff",
   "product_test_hash": "a8e31acf068376d6250ad0fc35f139f61cfb76b7a68875ab33911512e066ef22",
   "links": {
     "trace_report_path": "_bmad-output/test-artifacts/traceability/trace-authoring-agent-onboarding-complete.md",
@@ -52,31 +52,47 @@
     "phase6_evidence_path": "_bmad-output/test-artifacts/phase-6-execution-evidence-authoring-agent-onboarding.md"
   },
   "coverage_gate_status": "PASS",
-  "medium_open": 1,
+  "medium_open": 0,
+  "medium_waived": 1,
   "nfr_counts": {
     "pass": 17,
-    "concerns": 1,
-    "fail": 0
+    "concerns": 0,
+    "fail": 0,
+    "waived": 1
   },
-  "nfr_open": [
+  "nfr_open": [],
+  "nfr_waived": [
     "NFR8"
   ],
   "nfr_closed_by_phase6_evidence": [
     "NFR10"
   ],
-  "blocker": {
-    "id": "PHASE6-B1",
+  "waiver": {
+    "id": "PHASE6-W1",
     "requirement": "NFR8",
-    "kind": "external_authentication",
+    "kind": "human_risk_disposition",
+    "status": "WAIVED",
+    "approver": "user",
+    "approver_role": "project human gate authority; organizational title not specified",
+    "exact_words": "i allow it not to be the blocker, continue without it",
+    "recorded_at_revision": "59986a81bf3d9523d6a963b5891437bdb796e0ff",
+    "scope": "24-cell authenticated Claude parity matrix",
+    "expiry": "none specified",
+    "required_subruns": 24,
+    "executed_subruns": 0,
+    "behavioral_acceptance_claimed": false,
     "product_defect": false,
-    "recovery": "A human reauthenticates Claude Code outside WPM; then an authorized fresh isolated run proves one canary and executes all 24 fresh six-skill behavioral subruns against one newly accepted exact package.",
+    "residual_risk": "Claude behavioral parity remains unproven.",
+    "optional_remediation": "If actual Claude parity is required later, a human reauthenticates outside WPM; then an authorized fresh isolated run proves one canary and executes all 24 fresh six-skill behavioral subruns against one newly accepted exact package.",
     "prohibited_inference": "No missing Claude cell may be inferred from deterministic fixtures or live-Codex evidence."
   },
   "final_acceptance_claimed": false,
   "publication_eligibility_claimed": false,
   "release_authorization_claimed": false,
   "receiving_agent_acceptance_claimed": false,
-  "human_disposition_required": true,
+  "claude_behavioral_acceptance_claimed": false,
+  "human_disposition_required": false,
+  "human_disposition_recorded": true,
   "exact_final_candidate_sha": "c7753aa4829c758964a1c6811fc05b8d06aad4cd",
   "phase6_evidence_sha256": "3f3c197cf8b75fc7550194ac3f53a916980197a262113bc0c6a8af8f6bc25967",
   "accepted_package_sha256": "0bda2b18a1669d35d68ec1269399d73b125136e9a7e70a467f806f4fffc901ce"

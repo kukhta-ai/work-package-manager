@@ -1,12 +1,12 @@
 {
   "schema_version": "0.1.0",
-  "snapshot_at": "2026-08-25T11:27:53Z",
+  "snapshot_at": "2026-08-25T11:53:25Z",
   "repo": "work-package-manager",
   "collection_mode": "contract_static",
   "collection_status": "COLLECTED",
   "inventory_basis": "acceptance_criteria",
   "gate_basis": "coverage_plus_nfr_plus_phase6_evidence",
-  "source_sha": "477c31765b7b7c7412e8461226517e6984e2bc7c",
+  "source_sha": "59986a81bf3d9523d6a963b5891437bdb796e0ff",
   "product_test_hash": "a8e31acf068376d6250ad0fc35f139f61cfb76b7a68875ab33911512e066ef22",
   "target": {
     "type": "epic",
@@ -117,8 +117,9 @@
   "risk_summary": {
     "critical_open": 0,
     "high_open": 0,
-    "medium_open": 1,
-    "low_open": 0
+    "medium_open": 0,
+    "low_open": 0,
+    "medium_waived": 1
   },
   "heuristics": {
     "endpoint_gaps": 0,
@@ -140,30 +141,39 @@
     ],
     "hard_wait_patterns_found": 0
   },
-  "blockers": [
+  "blockers": [],
+  "waivers": [
     {
-      "id": "PHASE6-B1",
+      "id": "PHASE6-W1",
       "requirement": "NFR8",
       "severity": "MEDIUM",
-      "kind": "external_authentication",
-      "status": "BLOCKED",
+      "kind": "human_risk_disposition",
+      "status": "WAIVED",
+      "approver": "user",
+      "approver_role": "project human gate authority; organizational title not specified",
+      "exact_words": "i allow it not to be the blocker, continue without it",
+      "recorded_at_revision": "59986a81bf3d9523d6a963b5891437bdb796e0ff",
+      "scope": "24-cell authenticated Claude parity matrix",
+      "expiry": "none specified",
       "evidence": "Corrected sole Claude inference returned 401 OAuth access token has expired before every behavioral cell; 0 tokens, 0 tools, 0 cost.",
       "required_subruns": 24,
       "executed_subruns": 0,
-      "recovery": "A human reauthenticates Claude Code outside WPM; then an authorized fresh isolated run proves one canary and executes all 24 fresh six-skill behavioral subruns against one newly accepted exact package."
+      "behavioral_acceptance_claimed": false,
+      "residual_risk": "Claude behavioral parity remains unproven.",
+      "optional_remediation": "If actual Claude parity is required later, a human reauthenticates Claude Code outside WPM; then an authorized fresh isolated run proves one canary and executes all 24 fresh six-skill behavioral subruns against one newly accepted exact package."
     }
   ],
   "recommendations": [
     {
-      "priority": "MEDIUM",
-      "action": "Human reauthentication outside WPM, followed by a fresh authorized canary and all 24 fresh Claude behavioral subruns; do not infer any missing cell.",
+      "priority": "INFO",
+      "action": "Preserve the human WAIVED disposition and 0/24 fact; do not infer a missing Claude cell or claim behavioral acceptance.",
       "requirements": [
         "NFR8"
       ]
     },
     {
       "priority": "INFO",
-      "action": "After complete Claude evidence, revalidate bmad-testarch-nfr and the final bmad-testarch-trace gate.",
+      "action": "If actual Claude parity is needed later, reauthenticate outside WPM, run a fresh canary and all 24 fresh subruns, then revalidate NFR and trace evidence.",
       "requirements": [
         "NFR8"
       ]
@@ -184,13 +194,15 @@
     "report": "_bmad-output/implementation-artifacts/epic-3-retro-2026-08-25.md"
   },
   "nfr": {
-    "status": "CONCERNS",
+    "status": "WAIVED",
     "counts": {
       "pass": 17,
-      "concerns": 1,
-      "fail": 0
+      "concerns": 0,
+      "fail": 0,
+      "waived": 1
     },
-    "open_requirements": [
+    "open_requirements": [],
+    "waived_requirements": [
       "NFR8"
     ],
     "closed_by_phase6_evidence": [
@@ -198,7 +210,7 @@
     ],
     "product_defect_blockers": 0,
     "evidence_gaps": 1,
-    "waivers": 0,
+    "waivers": 1,
     "report": "_bmad-output/test-artifacts/nfr-assessment-authoring-agent-onboarding-complete.md",
     "validation_report": "_bmad-output/test-artifacts/nfr-assess-validation-report-authoring-agent-onboarding-complete.md"
   },
@@ -210,10 +222,28 @@
     "claude_required_subruns": 24,
     "claude_executed_subruns": 0,
     "claude_error": "401 OAuth access token has expired. Re-authenticate to continue.",
-    "note": "Cold/package evidence closes NFR10. Claude parity remains wholly unexecuted and cannot be inferred."
+    "note": "Cold/package evidence closes NFR10. Claude parity remains wholly unexecuted and cannot be inferred; the user waived this evidence obligation for the Phase-6 disposition."
   },
-  "gate_status": "CONCERNS",
-  "integrated_epic_gate_status": "CONCERNS_BLOCKED_EXTERNAL_OAUTH",
+  "human_waiver": {
+    "requirement": "NFR8",
+    "approver": "user",
+    "approver_role": "project human gate authority; organizational title not specified",
+    "exact_words": "i allow it not to be the blocker, continue without it",
+    "recorded_at_revision": "59986a81bf3d9523d6a963b5891437bdb796e0ff",
+    "expiry": "none specified",
+    "required_subruns": 24,
+    "executed_subruns": 0,
+    "behavioral_acceptance_claimed": false
+  },
+  "gate_status": "WAIVED",
+  "integrated_epic_gate_status": "WAIVED_HUMAN_DISPOSITION",
+  "claude_behavioral_acceptance_claimed": false,
+  "final_acceptance_claimed": false,
+  "publication_eligibility_claimed": false,
+  "release_authorization_claimed": false,
+  "receiving_agent_acceptance_claimed": false,
+  "human_disposition_required": false,
+  "human_disposition_recorded": true,
   "gate_criteria": {
     "p0_coverage_required": "100%",
     "p0_coverage_actual": "100%",
@@ -225,15 +255,15 @@
     "overall_coverage_minimum": "80%",
     "overall_coverage_actual": "100%",
     "overall_status": "MET",
-    "nfr_actual": "17 PASS / 1 CONCERNS / 0 FAIL",
-    "nfr_status": "CONCERNS",
+    "nfr_actual": "17 PASS / 0 CONCERNS / 0 FAIL / 1 WAIVED",
+    "nfr_status": "WAIVED",
     "exact_final_cold_required": "PASS",
     "exact_final_cold_actual": "PASS",
     "exact_final_cold_status": "MET",
     "authenticated_claude_required": "24/24 fresh subruns PASS",
     "authenticated_claude_actual": "0/24 executed; OAuth 401 before cells",
-    "authenticated_claude_status": "BLOCKED",
-    "integrated_phase6_status": "NOT_MET"
+    "authenticated_claude_status": "WAIVED_NOT_EXECUTED",
+    "integrated_phase6_status": "WAIVED"
   },
   "links": {
     "trace_report_path": "_bmad-output/test-artifacts/traceability/trace-authoring-agent-onboarding-complete.md",

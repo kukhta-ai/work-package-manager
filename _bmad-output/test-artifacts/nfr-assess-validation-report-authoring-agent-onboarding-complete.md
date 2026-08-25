@@ -1,128 +1,120 @@
 ---
 workflow: 'bmad-testarch-nfr'
 mode: 'Validate'
-validatedAt: '2026-08-25T11:25:11Z'
+validatedAt: '2026-08-25T11:53:25Z'
 target: '_bmad-output/test-artifacts/nfr-assessment-authoring-agent-onboarding-complete.md'
-evidenceRevision: '477c31765b7b7c7412e8461226517e6984e2bc7c'
+gateRevision: '59986a81bf3d9523d6a963b5891437bdb796e0ff'
+phase6ExecutionEvidenceRevision: '477c31765b7b7c7412e8461226517e6984e2bc7c'
 exactFinalCandidateRevision: 'c7753aa4829c758964a1c6811fc05b8d06aad4cd'
-validationStatus: 'PASS'
-nfrStatus: 'CONCERNS'
+validationStatus: 'PASS_WITH_WARNINGS'
+nfrDisposition: 'WAIVED'
 ---
 
 # NFR Validation Report - Authoring Agent Onboarding Complete Initiative
 
 ## Validation Summary
 
-- **Workflow validation:** PASS
-- **NFR verdict validated:** CONCERNS
-- **Requirement counts:** 17 PASS, 1 CONCERNS, 0 FAIL across 18 NFRs
-- **Open evidence gap:** NFR8 only
-- **Closed by new evidence:** NFR10
+- **Workflow validation:** PASS WITH WARNINGS
+- **NFR disposition validated:** WAIVED
+- **Requirement disposition counts:** 17 PASS, 0 CONCERNS, 0 FAIL, 1 WAIVED across 18 NFRs
+- **Waived evidence gap:** NFR8 only; authenticated Claude parity remains 0/24 executed
+- **Closed by exact-final evidence:** NFR10
+- **Open blockers after human disposition:** 0
 - **Product-defect blockers:** 0
-- **External gate blocker:** expired Claude OAuth; all 24 behavioral subruns remain unexecuted
-- **Waivers:** 0
+- **Waivers:** 1
+- **Claude behavioral acceptance claimed:** No
 
-The scoped report is internally consistent with the committed Phase-6 execution evidence. The validation does not reinterpret the missing Claude cells, and it does not execute tests, cold/package gates, live clients, or remote systems.
+The scoped report is internally consistent with the committed Phase-6 execution evidence and the user's exact
+waiver instruction, `i allow it not to be the blocker, continue without it`. Validation preserves the missing
+Claude cells as unexecuted evidence; it does not reinterpret, infer, or pass them. No test, cold/package gate,
+live client, Claude process, CI job, or remote system was executed.
 
 ## Deterministic Artifact Checks
 
 | Check | Result | Evidence |
 | --- | --- | --- |
 | Markdown target exists and is readable | PASS | Scoped NFR report loaded in full |
-| YAML frontmatter parses | PASS | Five completed Create-mode steps retained; Edit provenance added |
-| Gate-ready YAML parses | PASS | 17/1/0; `overall_status: CONCERNS`; `blockers: true`; one evidence gap |
+| YAML frontmatter parses | PASS | Five completed Create-mode steps retained; waiver Edit provenance added |
+| Gate-ready YAML parses | PASS | 17/0/0/1; `overall_status: WAIVED`; `blockers: false`; one waived evidence gap |
 | Requirement inventory | PASS | Exactly 18 distinct rows, NFR1-NFR18 |
-| NFR8 classification | PASS | CONCERNS; expired OAuth blocked execution before all 24 subruns |
-| NFR10 classification | PASS | Exact-final cold/package/source-free/inertness evidence closes the requirement |
+| NFR8 disposition | PASS | WAIVED by exact human instruction; 0/24 remains UNEXECUTED and not PASS |
+| NFR10 classification | PASS | Exact-final cold/package/source-free/inertness evidence remains PASS |
+| Waiver identity | PASS | User approver, exact words, scope, gate revision, no-expiry fact, 0/24 counts, and false behavioral-acceptance flag are explicit |
 | Evidence identity | PASS | Recorded and actual Phase-6 evidence SHA-256 both `3f3c197cf8b75fc7550194ac3f53a916980197a262113bc0c6a8af8f6bc25967` |
 | Candidate identity | PASS | `c7753aa4829c758964a1c6811fc05b8d06aad4cd` |
 | Product/test identity | PASS | `a8e31acf068376d6250ad0fc35f139f61cfb76b7a68875ab33911512e066ef22` |
 | Exact package identity | PASS | SHA-256 `0bda2b18a1669d35d68ec1269399d73b125136e9a7e70a467f806f4fffc901ce` |
-| Stale-state scan | PASS | No old 16/2 count, pending-NFR10, old source revision, or old runtime remains |
-| Template placeholders | PASS | Zero unresolved uppercase template placeholders |
+| Template placeholders | PASS | Zero unresolved template placeholders |
 | Diff hygiene | PASS | `git diff --check` clean for the target |
 
 ## Checklist Disposition
 
 ### Prerequisites and Context Loading - PASS
 
-- Implementation, planning artifacts, story/QA/review evidence, trace evidence, retrospective, and Phase-6 execution evidence are accessible.
+- Implementation, planning artifacts, story/QA/review evidence, trace evidence, retrospective, and retained Phase-6 execution evidence remain accessible.
 - PRD, architecture/addendum, epics, readiness, test design, complete trace, and all 21 story evidence records remain the requirements context.
-- ADR quality readiness, CI burn-in, test quality, Playwright configuration, error handling, and CLI knowledge fragments were loaded in the original Create run and remain listed in frontmatter.
-- No standalone tech-spec or single-story target is applicable to this complete-initiative audit.
-- Generic metrics/log directories are N/A for a local non-resident CLI; all applicable retained evidence paths are identified.
+- ADR quality readiness, CI burn-in, test quality, Playwright configuration, error handling, and CLI knowledge fragments remain loaded in the original Create provenance.
+- No standalone tech-spec or single-story target is applicable. Generic metrics/log directories remain N/A for this local non-resident CLI.
 
-### Categories and Thresholds - PASS
+### Categories, Thresholds, and Evidence Gathering - PASS
 
-- Performance: service/browser latency, throughput, and resource thresholds are explicitly N/A; bounded CLI execution is defined and assessed.
-- Security: authentication/API controls are N/A by product boundary; ownership, input/path validation, secrets exclusion, non-leakage, and production dependency audit evidence are defined and assessed.
-- Reliability: service uptime/error-rate/MTTR/RTO/RPO are N/A; atomicity, typed failures, deterministic recovery, clean isolation, and exact-final cold evidence are defined and assessed.
-- Maintainability: formal P0/P1 trace thresholds, retained static/build/test gates, independent review, documentation, and explicit absence of a line-coverage/debt ratio are assessed.
-- Custom thresholds: dual-client portability, deterministic authoring integrity, and exact-artifact deployability are defined from PRD NFRs.
-- No numeric threshold was guessed. N/A service controls are not reported as false PASS or synthetic CONCERNS.
+- Service/browser latency, throughput, resource, uptime, RTO/RPO, traffic, APM, and GUI thresholds remain explicit N/A rather than invented.
+- Security, reliability, maintainability, deterministic integrity, exact-artifact deployability, and dual-client portability thresholds remain grounded in the PRD, architecture, test design, and final trace.
+- Applicable evidence remains the exact detached cold sequence, clean status/diff, 140/140 files, 1,944/1,944 tests, zero-vulnerability production audit, accepted package inspection, source-free install, inactive assessments, cleanup, 21 APPROVE reviews, and 192/192 trace.
+- The expired-OAuth Claude record remains blocker-history and waiver evidence only, never behavioral evidence.
 
-### Evidence Gathering - PASS with Explicit N/A
+### Deterministic Assessments and Human Waiver - PASS WITH WARNINGS
 
-- Applicable performance evidence is bounded CLI execution and the exact-final 1,879.12-second suite observation; load/APM/browser data is N/A and not claimed.
-- Security evidence includes a zero-vulnerability production audit, confinement/ownership/non-leakage tests, package inspection, and credential-free product boundaries. SAST/DAST/penetration/regulatory certification is not an initiative threshold and is not claimed.
-- Reliability evidence includes the exact detached cold sequence, clean status/diff, 140/140 files, 1,944/1,944 tests, source-free install, inactive assessments, cleanup, and GREEN retrospective. Service uptime/chaos/failover data is N/A.
-- Maintainability evidence includes trace coverage, static gates, 21 independent APPROVE reviews, test inventory heuristics, and the stable product/test hash. No line-coverage or quantified debt metric is claimed.
-- The expired-OAuth Claude result is retained as blocker evidence only, never as behavioral evidence.
-
-### Deterministic Assessments and Classification - PASS
-
-- Performance, security, reliability, scalability, maintainability, and all custom NFR categories have an explicit PASS/CONCERNS/N/A disposition and cited evidence.
-- All 17 PASS classifications have supporting evidence that meets the applicable threshold.
-- NFR8 CONCERNS is deterministic because required evidence is missing: the 401 occurred before discovery, invocation, trigger, non-trigger, or outcome cells.
-- No FAIL is assigned because no retained evidence contradicts a threshold or demonstrates a product defect.
-- NFR10 moved from CONCERNS to PASS only after exact-final evidence became available.
-- Overall CONCERNS and `blockers: true` are consistent with repository governance and the unexecuted applicable NFR8 gate.
+- All 17 PASS rows have threshold-meeting retained evidence; no PASS classification changed.
+- NFR8 remains evidentially incomplete: the 401 occurred before discovery, invocation, trigger, non-trigger, or outcome cells, and exactly 0/24 subruns executed.
+- The user explicitly disposed that sole concern, so its risk disposition is WAIVED and the open blocker count is zero.
+- No FAIL is assigned because no evidence contradicts a threshold or demonstrates a product defect.
+- The waiver does not establish Claude parity, release readiness, publication eligibility, receiving-agent acceptance, or PASS.
+- **WARN:** the installed NFR template/checklist enumerates PASS/CONCERNS/FAIL for evidence status, whereas shared BMad risk governance and the trace gate support WAIVED. The report therefore separates the human WAIVED disposition from the unchanged UNEXECUTED evidence state.
+- **WARN:** risk-governance guidance normally records waiver expiry. The user supplied none, so the artifact says `none specified` rather than inventing one. Scope and approver are unambiguous.
 
 ### Actions, Monitoring, and Fail-Fast Controls - PASS
 
-- The recovery action is specific: human reauthentication outside WPM, fresh isolated canary, then all 24 fresh subruns against one newly accepted exact package.
-- Owner, gate-bound deadline, and workload-sized effort are supplied. Wall-clock effort is not guessed because external authentication is human/environment dependent.
-- The report explicitly prohibits WPM login, refresh, retry, or inference from fixture/Codex evidence.
-- Remote APM, telemetry, service alerts, circuit breakers, and rate limiting are N/A for the local inactive CLI and are not recommended merely to fill the template.
-- Existing validation, ownership, atomic preflight, exact digest, typed-exit, static/build/test, package, and non-leakage fail-fast controls are enumerated.
+- No remediation is required to continue under this waiver.
+- Optional future proof remains specific: human reauthentication outside WPM, a fresh isolated canary, then all 24 fresh subruns against one newly accepted exact package.
+- The report prohibits WPM login, refresh, retry, or inference from fixture/Codex evidence.
+- Evidence ownership and timing are precise: an authorized live-client executor, before any future Claude behavioral parity claim; no wall-clock estimate is guessed.
+- Existing ownership, atomic preflight, exact digest, typed-exit, static/build/test, package, and non-leakage controls remain enumerated.
+- Remote telemetry/APM/service alerts remain N/A and are not introduced to fill the checklist.
 
-### Deliverables - PASS
+### Deliverables, Accuracy, and Completeness - PASS WITH WARNINGS
 
-- The scoped NFR report uses the workflow template structure and contains an executive summary, category assessments, all 18 NFRs, quick wins, actions, evidence gaps, related artifacts, provenance, sign-off, and gate-ready YAML.
-- Gate YAML includes date, exact revisions/hashes, categories, 17/1/0 counts, issue counts, blockers, waivers, evidence gap, exact suite/package facts, recovery recommendations, and next step.
-- NFR8 has an owner, deadline, suggested evidence, and impact.
-- Story-file mutation is N/A and prohibited by the task; no story, Backlog, state, governance, product, or test file was edited.
+- The scoped report contains an executive summary, category assessments, all 18 NFRs, actions, evidence gap, related artifacts, provenance, sign-off, and parseable gate-ready YAML.
+- Gate YAML includes exact revisions/hashes, 17/0/0/1 counts, one waiver, zero blockers, one evidence gap, exact user words, 0/24 execution, and false behavioral-acceptance flag.
+- No false positive: NFR8 is not PASS and no Claude cell is inferred.
+- No false negative: NFR10 remains closed by exact-final cold/package evidence.
+- The deliberate WAIVED schema extension is documented rather than hidden behind the native tri-state wording.
+- Story-file mutation is N/A and prohibited; no story, Backlog, state, governance, product, test, evidence, index, branch, or commit was changed.
 
-### Accuracy, Completeness, and Actionability - PASS
+### BMad Integration and Quality-Gate Rules - PASS WITH WARNINGS
 
-- All categories and evidence sources are assessed or explicitly scoped N/A.
-- No false positive: NFR8 remains open and no Claude cell is inferred.
-- No false negative: NFR10 consumes the exact cold/package evidence and is no longer left stale.
-- Recommendations are concrete and ordered: final trace now, human external reauthentication, fresh canary, complete 24-subrun matrix, then revalidation.
-- The report is readable, tables and YAML are well formed, and the overall CONCERNS disposition is prominent.
-
-### BMad Integration and Quality Gate Rules - PASS
-
-- PRD NFR1-NFR18, architecture decisions, test-design priorities, formal trace, story evidence, retrospective, and Phase-6 execution evidence are reconciled.
+- PRD NFR1-NFR18, architecture, test-design priorities, formal trace, story evidence, retrospective, execution evidence, and human gate disposition are reconciled.
 - Critical/security/reliability FAIL conditions were checked; none exists.
-- The single applicable CONCERNS is flagged as a Phase-6 blocker with recovery.
-- PASS/release-ready is not claimed while NFR8 remains incomplete.
-- The next workflow is the final `bmad-testarch-trace` Edit+Validate gate.
+- The sole evidence gap is human-waived, carries MEDIUM accepted residual risk, and no longer blocks continuation.
+- PASS/release-ready and Claude behavioral acceptance are not claimed.
+- The next workflow is final `bmad-testarch-trace` Edit+Validate, whose native gate taxonomy explicitly supports WAIVED.
 
 ## Warnings and N/A Items
 
-- **WARN (non-blocking):** 30 of 67 feature test files exceed the generic 300-line preference; exact-final suite duration is 1,879.12 seconds. No applicable threshold is breached.
-- **N/A:** service SLA, uptime, RTO/RPO, traffic/load, browser performance, APM/telemetry, regulatory certification, deployment rollback, and story-file update.
-- **N/A:** PASS sign-off and release-ready criteria, because one applicable NFR remains CONCERNS.
-- **N/A:** FAIL sign-off, because no threshold is contradicted and no critical product defect is demonstrated.
+1. **Taxonomy adapter:** NFR evidence status is natively tri-state, but the human risk disposition is WAIVED. The two are kept separate and 0/24 remains explicit.
+2. **No expiry supplied:** the waiver has an approver, exact reason, scope, and revision but no invented expiration date.
+3. **Non-gating quality observation:** 30 of 67 feature test files exceed the generic 300-line preference, and the exact-final suite duration is 1,879.12 seconds; no applicable threshold is breached.
+4. **N/A:** service SLA, traffic/load, browser performance, APM/telemetry, regulatory certification, deployment rollback, and story-file update.
 
 ## Validation Sign-Off
 
-**Validation status:** PASS
-**Validated NFR status:** CONCERNS
-**Counts:** 17 PASS / 1 CONCERNS / 0 FAIL
-**Blocker:** NFR8 authenticated live Claude parity, blocked before execution by expired OAuth
-**Recovery:** human reauthentication outside WPM, then a fresh authorized canary and all 24 fresh behavioral subruns
-**Next workflow:** final `bmad-testarch-trace` Edit+Validate
+- **Validation status:** PASS WITH WARNINGS
+- **Validated NFR disposition:** WAIVED
+- **Counts:** 17 PASS / 0 CONCERNS / 0 FAIL / 1 WAIVED
+- **Evidence gap:** NFR8 authenticated Claude parity, 0/24 executed
+- **Human disposition:** `i allow it not to be the blocker, continue without it`
+- **Open blockers:** 0
+- **Claude behavioral acceptance:** Not claimed
+- **Next workflow:** final `bmad-testarch-trace` Edit+Validate
 
 <!-- Powered by BMAD-CORE™ -->
