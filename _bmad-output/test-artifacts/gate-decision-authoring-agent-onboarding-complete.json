@@ -1,0 +1,47 @@
+{
+  "schema_version": "0.1.0",
+  "evaluated_at": "2026-08-25T10:10:10Z",
+  "repo": "work-package-manager",
+  "target": {
+    "type": "epic",
+    "id": "authoring-agent-onboarding-complete",
+    "label": "Authoring Agent Onboarding — Complete Initiative (TASK-107..TASK-127)"
+  },
+  "collection_status": "COLLECTED",
+  "gate_basis": "priority_thresholds",
+  "gate_scope": "interim_trace_coverage",
+  "gate_status": "PASS",
+  "integrated_phase6_status": "PENDING_EXTERNAL_PHASE_6_EVIDENCE",
+  "rationale": "P0 coverage is 100%, P1 coverage is 100% (target: 90%), and overall coverage is 100% (minimum: 80%).",
+  "p0_status": "MET",
+  "p1_status": "MET",
+  "overall_status": "MET",
+  "critical_open": 0,
+  "quality_observations": {
+    "blocker_issues": 0,
+    "warning_issues": 1,
+    "warnings": [
+      {
+        "id": "TRACE-Q1",
+        "severity": "LOW",
+        "observation": "30 of 67 feature-relevant test files exceed the generic 300-line heuristic and the retained full suite takes 1,852.12 seconds.",
+        "disposition": "Non-blocking for coverage; story reviews are APPROVE with no open findings. Monitor ownership and runtime, and split/optimize if growth impairs focused execution."
+      }
+    ],
+    "hard_wait_patterns_found": 0
+  },
+  "nfr_status_at_trace": "NOT_ASSESSED",
+  "external_phase6_evidence": {
+    "exact_final_cold_candidate": "PENDING_EXTERNAL_GATE",
+    "authenticated_claude_parity": "PENDING_EXTERNAL_GATE",
+    "note": "Neither item is an acceptance-coverage gap; neither was executed by this workflow."
+  },
+  "source_sha": "587d82f20188d4286409c526636438b23a70ba1b",
+  "product_test_hash": "a8e31acf068376d6250ad0fc35f139f61cfb76b7a68875ab33911512e066ef22",
+  "links": {
+    "trace_report_path": "_bmad-output/test-artifacts/traceability/trace-authoring-agent-onboarding-complete.md",
+    "trace_report_url": "",
+    "artifact_url": "",
+    "journey_evidence_url": ""
+  }
+}
