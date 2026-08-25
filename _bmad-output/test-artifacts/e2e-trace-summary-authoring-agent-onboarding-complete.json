@@ -1,12 +1,12 @@
 {
   "schema_version": "0.1.0",
-  "snapshot_at": "2026-08-25T10:10:10Z",
+  "snapshot_at": "2026-08-25T11:27:53Z",
   "repo": "work-package-manager",
   "collection_mode": "contract_static",
   "collection_status": "COLLECTED",
   "inventory_basis": "acceptance_criteria",
-  "gate_basis": "priority_thresholds",
-  "source_sha": "587d82f20188d4286409c526636438b23a70ba1b",
+  "gate_basis": "coverage_plus_nfr_plus_phase6_evidence",
+  "source_sha": "477c31765b7b7c7412e8461226517e6984e2bc7c",
   "product_test_hash": "a8e31acf068376d6250ad0fc35f139f61cfb76b7a68875ab33911512e066ef22",
   "target": {
     "type": "epic",
@@ -95,7 +95,13 @@
     "note": "The deduplicated test inventory above contains principal mapped declarations; Step 2 catalogs the broader task/QA-owned feature suite."
   },
   "retained_execution": {
-    "evidence_type": "stable reviewed full-suite result; not rerun by this workflow",
+    "evidence_type": "exact-final cold detached-clone result; consumed, not rerun by this workflow",
+    "candidate_sha": "c7753aa4829c758964a1c6811fc05b8d06aad4cd",
+    "npm_ci": "PASS",
+    "typecheck": "PASS",
+    "biome": "PASS (271 files)",
+    "build": "PASS",
+    "production_audit": "PASS (0 vulnerabilities)",
     "files_passed": 140,
     "files_total": 140,
     "tests_passed": 1944,
@@ -103,14 +109,15 @@
     "failed": 0,
     "skipped_reported": 0,
     "exit_code": 0,
-    "duration_seconds": 1852.12,
+    "duration_seconds": 1879.12,
+    "clean_checkout_and_diff": true,
     "product_test_tree_unchanged_since": "a9e0066",
-    "integrated_head": "587d82f20188d4286409c526636438b23a70ba1b"
+    "evidence_head": "477c31765b7b7c7412e8461226517e6984e2bc7c"
   },
   "risk_summary": {
     "critical_open": 0,
     "high_open": 0,
-    "medium_open": 0,
+    "medium_open": 1,
     "low_open": 0
   },
   "heuristics": {
@@ -127,22 +134,43 @@
       {
         "id": "TRACE-Q1",
         "severity": "LOW",
-        "observation": "30 of 67 feature-relevant test files exceed the generic 300-line heuristic and the retained full suite takes 1,852.12 seconds.",
+        "observation": "30 of 67 feature-relevant test files exceed the generic 300-line heuristic and the exact-final full suite takes 1,879.12 seconds.",
         "disposition": "Non-blocking for coverage; story reviews are APPROVE with no open findings. Monitor ownership and runtime, and split/optimize if growth impairs focused execution."
       }
     ],
     "hard_wait_patterns_found": 0
   },
-  "blockers": [],
+  "blockers": [
+    {
+      "id": "PHASE6-B1",
+      "requirement": "NFR8",
+      "severity": "MEDIUM",
+      "kind": "external_authentication",
+      "status": "BLOCKED",
+      "evidence": "Corrected sole Claude inference returned 401 OAuth access token has expired before every behavioral cell; 0 tokens, 0 tools, 0 cost.",
+      "required_subruns": 24,
+      "executed_subruns": 0,
+      "recovery": "A human reauthenticates Claude Code outside WPM; then an authorized fresh isolated run proves one canary and executes all 24 fresh six-skill behavioral subruns against one newly accepted exact package."
+    }
+  ],
   "recommendations": [
     {
-      "priority": "LOW",
-      "action": "Run bmad-testarch-test-review if the stable test diff changes or ownership/runtime growth makes a dedicated test-quality review useful.",
-      "requirements": []
+      "priority": "MEDIUM",
+      "action": "Human reauthentication outside WPM, followed by a fresh authorized canary and all 24 fresh Claude behavioral subruns; do not infer any missing cell.",
+      "requirements": [
+        "NFR8"
+      ]
     },
     {
       "priority": "INFO",
-      "action": "Keep the exact-final cold candidate and authenticated Claude parity evidence as separate Phase 6 gates; they are not acceptance-coverage gaps.",
+      "action": "After complete Claude evidence, revalidate bmad-testarch-nfr and the final bmad-testarch-trace gate.",
+      "requirements": [
+        "NFR8"
+      ]
+    },
+    {
+      "priority": "LOW",
+      "action": "Run bmad-testarch-test-review if the stable test diff changes or ownership/runtime growth makes a dedicated test-quality review useful.",
       "requirements": []
     }
   ],
@@ -156,17 +184,36 @@
     "report": "_bmad-output/implementation-artifacts/epic-3-retro-2026-08-25.md"
   },
   "nfr": {
-    "status": "NOT_ASSESSED",
-    "next_workflow": "bmad-testarch-nfr",
-    "report": "_bmad-output/test-artifacts/nfr-assessment-authoring-agent-onboarding-complete.md"
+    "status": "CONCERNS",
+    "counts": {
+      "pass": 17,
+      "concerns": 1,
+      "fail": 0
+    },
+    "open_requirements": [
+      "NFR8"
+    ],
+    "closed_by_phase6_evidence": [
+      "NFR10"
+    ],
+    "product_defect_blockers": 0,
+    "evidence_gaps": 1,
+    "waivers": 0,
+    "report": "_bmad-output/test-artifacts/nfr-assessment-authoring-agent-onboarding-complete.md",
+    "validation_report": "_bmad-output/test-artifacts/nfr-assess-validation-report-authoring-agent-onboarding-complete.md"
   },
   "external_phase6_evidence": {
-    "exact_final_cold_candidate": "PENDING_EXTERNAL_GATE",
-    "authenticated_claude_parity": "PENDING_EXTERNAL_GATE",
-    "note": "Neither item is an acceptance-coverage gap; neither was executed by this workflow."
+    "exact_final_cold_candidate": "PASS",
+    "exact_final_candidate_sha": "c7753aa4829c758964a1c6811fc05b8d06aad4cd",
+    "accepted_package_sha256": "0bda2b18a1669d35d68ec1269399d73b125136e9a7e70a467f806f4fffc901ce",
+    "authenticated_claude_parity": "BLOCKED_EXPIRED_OAUTH",
+    "claude_required_subruns": 24,
+    "claude_executed_subruns": 0,
+    "claude_error": "401 OAuth access token has expired. Re-authenticate to continue.",
+    "note": "Cold/package evidence closes NFR10. Claude parity remains wholly unexecuted and cannot be inferred."
   },
-  "gate_status": "PASS",
-  "integrated_epic_gate_status": "PENDING_EXTERNAL_PHASE_6_EVIDENCE",
+  "gate_status": "CONCERNS",
+  "integrated_epic_gate_status": "CONCERNS_BLOCKED_EXTERNAL_OAUTH",
   "gate_criteria": {
     "p0_coverage_required": "100%",
     "p0_coverage_actual": "100%",
@@ -177,12 +224,47 @@
     "p1_status": "MET",
     "overall_coverage_minimum": "80%",
     "overall_coverage_actual": "100%",
-    "overall_status": "MET"
+    "overall_status": "MET",
+    "nfr_actual": "17 PASS / 1 CONCERNS / 0 FAIL",
+    "nfr_status": "CONCERNS",
+    "exact_final_cold_required": "PASS",
+    "exact_final_cold_actual": "PASS",
+    "exact_final_cold_status": "MET",
+    "authenticated_claude_required": "24/24 fresh subruns PASS",
+    "authenticated_claude_actual": "0/24 executed; OAuth 401 before cells",
+    "authenticated_claude_status": "BLOCKED",
+    "integrated_phase6_status": "NOT_MET"
   },
   "links": {
     "trace_report_path": "_bmad-output/test-artifacts/traceability/trace-authoring-agent-onboarding-complete.md",
     "trace_report_url": "",
     "artifact_url": "",
-    "journey_evidence_url": ""
+    "journey_evidence_url": "",
+    "nfr_report_path": "_bmad-output/test-artifacts/nfr-assessment-authoring-agent-onboarding-complete.md",
+    "nfr_validation_path": "_bmad-output/test-artifacts/nfr-assess-validation-report-authoring-agent-onboarding-complete.md",
+    "phase6_evidence_path": "_bmad-output/test-artifacts/phase-6-execution-evidence-authoring-agent-onboarding.md"
+  },
+  "coverage_gate_basis": "priority_thresholds",
+  "exact_final_candidate_sha": "c7753aa4829c758964a1c6811fc05b8d06aad4cd",
+  "phase6_evidence_sha256": "3f3c197cf8b75fc7550194ac3f53a916980197a262113bc0c6a8af8f6bc25967",
+  "accepted_package": {
+    "name": "wpm",
+    "version": "0.1.0",
+    "archive": "wpm-0.1.0.tgz",
+    "bytes": 701280,
+    "sha256": "0bda2b18a1669d35d68ec1269399d73b125136e9a7e70a467f806f4fffc901ce",
+    "paths": 479,
+    "violations": 0,
+    "source_free_install": "PASS",
+    "inertness": "PASS"
+  },
+  "coverage_gate_status": "PASS",
+  "workflow_provenance": {
+    "skill": "bmad-testarch-trace",
+    "mode": "Edit; Validate follows",
+    "customization_prepend": [],
+    "customization_append": [],
+    "persistent_project_context_matches": 0,
+    "executed_external_gates": false
   }
 }

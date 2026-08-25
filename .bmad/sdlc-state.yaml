@@ -4,15 +4,16 @@
 # (Distinct from _bmad/ — that is BMAD's own install dir; this dot-dir is our tracker.)
 
 phase: 6
-phase_name: "Epic gate — exact-final cold PASS; authenticated Claude parity blocked on expired OAuth"
+phase_name: "Epic gate — CONCERNS / BLOCKED_EXTERNAL_OAUTH"
 branch: feature/authoring-agent-onboarding
 epic: authoring-agent-onboarding
 # CURRENT SCOPE (2026-08-21): planning/readiness is READY; Backlog.md now contains the
 # non-story Node-support prerequisite TASK-106 plus 21 approved stories TASK-107..TASK-127.
 # IMPLEMENTATION COMPLETE (2026-08-25): TASK-107..TASK-127 are Done and merged sequentially.
 # TASK-127 final review is APPROVE with 0 open findings; stable product/test hash a8e31acf;
-# final per-story gate passed 140/140 files and 1944/1944 tests. Next: literal retrospective,
-# Phase-6 trace/NFR/cold exact-final gate, then the user-deferred authenticated Claude parity gate.
+# final per-story gate passed 140/140 files and 1944/1944 tests. Retrospective and the
+# exact-final Phase-6 trace/NFR/cold/package gate are complete; authenticated Claude parity
+# was attempted afterward as requested and is blocked before its 24 cells by expired OAuth.
 # PHASE-6 EXECUTION (2026-08-25): exact clean HEAD c7753aa passed npm ci, typecheck,
 # Biome, build, 140/140 files and 1944/1944 tests, production audit (0 vulnerabilities),
 # exact archive inspection/source-free install/six-skill identity, and inactive no-write assessments.
@@ -258,7 +259,7 @@ specialists:
   pm:           {spawned: true,  id: "ad55659c67626dac3", role: "PRD conformance vs docs/00-05",        status: "P2 done — prd shim; no scope conflicts (noted wpm/installer bin placeholder)"}
   ux-designer:  {spawned: false,                          role: "UX spec",                              status: "skipped — no GUI per docs/12"}
   architect:    {spawned: true,  id: "af0958eff0e1846e5", role: "architecture conformance vs docs/12-13", status: "P3 done — architecture/epics/readiness=PASS; RESUME if a task reveals a design gap"}
-  tea:          {spawned: true,  id: "/root/onboarding_tea", role: "authoring-agent-onboarding trace/nfr/cold gate", last_skill: "bmad-testarch-nfr @ completed onboarding Epics 1-3", status: "Interim trace PASS 192/192 FULL; NFR CONCERNS 16 PASS, 2 evidence gaps, 0 FAIL. Pending exact-final cold clone and authenticated Claude six-skill parity."}
+  tea:          {spawned: true,  id: "/root/onboarding_tea", role: "authoring-agent-onboarding trace/nfr/cold gate", last_skill: "bmad-testarch-trace @ final Phase-6 Edit+Validate", status: "Coverage PASS 192/192 FULL; NFR 17 PASS, 1 CONCERNS, 0 FAIL; integrated verdict CONCERNS / BLOCKED_EXTERNAL_OAUTH. NFR8 only: 0/24 Claude cells executed."}
   sm:           {spawned: true,  id: "/root/sprint_tracker_worker", role: "authoring-agent-onboarding sprint setup + tracker coordination", last_skill: "bmad-sprint-planning @ authoring-agent-onboarding (live tracker rotation)", status: "Live generic tracker validated: 3 epics, 21 stories (7/11/3), all backlog; foundation tracker archived exactly."}
   worker:       {spawned: true,  id: "/root/onboarding_worker3", role: "replacement persistent authoring-agent-onboarding story worker", last_skill: "bmad-qa-generate-e2e-tests @ task-127", status: "Phase-6 deterministic exact-final gate PASS at c7753aa; live Claude parity BLOCKED before cells by expired external OAuth; cleanup PASS."}
   # CROSS-CUTTING FIX in flight (worker #3): the task-25 lifecycle ⑤ MATERIALISE used ctx.root, but the real authoring backlog is
@@ -272,7 +273,7 @@ specialists:
   retro:        {spawned: true, id: "/root/onboarding_retro", role: "authoring-agent-onboarding epic retrospective", last_skill: "bmad-retrospective @ completed onboarding Epics 1-3", status: "GREEN; 21/21 stories, 192/192 AC, 69/69 DoD, 21/21 independent APPROVE, 0 open; Phase 6 ready."}
 
 gates_pending:
-  - "Fresh authenticated Claude Code discovery, explicit invocation, natural-language trigger, non-trigger, and representative outcome for all six WPM-owned skills against that same exact packed revision."
+  - "Human reauthenticates Claude Code outside WPM and authorizes a fresh canary plus all 24 discovery, explicit invocation, natural-language trigger, non-trigger, and representative-outcome cells for the six WPM-owned skills against one newly accepted exact package."
 deferred_gates: []
 # GOAL EXTENDED (2026-06-01): "complete to task 33 ... full SDLC; THEN merge to dev and start the same SDLC
 # from it with the CLI tasks pushed there (update from remote) and go to task 84 (to the end)." So:
@@ -295,4 +296,4 @@ tooling:
   tool_target: "claude-code"
   claude_code_skills: ".claude/skills (56 skills)"
 
-last_updated: "2026-08-25T11:18:26Z"
+last_updated: "2026-08-25T11:38:16Z"

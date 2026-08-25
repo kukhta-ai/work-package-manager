@@ -1,6 +1,6 @@
 {
   "schema_version": "0.1.0",
-  "evaluated_at": "2026-08-25T10:10:10Z",
+  "evaluated_at": "2026-08-25T11:27:53Z",
   "repo": "work-package-manager",
   "target": {
     "type": "epic",
@@ -8,40 +8,76 @@
     "label": "Authoring Agent Onboarding — Complete Initiative (TASK-107..TASK-127)"
   },
   "collection_status": "COLLECTED",
-  "gate_basis": "priority_thresholds",
-  "gate_scope": "interim_trace_coverage",
-  "gate_status": "PASS",
-  "integrated_phase6_status": "PENDING_EXTERNAL_PHASE_6_EVIDENCE",
-  "rationale": "P0 coverage is 100%, P1 coverage is 100% (target: 90%), and overall coverage is 100% (minimum: 80%).",
+  "gate_basis": "coverage_plus_nfr_plus_phase6_evidence",
+  "gate_scope": "final_phase6_epic_gate",
+  "gate_status": "CONCERNS",
+  "integrated_phase6_status": "BLOCKED_EXTERNAL_OAUTH",
+  "rationale": "Coverage is 192/192 FULL and exact-final cold/package evidence passes, but NFR8 remains CONCERNS because expired Claude OAuth blocked all 24 required behavioral subruns before execution.",
   "p0_status": "MET",
   "p1_status": "MET",
   "overall_status": "MET",
   "critical_open": 0,
   "quality_observations": {
-    "blocker_issues": 0,
+    "blocker_issues": 1,
     "warning_issues": 1,
     "warnings": [
       {
         "id": "TRACE-Q1",
         "severity": "LOW",
-        "observation": "30 of 67 feature-relevant test files exceed the generic 300-line heuristic and the retained full suite takes 1,852.12 seconds.",
+        "observation": "30 of 67 feature-relevant test files exceed the generic 300-line heuristic and the exact-final full suite takes 1,879.12 seconds.",
         "disposition": "Non-blocking for coverage; story reviews are APPROVE with no open findings. Monitor ownership and runtime, and split/optimize if growth impairs focused execution."
       }
     ],
     "hard_wait_patterns_found": 0
   },
-  "nfr_status_at_trace": "NOT_ASSESSED",
+  "nfr_status_at_trace": "CONCERNS",
   "external_phase6_evidence": {
-    "exact_final_cold_candidate": "PENDING_EXTERNAL_GATE",
-    "authenticated_claude_parity": "PENDING_EXTERNAL_GATE",
-    "note": "Neither item is an acceptance-coverage gap; neither was executed by this workflow."
+    "exact_final_cold_candidate": "PASS",
+    "exact_final_candidate_sha": "c7753aa4829c758964a1c6811fc05b8d06aad4cd",
+    "accepted_package_sha256": "0bda2b18a1669d35d68ec1269399d73b125136e9a7e70a467f806f4fffc901ce",
+    "authenticated_claude_parity": "BLOCKED_EXPIRED_OAUTH",
+    "claude_required_subruns": 24,
+    "claude_executed_subruns": 0,
+    "claude_error": "401 OAuth access token has expired. Re-authenticate to continue."
   },
-  "source_sha": "587d82f20188d4286409c526636438b23a70ba1b",
+  "source_sha": "477c31765b7b7c7412e8461226517e6984e2bc7c",
   "product_test_hash": "a8e31acf068376d6250ad0fc35f139f61cfb76b7a68875ab33911512e066ef22",
   "links": {
     "trace_report_path": "_bmad-output/test-artifacts/traceability/trace-authoring-agent-onboarding-complete.md",
     "trace_report_url": "",
     "artifact_url": "",
-    "journey_evidence_url": ""
-  }
+    "journey_evidence_url": "",
+    "nfr_report_path": "_bmad-output/test-artifacts/nfr-assessment-authoring-agent-onboarding-complete.md",
+    "nfr_validation_path": "_bmad-output/test-artifacts/nfr-assess-validation-report-authoring-agent-onboarding-complete.md",
+    "phase6_evidence_path": "_bmad-output/test-artifacts/phase-6-execution-evidence-authoring-agent-onboarding.md"
+  },
+  "coverage_gate_status": "PASS",
+  "medium_open": 1,
+  "nfr_counts": {
+    "pass": 17,
+    "concerns": 1,
+    "fail": 0
+  },
+  "nfr_open": [
+    "NFR8"
+  ],
+  "nfr_closed_by_phase6_evidence": [
+    "NFR10"
+  ],
+  "blocker": {
+    "id": "PHASE6-B1",
+    "requirement": "NFR8",
+    "kind": "external_authentication",
+    "product_defect": false,
+    "recovery": "A human reauthenticates Claude Code outside WPM; then an authorized fresh isolated run proves one canary and executes all 24 fresh six-skill behavioral subruns against one newly accepted exact package.",
+    "prohibited_inference": "No missing Claude cell may be inferred from deterministic fixtures or live-Codex evidence."
+  },
+  "final_acceptance_claimed": false,
+  "publication_eligibility_claimed": false,
+  "release_authorization_claimed": false,
+  "receiving_agent_acceptance_claimed": false,
+  "human_disposition_required": true,
+  "exact_final_candidate_sha": "c7753aa4829c758964a1c6811fc05b8d06aad4cd",
+  "phase6_evidence_sha256": "3f3c197cf8b75fc7550194ac3f53a916980197a262113bc0c6a8af8f6bc25967",
+  "accepted_package_sha256": "0bda2b18a1669d35d68ec1269399d73b125136e9a7e70a467f806f4fffc901ce"
 }

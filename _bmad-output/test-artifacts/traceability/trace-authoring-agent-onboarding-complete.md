@@ -1,7 +1,7 @@
 ---
 stepsCompleted: ['step-01-load-context', 'step-02-discover-tests', 'step-03-map-criteria', 'step-04-analyze-gaps', 'step-05-gate-decision']
 lastStep: 'step-05-gate-decision'
-lastSaved: '2026-08-25T10:10:10Z'
+lastSaved: '2026-08-25T11:27:53Z'
 workflowType: 'testarch-trace'
 inputDocuments:
   - 'backlog TASK-107..TASK-127 final records (read through Backlog CLI)'
@@ -12,6 +12,9 @@ inputDocuments:
   - '_bmad-output/planning-artifacts/epics-authoring-agent-onboarding.md'
   - '_bmad-output/planning-artifacts/implementation-readiness-report-2026-08-21-final.md'
   - '_bmad-output/test-artifacts/test-design.md'
+  - '_bmad-output/test-artifacts/nfr-assessment-authoring-agent-onboarding-complete.md'
+  - '_bmad-output/test-artifacts/nfr-assess-validation-report-authoring-agent-onboarding-complete.md'
+  - '_bmad-output/test-artifacts/phase-6-execution-evidence-authoring-agent-onboarding.md'
   - '_bmad-output/implementation-artifacts/epic-3-retro-2026-08-25.md'
   - '_bmad-output/implementation-artifacts/tests/test-summary-task-107.md..test-summary-task-127.md'
   - '_bmad-output/test-artifacts/traceability/trace-epic-1-authoring-agent-onboarding.md'
@@ -28,10 +31,11 @@ externalPointerStatus: 'not_used'
 tempCoverageMatrixPath: '/tmp/tea-trace-coverage-matrix-20260825T100754Z.json'
 ---
 
-# Traceability Matrix & Interim Gate Decision - Authoring Agent Onboarding (Complete Initiative)
+# Traceability Matrix & Final Phase-6 Gate Decision - Authoring Agent Onboarding (Complete Initiative)
 
 **Target:** Authoring Agent Onboarding, TASK-107 through TASK-127
-**Source revision:** `587d82f20188d4286409c526636438b23a70ba1b`
+**Evidence revision:** `477c31765b7b7c7412e8461226517e6984e2bc7c`
+**Exact-final candidate revision:** `c7753aa4829c758964a1c6811fc05b8d06aad4cd`
 **Date:** 2026-08-25
 **Evaluator:** Root / TEA (Murat)
 **Coverage oracle:** Final Backlog acceptance criteria
@@ -57,10 +61,12 @@ All 21 tasks are Done with 192/192 AC and 69/69 DoD checked. Each story has a de
 ### Supporting context and evidence identity
 
 - The readiness report reconciles 48 functional requirements, 18 NFRs, and 3 epics / 21 stories with no critical or major planning gap.
-- The product/test tree at integrated HEAD is byte-identical to the final TASK-127 reviewed tree: `git diff --name-only a9e0066..587d82f --` over product, test, and package paths is empty.
+- The product/test tree at evidence HEAD is byte-identical to the final TASK-127 reviewed tree: product/test/package diffs are empty from `a9e0066` through exact candidate `c7753aa` and evidence HEAD `477c31765b7b7c7412e8461226517e6984e2bc7c`.
 - Stable product/test evidence hash: `a8e31acf068376d6250ad0fc35f139f61cfb76b7a68875ab33911512e066ef22`.
-- Final retained full-suite result: 140/140 files, 1,944/1,944 tests, exit 0, 1,852.12 seconds. This trace reuses the authorized stable-diff result; it does not rerun a gate.
-- The exact-final cold candidate and authenticated Claude parity check remain separate Phase 6 evidence items. They are outside this trace execution and do not alter the formal coverage oracle.
+- Exact-final cold result at candidate `c7753aa`: `npm ci`, typecheck, Biome over 271 files, build, 140/140 files and 1,944/1,944 tests, production audit, archive inspection, source-free install, inertness, inactive assessments, and cleanup all PASS. Vitest duration is 1,879.12 seconds.
+- Exact accepted archive: `wpm-0.1.0.tgz`, 701,280 bytes, SHA-256 `0bda2b18a1669d35d68ec1269399d73b125136e9a7e70a467f806f4fffc901ce`, 479 expected paths, zero violations.
+- Validated NFR result: 17 PASS, 1 CONCERNS, 0 FAIL. NFR10 is PASS; NFR8 remains CONCERNS because expired OAuth blocked the Claude run before all 24 required behavioral subruns.
+- Phase-6 execution evidence SHA-256: `3f3c197cf8b75fc7550194ac3f53a916980197a262113bc0c6a8af8f6bc25967`.
 - No external requirements pointer was needed or followed (`externalPointerStatus: not_used`).
 
 ### Knowledge basis loaded
@@ -158,7 +164,7 @@ The following task-record-owned files supplement the paths named directly in the
 
 ### Retained execution evidence
 
-Every one of the 21 story QA summaries records a green focused acceptance band and a final independent APPROVE disposition. The stable final reviewed product/test tree has a retained full-suite result of 140/140 files and 1,944/1,944 tests passing (exit 0, 1,852.12 seconds). This workflow performs static trace discovery only and has not executed a new gate.
+Every one of the 21 story QA summaries records a green focused acceptance band and a final independent APPROVE disposition. The exact-final cold candidate has retained results of 140/140 files and 1,944/1,944 tests passing (exit 0, Vitest 1,879.12 seconds). This workflow consumes that evidence but does not execute a new gate.
 
 ## Step 3 - Full Requirements-to-Test Matrix
 
@@ -417,21 +423,21 @@ No acceptance-coverage remediation is required: there are no P0/P1 gaps, partial
 
 1. No ATDD or automation expansion is indicated by trace gaps.
 2. Run `bmad-testarch-test-review` only if the stable test diff changes or a future ownership/runtime concern warrants a dedicated test-quality review.
-3. Preserve exact-final cold candidate evidence and authenticated Claude parity as separate Phase 6 gates; neither is a traceability-coverage gap.
+3. Preserve the exact-final cold/package PASS and the blocked authenticated Claude parity result as distinct Phase-6 evidence; neither changes the 192/192 acceptance-coverage matrix.
 
-Phase 1 is complete. Step 5 will make the deterministic interim trace gate decision from this exact temp matrix.
+Phase 1 is complete. Step 5 combines this exact coverage matrix with the validated NFR and Phase-6 execution evidence to issue the final integrated verdict.
 
-## Step 5 - Interim Trace Gate Decision
+## Step 5 - Final Phase-6 Gate Decision
 
-### GATE DECISION: PASS
+### GATE DECISION: CONCERNS
 
 **Gate type:** Epic / complete initiative
 **Decision mode:** Deterministic
 **Collection status:** COLLECTED
-**Gate scope:** Interim acceptance-coverage gate
-**Evaluated at:** 2026-08-25T10:10:10Z
+**Gate scope:** Final integrated Phase-6 gate
+**Evaluated at:** 2026-08-25T11:27:53Z
 
-**Rationale:** P0 coverage is 100%, P1 coverage is 100% (target: 90%), and overall coverage is 100% (minimum: 80%).
+**Rationale:** Acceptance coverage and exact-final cold/package evidence pass, but one applicable NFR remains incomplete. Expired external OAuth blocked the Claude parity run before the first of 24 required behavioral subruns, so Phase 6 cannot claim final onboarding acceptance.
 
 | Deterministic criterion | Threshold | Actual | Status |
 | --- | ---: | ---: | --- |
@@ -440,6 +446,9 @@ Phase 1 is complete. Step 5 will make the deterministic interim trace gate decis
 | Overall coverage | ≥80% | 192/192 (100%) | MET |
 | Critical coverage gaps | 0 | 0 | MET |
 | Blocked mapped tests | 0 | 0 | MET |
+| NFR assessment | 18 applicable NFRs resolved | 17 PASS / 1 CONCERNS / 0 FAIL | CONCERNS |
+| Exact-final cold/package evidence | PASS | PASS at `c7753aa` | MET |
+| Authenticated Claude behavioral parity | 24/24 fresh subruns pass | 0/24 executed; OAuth 401 before cells | BLOCKED |
 
 ### Evidence summary
 
@@ -447,17 +456,22 @@ Phase 1 is complete. Step 5 will make the deterministic interim trace gate decis
 - Criteria coverage: 192 FULL, 0 partial, 0 uncovered.
 - Principal mapped inventory: 245 deduplicated current-HEAD declarations across 45 files; 0 skipped, pending, or fixme.
 - Broader task/QA-owned feature inventory: 67 files, 815 titled declarations, 378 negative/edge-title signals.
-- Retained stable reviewed execution: 140/140 files and 1,944/1,944 tests passed, exit 0, 1,852.12 seconds.
+- Exact-final cold execution: 140/140 files and 1,944/1,944 tests passed, exit 0, Vitest 1,879.12 seconds; static/build gates and production audit also exit 0.
+- Exact package/source-free gate: accepted archive SHA-256 `0bda2b18a1669d35d68ec1269399d73b125136e9a7e70a467f806f4fffc901ce`, 479 paths, zero violations, executable/resources/inertness PASS.
+- NFR assessment: 17 PASS, 1 CONCERNS, 0 FAIL; NFR10 PASS and only NFR8 CONCERNS.
+- Claude result: corrected sole inference returns `401 OAuth access token has expired`; 0 tokens, 0 tools, 0 cost, and 0/24 behavioral subruns executed. No cell is inferred.
 - Final story dispositions: 21 APPROVE, 0 open findings; retrospective GREEN.
-- Product/test identity at integrated HEAD: `a8e31acf068376d6250ad0fc35f139f61cfb76b7a68875ab33911512e066ef22`.
+- Product/test identity through evidence HEAD: `a8e31acf068376d6250ad0fc35f139f61cfb76b7a68875ab33911512e066ef22`.
 
 ### Quality observation
 
-There is one LOW, non-blocking maintainability/runtime observation: 30 of 67 feature-relevant test files exceed the workflow's generic 300-line heuristic, and the retained full suite takes 1,852.12 seconds. The story-specific reviews remain APPROVE with no open findings, and no hard-wait pattern was found. Monitor ownership/runtime and split or optimize only if growth impairs focused execution.
+There is one LOW, non-blocking maintainability/runtime observation: 30 of 67 feature-relevant test files exceed the workflow's generic 300-line heuristic, and the exact-final suite takes 1,879.12 seconds. The story-specific reviews remain APPROVE with no open findings, and no hard-wait pattern was found. Monitor ownership/runtime and split or optimize only if growth impairs focused execution.
 
-### Scope and next evidence
+### Blocker and recovery
 
-This PASS is the deterministic **interim trace coverage** decision. It does not claim the complete Phase 6/release gate is finished. NFR status is NOT ASSESSED in this trace and is the next literal workflow. The exact-final cold candidate and authenticated Claude parity are separate pending Phase 6 evidence items; neither is a coverage gap and neither was executed here.
+The blocker is external authentication state, not a demonstrated product defect. A human must reauthenticate Claude Code outside WPM. After that state change, an authorized executor must create a fresh isolated environment and one newly accepted exact package, prove authentication with one canary, then run all 24 fresh six-skill discovery/invocation/trigger/non-trigger/outcome subruns. WPM must not log in, refresh, retry this expired result, or infer any missing cell from fixtures or Codex evidence.
+
+Until that recovery evidence is retained and both the NFR assessment and final trace are revalidated, no final onboarding acceptance, receiving-agent acceptance, publication eligibility, release authorization, or PASS is claimed.
 
 ### Machine-readable outputs
 
@@ -466,4 +480,10 @@ This PASS is the deterministic **interim trace coverage** decision. It does not 
 
 ### Integrated gate status
 
-**PENDING_EXTERNAL_PHASE_6_EVIDENCE.** Proceed to the final NFR assessment; retain the external cold and authenticated-client gates for their authorized owners. No human concern-disposition gate is triggered by this trace PASS alone.
+**CONCERNS — BLOCKED ON EXPIRED EXTERNAL OAUTH.** Coverage PASS and cold/package PASS are preserved. The final integrated Phase-6 gate is not PASS because NFR8 lacks all required authenticated Claude behavioral cells. Human concern disposition and external reauthentication are required before recovery execution.
+
+### Workflow provenance
+
+- Literal update: `bmad-testarch-trace`, Edit mode at evidence HEAD `477c31765b7b7c7412e8461226517e6984e2bc7c`; Validate mode follows.
+- Customization: no workflow prepend or append; persistent `project-context.md` fact glob had no match.
+- No cold, package, live-client, Claude, browser, CI, or remote gate was executed by this trace update; it consumed committed evidence only.
