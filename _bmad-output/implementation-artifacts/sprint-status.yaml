@@ -1,5 +1,5 @@
 # generated: 2026-08-21T17:38:18+00:00
-# last_updated: 2026-08-23T01:52:45+00:00
+# last_updated: 2026-08-25T09:40:07+00:00
 # project: work-package-manager
 # project_key: NOKEY
 # tracking_system: file-system
@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-08-21T17:38:18+00:00
-last_updated: 2026-08-24T21:21:31+00:00
+last_updated: 2026-08-25T09:40:07+00:00
 project: work-package-manager
 project_key: NOKEY
 tracking_system: file-system
@@ -52,7 +52,7 @@ development_status:
   1-7-classify-convergent-dual-channel-state: done
   epic-1-retrospective: done
 
-  epic-2: in-progress
+  epic-2: done
   2-1-establish-the-codex-and-claude-code-authoring-client-contract: done
   2-2-plan-and-change-bundles-with-wpm-author-bundle: done
   2-3-author-install-recipes-with-wpm-author-recipe: done
@@ -66,8 +66,8 @@ development_status:
   2-11-complete-the-cold-packed-install-to-handoff-journey: done
   epic-2-retrospective: optional
 
-  epic-3: in-progress
+  epic-3: done
   3-1-declare-and-inspect-template-authoring-tasks: done
   3-2-initialize-complete-project-authoring-work: done
   3-3-materialise-complete-bundle-authoring-work-on-create-and-enable: done
-  epic-3-retrospective: optional
+  epic-3-retrospective: done
