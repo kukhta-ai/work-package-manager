@@ -1,5 +1,6 @@
 import { CommanderError } from "commander";
 import {
+  BundleAuthoringPreflightError,
   exitCodeFor,
   HandoffPreparationPreflightError,
   HandoffVerificationError,
@@ -128,6 +129,17 @@ export function formatHumanValue(value: string): string {
  * @returns The formatted message, newline-terminated.
  */
 export function formatError(error: unknown, debug: boolean): string {
+  if (error instanceof BundleAuthoringPreflightError) {
+    const lines = [`error: ${error.message}`, "blockers:"];
+    for (const blocker of error.blockers) {
+      lines.push(
+        `  - [${blocker.code}] ${blocker.surface}${blocker.path !== undefined ? ` ${formatHumanValue(blocker.path)}` : ""}: ${escapeHumanText(blocker.message)}`,
+        `    recovery: ${escapeHumanText(blocker.recovery)}`,
+      );
+    }
+    lines.push("bundle changed: no");
+    return `${lines.join("\n")}\n`;
+  }
   if (error instanceof PersonalAuthoringSetupPreflightError) {
     const lines = [`error: ${error.message}`, "blockers:"];
     for (const blocker of error.blockers) {

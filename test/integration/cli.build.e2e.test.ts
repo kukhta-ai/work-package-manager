@@ -933,6 +933,11 @@ describeIfBuilt("`wpm build package` E2E (task-83, through dist/cli.js)", () => 
         "TASK126-TEMPLATE-TASK-DEFINITION-MUST-NOT-SHIP-6f13";
       const TEMPLATE_TASK_PROVENANCE_SENTINEL =
         "wpm:template-origin:built-in:project:task126-nonleak";
+      const BUNDLE_CONTRIBUTION_RECORD_SENTINEL =
+        "TASK127-BUNDLE-CONTRIBUTION-RECORD-MUST-NOT-SHIP-842c";
+      const BUNDLE_TASK_DEFINITION_SENTINEL = "TASK127-BUNDLE-TASK-DEFINITION-MUST-NOT-SHIP-a17e";
+      const BUNDLE_TASK_PROVENANCE_SENTINEL =
+        "wpm:template-origin:project-local:bundle:task127-nonleak";
       const workspaceSkillEvidence = [
         [
           "wpm-author",
@@ -984,11 +989,17 @@ describeIfBuilt("`wpm build package` E2E (task-83, through dist/cli.js)", () => 
           WRAPPER_SENTINEL,
           TEMPLATE_TASK_DEFINITION_SENTINEL,
           TEMPLATE_TASK_PROVENANCE_SENTINEL,
+          BUNDLE_TASK_DEFINITION_SENTINEL,
+          BUNDLE_TASK_PROVENANCE_SENTINEL,
           "revision: task126-nonleak",
           "authoring-tasks:",
         ].join("\n"),
       );
       writeFileSync(join(proj, "builds", "task95-leak.txt"), WRAPPER_SENTINEL);
+      writeFileSync(
+        join(proj, ".wpm-bundle-authoring.json"),
+        `${JSON.stringify({ marker: BUNDLE_CONTRIBUTION_RECORD_SENTINEL })}\n`,
+      );
       mkdirSync(join(proj, "distribution-preparation"));
       writeFileSync(
         join(proj, "distribution-preparation", "package-boundary.js"),
@@ -1032,6 +1043,7 @@ describeIfBuilt("`wpm build package` E2E (task-83, through dist/cli.js)", () => 
       const assertNoWorkspaceIntegration = (layout: string[], extractedRoot: string): void => {
         expect(layout).not.toContain(".wpm-authoring.json");
         expect(layout).not.toContain(".wpm-handoff.json");
+        expect(layout).not.toContain(".wpm-bundle-authoring.json");
         expect(layout).not.toContain(".wpm/authoring-setup.json");
         expect(layout.some((path) => path.startsWith(".wpm/authoring-setup-quarantine/"))).toBe(
           false,
@@ -1052,6 +1064,9 @@ describeIfBuilt("`wpm build package` E2E (task-83, through dist/cli.js)", () => 
         expect(extractedBytes).not.toContain(PERSONAL_QUARANTINE_SENTINEL);
         expect(extractedBytes).not.toContain(TEMPLATE_TASK_DEFINITION_SENTINEL);
         expect(extractedBytes).not.toContain(TEMPLATE_TASK_PROVENANCE_SENTINEL);
+        expect(extractedBytes).not.toContain(BUNDLE_CONTRIBUTION_RECORD_SENTINEL);
+        expect(extractedBytes).not.toContain(BUNDLE_TASK_DEFINITION_SENTINEL);
+        expect(extractedBytes).not.toContain(BUNDLE_TASK_PROVENANCE_SENTINEL);
         for (const [, , sentinel] of workspaceSkillEvidence) {
           expect(extractedBytes).not.toContain(sentinel);
         }
@@ -1070,6 +1085,9 @@ describeIfBuilt("`wpm build package` E2E (task-83, through dist/cli.js)", () => 
       expect(concatAllFiles(join(proj, "wip"))).not.toContain(PERSONAL_QUARANTINE_SENTINEL);
       expect(concatAllFiles(join(proj, "wip"))).not.toContain(TEMPLATE_TASK_DEFINITION_SENTINEL);
       expect(concatAllFiles(join(proj, "wip"))).not.toContain(TEMPLATE_TASK_PROVENANCE_SENTINEL);
+      expect(concatAllFiles(join(proj, "wip"))).not.toContain(BUNDLE_CONTRIBUTION_RECORD_SENTINEL);
+      expect(concatAllFiles(join(proj, "wip"))).not.toContain(BUNDLE_TASK_DEFINITION_SENTINEL);
+      expect(concatAllFiles(join(proj, "wip"))).not.toContain(BUNDLE_TASK_PROVENANCE_SENTINEL);
 
       const tgz = join(proj, "builds", "demo-0.1.0.tgz");
       expect(cli(["build", "package", "--format", "tarball", "-C", proj], dir).code).toBe(0);
@@ -1135,6 +1153,12 @@ describeIfBuilt("`wpm build package` E2E (task-83, through dist/cli.js)", () => 
       expect(concatAllFiles(join(proj, "wip"))).not.toContain(PERSONAL_QUARANTINE_SENTINEL);
       expect(concatAllFiles(join(proj, "wip"))).not.toContain(TEMPLATE_TASK_DEFINITION_SENTINEL);
       expect(concatAllFiles(join(proj, "wip"))).not.toContain(TEMPLATE_TASK_PROVENANCE_SENTINEL);
+      expect(concatAllFiles(join(proj, "wip"))).not.toContain(BUNDLE_CONTRIBUTION_RECORD_SENTINEL);
+      expect(concatAllFiles(join(proj, "wip"))).not.toContain(BUNDLE_TASK_DEFINITION_SENTINEL);
+      expect(concatAllFiles(join(proj, "wip"))).not.toContain(BUNDLE_TASK_PROVENANCE_SENTINEL);
+      expect(readFileSync(join(proj, ".wpm-bundle-authoring.json"), "utf8")).toContain(
+        BUNDLE_CONTRIBUTION_RECORD_SENTINEL,
+      );
       expect(readFileSync(join(proj, ".wpm", "authoring-setup.json"), "utf8")).toContain(
         PERSONAL_STATE_SENTINEL,
       );

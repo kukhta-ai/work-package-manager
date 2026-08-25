@@ -74,6 +74,30 @@ function singleFileTreeFingerprint(content: string): string {
 }
 
 describe("MemoryFileSystem (the in-memory FileSystem fake — AC#1)", () => {
+  it("retires only an exact confined file and preserves a raced replacement", () => {
+    const home = "/home/tester";
+    const marker = `${home}/.wpm-bundle-authoring.pending.json`;
+    const quarantine = {
+      root: `${home}/.wpm-bundle-authoring-quarantine`,
+      path: `${home}/.wpm-bundle-authoring-quarantine/request/pending`,
+    };
+    const exact = new MemoryFileSystem();
+    exact.makeDirectories(home);
+    exact.write(marker, "PENDING\n");
+    exact.removeFileConfined(home, marker, "PENDING\n", quarantine);
+    expect(exact.inspectPath(marker).kind).toBe("missing");
+    expect(exact.inspectPath(quarantine.root).kind).toBe("missing");
+
+    const raced = new FileArrivalAfterDetachmentMemoryFileSystem();
+    raced.makeDirectories(home);
+    raced.write(marker, "PENDING\n");
+    expect(() => raced.removeFileConfined(home, marker, "PENDING\n", quarantine)).toThrow(
+      /raced after detachment/,
+    );
+    expect(raced.read(marker)).toBe("USER FILE\n");
+    expect(raced.read(quarantine.path)).toBe("PENDING\n");
+  });
+
   it("writes then reads a file back", () => {
     const fs = new MemoryFileSystem();
     fs.write("/proj/manifest.yml", "name: p\n");

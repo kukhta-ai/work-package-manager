@@ -11,6 +11,7 @@ import {
   readFileSync,
   readlinkSync,
   realpathSync,
+  renameSync,
   rmSync,
   symlinkSync,
   writeFileSync,
@@ -212,6 +213,15 @@ function taskIdsFromPlainOutput(output: string): string[] {
   return [...output.matchAll(/^\s{2}([A-Za-z][A-Za-z0-9-]*-\d+)\s+-/gm)].flatMap((match) =>
     match[1] === undefined ? [] : [match[1]],
   );
+}
+
+function taskIdForTitle(output: string, title: string): string {
+  const escapedTitle = title.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const id = new RegExp(`^\\s{2}([A-Za-z][A-Za-z0-9-]*-\\d+)\\s+-\\s+${escapedTitle}$`, "m").exec(
+    output,
+  )?.[1];
+  if (id === undefined) throw new Error(`Backlog task not found: ${title}`);
+  return id;
 }
 
 function taskStatusFromRecord(record: string): "To Do" | "In Progress" | "Done" {
@@ -669,6 +679,238 @@ describe("fresh local packed-install and inactive-candidate journey", () => {
       expect(packedPlanTaskBytes).toContain("wpm:bundle:core");
       expect(packedPlanTaskBytes).toMatch(/dependencies:\s*\n\s*- AUTHORING-1\b/);
       expect(packedPlanTaskBytes).toMatch(/dependencies:\s*\n\s*- AUTHORING-10\b/);
+
+      const packedBundleHome = join(consumer, "home-task127-packed-bundle");
+      const packedBundleWorkspace = join(consumer, "workspace-task127-packed-bundle");
+      mkdirSync(packedBundleHome, { recursive: true });
+      const packedBundleInit = runInstalledWpm(
+        [
+          "init",
+          "task127-packed-bundle",
+          "--at",
+          packedBundleWorkspace,
+          "--template",
+          "minimal",
+          "--authoring-client",
+          "codex",
+        ],
+        consumer,
+        packedBundleHome,
+      );
+      expect({ status: packedBundleInit.status, stderr: packedBundleInit.stderr }).toEqual({
+        status: 0,
+        stderr: "",
+      });
+      expect(String(packedBundleInit.stdout)).toContain("materialised: 8 authoring task(s)");
+
+      const packedBundleBacklogRoot = join(packedBundleWorkspace, ".authoring-backlog");
+      const packedBundleBacklogExecutable = (installedEnv[pathKey] ?? "")
+        .split(delimiter)
+        .flatMap((directory) =>
+          process.platform === "win32"
+            ? ["backlog.cmd", "backlog.exe"].map((name) => join(directory, name))
+            : [join(directory, "backlog")],
+        )
+        .find((path) => existsSync(path));
+      expect(packedBundleBacklogExecutable).toBeDefined();
+      if (packedBundleBacklogExecutable === undefined) {
+        throw new Error("packed-bundle environment exposed no installed Backlog CLI prerequisite");
+      }
+      const runPackedBundleBacklog = (args: readonly string[]): ReturnType<typeof spawnSync> => {
+        const invocation =
+          process.platform === "win32" && packedBundleBacklogExecutable.endsWith(".exe")
+            ? { executable: packedBundleBacklogExecutable, args: [...args] }
+            : resolveInstalledExecutableInvocation(
+                process.platform,
+                packedBundleBacklogExecutable,
+                args,
+              );
+        return spawnSync(invocation.executable, invocation.args, {
+          cwd: packedBundleBacklogRoot,
+          encoding: "utf8",
+          timeout: 60_000,
+          env: {
+            ...installedEnv,
+            HOME: packedBundleHome,
+            USERPROFILE: packedBundleHome,
+            PWD: packedBundleBacklogRoot,
+          },
+        });
+      };
+
+      const packedBundleInitialList = runPackedBundleBacklog(["task", "list", "--plain"]);
+      expect({
+        status: packedBundleInitialList.status,
+        stderr: packedBundleInitialList.stderr,
+      }).toEqual({
+        status: 0,
+        stderr: "",
+      });
+      expect(taskIdsFromPlainOutput(String(packedBundleInitialList.stdout))).toHaveLength(8);
+      expect(existsSync(source)).toBe(false);
+
+      const createRecordedBundle = runInstalledWpm(
+        ["-C", packedBundleWorkspace, "bundle", "new", "source-free", "--disabled", "--no-advisor"],
+        packedBundleWorkspace,
+        packedBundleHome,
+      );
+      expect({ status: createRecordedBundle.status, stderr: createRecordedBundle.stderr }).toEqual({
+        status: 0,
+        stderr: "",
+      });
+      expect(String(createRecordedBundle.stdout)).toContain("materialised: 12 authoring task(s)");
+
+      const createdTaskList = runPackedBundleBacklog(["task", "list", "--plain"]);
+      expect({ status: createdTaskList.status, stderr: createdTaskList.stderr }).toEqual({
+        status: 0,
+        stderr: "",
+      });
+      const createdTaskListText = String(createdTaskList.stdout);
+      expect(taskIdsFromPlainOutput(createdTaskListText)).toHaveLength(20);
+      const planSourceFreeId = taskIdForTitle(createdTaskListText, "Plan bundle source-free");
+      const packedContributionTitle = "Inspect source-free packed runtime";
+      const packedContributionId = taskIdForTitle(createdTaskListText, packedContributionTitle);
+      const packedContributionRecord = runPackedBundleBacklog([
+        "task",
+        packedContributionId,
+        "--plain",
+      ]);
+      expect({
+        status: packedContributionRecord.status,
+        stderr: packedContributionRecord.stderr,
+      }).toEqual({ status: 0, stderr: "" });
+      const packedContributionRecordText = String(packedContributionRecord.stdout);
+      expect(dependencyIdsFromTaskRecord(packedContributionRecordText)).toEqual([planSourceFreeId]);
+      expect(packedContributionRecordText).toContain("wpm:template-origin:built-in:bundle:default");
+      expect(packedContributionRecordText).toContain("wpm:template-revision:packed-bundle-r2");
+      expect(packedContributionRecordText).toContain("wpm:template-key:inspect-packed-runtime");
+      expect(packedContributionRecordText).toContain("wpm:bundle:source-free");
+
+      const bundleContributionRecordPath = join(
+        packedBundleWorkspace,
+        ".wpm-bundle-authoring.json",
+      );
+      const bundleContributionRecord = JSON.parse(
+        readFileSync(bundleContributionRecordPath, "utf8"),
+      ) as {
+        defaultContribution: {
+          contribution: {
+            status: string;
+            producer: { source: string; scope: string; name: string };
+            source: { revision: string };
+          };
+        };
+        bundles: Array<{
+          id: string;
+          contribution: {
+            status: string;
+            producer: { source: string; scope: string; name: string };
+            revision?: string;
+            tasks?: Array<{
+              key: string;
+              title: string;
+              dependencyIdentities: string[];
+              labels: string[];
+            }>;
+          };
+        }>;
+      };
+      expect(bundleContributionRecord.defaultContribution.contribution).toMatchObject({
+        status: "source",
+        producer: { source: "built-in", scope: "bundle", name: "default" },
+        source: { revision: "packed-bundle-r2" },
+      });
+      const sourceFreeContribution = bundleContributionRecord.bundles.find(
+        ({ id }) => id === "source-free",
+      )?.contribution;
+      expect(sourceFreeContribution).toMatchObject({
+        status: "tasks",
+        producer: { source: "built-in", scope: "bundle", name: "default" },
+        revision: "packed-bundle-r2",
+        tasks: [
+          {
+            key: "inspect-packed-runtime",
+            title: packedContributionTitle,
+            dependencyIdentities: ["wpm:bundle:plan#bundle:source-free"],
+            labels: [
+              "wpm:template-task",
+              "wpm:template-origin:built-in:bundle:default",
+              "wpm:template-revision:packed-bundle-r2",
+              "wpm:template-key:inspect-packed-runtime",
+              "wpm:bundle:source-free",
+            ],
+          },
+        ],
+      });
+
+      const claimPackedContribution = runPackedBundleBacklog([
+        "task",
+        "edit",
+        packedContributionId,
+        "-s",
+        "In Progress",
+        "--check-ac",
+        "1",
+        "--notes",
+        "preserve packed source-free author progress",
+      ]);
+      expect({
+        status: claimPackedContribution.status,
+        stderr: claimPackedContribution.stderr,
+      }).toEqual({ status: 0, stderr: "" });
+      const beforeEnableTaskList = String(
+        runPackedBundleBacklog(["task", "list", "--plain"]).stdout,
+      );
+      const beforeEnableContribution = String(
+        runPackedBundleBacklog(["task", packedContributionId, "--plain"]).stdout,
+      );
+      const beforeEnableState = readFileSync(bundleContributionRecordPath, "utf8");
+      expect(taskStatusFromRecord(beforeEnableContribution)).toBe("In Progress");
+      expect(beforeEnableContribution).toContain("preserve packed source-free author progress");
+
+      rmSync(join(packedBundleWorkspace, "wip", "bundles", "bundle-template"), {
+        recursive: true,
+        force: true,
+      });
+      const installedDefaultBundleTemplate = join(
+        result.environment.packageRoot,
+        "templates",
+        "bundle",
+        "default",
+      );
+      const unavailableDefaultBundleTemplate = join(
+        result.environment.packageRoot,
+        "templates",
+        "bundle",
+        "default-unavailable-task127",
+      );
+      renameSync(installedDefaultBundleTemplate, unavailableDefaultBundleTemplate);
+      let enableRecordedBundle: ReturnType<typeof spawnSync>;
+      try {
+        enableRecordedBundle = runInstalledWpm(
+          ["-C", packedBundleWorkspace, "bundle", "enable", "source-free", "--no-advisor"],
+          packedBundleWorkspace,
+          packedBundleHome,
+        );
+      } finally {
+        renameSync(unavailableDefaultBundleTemplate, installedDefaultBundleTemplate);
+      }
+      expect({ status: enableRecordedBundle.status, stderr: enableRecordedBundle.stderr }).toEqual({
+        status: 0,
+        stderr: "",
+      });
+      expect(String(enableRecordedBundle.stdout)).toContain("enabled bundle source-free");
+      expect(String(enableRecordedBundle.stdout)).not.toContain("materialised:");
+      expect(String(runPackedBundleBacklog(["task", "list", "--plain"]).stdout)).toBe(
+        beforeEnableTaskList,
+      );
+      expect(String(runPackedBundleBacklog(["task", packedContributionId, "--plain"]).stdout)).toBe(
+        beforeEnableContribution,
+      );
+      expect(readFileSync(bundleContributionRecordPath, "utf8")).toBe(beforeEnableState);
+      expect(readFileSync(join(packedBundleWorkspace, "wip", "manifest.yml"), "utf8")).toMatch(
+        /^bundles:\s*\[\s*source-free\s*\]$/m,
+      );
 
       for (const cell of [
         {

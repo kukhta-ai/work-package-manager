@@ -108,10 +108,6 @@ function seedOnDisk(dir: string): void {
     join(builtin, "bundle", "default", "template.yml"),
     "name: default\nscope: bundle\nparameters:\n  - name: bundle-id\n  - name: version\n",
   );
-  writeFileSync(
-    join(builtin, "bundle", "default", "files", "bundle.yml"),
-    "id: {{bundle-id}}\nversion: {{version}}\n",
-  );
   writeFileSync(join(builtin, "bundle", "default", "files", "installer-skills", ".keep"), "");
   writeFileSync(
     join(builtin, "bundle", "default", "files", "install-backlog", "config.yml"),
@@ -126,7 +122,9 @@ describe("cli `bundle new` over a real filesystem (task-27 proof leaf)", () => {
       const backlog = new FakeBacklog();
       // The lifecycle materialises into the project's own `.authoring-backlog` root (doc 10 step 6), not the
       // project root — init the fake there so the materialiser's `listTasks` finds it (mirrors reality).
-      backlog.init(join(dir, ".authoring-backlog"), { taskPrefix: "authoring" });
+      const authoringBacklog = join(dir, ".authoring-backlog");
+      mkdirSync(authoringBacklog, { recursive: true });
+      backlog.init(authoringBacklog, { taskPrefix: "authoring" });
 
       const deps: CliDeps = {
         fs: new NodeFileSystem(),

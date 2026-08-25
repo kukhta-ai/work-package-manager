@@ -42,7 +42,12 @@ import {
   inspectAuthoringClients,
 } from "./core/operations/authoring-clients.js";
 import { type BuildPlan, computeBuildPlan } from "./core/operations/build.js";
-import { disableBundleSpec, enableBundleSpec } from "./core/operations/bundle-lifecycle.js";
+import {
+  createBundleWithAuthoring,
+  enableBundleWithAuthoring,
+  setDefaultBundleTemplateWithAuthoring,
+} from "./core/operations/bundle-authoring.js";
+import { disableBundleSpec } from "./core/operations/bundle-lifecycle.js";
 import {
   type BundleListRow,
   hasKindLabel,
@@ -67,10 +72,7 @@ import {
   readBundleVersionSpec,
   setBundleVersionSpec,
 } from "./core/operations/bundle-version.js";
-import {
-  createBundleSpec,
-  perBundleAuthoringTaskCatalog,
-} from "./core/operations/create-bundle.js";
+import { perBundleAuthoringTaskCatalog } from "./core/operations/create-bundle.js";
 import { makeArtefactDeriver } from "./core/operations/derive-artefacts-capability.js";
 import {
   type InitProjectResult,
@@ -2057,24 +2059,23 @@ const bundleModule: CommandModule = {
           const root = context.deliverableRoot;
           const workspaceRoot = context.workspaceRoot;
 
-          const result = runMutation(
+          const result = createBundleWithAuthoring(
             {
               fs: ctx.deps.fs,
               backlog: ctx.deps.backlog,
-              deriveArtefacts: makeArtefactDeriver({
-                fs: ctx.deps.fs,
-                builtinTemplatesRoot: ctx.deps.builtinTemplatesRoot,
-                projectTemplatesRoot: join(root, "templates"),
-              }),
+              builtinTemplatesRoot: ctx.deps.builtinTemplatesRoot,
             },
             { deliverableRoot: root, workspaceRoot },
-            createBundleSpec({
-              builtinTemplatesRoot: ctx.deps.builtinTemplatesRoot,
-              ...(opts.template !== undefined ? { bundleTemplateName: opts.template } : {}),
-            }),
-            { id, version: opts.version, disabled: opts.disabled, advisor: opts.advisor },
+            {
+              id,
+              version: opts.version,
+              disabled: opts.disabled,
+              advisor: opts.advisor,
+              templateName: opts.template,
+            },
           );
           ctx.io.out.write(formatResult(result));
+          writeWarnings(ctx, result.warnings);
         },
       );
 
@@ -2099,10 +2100,13 @@ const bundleModule: CommandModule = {
       .option("--no-advisor", "skip the advisor scaffold")
       .action((id: string, opts: { advisor?: boolean }) => {
         const { deliverableRoot: root, workspaceRoot } = requireProject(ctx, parent);
-        const result = runMutation(
-          lifecycleDepsFor(ctx, root),
+        const result = enableBundleWithAuthoring(
+          {
+            fs: ctx.deps.fs,
+            backlog: ctx.deps.backlog,
+            builtinTemplatesRoot: ctx.deps.builtinTemplatesRoot,
+          },
           { deliverableRoot: root, workspaceRoot },
-          enableBundleSpec({ builtinTemplatesRoot: ctx.deps.builtinTemplatesRoot }),
           { id, advisor: opts.advisor },
         );
         ctx.io.out.write(formatResult(result));
@@ -2274,13 +2278,9 @@ const bundleModule: CommandModule = {
     ]);
 
     // ── bundle template set <name> ──────────────────────────────────────────────────────────────────────────
-    // MUTATION (doc 10 row 156): resolve <name> as a BUNDLE-scope template, then REPLACE bundles/bundle-template/
-    // contents from its files/ tree. A name that does not resolve OR resolves to a non-bundle scope ⇒ a typed
-    // error (exit 1) changing nothing (AC56#2). On success, clear (fs.remove) THEN write each template file
-    // VERBATIM — NO {{placeholder}} substitution, because the scaffold keeps its placeholders for `bundle new` to
-    // fill when it instantiates from this template. This is a direct shell effect (resolve in core via the pure
-    // resolveTemplate; clear+write via the fs port), NOT runMutation — it touches only the scaffold dir, which is
-    // not part of the loaded Project nor an input to the front-door deriver, so there is nothing to ④ RERENDER.
+    // MUTATION (doc 10 row 156): replace the scaffold and its inert authoring-task contribution as one planned
+    // authoring operation. The operation freezes the selected registry snapshot before any effect and leaves an
+    // explicit pending marker if an unforeseen write failure interrupts publication.
     const templateSetLeaf = template
       .command("set")
       .description(
@@ -2291,38 +2291,23 @@ const bundleModule: CommandModule = {
         "the bundle-scope template to copy from (its files/ tree replaces bundles/bundle-template/)",
       )
       .action((name: string) => {
-        const { deliverableRoot: root } = requireProject(ctx, parent);
-        const resolution = resolveTemplate(name, "bundle", {
-          fs: ctx.deps.fs,
-          builtinTemplatesRoot: ctx.deps.builtinTemplatesRoot,
-          projectTemplatesRoot: join(root, "templates"),
-        });
-        if (!resolution.found) {
-          // AC56#2: a name that does not resolve as a BUNDLE template → typed NotFound (exit 1), nothing changed.
-          // (A project-scope name is ALREADY not-found here: a `bundle` resolution only searches the `bundle/`
-          // scope dir, so a `project/`-scoped template like `minimal` does not resolve as a bundle template.)
-          throw new NotFoundError(
-            `bundle template "${name}" not found (searched: ${resolution.searched.join(", ")})`,
-          );
-        }
-        // Defense-in-depth (AC56#2 wrong-scope): the resolver only finds `bundle/`-scope templates here, so the
-        // descriptor's scope is bundle by construction — assert it anyway so a mis-scoped descriptor is rejected
-        // before any write.
-        if (resolution.template.scope !== "bundle") {
-          throw new ValidationError(
-            `template "${name}" is not a bundle-scope template (scope: ${resolution.template.scope})`,
-          );
-        }
-
-        // AC56#1: REPLACE the contents — clear THEN copy (the fs port's copyTree MERGES into an existing dir, so a
-        // true replace is remove-first). Write each resolved file verbatim (no substitution).
-        const dest = join(root, "bundles", BUNDLE_TEMPLATE_DIR);
-        ctx.deps.fs.remove(dest);
-        for (const file of resolution.template.files) {
-          ctx.deps.fs.write(join(dest, file.path), file.content);
-        }
+        const { deliverableRoot: root, workspaceRoot } = requireProject(ctx, parent);
+        const result = setDefaultBundleTemplateWithAuthoring(
+          {
+            fs: ctx.deps.fs,
+            backlog: ctx.deps.backlog,
+            builtinTemplatesRoot: ctx.deps.builtinTemplatesRoot,
+          },
+          {
+            workspaceRoot,
+            deliverableRoot: root,
+          },
+          {
+            name,
+          },
+        );
         ctx.io.out.write(
-          `set bundle template from "${name}" → bundles/${BUNDLE_TEMPLATE_DIR}/ (${resolution.template.files.length} file(s))\n`,
+          `set bundle template from "${name}" → bundles/${BUNDLE_TEMPLATE_DIR}/ (${result.fileCount} file(s))\n`,
         );
       });
     withExamples(templateSetLeaf, [

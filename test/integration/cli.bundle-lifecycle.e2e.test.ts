@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { execaSync } from "execa";
@@ -59,6 +59,24 @@ function authoringTaskTitles(proj: string): string {
   // Spawn via `execaSync` (not `execFileSync`) so the real `backlog` CLI resolves on Windows too, where the npm
   // global bin is a `.cmd` shim bare `execFileSync` cannot find (same resolution as `src/util/shell.ts`).
   return execaSync("backlog", ["task", "list", "--plain"], {
+    cwd: join(proj, ".authoring-backlog"),
+    stdout: "pipe",
+    stderr: "pipe",
+  }).stdout as string;
+}
+
+function authoringTaskId(proj: string, title: string): string {
+  const output = authoringTaskTitles(proj);
+  const escaped = title.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const id = new RegExp(`^\\s{2}([A-Za-z][A-Za-z0-9-]*-\\d+)\\s+-\\s+${escaped}$`, "m").exec(
+    output,
+  )?.[1];
+  if (id === undefined) throw new Error(`Backlog task not found: ${title}`);
+  return id;
+}
+
+function authoringTaskRecord(proj: string, id: string): string {
+  return execaSync("backlog", ["task", id, "--plain"], {
     cwd: join(proj, ".authoring-backlog"),
     stdout: "pipe",
     stderr: "pipe",
@@ -127,6 +145,79 @@ describeIfBuilt("bundle lifecycle E2E via dist/cli.js (tasks 50/51/52)", () => {
       expect(existsSync(join(proj, "wip", "bundles", "draft", "bundle.yml"))).toBe(true); // dir scaffolded
       const manifest = readFileSync(join(proj, "wip", "manifest.yml"), "utf8");
       expect(manifest).not.toMatch(/draft/); // not enabled (and so absent from the install-time menu)
+    });
+  });
+
+  it("records a disabled bundle contribution, resolves actual dependency IDs, and enables after source removal without changing human progress", async () => {
+    await withTempDir((dir) => {
+      const proj = initProjectAt(dir);
+      const templateRoot = join(proj, "wip", "templates", "bundle", "qa-recorded");
+      mkdirSync(join(templateRoot, "files", "install-backlog"), { recursive: true });
+      mkdirSync(join(templateRoot, "files", "installer-skills"), { recursive: true });
+      writeFileSync(
+        join(templateRoot, "template.yml"),
+        [
+          "name: qa-recorded",
+          "scope: bundle",
+          'revision: "qa-recorded-r1"',
+          "authoring-tasks:",
+          "  - key: inspect-recorded",
+          '    title: "Inspect {{wpm.bundle.id}} recorded contribution"',
+          "    acceptance-criteria:",
+          "      - The recorded contribution is inspectable",
+          "    depends-on:",
+          "      - wpm:bundle:plan",
+          "",
+        ].join("\n"),
+      );
+      writeFileSync(
+        join(templateRoot, "files", "install-backlog", "config.yml"),
+        "task_prefix: {{bundle-id}}\n",
+      );
+      writeFileSync(join(templateRoot, "files", "installer-skills", ".keep"), "");
+
+      expect(wpm(proj, ["bundle", "template", "set", "qa-recorded"]).status).toBe(0);
+      expect(wpm(proj, ["bundle", "new", "durable", "--disabled", "--no-advisor"]).status).toBe(0);
+      const planId = authoringTaskId(proj, "Plan bundle durable");
+      const contributionTitle = "Inspect durable recorded contribution";
+      const contributionId = authoringTaskId(proj, contributionTitle);
+      expect(authoringTaskRecord(proj, contributionId)).toContain(planId);
+
+      execaSync(
+        "backlog",
+        [
+          "task",
+          "edit",
+          contributionId,
+          "-s",
+          "In Progress",
+          "--check-ac",
+          "1",
+          "--notes",
+          "preserve this human progress",
+        ],
+        { cwd: join(proj, ".authoring-backlog"), stdout: "pipe", stderr: "pipe" },
+      );
+      const beforeRecord = authoringTaskRecord(proj, contributionId);
+      const beforeList = authoringTaskTitles(proj);
+      expect(beforeRecord).toContain("wpm:template-origin:project-local:bundle:qa-recorded");
+      expect(beforeRecord).toContain("wpm:template-revision:qa-recorded-r1");
+      expect(beforeRecord).toContain("wpm:template-key:inspect-recorded");
+      expect(beforeRecord).toContain("wpm:bundle:durable");
+
+      rmSync(templateRoot, { recursive: true, force: true });
+      rmSync(join(proj, "wip", "bundles", "bundle-template"), {
+        recursive: true,
+        force: true,
+      });
+      const enabled = wpm(proj, ["bundle", "enable", "durable", "--no-advisor"]);
+      expect(enabled.status).toBe(0);
+      expect(authoringTaskTitles(proj)).toBe(beforeList);
+      expect(authoringTaskRecord(proj, contributionId)).toBe(beforeRecord);
+      expect(readFileSync(join(proj, ".wpm-bundle-authoring.json"), "utf8")).toContain(
+        "qa-recorded-r1",
+      );
+      expect(existsSync(join(proj, "wip", ".wpm-bundle-authoring.json"))).toBe(false);
     });
   });
 

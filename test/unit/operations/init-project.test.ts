@@ -20,6 +20,10 @@ import {
 } from "../../../src/core/operations/init-project.js";
 import { setupPersonalAuthoring } from "../../../src/core/operations/personal-authoring-setup.js";
 import { verifyWorkspaceHandoff } from "../../../src/core/operations/workspace-handoff.js";
+import {
+  BUNDLE_AUTHORING_CONTRIBUTIONS_PATH,
+  parseBundleAuthoringContributions,
+} from "../../../src/core/services/bundle-authoring-contributions.js";
 import { PERSONAL_AUTHORING_STATE_PATH } from "../../../src/core/services/personal-authoring-setup.js";
 import {
   TEMPLATE_TASK_LABEL,
@@ -363,6 +367,18 @@ describe("initProject — scaffolds an authoring workspace (task-87; docs 06/10/
     expect(fs.exists(`${WIP}/bundles/bundle-template/_AGENTS.md.tmpl`)).toBe(true);
     // The scaffold keeps its placeholders (a template-of-a-template; bundle new fills them):
     expect(fs.read(`${WIP}/bundles/bundle-template/_AGENTS.md.tmpl`)).toMatch(/\{\{bundle-id\}\}/);
+
+    const contributions = parseBundleAuthoringContributions(
+      fs.read(`${TARGET}/${BUNDLE_AUTHORING_CONTRIBUTIONS_PATH}`),
+    );
+    expect(contributions.ok).toBe(true);
+    if (contributions.ok) {
+      expect(contributions.value.defaultContribution?.contribution).toMatchObject({
+        status: "none",
+        producer: { source: "built-in", scope: "bundle", name: "default" },
+      });
+      expect(contributions.value.bundles).toEqual([]);
+    }
 
     // AC#1 — the empty registries exist as directories under wip/:
     expect(fs.exists(`${WIP}/installer-skills`)).toBe(true);
@@ -1353,6 +1369,41 @@ describe("initProject — honors a template that DECLARES targets / pre-includes
     );
     return fs;
   }
+
+  it("rejects a pre-included bundle that occupies the reserved default-scaffold boundary", () => {
+    const fs = seedTemplates();
+    const backlog = new FakeBacklog();
+    fs.write(
+      `${BUILTIN}/project/minimal/files/manifest.yml.tmpl`,
+      [
+        "project:",
+        "  name: {{project-name}}",
+        "  version: 0.1.0",
+        "targets: []",
+        "bundles:",
+        "  - bundle-template",
+        "",
+      ].join("\n"),
+    );
+    fs.write(
+      `${BUILTIN}/project/minimal/files/bundles/bundle-template/bundle.yml`,
+      "id: bundle-template\nversion: 0.1.0\nsummary: reserved collision\nconfirmation: safe\nrequires: {}\n",
+    );
+
+    let caught: unknown;
+    try {
+      initProject(deps(fs, backlog), { targetDir: TARGET, name: "demo" });
+    } catch (error) {
+      caught = error;
+    }
+
+    expect(caught).toBeInstanceOf(WorkspaceIntegrationPreflightError);
+    if (caught instanceof WorkspaceIntegrationPreflightError) {
+      expect(caught.blockers.map(({ code }) => code)).toContain("bundle-id-reserved-scaffold");
+    }
+    expect(fs.inspectPath(TARGET).kind).toBe("missing");
+    expect(backlog.inspectRoot(`${TARGET}/.authoring-backlog`).valid).toBe(false);
+  });
 
   it("AC#1 + — creates one scope-alias per declared target under wip/ (root + per pre-included bundle)", () => {
     const fs = seedTemplateWithTargetAndBundle();

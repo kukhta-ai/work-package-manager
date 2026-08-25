@@ -58,6 +58,9 @@ interface BundleContributionInput extends ProjectContributionInput {
   readonly id: string;
 }
 
+/** Inputs for one concrete bundle operation using the same identity/provenance contract as fresh init. */
+export interface CompileBundleAuthoringTaskPlanInput extends BundleContributionInput {}
+
 /** Inputs already captured by init LOAD: one project contribution and each concrete pre-included bundle. */
 export interface CompileProjectAuthoringTaskPlanInput {
   readonly project: ProjectContributionInput;
@@ -76,6 +79,9 @@ export type ProjectAuthoringTaskPlanResult =
       readonly tasks: readonly [];
       readonly problems: readonly ProjectAuthoringTaskPlanProblem[];
     };
+
+/** The single-bundle compiler has the same aggregate result contract as the complete fresh-init compiler. */
+export type BundleAuthoringTaskPlanResult = ProjectAuthoringTaskPlanResult;
 
 function compareCodeUnits(left: string, right: string): number {
   return left < right ? -1 : left > right ? 1 : 0;
@@ -273,6 +279,89 @@ function stableTopologicalPack(
   return ordered;
 }
 
+function contributionForTask(task: PlannedProjectAuthoringTask): string {
+  if (task.provenance === undefined) {
+    return task.identity.includes("#bundle:")
+      ? `mandatory:bundle:${task.identity.slice(task.identity.lastIndexOf("#bundle:") + 8)}`
+      : "mandatory:project";
+  }
+  const base = `template:${task.provenance.producer.source}:${task.provenance.producer.scope}:${task.provenance.producer.name}@${task.provenance.revision}`;
+  return task.provenance.bundleId === undefined
+    ? base
+    : bundleIdentity(base, task.provenance.bundleId);
+}
+
+function validateCombinedPlan(
+  tasks: readonly PlannedProjectAuthoringTask[],
+  problems: ProjectAuthoringTaskPlanProblem[],
+): void {
+  const byIdentity = new Map<string, PlannedProjectAuthoringTask>();
+  const byTitle = new Map<string, PlannedProjectAuthoringTask>();
+  for (const [index, task] of tasks.entries()) {
+    const contribution = contributionForTask(task);
+    const identityOwner = byIdentity.get(task.identity);
+    if (identityOwner !== undefined) {
+      problems.push({
+        code: "identity-collision",
+        contribution,
+        path: `tasks[${index}].identity`,
+        message: `planned identity ${JSON.stringify(task.identity)} is also owned by ${JSON.stringify(contributionForTask(identityOwner))}`,
+      });
+    } else {
+      byIdentity.set(task.identity, task);
+    }
+    const titleOwner = byTitle.get(task.title);
+    if (titleOwner !== undefined) {
+      problems.push({
+        code: "rendered-title-collision",
+        contribution,
+        path: `tasks[${index}].title`,
+        message: `rendered title ${JSON.stringify(task.title)} is also owned by ${JSON.stringify(contributionForTask(titleOwner))}`,
+      });
+    } else {
+      byTitle.set(task.title, task);
+    }
+  }
+
+  const knownIdentities = new Set(tasks.map(({ identity }) => identity));
+  for (const [index, task] of tasks.entries()) {
+    for (const [dependencyIndex, dependency] of task.dependencyIdentities.entries()) {
+      if (knownIdentities.has(dependency)) continue;
+      problems.push({
+        code: "dependency-unresolved",
+        contribution: contributionForTask(task),
+        path: `tasks[${index}].dependencies[${dependencyIndex}]`,
+        message: `planned dependency identity ${JSON.stringify(dependency)} is unavailable`,
+      });
+    }
+  }
+}
+
+/** Compile one concrete bundle plan without fabricating an empty project contribution. */
+export function compileBundleAuthoringTaskPlan(
+  input: CompileBundleAuthoringTaskPlanInput,
+): BundleAuthoringTaskPlanResult {
+  const problems: ProjectAuthoringTaskPlanProblem[] = [];
+  const mandatoryContribution = `mandatory:bundle:${input.id}`;
+  const tasks = mandatoryTasks(input.mandatoryTasks, mandatoryContribution, input.id, problems);
+  const contribution = inspectionContribution(input.inspection, input.id);
+  addInspectionProblems(input.inspection, contribution, problems);
+  if (input.inspection.status === "valid") {
+    tasks.push(...stableTopologicalPack(input.inspection, contribution, input.id, problems));
+  }
+  validateCombinedPlan(tasks, problems);
+  problems.sort(
+    (left, right) =>
+      compareCodeUnits(left.contribution, right.contribution) ||
+      compareCodeUnits(left.path, right.path) ||
+      compareCodeUnits(left.code, right.code) ||
+      compareCodeUnits(left.message, right.message),
+  );
+  return problems.length > 0
+    ? { ok: false, tasks: [], problems }
+    : { ok: true, tasks, problems: [] };
+}
+
 /**
  * Compile the complete fresh-workspace authoring task plan from already-inspected concrete contributions.
  *
@@ -308,58 +397,7 @@ export function compileProjectAuthoringTaskPlan(
     }
   }
 
-  const contributionFor = (task: PlannedProjectAuthoringTask): string => {
-    if (task.provenance === undefined) {
-      return task.identity.includes("#bundle:")
-        ? `mandatory:bundle:${task.identity.slice(task.identity.lastIndexOf("#bundle:") + 8)}`
-        : "mandatory:project";
-    }
-    const base = `template:${task.provenance.producer.source}:${task.provenance.producer.scope}:${task.provenance.producer.name}@${task.provenance.revision}`;
-    return task.provenance.bundleId === undefined
-      ? base
-      : bundleIdentity(base, task.provenance.bundleId);
-  };
-
-  const byIdentity = new Map<string, PlannedProjectAuthoringTask>();
-  const byTitle = new Map<string, PlannedProjectAuthoringTask>();
-  for (const [index, task] of tasks.entries()) {
-    const contribution = contributionFor(task);
-    const identityOwner = byIdentity.get(task.identity);
-    if (identityOwner !== undefined) {
-      problems.push({
-        code: "identity-collision",
-        contribution,
-        path: `tasks[${index}].identity`,
-        message: `planned identity ${JSON.stringify(task.identity)} is also owned by ${JSON.stringify(contributionFor(identityOwner))}`,
-      });
-    } else {
-      byIdentity.set(task.identity, task);
-    }
-    const titleOwner = byTitle.get(task.title);
-    if (titleOwner !== undefined) {
-      problems.push({
-        code: "rendered-title-collision",
-        contribution,
-        path: `tasks[${index}].title`,
-        message: `rendered title ${JSON.stringify(task.title)} is also owned by ${JSON.stringify(contributionFor(titleOwner))}`,
-      });
-    } else {
-      byTitle.set(task.title, task);
-    }
-  }
-
-  const knownIdentities = new Set(tasks.map(({ identity }) => identity));
-  for (const [index, task] of tasks.entries()) {
-    for (const [dependencyIndex, dependency] of task.dependencyIdentities.entries()) {
-      if (knownIdentities.has(dependency)) continue;
-      problems.push({
-        code: "dependency-unresolved",
-        contribution: contributionFor(task),
-        path: `tasks[${index}].dependencies[${dependencyIndex}]`,
-        message: `planned dependency identity ${JSON.stringify(dependency)} is unavailable`,
-      });
-    }
-  }
+  validateCombinedPlan(tasks, problems);
 
   problems.sort(
     (left, right) =>

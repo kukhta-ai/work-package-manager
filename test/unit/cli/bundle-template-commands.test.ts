@@ -6,6 +6,10 @@ import { MemoryFileSystem } from "../../../src/adapters/memory-fs.js";
 import { buildProgram, type CliDeps, COMPLETION_SPECS, run } from "../../../src/cli.js";
 import { completeArgv } from "../../../src/completion/complete.js";
 import { defaultRegistry } from "../../../src/completion/registry.js";
+import {
+  BUNDLE_AUTHORING_CONTRIBUTIONS_PATH,
+  parseBundleAuthoringContributions,
+} from "../../../src/core/services/bundle-authoring-contributions.js";
 import type { CliIo, OutputSink } from "../../../src/util/exit.js";
 
 /**
@@ -114,11 +118,21 @@ describe("bundle template set (task-56)", () => {
     // the files/ tree landed under bundles/bundle-template/:
     expect(scaffoldFiles(fs)).toEqual([
       "AGENTS.md.tmpl",
+      "backlog",
       "install-backlog/config.yml.tmpl",
       "payload/files/.keep",
     ]);
     // verbatim copy — the {{placeholders}} are NOT substituted (the scaffold keeps them for `bundle new`):
     expect(fs.read(`${PROJ}/wip/bundles/bundle-template/AGENTS.md.tmpl`)).toBe("# {{bundle-id}}\n");
+    const parsedRecord = parseBundleAuthoringContributions(
+      fs.read(`${PROJ}/${BUNDLE_AUTHORING_CONTRIBUTIONS_PATH}`),
+    );
+    expect(parsedRecord.ok).toBe(true);
+    if (!parsedRecord.ok) throw new Error(parsedRecord.reason);
+    expect(parsedRecord.value.defaultContribution?.contribution).toMatchObject({
+      status: "none",
+      producer: { source: "built-in", scope: "bundle", name: "default" },
+    });
     expect(i.out.text).toMatch(/set bundle template from "default"/);
   });
 

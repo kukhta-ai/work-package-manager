@@ -369,11 +369,6 @@ export class NodeFileSystem implements FileSystem {
       }
       current = dirname(current);
     }
-    try {
-      rmdirSync(stop);
-    } catch {
-      // Preserve a non-empty shared quarantine directory.
-    }
   }
 
   private captureIdentities(paths: readonly string[]): ReadonlyMap<string, NodePathIdentity> {
@@ -1023,6 +1018,76 @@ export class NodeFileSystem implements FileSystem {
   }
 
   /** @inheritdoc */
+  removeFileConfined(
+    confinementRoot: string,
+    path: string,
+    expectedContent: string,
+    quarantine: ConfinedQuarantine,
+  ): void {
+    this.assertConfinedMutationPath(confinementRoot, path, "file-or-missing");
+    const privateSlot = this.assertQuarantine(confinementRoot, quarantine);
+    if (this.lstatIfPresent(privateSlot.path) !== undefined) {
+      throw new Error(`confined file removal quarantine is occupied: ${privateSlot.path}`);
+    }
+    const expectedBytes = Buffer.from(expectedContent, "utf8");
+    const expectedDigest = createHash("sha256").update(expectedBytes).digest("hex");
+    const stat = this.lstatIfPresent(path);
+    if (stat === undefined || !stat.isFile() || stat.isSymbolicLink()) {
+      throw new Error(`confined file removal preimage is not a regular file: ${path}`);
+    }
+    const descriptor = openSync(path, constants.O_RDONLY);
+    const descriptorStat = fstatSync(descriptor, { bigint: true });
+    const initialIdentity = { dev: descriptorStat.dev, ino: descriptorStat.ino };
+    const initialBytes = readFileSync(descriptor);
+    if (
+      !this.sameIdentity(this.pathIdentity(path), initialIdentity) ||
+      createHash("sha256").update(initialBytes).digest("hex") !== expectedDigest
+    ) {
+      closeSync(descriptor);
+      throw new Error(`confined file removal preimage changed during capture: ${path}`);
+    }
+    try {
+      this.ensureConfinedDirectoryChain(confinementRoot, dirname(privateSlot.path));
+      this.beforeConfinedFileDetachment(path, privateSlot.path);
+      this.assertConfinedMutationPath(confinementRoot, path, "file-or-missing");
+      if (
+        this.fileDigestIfRegular(path) !== expectedDigest ||
+        !this.sameIdentity(this.pathIdentity(path), initialIdentity)
+      ) {
+        throw new Error(`confined file removal preimage changed before detachment: ${path}`);
+      }
+      renameSync(path, privateSlot.path);
+      this.afterConfinedFileDetachment(path, privateSlot.path);
+      const retainedIdentity = this.pathIdentity(privateSlot.path);
+      if (
+        !this.sameIdentity(retainedIdentity, initialIdentity) ||
+        this.fileDigestIfRegular(privateSlot.path) !== expectedDigest ||
+        this.lstatIfPresent(path) !== undefined
+      ) {
+        if (this.lstatIfPresent(path) === undefined) {
+          writeFileSync(path, initialBytes, { flag: "wx" });
+        }
+        throw new Error(
+          `confined public file raced after detachment: ${path}; prior bytes retained at ${privateSlot.path}`,
+        );
+      }
+      unlinkSync(privateSlot.path);
+      if (this.lstatIfPresent(path) !== undefined) {
+        throw new Error(`confined public file raced before removal completion: ${path}`);
+      }
+    } catch (error) {
+      const retained = this.lstatIfPresent(privateSlot.path) !== undefined;
+      throw new Error(
+        `${error instanceof Error ? error.message : String(error)}${retained ? `; retained evidence at ${privateSlot.path}` : ""}`,
+        { cause: error },
+      );
+    } finally {
+      closeSync(descriptor);
+      this.cleanupEmptyQuarantine(privateSlot.root, privateSlot.path);
+    }
+  }
+
+  /** @inheritdoc */
   removeConfined(
     confinementRoot: string,
     path: string,
@@ -1100,7 +1165,12 @@ export class NodeFileSystem implements FileSystem {
               `confined retained tree conflicts with public capture: ${privateSlot.path}`,
             );
           }
-          cpSync(path, privateSlot.path, { recursive: true, errorOnExist: false, force: false });
+          cpSync(path, privateSlot.path, {
+            recursive: true,
+            errorOnExist: false,
+            force: false,
+            verbatimSymlinks: true,
+          });
           if (this.treeFingerprint(privateSlot.path) !== expectedTreeFingerprint) {
             throw new Error(
               `confined retained tree changed during resumed capture: ${privateSlot.path}`,
@@ -1112,7 +1182,12 @@ export class NodeFileSystem implements FileSystem {
         if (this.treeFingerprint(path) !== expectedTreeFingerprint) {
           throw new Error(`confined removal tree preimage changed: ${path}`);
         }
-        cpSync(path, privateSlot.path, { recursive: true, errorOnExist: true, force: false });
+        cpSync(path, privateSlot.path, {
+          recursive: true,
+          errorOnExist: true,
+          force: false,
+          verbatimSymlinks: true,
+        });
         retainedStat = this.lstatIfPresent(privateSlot.path);
         if (
           retainedStat === undefined ||

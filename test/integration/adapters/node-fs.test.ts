@@ -416,6 +416,30 @@ describe("NodeFileSystem (the real FileSystem adapter, against a real tmpdir)", 
     },
   );
 
+  it("retires only an exact confined file and preserves a raced replacement", async () => {
+    await withTempDir((dir) => {
+      const home = join(dir, "home");
+      const marker = join(home, ".wpm-bundle-authoring.pending.json");
+      const quarantine = {
+        root: join(home, ".wpm-bundle-authoring-quarantine"),
+        path: join(home, ".wpm-bundle-authoring-quarantine", "request", "pending"),
+      };
+      mkdirSync(home);
+      writeFileSync(marker, "PENDING\n");
+      new NodeFileSystem().removeFileConfined(home, marker, "PENDING\n", quarantine);
+      expect(existsSync(marker)).toBe(false);
+      expect(existsSync(quarantine.root)).toBe(false);
+
+      writeFileSync(marker, "PENDING\n");
+      const raced = new FileArrivalAfterDetachmentFileSystem(marker, "USER FILE\n");
+      expect(() => raced.removeFileConfined(home, marker, "PENDING\n", quarantine)).toThrow(
+        /raced after detachment/,
+      );
+      expect(readFileSync(marker, "utf8")).toBe("USER FILE\n");
+      expect(readFileSync(quarantine.path, "utf8")).toBe("PENDING\n");
+    });
+  });
+
   it("publishes a missing confined file without clobbering one that races in", async () => {
     await withTempDir((dir) => {
       const home = join(dir, "home");
@@ -1021,6 +1045,44 @@ describe("NodeFileSystem (the real FileSystem adapter, against a real tmpdir)", 
       expect(existsSync(quarantineRoot)).toBe(false);
     });
   });
+
+  it.runIf(process.platform !== "win32")(
+    "retains relative symbolic-link bytes while retiring an exact confined tree",
+    async () => {
+      await withTempDir((dir) => {
+        const root = join(dir, "workspace");
+        const tree = join(root, "wip", "bundles", "bundle-template");
+        const target = join(tree, "install-backlog");
+        const link = join(tree, "backlog");
+        const quarantine = {
+          root: join(root, ".wpm-bundle-authoring-quarantine"),
+          path: join(root, ".wpm-bundle-authoring-quarantine", "request", "prior-scaffold"),
+        };
+        const config = "task_prefix: authoring\n";
+        mkdirSync(target, { recursive: true });
+        writeFileSync(join(target, "config.yml"), config);
+        symlinkSync("install-backlog", link, "dir");
+        const entries = [
+          { path: "backlog", kind: "symbolic-link", target: "install-backlog" },
+          { path: "install-backlog", kind: "directory" },
+          {
+            path: "install-backlog/config.yml",
+            kind: "file",
+            sha256: createHash("sha256").update(config).digest("hex"),
+          },
+        ];
+        const fingerprint = `sha256:${createHash("sha256")
+          .update(JSON.stringify(entries), "utf8")
+          .digest("hex")}`;
+
+        expect(() =>
+          new NodeFileSystem().removeConfined(root, tree, fingerprint, quarantine),
+        ).not.toThrow();
+        expect(existsSync(tree)).toBe(false);
+        expect(existsSync(quarantine.root)).toBe(false);
+      });
+    },
+  );
 
   it("preserves empty directories in retained legacy evidence until retry completes", async () => {
     await withTempDir((dir) => {

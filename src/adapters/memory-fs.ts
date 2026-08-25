@@ -722,6 +722,46 @@ export class MemoryFileSystem implements FileSystem {
   }
 
   /** @inheritdoc */
+  removeFileConfined(
+    confinementRoot: string,
+    path: string,
+    expectedContent: string,
+    quarantine: ConfinedQuarantine,
+  ): void {
+    const target = this.normalize(path);
+    this.assertConfinedMutationPath(confinementRoot, target, "file-or-missing");
+    const privateSlot = this.assertQuarantine(confinementRoot, quarantine);
+    if (this.inspectPath(target).kind !== "file" || this.read(target) !== expectedContent) {
+      throw new Error(`confined file removal preimage changed: ${target}`);
+    }
+    if (this.inspectPath(privateSlot.path).kind !== "missing") {
+      throw new Error(`confined file removal quarantine is occupied: ${privateSlot.path}`);
+    }
+    this.recordDir(this.parentOf(privateSlot.path));
+    this.files.set(privateSlot.path, expectedContent);
+    this.files.delete(target);
+    this.afterConfinedFileDetachment(target, privateSlot.path);
+    if (
+      this.inspectPath(target).kind !== "missing" ||
+      this.inspectPath(privateSlot.path).kind !== "file" ||
+      this.read(privateSlot.path) !== expectedContent
+    ) {
+      if (this.inspectPath(target).kind === "missing") this.files.set(target, expectedContent);
+      throw new Error(
+        `confined public file raced after detachment: ${target}; prior bytes retained at ${privateSlot.path}`,
+      );
+    }
+    this.files.delete(privateSlot.path);
+    this.removeEmptyDirectoryChain(
+      this.parentOf(privateSlot.path),
+      this.parentOf(privateSlot.root),
+    );
+    if (this.inspectPath(target).kind !== "missing") {
+      throw new Error(`confined public file raced before removal completion: ${target}`);
+    }
+  }
+
+  /** @inheritdoc */
   removeConfined(
     confinementRoot: string,
     path: string,

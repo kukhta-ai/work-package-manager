@@ -100,6 +100,24 @@ export interface PersonalAuthoringSetupBlocker {
   readonly recovery: string;
 }
 
+/** One predictable blocker from bundle create/enable's complete authoring-work preflight. */
+export interface BundleAuthoringBlocker {
+  readonly code: string;
+  readonly surface:
+    | "input"
+    | "bundle"
+    | "manifest"
+    | "template"
+    | "contribution-record"
+    | "backlog"
+    | "authoring-task-plan"
+    | "advisor"
+    | "derived-artifact";
+  readonly path?: string;
+  readonly message: string;
+  readonly recovery: string;
+}
+
 /** One selected-client boundary in setup's typed progress report. */
 export interface PersonalAuthoringSetupClientProgress {
   readonly id: string;
@@ -262,6 +280,20 @@ export class PersonalAuthoringSetupPreflightError extends DomainError {
     super(
       blockers.some(({ surface }) => surface === "selection") ? "usage" : "conflict",
       `personal authoring setup preflight failed with ${blockers.length} blocker(s): ${blockers.map(({ code }) => code).join(", ")}`,
+    );
+    this.blockers = [...blockers];
+  }
+}
+
+/** Aggregate, deterministic, no-write failure for one complete bundle create/enable request. */
+export class BundleAuthoringPreflightError extends DomainError {
+  readonly blockers: readonly BundleAuthoringBlocker[];
+  readonly bundleChanged = false as const;
+
+  constructor(blockers: readonly BundleAuthoringBlocker[]) {
+    super(
+      blockers.some(({ surface }) => surface === "input") ? "validation" : "conflict",
+      `bundle authoring preflight failed with ${blockers.length} blocker(s): ${blockers.map(({ code }) => code).join(", ")}`,
     );
     this.blockers = [...blockers];
   }
