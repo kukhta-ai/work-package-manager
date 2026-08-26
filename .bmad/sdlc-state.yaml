@@ -1,13 +1,12 @@
 # Current orchestration pointer. History belongs in Git, Backlog.md, and research/evolution/.
 schemaVersion: 1
-phase: 6
-phaseName: "Epic gate — final clean-clone verification"
+phase: 7
+phaseName: "Handoff — experimental onboarding PR"
 branch: feature/authoring-agent-onboarding
 epic: authoring-agent-onboarding
 activeStory: null
 reviewCycle: 0
-activeChange:
-  id: final-clean-clone-gate
+activeChange: null
 specialists:
   worker:
     role: implementation
@@ -33,5 +32,5 @@ workingMemory:
     - _bmad-output
     - Skills-Results
   durableEpisode: research/evolution/records/authoring-agent-onboarding.yaml
-designRevisionLoaded: f1d565efcaf9aeea34c19d8f8aaf708a7b5d7ad2
-lastUpdated: "2026-08-26T16:24:41Z"
+designRevisionLoaded: ce0690a34ec3523bfd68ffb106ac6caadcf43f66
+lastUpdated: "2026-08-26T16:56:44Z"

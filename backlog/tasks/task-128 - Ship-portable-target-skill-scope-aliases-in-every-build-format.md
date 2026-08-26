@@ -4,7 +4,7 @@ title: Ship portable target skill-scope aliases in every build format
 status: Done
 assignee: []
 created_date: '2026-08-26 13:18'
-updated_date: '2026-08-26 16:24'
+updated_date: '2026-08-26 16:56'
 labels:
   - follow-up
   - build
@@ -52,6 +52,8 @@ BMAD workflow evidence 2026-08-26: persistent worker literally ran bmad-create-s
 Combined clean-clone gate at f1d565efcaf9aeea34c19d8f8aaf708a7b5d7ad2: typecheck, lint:ci, package inspection, and build passed; full Vitest completed 1961/1964 with three failures. Literal bmad-investigate concluded all three failures are stale blanket exclusions of .claude/ even though the fixtures declare claude-code and TASK-128 requires .claude/skills. Investigation also confirmed an AC#3 edge: an empty or missing canonical installer-skills directory can leave a POSIX alias dangling or make copy fallback fail. Reopened only DoD#2 for focused repair and final gate.
 
 Gate repair 2026-08-26: literal bmad-investigate traced the 1961/1964 clean-clone result to three stale blanket .claude exclusions and exposed an empty/missing canonical installer-skills edge. The worker literally reran bmad-dev-story and bmad-qa-generate-e2e-tests; the tests now admit only the manifest-declared .claude/skills paths while preserving all authoring-state exclusions. Packaging creates a staging-only .keep for an otherwise unarchivable canonical target, leaving the source untouched. Independent bmad-story-automator-review cycle 2 found and auto-fixed canonical-target symlink traversal by rejecting any non-directory staged path component; the worker absorbed that fix unchanged, and confirmation review cycle 3 APPROVED with no HIGH/MEDIUM findings. Focused evidence: adapter 7/7, built CLI 2/2, packed journey 1/1, typecheck, focused Biome, build, and diff check all pass. The exact clean-clone full gate follows after the required no-ff integration.
+
+Exact post-merge clean-clone gate at ce0690a34ec3523bfd68ffb106ac6caadcf43f66: npm ci PASS; npm run typecheck PASS; npm run lint:ci PASS (Biome 279 files and process-artifact policy); npm run package:inspect -- --revision HEAD ACCEPTED with clean source binding; npm run build PASS including executable postbuild; npm test PASS, 142/142 files and 1968/1968 tests in 1837.14s. npm audit reported the existing three high-severity development-dependency advisories; it did not fail the prescribed gate.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
