@@ -2,12 +2,11 @@
 schemaVersion: 1
 phase: 5
 phaseName: "Autonomous build — package feedback follow-ups"
-branch: feature/authoring-agent-onboarding-task-128
+branch: feature/authoring-agent-onboarding
 epic: authoring-agent-onboarding
-activeStory: task-128
-reviewCycle: 1
-activeChange:
-  id: portable-target-skill-scope-aliases
+activeStory: null
+reviewCycle: 0
+activeChange: null
 specialists:
   worker:
     role: implementation
@@ -31,4 +30,4 @@ workingMemory:
     - Skills-Results
   durableEpisode: research/evolution/records/authoring-agent-onboarding.yaml
 designRevisionLoaded: a8d53d690f786fcc1f98392347d93ba5f88fa550
-lastUpdated: "2026-08-26T14:53:52Z"
+lastUpdated: "2026-08-26T14:55:39Z"
