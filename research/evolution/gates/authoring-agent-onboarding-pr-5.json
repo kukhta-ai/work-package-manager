@@ -3,7 +3,7 @@
   "id": "authoring-agent-onboarding-pr-5",
   "episodeId": "authoring-agent-onboarding",
   "candidate": {
-    "revision": null,
+    "revision": "8f009260b50465699e2a3e19cd890d8ab2d1aeff",
     "baselineRevision": "9d28f96903cb3cf9b9cb8765f4f33fd76d07af39",
     "branch": "feature/authoring-agent-onboarding",
     "pullRequest": "https://github.com/kukhta-ai/work-package-manager/pull/5"
@@ -15,6 +15,7 @@
       "status": "passed",
       "evidence": [
         "npm run check:process-artifacts: PASS (1 evolution record, 2 gate receipts)",
+        "npm run check:process-artifacts:ci: PASS for the staged Git candidate",
         "git ls-files '_bmad-output/**' 'Skills-Results/**': no tracked paths"
       ]
     },
@@ -58,9 +59,9 @@
     }
   ],
   "residualRisks": [
-    "The candidate revision is unset until the retention change is committed.",
+    "This receipt is committed after its bound implementation candidate; the receipt-only commit changes no executable source or test behavior.",
     "PR #5 cannot merge before the current CI matrix and human review complete."
   ],
   "preCleanupRevision": "9d28f96903cb3cf9b9cb8765f4f33fd76d07af39",
-  "updatedAt": "2026-08-26T13:07:23Z"
+  "updatedAt": "2026-08-26T13:09:10Z"
 }
