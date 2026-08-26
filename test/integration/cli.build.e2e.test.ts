@@ -8,6 +8,7 @@ import {
   readdirSync,
   readFileSync,
   readlinkSync,
+  renameSync,
   rmSync,
   symlinkSync,
   writeFileSync,
@@ -188,12 +189,30 @@ describeIfBuilt("`wpm build dry-run` E2E (task-82, through dist/cli.js)", () => 
       expect(r.stdout).toMatch(/would ship \d+ file/);
       expect(r.stdout).toContain("manifest.yml");
       expect(r.stdout).toContain("AGENTS.md");
+      expect(r.stdout).toMatch(/^ {2}\.claude\/skills$/m);
+      expect(r.stdout).not.toMatch(/^ {2}\.agents\/skills$/m);
       // .authoring-backlog/ is builder-time state — it must NOT be in the would-ship tree:
       expect(r.stdout).not.toContain(".authoring-backlog");
       // NO artefact produced: the project dir's top-level entries are unchanged, and no archive sits in cwd/proj:
       expect(readdirSync(proj).sort()).toEqual(before);
       expect(readdirSync(dir).some((f) => f.endsWith(".tgz") || f.endsWith(".zip"))).toBe(false);
       expect(readdirSync(proj).some((f) => f.endsWith(".tgz") || f.endsWith(".zip"))).toBe(false);
+    });
+  });
+
+  it("TASK-128 AC#1/#2/#6 — dry-run shows exact root/enabled-bundle scopes and no absent-target scope", async () => {
+    await withTempDir(async (dir) => {
+      const proj = initProject(dir);
+      expect(cli(["project", "targets", "add", "claude-code", "-C", proj], dir).code).toBe(0);
+      expect(cli(["bundle", "new", "web", "-C", proj], dir).code).toBe(0);
+
+      const r = cli(["build", "dry-run", "-C", proj], dir);
+      expect(r.code).toBe(0);
+      expect(r.stdout).toMatch(/^ {2}\.claude\/skills$/m);
+      expect(r.stdout).toMatch(/^ {2}bundles\/web\/\.claude\/skills$/m);
+      expect(r.stdout).not.toMatch(/\.agents\/skills|\.openclaw\/skills/);
+      expect(r.stdout).not.toMatch(/^ {2}\.claude$/m);
+      expect(r.stdout).not.toMatch(/^ {2}bundles\/web\/\.claude$/m);
     });
   });
 
@@ -217,6 +236,66 @@ describeIfBuilt("`wpm build dry-run` E2E (task-82, through dist/cli.js)", () => 
 });
 
 describeIfBuilt("`wpm build package` E2E (task-83, through dist/cli.js)", () => {
+  it("TASK-128 AC#3-#5/#8 — every format exposes portable root/bundle scopes after the authoring tree is unavailable", async () => {
+    await withTempDir(async (dir) => {
+      const proj = initProject(dir);
+      expect(cli(["project", "targets", "add", "claude-code", "-C", proj], dir).code).toBe(0);
+      expect(cli(["bundle", "new", "web", "-C", proj], dir).code).toBe(0);
+      const wip = join(proj, "wip");
+      writeFileSync(join(wip, "installer-skills", "qa-root.txt"), "root-scope-content\n");
+      writeFileSync(
+        join(wip, "bundles", "web", "installer-skills", "qa-bundle.txt"),
+        "bundle-scope-content\n",
+      );
+
+      const formats: Array<{ name: "tarball" | "git" | "zip"; ext: "tgz" | "zip" }> = [
+        { name: "tarball", ext: "tgz" },
+        { name: "git", ext: "tgz" },
+      ];
+      if (hasZip() && hasUnzip()) formats.push({ name: "zip", ext: "zip" });
+      const archives: Array<{ format: (typeof formats)[number]; path: string }> = [];
+      for (const format of formats) {
+        const result = cli(["build", "package", "--format", format.name, "-C", proj], dir);
+        expect(result.code).toBe(0);
+        const produced = join(proj, "builds", `demo-0.1.0.${format.ext}`);
+        const retained = join(dir, `task128-${format.name}.${format.ext}`);
+        cpSync(produced, retained);
+        archives.push({ format, path: retained });
+      }
+
+      // Any source-absolute authoring link is now broken. Every retained artifact must remain self-contained.
+      renameSync(wip, join(proj, "authoring-tree-unavailable"));
+      for (const { format, path } of archives) {
+        const layout = archiveLayout(path);
+        expect(layout).toEqual(
+          expect.arrayContaining([".claude/skills", "bundles/web/.claude/skills"]),
+        );
+        const extracted = join(dir, `task128-${format.name}-extracted`);
+        mkdirSync(extracted, { recursive: true });
+        if (format.ext === "zip") execFileSync("unzip", ["-q", path, "-d", extracted]);
+        else execFileSync("tar", ["-xzf", path, "-C", extracted]);
+
+        const rootScope = join(extracted, ".claude", "skills");
+        const bundleScope = join(extracted, "bundles", "web", ".claude", "skills");
+        if (process.platform === "win32") {
+          expect(lstatSync(rootScope).isDirectory()).toBe(true);
+          expect(lstatSync(bundleScope).isDirectory()).toBe(true);
+        } else {
+          expect(lstatSync(rootScope).isSymbolicLink()).toBe(true);
+          expect(lstatSync(bundleScope).isSymbolicLink()).toBe(true);
+          expect(readlinkSync(rootScope)).toBe("../installer-skills");
+          expect(readlinkSync(bundleScope)).toBe("../installer-skills");
+          expect(readlinkSync(rootScope)).not.toContain(proj);
+          expect(readlinkSync(bundleScope)).not.toContain(proj);
+        }
+        expect(readFileSync(join(rootScope, "qa-root.txt"), "utf8")).toBe("root-scope-content\n");
+        expect(readFileSync(join(bundleScope, "qa-bundle.txt"), "utf8")).toBe(
+          "bundle-scope-content\n",
+        );
+      }
+    });
+  });
+
   it("AC83#1/#2 + AC89#1/#2/#3 — `--format tarball`: exit 0, archive in <workspace>/builds/, un-nested root (manifest at root), no authoring surface", async () => {
     await withTempDir(async (dir) => {
       const proj = initProject(dir);

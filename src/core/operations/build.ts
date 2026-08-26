@@ -1,6 +1,14 @@
 import { join } from "node:path";
-import type { AgentName, Project, ValidationProblem, ValidationReport } from "../model/index.js";
+import type {
+  AgentName,
+  BundleId,
+  Project,
+  ValidationProblem,
+  ValidationReport,
+} from "../model/index.js";
 import type { FileSystem } from "../ports/index.js";
+import { ALIAS_PATHS } from "../services/agent-aliases.js";
+import { scopePlan } from "../services/derived-artefacts.js";
 import { validateSkillFrontmatter } from "../services/frontmatter.js";
 import {
   type Lockfile,
@@ -130,6 +138,33 @@ export interface FrontDoorTransform {
   readonly aliases: readonly string[];
 }
 
+/** One manifest-derived target skill-scope alias to synthesize in the prepared release tree. */
+export interface ScopeAliasTransform {
+  /** Exact root-relative target-native scope path, such as `.claude/skills`. */
+  readonly linkPath: string;
+  /** Corresponding root-relative canonical directory shipped in the artifact. */
+  readonly aliasTo: string;
+}
+
+/**
+ * Project the portable target scope aliases for a release from manifest targets and enabled bundles. Targets
+ * that share one native scope (Codex and Hermes) produce one release path. Existing authoring-tree aliases are
+ * deliberately not an input: their host-specific targets are not release authority.
+ */
+export function computeScopeAliasTransforms(
+  targets: readonly AgentName[],
+  bundleIds: readonly BundleId[],
+): ScopeAliasTransform[] {
+  const seen = new Set<string>();
+  const transforms: ScopeAliasTransform[] = [];
+  for (const alias of scopePlan(targets, bundleIds).aliases) {
+    if (seen.has(alias.linkPath)) continue;
+    seen.add(alias.linkPath);
+    transforms.push({ linkPath: alias.linkPath, aliasTo: alias.aliasTo });
+  }
+  return transforms;
+}
+
 /**
  * Compute the executor-front-door transforms for a project (doc 06 §"Self-similar surfaces"; doc 12 §"The
  * executor front door's reserved-prefix transform"). For every reserved-prefix `_AGENTS.md` in the shippable set
@@ -200,6 +235,8 @@ export interface BuildPlan {
    * `AGENTS.md` and its per-target aliases are synthesized. Empty when the deliverable carries no `_AGENTS.md`.
    */
   readonly frontDoorTransforms: readonly FrontDoorTransform[];
+  /** Manifest-derived target skill scopes synthesized portably in the prepared release tree (TASK-128). */
+  readonly scopeAliases: readonly ScopeAliasTransform[];
 }
 
 /** The input to {@link computeBuildPlan}: the loaded project plus the inputs the shell pre-reads for it. */
@@ -306,11 +343,10 @@ function checkLockfile(
  * root-relative paths, EXCLUDING the builder-time working dirs ({@link NON_SHIPPABLE_TOP_LEVEL}), every DISABLED
  * bundle directory, the authoring-only `bundles/bundle-template/` scaffold, and unresolved builder-template
  * sources. Runtime payload templates under an enabled bundle remain shippable because their `.tmpl` suffix is
- * product content interpreted at install time, not a builder placeholder. The walk does NOT recurse into
- * symlinked directories: in a generated
- * project the symlinks are the scope aliases (`.claude/skills → installer-skills/`, etc.) and each bundle's
- * `backlog → install-backlog` recipe alias (TASK-102), so skipping symlinked dirs records the alias path itself
- * without doubling its target's bytes. Pure over the port.
+ * product content interpreted at install time, not a builder placeholder. Host-local target scope aliases are
+ * pruned irrespective of whether they are POSIX links or fallback copies; the final release paths are projected
+ * separately from the manifest. Each bundle's product `backlog → install-backlog` recipe alias (TASK-102) remains
+ * a recorded leaf so its target bytes are not doubled. Pure over the port.
  *
  * @param fs - The FileSystem port.
  * @param root - The project root.
@@ -325,6 +361,10 @@ export function shippableFiles(fs: FileSystem, root: string, project: Project): 
     (policy) => policy.registeredRoots,
   );
   const out: string[] = [];
+  const sourceScopeAliases = scopeAliasSourcePaths(project.manifest.bundles);
+  const sourceScopeParents = new Set(
+    [...sourceScopeAliases].map((path) => path.slice(0, path.lastIndexOf("/"))),
+  );
 
   const walk = (rel: string): void => {
     const abs = rel === "" ? root : join(root, rel);
@@ -342,6 +382,16 @@ export function shippableFiles(fs: FileSystem, root: string, project: Project): 
       // scaffold. Do not key this on `entry.kind`: the real FileSystem reports symlinks as file-like leaves,
       // and an orphan/scaffold symlink must not bypass the same manifest boundary as a directory.
       if (rel === BUNDLES_DIR && (entry.name === BUNDLE_TEMPLATE_DIR || !enabled.has(entry.name))) {
+        continue;
+      }
+
+      // Authoring aliases are host-local effects and are never release input. Prune each exact known scope leaf
+      // before either traversing a Windows fallback copy or copying a POSIX symlink. Also reject a malformed
+      // file-like scope parent while retaining legitimate ordinary files alongside a real parent directory.
+      if (
+        sourceScopeAliases.has(childRel) ||
+        (sourceScopeParents.has(childRel) && entry.kind !== "directory")
+      ) {
         continue;
       }
 
@@ -370,12 +420,10 @@ export function shippableFiles(fs: FileSystem, root: string, project: Project): 
       }
 
       if (entry.kind === "directory") {
-        // Do not traverse a symlinked directory (a scope alias, or a bundle's `backlog → install-backlog`
-        // alias): record the link path itself as a leaf so the ship set names the alias without duplicating its
-        // target (installer-skills/ or install-backlog/) under it. `isSymlink` is best-effort — the in-memory
-        // fake has no symlink-dir distinction, so a real alias only appears through the real adapter, where it
-        // is detected; absent the distinction the dir is walked normally (harmless in tests).
-        if (isSymlinkDir(fs, abs, childRel)) {
+        // The bundle's `backlog → install-backlog` compatibility alias is a product link, so record it as a leaf
+        // rather than doubling its target. Target skill scopes were already pruned above and are synthesized
+        // from the manifest in the prepared release tree.
+        if (isBundleBacklogAlias(childRel)) {
           out.push(childRel);
         } else {
           walk(childRel);
@@ -387,6 +435,19 @@ export function shippableFiles(fs: FileSystem, root: string, project: Project): 
   };
   walk("");
   return filterPayloadSkillPackages(fs, root, out, skillPolicies).sort();
+}
+
+/** All recognized authoring scope-alias leaves at root and in enabled bundles, irrespective of current targets. */
+function scopeAliasSourcePaths(bundleIds: readonly BundleId[]): ReadonlySet<string> {
+  const paths = new Set<string>();
+  // `.cursor`/`.gemini` remain reserved agent-scope surfaces even though no current target maps to them; stale
+  // authoring artifacts there must not become undeclared release aliases.
+  const recognized = new Set([...Object.values(ALIAS_PATHS), ".cursor/skills", ".gemini/skills"]);
+  for (const aliasPath of recognized) {
+    paths.add(aliasPath);
+    for (const id of bundleIds) paths.add(`${BUNDLES_DIR}/${id}/${aliasPath}`);
+  }
+  return paths;
 }
 
 /** Whether a `.tmpl` path is unresolved builder input rather than an enabled bundle's runtime payload template. */
@@ -566,36 +627,16 @@ function payloadSkillSourceProblems(
 }
 
 /**
- * Whether a directory entry is a symlink that must not be traversed (an alias). The {@link FileSystem} port's
- * `list` does not expose the symlink bit, so this is a structural heuristic over the root-relative path:
+ * Whether a root-relative path is the product `bundles/<id>/backlog → install-backlog` alias. Scope aliases are
+ * excluded earlier and synthesized separately; this structural leaf remains because it is already portable
+ * product content and must not recursively duplicate `install-backlog/**`.
  *
- * - a directory whose name is a known scanned-scope alias root (`.claude`, `.agents`, `.openclaw`, `.cursor`,
- *   `.gemini`) at any level — a symlink into `installer-skills/` (doc 05/06); or
- * - the per-bundle `bundles/<id>/backlog` link — the `backlog → install-backlog` alias every bundle ships so the
- *   Backlog.md CLI resolves its recipe (TASK-102; doc 06).
- *
- * Either is recorded as a **leaf** (the link path itself) rather than walked, so the ship set names the alias
- * once and never doubles its target's bytes — `installer-skills/**` is not re-counted under a scope alias, and
- * `install-backlog/**` is not re-counted under a bundle's `backlog/`. Pure (path-based).
- *
- * @param _fs - The FileSystem port (unused; kept for a future symlink-aware port method).
- * @param _abs - The absolute path (unused; reserved).
  * @param rel - The root-relative path of the entry.
- * @returns `true` when the entry is an alias directory to record-not-traverse.
+ * @returns `true` for the exact per-bundle backlog alias path.
  */
-function isSymlinkDir(_fs: FileSystem, _abs: string, rel: string): boolean {
-  const name = rel.includes("/") ? (rel.split("/").pop() as string) : rel;
-  return SCOPE_ALIAS_DIR_NAMES.has(name) || BUNDLE_BACKLOG_ALIAS_RE.test(rel);
+function isBundleBacklogAlias(rel: string): boolean {
+  return BUNDLE_BACKLOG_ALIAS_RE.test(rel);
 }
-
-/** The scanned-scope alias directory names (doc 05/06) — symlinks into `installer-skills/`, recorded not walked. */
-const SCOPE_ALIAS_DIR_NAMES: ReadonlySet<string> = new Set([
-  ".claude",
-  ".agents",
-  ".openclaw",
-  ".cursor",
-  ".gemini",
-]);
 
 /**
  * The per-bundle `backlog → install-backlog` alias path (TASK-102; doc 06): exactly `bundles/<id>/backlog` (the
@@ -632,9 +673,20 @@ export function computeBuildPlan(fs: FileSystem, root: string, input: BuildPlanI
   const { check, lock } = checkLockfile(fs, root);
 
   // (3) shippable enumeration — the file tree that would ship (AC82#3 / `build package` archive content).
-  const shippable = shippableFiles(fs, root, project);
+  const sourceShippable = shippableFiles(fs, root, project);
 
-  // (4) front-door transforms — the build-time `_AGENTS.md` → `AGENTS.md` (+ per-target aliases) strip the
+  // (4) target skill-scope transforms — manifest authority selects the exact root + enabled-bundle aliases.
+  // Add their final release paths to the dry-run/package layout; the adapter skips any same-named source entry
+  // and synthesizes a relative link or complete fallback copy in its prepared tree.
+  const scopeAliases = computeScopeAliasTransforms(
+    project.manifest.targets,
+    project.manifest.bundles,
+  );
+  const shippable = [
+    ...new Set([...sourceShippable, ...scopeAliases.map((alias) => alias.linkPath)]),
+  ].sort();
+
+  // (5) front-door transforms — the build-time `_AGENTS.md` → `AGENTS.md` (+ per-target aliases) strip the
   // packager performs while archiving (task-90; doc 06/12). Pure policy here; the adapter performs the effect.
   const frontDoorTransforms = computeFrontDoorTransforms(shippable, project.manifest.targets);
 
@@ -657,5 +709,6 @@ export function computeBuildPlan(fs: FileSystem, root: string, input: BuildPlanI
     vendored,
     shippable,
     frontDoorTransforms,
+    scopeAliases,
   };
 }

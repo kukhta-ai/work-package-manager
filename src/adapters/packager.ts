@@ -9,13 +9,14 @@ import {
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { basename, dirname, join } from "node:path";
+import { basename, dirname, join, posix } from "node:path";
 import { BUILD_FORMATS } from "../completion/enums.js";
 import { ValidationError } from "../core/errors.js";
-import type { FrontDoorTransform } from "../core/operations/build.js";
+import type { FrontDoorTransform, ScopeAliasTransform } from "../core/operations/build.js";
 import type { FileSystem } from "../core/ports/index.js";
 import { toPosix } from "../util/posix-path.js";
 import { runSync } from "../util/shell.js";
+import { ensureSymlinkOrCopy, type SymlinkStrategyOptions } from "../util/symlink.js";
 
 /**
  * The build PACKAGER — the INFRASTRUCTURE that turns a project's shippable file set into a distributable
@@ -63,6 +64,10 @@ export interface PackageRequest {
    * including `git`, consumes this same transformed file set (TASK-95).
    */
   readonly transforms?: readonly FrontDoorTransform[];
+  /** Manifest-derived target skill scopes synthesized in the prepared release tree (TASK-128). */
+  readonly scopeAliases?: readonly ScopeAliasTransform[];
+  /** Injectable scope-alias platform/effect seam used to verify the documented copy fallback. */
+  readonly aliasOptions?: SymlinkStrategyOptions;
 }
 
 /** A request to push a built archive to a destination (doc 10 `build publish <destination>`). */
@@ -183,8 +188,12 @@ interface ArchiveSource {
 function stageArchiveSource(req: PackageRequest): ArchiveSource {
   const dir = mkdtempSync(join(tmpdir(), "wpm-stage-"));
   try {
-    // (1) Copy the shippable set into the staging dir, preserving symlinks (scope aliases) and any dir leaves.
+    const scopeAliasPaths = new Set((req.scopeAliases ?? []).map((alias) => alias.linkPath));
+
+    // (1) Copy the source-backed shippable set into staging. Never inspect/copy an authoring scope alias: the
+    // manifest-derived transforms below are the sole authority for those release paths.
     for (const rel of req.files) {
+      if (scopeAliasPaths.has(rel)) continue;
       const src = join(req.root, rel);
       const dst = join(dir, rel);
       mkdirSync(dirname(dst), { recursive: true });
@@ -200,7 +209,15 @@ function stageArchiveSource(req: PackageRequest): ArchiveSource {
       }
     }
 
-    // (2) Apply each front-door transform, tracking which paths the archive should list.
+    // (2) Synthesize portable target scope aliases only after their canonical shipped trees are complete.
+    // Relative targets survive extraction anywhere; on fallback platforms the shared helper resolves the same
+    // relative target and recursively copies its complete contents into the native scope.
+    for (const alias of req.scopeAliases ?? []) {
+      const target = posix.relative(posix.dirname(alias.linkPath), alias.aliasTo) || ".";
+      ensureSymlinkOrCopy(target, join(dir, alias.linkPath), req.aliasOptions);
+    }
+
+    // (3) Apply each front-door transform, tracking which paths the archive should list.
     const dropped = new Set<string>();
     const added: string[] = [];
     for (const transform of req.transforms ?? []) {
@@ -222,7 +239,13 @@ function stageArchiveSource(req: PackageRequest): ArchiveSource {
       dropped.add(transform.from);
     }
 
-    const files = [...req.files.filter((f) => !dropped.has(f)), ...added].sort();
+    const files = [
+      ...new Set([
+        ...req.files.filter((f) => !dropped.has(f) && !scopeAliasPaths.has(f)),
+        ...scopeAliasPaths,
+        ...added,
+      ]),
+    ].sort();
     return { dir, files, cleanup: dir };
   } catch (err) {
     // If copying or transforming fails before an ArchiveSource can be returned, the caller has no cleanup path.
@@ -236,7 +259,7 @@ function stageArchiveSource(req: PackageRequest): ArchiveSource {
  * the shippable set is staged and transformed; otherwise those formats archive the project root directly.
  */
 function archiveSource(req: PackageRequest): ArchiveSource {
-  if ((req.transforms ?? []).length > 0) {
+  if ((req.transforms ?? []).length > 0 || (req.scopeAliases ?? []).length > 0) {
     return stageArchiveSource(req);
   }
   return { dir: req.root, files: req.files, cleanup: undefined };
