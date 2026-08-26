@@ -1,7 +1,7 @@
 # Current orchestration pointer. History belongs in Git, Backlog.md, and research/evolution/.
 schemaVersion: 1
-phase: 5
-phaseName: "Autonomous build — package feedback follow-ups"
+phase: 7
+phaseName: "Handoff — experimental onboarding PR"
 branch: feature/authoring-agent-onboarding
 epic: authoring-agent-onboarding
 activeStory: null
@@ -10,10 +10,10 @@ activeChange: null
 specialists:
   worker:
     role: implementation
-    lastSkill: bmad-qa-generate-e2e-tests @ task-128 / 4-1-ship-portable-target-skill-scope-aliases
+    lastSkill: bmad-qa-generate-e2e-tests @ task-129 / 4-2-keep-documented-wpm-command-entrypoints-directly-executable
   reviewer:
     role: independent review
-    lastSkill: bmad-story-automator-review @ task-128 / 4-1-ship-portable-target-skill-scope-aliases
+    lastSkill: bmad-story-automator-review @ task-129 / 4-2-keep-documented-wpm-command-entrypoints-directly-executable
   tea:
     role: onboarding trace and NFR gate
     lastSkill: bmad-testarch-trace @ onboarding human-waiver validation
@@ -29,5 +29,5 @@ workingMemory:
     - _bmad-output
     - Skills-Results
   durableEpisode: research/evolution/records/authoring-agent-onboarding.yaml
-designRevisionLoaded: a8d53d690f786fcc1f98392347d93ba5f88fa550
-lastUpdated: "2026-08-26T14:55:39Z"
+designRevisionLoaded: 143cec564b40fdf980dc77a2af597c88d375ec37
+lastUpdated: "2026-08-26T15:11:55Z"
