@@ -1,10 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { MemoryFileSystem } from "../../../src/adapters/memory-fs.js";
-import type { AgentName } from "../../../src/core/model/index.js";
-import { parseAgentName } from "../../../src/core/model/index.js";
+import type { AgentName, BundleId } from "../../../src/core/model/index.js";
+import { parseAgentName, parseBundleId } from "../../../src/core/model/index.js";
 import {
   computeBuildPlan,
   computeFrontDoorTransforms,
+  computeScopeAliasTransforms,
   shippableFiles,
 } from "../../../src/core/operations/build.js";
 import { loadProject } from "../../../src/core/operations/lifecycle.js";
@@ -336,11 +337,7 @@ describe("shippableFiles — the prune-aware ship set (AC82#3)", () => {
         "bundles/core/install-backlog/notes/info.md",
         "bundles/core/uninstall-backlog/notes/info.md",
         "bundles/core/backlog",
-        "bundles/core/.agents",
-        "bundles/core/.claude",
-        "bundles/core/.openclaw",
-        "bundles/core/.cursor",
-        "bundles/core/.gemini",
+        "bundles/core/.claude/skills",
       ]),
     );
     expect(
@@ -357,6 +354,7 @@ describe("shippableFiles — the prune-aware ship set (AC82#3)", () => {
       false,
     );
     expect(files.some((path) => path.startsWith("bundles/core/custom/unregistered/"))).toBe(false);
+    expect(files.some((path) => path.endsWith("/skills/info.md"))).toBe(false);
   });
 
   it("TASK-105 — payload-skill registration is isolated per enabled bundle", () => {
@@ -416,6 +414,15 @@ function agents(...names: string[]): AgentName[] {
   return names.map((n) => {
     const parsed = parseAgentName(n);
     if (!parsed.ok) throw new Error(`bad test agent name: ${n}`);
+    return parsed.value;
+  });
+}
+
+/** Build branded bundle ids through the model's public parser. */
+function bundles(...ids: string[]): BundleId[] {
+  return ids.map((id) => {
+    const parsed = parseBundleId(id);
+    if (!parsed.ok) throw new Error(`bad test bundle id: ${id}`);
     return parsed.value;
   });
 }
@@ -482,5 +489,44 @@ describe("computeFrontDoorTransforms (pure front-door strip policy — task-90)"
 
   it("returns nothing when there are no front doors to transform", () => {
     expect(computeFrontDoorTransforms(["manifest.yml"], agents("claude-code"))).toEqual([]);
+  });
+});
+
+describe("computeScopeAliasTransforms (TASK-128 portable release aliases)", () => {
+  it("projects exact root and enabled-bundle paths from targets and de-duplicates shared scopes", () => {
+    expect(
+      computeScopeAliasTransforms(agents("codex", "hermes", "claude-code"), bundles("core", "web")),
+    ).toEqual([
+      { linkPath: ".agents/skills", aliasTo: "installer-skills" },
+      { linkPath: "bundles/core/.agents/skills", aliasTo: "bundles/core/installer-skills" },
+      { linkPath: "bundles/web/.agents/skills", aliasTo: "bundles/web/installer-skills" },
+      { linkPath: ".claude/skills", aliasTo: "installer-skills" },
+      { linkPath: "bundles/core/.claude/skills", aliasTo: "bundles/core/installer-skills" },
+      { linkPath: "bundles/web/.claude/skills", aliasTo: "bundles/web/installer-skills" },
+    ]);
+  });
+
+  it("adds only manifest-target aliases to the final dry-run layout and prunes stale source scopes", () => {
+    const fs = seedBuildable();
+    const stale = [
+      ".agents/skills/stale.md",
+      ".openclaw/skills/stale.md",
+      "bundles/core/.agents/skills/stale.md",
+      "bundles/disabled/.claude/skills/stale.md",
+    ];
+    for (const path of stale) fs.write(`${PROJ}/${path}`, "absolute-authoring-source-sentinel\n");
+
+    const result = plan(fs);
+    expect(result.scopeAliases).toEqual([
+      { linkPath: ".claude/skills", aliasTo: "installer-skills" },
+      { linkPath: "bundles/core/.claude/skills", aliasTo: "bundles/core/installer-skills" },
+    ]);
+    expect(result.shippable).toEqual(
+      expect.arrayContaining([".claude/skills", "bundles/core/.claude/skills"]),
+    );
+    expect(result.shippable.filter((path) => path.includes("/skills/"))).toEqual([]);
+    expect(result.shippable.some((path) => path.includes("bundles/disabled"))).toBe(false);
+    expect(result.shippable.some((path) => path.startsWith(".agents"))).toBe(false);
+    expect(result.shippable.some((path) => path.startsWith(".openclaw"))).toBe(false);
   });
 });
