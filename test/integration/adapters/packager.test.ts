@@ -78,6 +78,20 @@ function tarLayout(archive: string): string[] {
     .sort();
 }
 
+/** Return every archived leaf after extraction, treating symlinks as leaves rather than following them. */
+function extractedLayout(root: string): string[] {
+  const layout: string[] = [];
+  const walk = (directory: string, prefix: string): void => {
+    for (const entry of readdirSync(directory, { withFileTypes: true })) {
+      const relative = prefix.length === 0 ? entry.name : `${prefix}/${entry.name}`;
+      if (entry.isDirectory()) walk(join(directory, entry.name), relative);
+      else layout.push(relative);
+    }
+  };
+  walk(root, "");
+  return layout.sort();
+}
+
 /** Seed a small shippable tree on real disk under `root` and return the relative file list. */
 function seedShip(root: string): string[] {
   writeFileSync(join(root, "manifest.yml"), "project:\n  name: demo\n");
@@ -348,6 +362,147 @@ describe("createArchive — portable scope aliases (TASK-128)", () => {
           "utf8",
         ),
       ).toBe("icon\n");
+    });
+  });
+
+  it("POSIX tar/Git/ZIP keep empty and missing canonical alias targets resolvable with layout parity", async () => {
+    if (process.platform === "win32") return;
+    await withTempDir(async (dir) => {
+      const root = join(dir, "proj");
+      mkdirSync(join(root, "installer-skills"), { recursive: true });
+      mkdirSync(join(root, "bundles", "core"), { recursive: true });
+      writeFileSync(join(root, "manifest.yml"), "project:\n  name: demo\n");
+      writeFileSync(join(root, "bundles", "core", "bundle.yml"), "id: core\n");
+
+      const layouts: string[][] = [];
+      for (const format of portableFormats) {
+        const archive = createArchive({
+          root,
+          outDir: dir,
+          baseName: `empty-targets-${format}`,
+          format,
+          files: [
+            ".claude/skills",
+            "bundles/core/.claude/skills",
+            "bundles/core/bundle.yml",
+            "manifest.yml",
+          ],
+          scopeAliases,
+        });
+        const extracted = join(dir, `empty-targets-${format}-extracted`);
+        mkdirSync(extracted, { recursive: true });
+        if (format === "zip") execFileSync("unzip", ["-q", archive, "-d", extracted]);
+        else execFileSync("tar", ["-xzf", archive, "-C", extracted]);
+
+        for (const alias of scopeAliases) {
+          const link = join(extracted, alias.linkPath);
+          const canonical = join(extracted, alias.aliasTo);
+          expect(lstatSync(link).isSymbolicLink()).toBe(true);
+          expect(readlinkSync(link)).toBe("../installer-skills");
+          expect(existsSync(link)).toBe(true);
+          expect(lstatSync(canonical).isDirectory()).toBe(true);
+          expect(readFileSync(join(canonical, ".keep"), "utf8")).toBe("");
+        }
+        layouts.push(extractedLayout(extracted));
+      }
+
+      for (const layout of layouts.slice(1)) expect(layout).toEqual(layouts[0]);
+      expect(existsSync(join(root, "installer-skills", ".keep"))).toBe(false);
+      expect(existsSync(join(root, "bundles", "core", "installer-skills"))).toBe(false);
+    });
+  });
+
+  it("forced-win32 copy fallback keeps empty and missing canonical alias targets resolvable", async () => {
+    await withTempDir(async (dir) => {
+      const root = join(dir, "proj");
+      mkdirSync(join(root, "installer-skills"), { recursive: true });
+      mkdirSync(join(root, "bundles", "core"), { recursive: true });
+      writeFileSync(join(root, "manifest.yml"), "project:\n  name: demo\n");
+      writeFileSync(join(root, "bundles", "core", "bundle.yml"), "id: core\n");
+
+      const archive = createArchive({
+        root,
+        outDir: dir,
+        baseName: "empty-targets-fallback",
+        format: "tarball",
+        files: [
+          ".claude/skills",
+          "bundles/core/.claude/skills",
+          "bundles/core/bundle.yml",
+          "manifest.yml",
+        ],
+        scopeAliases,
+        aliasOptions: { platform: "win32" },
+      });
+      const extracted = join(dir, "empty-targets-fallback-extracted");
+      mkdirSync(extracted, { recursive: true });
+      execFileSync("tar", ["-xzf", archive, "-C", extracted]);
+
+      for (const alias of scopeAliases) {
+        const copy = join(extracted, alias.linkPath);
+        const canonical = join(extracted, alias.aliasTo);
+        expect(lstatSync(copy).isDirectory()).toBe(true);
+        expect(existsSync(copy)).toBe(true);
+        expect(lstatSync(canonical).isDirectory()).toBe(true);
+        expect(readFileSync(join(copy, ".keep"), "utf8")).toBe("");
+        expect(readFileSync(join(canonical, ".keep"), "utf8")).toBe("");
+      }
+      expect(existsSync(join(root, "installer-skills", ".keep"))).toBe(false);
+      expect(existsSync(join(root, "bundles", "core", "installer-skills"))).toBe(false);
+    });
+  });
+
+  it.each([
+    {
+      name: "canonical root",
+      alias: { linkPath: ".claude/skills", aliasTo: "installer-skills" },
+      sourceLink: "installer-skills",
+    },
+    {
+      name: "canonical bundle ancestor",
+      alias: {
+        linkPath: "bundles/core/.claude/skills",
+        aliasTo: "bundles/core/installer-skills",
+      },
+      sourceLink: "bundles/core",
+    },
+  ])("rejects a symlinked $name without following its authoring-only target", async ({
+    alias,
+    sourceLink,
+  }) => {
+    if (process.platform === "win32") return;
+    await withTempDir(async (dir) => {
+      const root = join(dir, "proj");
+      const poison = join(dir, "authoring-only-poison");
+      mkdirSync(root, { recursive: true });
+      mkdirSync(join(poison, "installer-skills"), { recursive: true });
+      writeFileSync(join(poison, "installer-skills", "SKILL.md"), "must not ship\n");
+      writeFileSync(join(root, "manifest.yml"), "project:\n  name: demo\n");
+      mkdirSync(join(root, sourceLink, ".."), { recursive: true });
+      symlinkSync(poison, join(root, sourceLink));
+
+      let thrown: unknown;
+      try {
+        createArchive({
+          root,
+          outDir: dir,
+          baseName: `symlinked-target-${sourceLink.replaceAll("/", "-")}`,
+          format: "tarball",
+          files: [alias.linkPath, "manifest.yml", sourceLink],
+          scopeAliases: [alias],
+        });
+      } catch (error) {
+        thrown = error;
+      }
+
+      expect(isDomainError(thrown)).toBe(true);
+      expect((thrown as Error).message).toMatch(/scope alias target.*not a directory/i);
+      expect(lstatSync(join(root, sourceLink)).isSymbolicLink()).toBe(true);
+      expect(readlinkSync(join(root, sourceLink))).toBe(poison);
+      expect(existsSync(join(poison, "installer-skills", ".keep"))).toBe(false);
+      expect(existsSync(join(dir, `symlinked-target-${sourceLink.replaceAll("/", "-")}.tgz`))).toBe(
+        false,
+      );
     });
   });
 });

@@ -957,8 +957,19 @@ describeIfBuilt("`wpm build package` E2E (task-83, through dist/cli.js)", () => 
         const layout = archiveLayout(copyArchive);
         layouts.push(layout);
         expect(layout.some((path) => path.includes("wpm-review-package"))).toBe(false);
+        const declaredClaudeScopes = [".claude/skills", "bundles/web/.claude/skills"];
+        expect(layout).toEqual(expect.arrayContaining(declaredClaudeScopes));
         expect(
-          layout.some((path) => path.startsWith(".agents/") || path.startsWith(".claude/")),
+          layout.some((path) => {
+            const inAgentsScope =
+              /^\.agents(?:\/|$)/.test(path) || /^bundles\/[^/]+\/\.agents(?:\/|$)/.test(path);
+            const inClaudeScope =
+              /^\.claude(?:\/|$)/.test(path) || /^bundles\/[^/]+\/\.claude(?:\/|$)/.test(path);
+            const isDeclaredClaudeSkillPath = declaredClaudeScopes.some(
+              (scope) => path === scope || path.startsWith(`${scope}/`),
+            );
+            return inAgentsScope || (inClaudeScope && !isDeclaredClaudeSkillPath);
+          }),
         ).toBe(false);
         expect(layout).not.toContain("source-only-review-marker.txt");
 
@@ -1127,8 +1138,19 @@ describeIfBuilt("`wpm build package` E2E (task-83, through dist/cli.js)", () => 
         expect(layout.some((path) => path.startsWith(".wpm/authoring-setup-quarantine/"))).toBe(
           false,
         );
+        const declaredClaudeScopes = [".claude/skills", "bundles/web/.claude/skills"];
+        expect(layout).toEqual(expect.arrayContaining(declaredClaudeScopes));
         expect(
-          layout.some((path) => path.startsWith(".agents/") || path.startsWith(".claude/")),
+          layout.some((path) => {
+            const inAgentsScope =
+              /^\.agents(?:\/|$)/.test(path) || /^bundles\/[^/]+\/\.agents(?:\/|$)/.test(path);
+            const inClaudeScope =
+              /^\.claude(?:\/|$)/.test(path) || /^bundles\/[^/]+\/\.claude(?:\/|$)/.test(path);
+            const isDeclaredClaudeSkillPath = declaredClaudeScopes.some(
+              (scope) => path === scope || path.startsWith(`${scope}/`),
+            );
+            return inAgentsScope || (inClaudeScope && !isDeclaredClaudeSkillPath);
+          }),
         ).toBe(false);
         for (const [skillName] of workspaceSkillEvidence) {
           expect(layout.some((path) => path.includes(skillName))).toBe(false);

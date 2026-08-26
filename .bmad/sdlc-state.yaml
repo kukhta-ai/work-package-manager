@@ -1,19 +1,23 @@
 # Current orchestration pointer. History belongs in Git, Backlog.md, and research/evolution/.
 schemaVersion: 1
-phase: 7
-phaseName: "Handoff — experimental onboarding PR"
+phase: 6
+phaseName: "Epic gate — final clean-clone verification"
 branch: feature/authoring-agent-onboarding
 epic: authoring-agent-onboarding
 activeStory: null
 reviewCycle: 0
-activeChange: null
+activeChange:
+  id: final-clean-clone-gate
 specialists:
   worker:
     role: implementation
-    lastSkill: bmad-qa-generate-e2e-tests @ task-129 / 4-2-keep-documented-wpm-command-entrypoints-directly-executable
+    lastSkill: bmad-dev-story @ task-128 repair review-cycle-2 absorption / 4-1-ship-portable-target-skill-scope-aliases
   reviewer:
     role: independent review
-    lastSkill: bmad-story-automator-review @ task-129 / 4-2-keep-documented-wpm-command-entrypoints-directly-executable
+    lastSkill: bmad-story-automator-review @ task-128 package-layout confirmation cycle 3 / 4-1-ship-portable-target-skill-scope-aliases
+  investigator:
+    role: gate failure diagnosis
+    lastSkill: bmad-investigate @ task-128-package-layout-regression
   tea:
     role: onboarding trace and NFR gate
     lastSkill: bmad-testarch-trace @ onboarding human-waiver validation
@@ -29,5 +33,5 @@ workingMemory:
     - _bmad-output
     - Skills-Results
   durableEpisode: research/evolution/records/authoring-agent-onboarding.yaml
-designRevisionLoaded: 143cec564b40fdf980dc77a2af597c88d375ec37
-lastUpdated: "2026-08-26T15:11:55Z"
+designRevisionLoaded: f1d565efcaf9aeea34c19d8f8aaf708a7b5d7ad2
+lastUpdated: "2026-08-26T16:24:41Z"
