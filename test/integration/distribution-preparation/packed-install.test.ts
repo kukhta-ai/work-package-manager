@@ -1605,6 +1605,8 @@ describe("fresh local packed-install and inactive-candidate journey", () => {
       const assertColdJourneyArchive = (archive: string, extracted: string): string[] => {
         const layout = archiveLayout(archive);
         expect(layout).toEqual(expect.arrayContaining(["manifest.yml", "AGENTS.md", "CLAUDE.md"]));
+        const declaredClaudeScopes = [".claude/skills"];
+        expect(layout).toEqual(expect.arrayContaining(declaredClaudeScopes));
         for (const forbidden of [
           ".wpm-authoring.json",
           ".wpm-handoff.json",
@@ -1613,14 +1615,22 @@ describe("fresh local packed-install and inactive-candidate journey", () => {
           expect(layout, forbidden).not.toContain(forbidden);
         }
         expect(
-          layout.some(
-            (path) =>
-              path.startsWith(".agents/") ||
-              path.startsWith(".claude/") ||
+          layout.some((path) => {
+            const inAgentsScope =
+              /^\.agents(?:\/|$)/.test(path) || /^bundles\/[^/]+\/\.agents(?:\/|$)/.test(path);
+            const inClaudeScope =
+              /^\.claude(?:\/|$)/.test(path) || /^bundles\/[^/]+\/\.claude(?:\/|$)/.test(path);
+            const isDeclaredClaudeSkillPath = declaredClaudeScopes.some(
+              (scope) => path === scope || path.startsWith(`${scope}/`),
+            );
+            return (
+              inAgentsScope ||
+              (inClaudeScope && !isDeclaredClaudeSkillPath) ||
               path.startsWith(".authoring-backlog/") ||
               path.startsWith(".wpm/") ||
-              path.startsWith("builds/"),
-          ),
+              path.startsWith("builds/")
+            );
+          }),
         ).toBe(false);
         for (const { name } of skillFamilyCells) {
           expect(

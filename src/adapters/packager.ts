@@ -3,6 +3,7 @@ import {
   lstatSync,
   mkdirSync,
   mkdtempSync,
+  readdirSync,
   readlinkSync,
   rmSync,
   symlinkSync,
@@ -175,6 +176,34 @@ interface ArchiveSource {
   readonly cleanup: string | undefined;
 }
 
+/** Whether a staged directory has at least one file or symlink that every archive format can preserve. */
+function hasArchiveLeaf(directory: string): boolean {
+  for (const entry of readdirSync(directory, { withFileTypes: true })) {
+    if (!entry.isDirectory()) return true;
+    if (hasArchiveLeaf(join(directory, entry.name))) return true;
+  }
+  return false;
+}
+
+/** Materialize a canonical alias target without following a staged symlink through an authoring-only path. */
+function ensureStagedDirectory(root: string, relativeDirectory: string): string {
+  let directory = root;
+  const traversed: string[] = [];
+  for (const segment of relativeDirectory.split("/")) {
+    traversed.push(segment);
+    directory = join(directory, segment);
+    const entry = lstatSync(directory, { throwIfNoEntry: false });
+    if (entry === undefined) {
+      mkdirSync(directory);
+    } else if (!entry.isDirectory()) {
+      throw new ValidationError(
+        `cannot package scope alias target "${relativeDirectory}": staged path "${traversed.join("/")}" is not a directory`,
+      );
+    }
+  }
+  return directory;
+}
+
 /**
  * Stage the exact shippable set into a temp dir and apply any executor-front-door transforms (task-90; docs
  * 06/12). Each entry is copied preserving symlinks. For each transform, the canonical `AGENTS.md` is copied from
@@ -189,6 +218,7 @@ function stageArchiveSource(req: PackageRequest): ArchiveSource {
   const dir = mkdtempSync(join(tmpdir(), "wpm-stage-"));
   try {
     const scopeAliasPaths = new Set((req.scopeAliases ?? []).map((alias) => alias.linkPath));
+    const emptyAliasTargetMarkers = new Set<string>();
 
     // (1) Copy the source-backed shippable set into staging. Never inspect/copy an authoring scope alias: the
     // manifest-derived transforms below are the sole authority for those release paths.
@@ -209,7 +239,19 @@ function stageArchiveSource(req: PackageRequest): ArchiveSource {
       }
     }
 
-    // (2) Synthesize portable target scope aliases only after their canonical shipped trees are complete.
+    // (2) Materialize every canonical alias target. Git cannot preserve an empty directory, so a staging-only
+    // marker keeps empty/missing canonical trees present and makes both relative links and copy fallback resolve
+    // after extraction in every format. Source workspaces are never changed.
+    for (const alias of req.scopeAliases ?? []) {
+      const targetDirectory = ensureStagedDirectory(dir, alias.aliasTo);
+      if (!hasArchiveLeaf(targetDirectory)) {
+        const marker = posix.join(alias.aliasTo, ".keep");
+        writeFileSync(join(dir, marker), "", "utf8");
+        emptyAliasTargetMarkers.add(marker);
+      }
+    }
+
+    // (3) Synthesize portable target scope aliases only after their canonical shipped trees are complete.
     // Relative targets survive extraction anywhere; on fallback platforms the shared helper resolves the same
     // relative target and recursively copies its complete contents into the native scope.
     for (const alias of req.scopeAliases ?? []) {
@@ -217,7 +259,7 @@ function stageArchiveSource(req: PackageRequest): ArchiveSource {
       ensureSymlinkOrCopy(target, join(dir, alias.linkPath), req.aliasOptions);
     }
 
-    // (3) Apply each front-door transform, tracking which paths the archive should list.
+    // (4) Apply each front-door transform, tracking which paths the archive should list.
     const dropped = new Set<string>();
     const added: string[] = [];
     for (const transform of req.transforms ?? []) {
@@ -242,6 +284,7 @@ function stageArchiveSource(req: PackageRequest): ArchiveSource {
     const files = [
       ...new Set([
         ...req.files.filter((f) => !dropped.has(f) && !scopeAliasPaths.has(f)),
+        ...emptyAliasTargetMarkers,
         ...scopeAliasPaths,
         ...added,
       ]),
