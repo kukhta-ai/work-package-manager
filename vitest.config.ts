@@ -1,8 +1,8 @@
 import { defineConfig } from "vitest/config";
 
 /**
- * Vitest harness (task-6) for the `wpm` builder, per `docs/12` §"Testing: vitest" and the test-design
- * (`_bmad-output/test-artifacts/test-design.md` §1, §6).
+ * Vitest harness (task-6) for the `wpm` builder, per `docs/12` §"Testing: vitest". Raw test-design
+ * projections are working memory under the policy in `PROCESS-ARTIFACTS.md`.
  *
  * The two test flavours that exist today are first-class **projects** so they can be run together (the
  * single `vitest run` — AC#1) or in isolation (`vitest run --project unit` / `--project integration`):

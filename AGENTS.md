@@ -116,6 +116,14 @@ a way that duplicates already-active specialists. Give a deterministic launcher,
 configuration failure one diagnosis. Then record the deviation and continue with the same workflow in the
 persistent specialist. Retries are reserved for demonstrably transient failures.
 
+**Generated workflow output is working memory, not project truth.** BMAD still writes its conventional files
+under `_bmad-output/`, and other skills may write `Skills-Results/`; both roots are gitignored so the workflows
+remain usable without making their projections permanent. Keep an artifact through its last consumer, then
+distil durable facts into the proper authority: canonical docs for approved intent, Backlog.md notes/status for
+story evidence, or `research/evolution/` for experimental learning and gate disposition. Never stage raw output
+as a fallback. Follow [`PROCESS-ARTIFACTS.md`](./PROCESS-ARTIFACTS.md) and run
+`npm run check:process-artifacts` before integration.
+
 ---
 
 ## How tasks are written — read the contract before you create one
@@ -184,9 +192,11 @@ are already satisfied** by `docs/00`–`14` and the existing backlog. So:
 You therefore should **not treat these as open design questions** — the goals, scope, and architecture are
 already decided in the docs. But BMAD's workflows and the automator expect certain **named artifacts to
 physically exist** (`prd.md`, `architecture.md`, `sprint-status.yaml`, per-story files, a test-design doc,
-etc.), and a phase or tool may refuse to proceed without them. You still produce these **by running the proper
-BMAD workflow** (e.g. the `pm` agent's PRD workflow, `architect`'s `create-architecture`) — never by
-hand-writing the file. Your job is to **steer each workflow from our committed docs as it runs:**
+etc.), and a phase or tool may refuse to proceed without them. You still produce these **locally** by running
+the proper BMAD workflow (e.g. the `pm` agent's PRD workflow, `architect`'s `create-architecture`) — never by
+hand-writing the file. They remain ignored compatibility inputs through their last consumer; they are not a
+second source of truth or a routine commit. Your job is to **steer each workflow from our committed docs as it
+runs:**
 
 - **Feed the workflow our docs, not fresh invention.** When a workflow elicits goals, scope, requirements, or
   decisions, your answers come straight from `docs/00`–`14` and the backlog: the brief/PRD content from
@@ -202,7 +212,8 @@ hand-writing the file. Your job is to **steer each workflow from our committed d
   letting the workflow's version stand.
 - **Point the generated docs back at ours.** Where a workflow lets you supply or edit content, prefer
   referencing the canonical doc (`see docs/13 §4`) over restating it; the workflow-produced artifact is a shim
-  the BMAD tooling requires, not a second source of truth. Let it land wherever BMAD expects it.
+  the BMAD tooling requires, not a second source of truth. Let it land wherever BMAD expects it under ignored
+  working memory.
 
 Net: the planning personas still run their workflows to produce what BMAD needs, but you drive every elicitation
 from the committed docs so the outputs are projections of our spec, not new design. Your real effort then goes
@@ -263,35 +274,35 @@ within its lifetime (the diagram's SPAWN vs RESUME distinction).
 
 ## The SDLC state tracker — you must always know where you are
 
-Because this loop is long and resumable, **maintain an explicit, durable record of SDLC position** and
+Because this loop is long and resumable, **maintain an explicit, durable record of current SDLC position** and
 re-read it on every resume. Keep two things in sync:
 
-1. **A state file in the repo** — `.bmad/sdlc-state.yaml` (create it in Step 0, update it at every transition).
+1. **A compact state file in the repo** — `.bmad/sdlc-state.yaml` (create it in Step 0, rewrite it at every
+   transition). It is a current pointer, never an append-only activity log; Git already holds its history.
    Minimum contents:
    ```yaml
-   phase: 5            # current phase number + name (see the table below)
-   phase_name: "Autonomous build (BAUT)"
-   branch: feature/foundation/task-12     # the branch you are on right now
-   epic: foundation                       # the epic in flight (the foundation backlog)
-   active_story: task-12                  # the backlog task being built, or null
-   review_cycle: 2                        # which build->review cycle this story is on
-   specialists:                           # persistent subagents: spawned? + role + the BMAD skill each LAST actually ran (Rule 3 evidence)
-     analyst:   {spawned: true,  role: "brief/req review vs docs",          last_skill: "product-brief"}
-     pm:        {spawned: true,  role: "PRD review vs docs 00-05",          last_skill: "prd"}
-     architect: {spawned: true,  role: "architecture conformance vs 12/13", last_skill: "create-architecture"}
-     tea:       {spawned: true,  role: "test design / trace / nfr / gate",  last_skill: "testarch-test-design"}
-     sm:        {spawned: true,  role: "story prep from backlog tasks",     last_skill: "create-story"}
-     worker:    {spawned: true,  role: "dev-story implementation",          last_skill: "dev-story @ task-12"}
-     reviewer:  {spawned: true,  role: "independent story review",          last_skill: "story-automator-review @ task-12"}
-   gates_pending: []                      # any user gate you are waiting on
-   last_updated: "<timestamp>"
+   schemaVersion: 1
+   phase: 5
+   phaseName: "Autonomous build (BAUT)"
+   branch: feature/foundation-task-12
+   epic: foundation
+   activeStory: task-12
+   reviewCycle: 2
+   specialists:
+     worker:   {role: "implementation", lastSkill: "dev-story @ task-12"}
+     reviewer: {role: "independent review", lastSkill: "story-automator-review @ task-12"}
+   gatesPending: []
+   waivers: []
+   lastUpdated: "<timestamp>"
    ```
 2. **Backlog.md status is the source of truth for *story* progress** — task status (`To Do` / `In Progress` /
    `Done`) and ticked AC/DoD are the authoritative per-story state. `backlog sequence list` tells you which task
    is ready next. The state file points *at* the current task; the task's own record holds its detail.
 
 On any resume: read `.bmad/sdlc-state.yaml`, then `backlog task list --plain` and `backlog sequence list`,
-reconcile, and continue from exactly that point. Never restart completed work; never guess the phase.
+reconcile, and continue from exactly that point. Never restart completed work; never guess the phase. Do not
+copy completed-story lists, test transcripts, old agent status narratives, or historical gates into the live
+state file; distil durable research evidence under `research/evolution/` instead.
 
 ---
 
@@ -327,7 +338,8 @@ Update `.bmad/sdlc-state.yaml` at every phase boundary.
 - Treat `docs/00`–`05` as the PRD/UX spec; `pm`/`ux` review for internal consistency only. If a workflow
   *requires* a `prd.md`/`ux-spec.md` to exist, produce it by running the workflow and answering its prompts
   from `docs/00`–`05` (quote and cite; don't add goals) per "How the doc-set maps onto BMAD" above.
-- Commit any produced planning artifacts on `dev`.
+- Keep produced planning projections in ignored working memory. Commit only a human-approved change to the
+  canonical docs or a compact evolution decision when the review finds something durable.
 - (check) human approves the plan-of-record (the docs).
 
 **Phase 3 — Solutioning + test architecture** · branch `feature/foundation` (off `dev`) · personas `architect`, `tea`
@@ -339,7 +351,8 @@ Update `.bmad/sdlc-state.yaml` at every phase boundary.
   foundation is **epic-1** and the tasks are its stories; don't invent new scope.
 - `tea`: `testarch-test-design`, `testarch-framework`, `testarch-ci` — reconciled with this repo's decisions
   (Biome + the three-command gate, vitest, the core-boundary lint rule). Do not contradict tasks 5/6/8.
-- Commit architecture + epics + test-architecture + CI on `feature/foundation`.
+- Keep generated architecture, epics, and test plans in ignored working memory. Commit executable CI/code,
+  approved canonical design refinements, and compact evolution decisions only.
 - (check) human approves solutioning.
 
 **Phase 4 — Sprint setup** · branch `feature/foundation` · personas `sm`, `tea`
@@ -349,14 +362,16 @@ Update `.bmad/sdlc-state.yaml` at every phase boundary.
   from the existing tasks (a task's acceptance criteria are the story's; don't alter the goal), and keep
   Backlog.md the source of truth for status.
 - `tea`: `testarch-test-design` scoped to the epic if useful.
-- Commit any story files + `sprint-status.yaml` on `feature/foundation`.
+- Keep story files and `sprint-status.yaml` local until their last workflow consumer finishes; Backlog.md is
+  the committed story authority.
 - (check) human marks the sprint ready to build.
 
 **Phase 5 — Autonomous build (BAUT)** · branch `feature/foundation` -> per-story sub-branches · personas `worker` (dev), `reviewer`, `tea`, `retro`
 - Use the persistent worker and independent reviewer directly. The outer **automator** is optional and may be
   enabled only after the Step 0 smoke test. Then, **per backlog task**, run the story loop below.
 - After the epic's tasks are Done (culminating in the walking skeleton, task-33), spawn `retro` to run the
-  `retrospective` workflow; commit `retrospective-epic-1` on `feature/foundation`.
+  `retrospective` workflow. Distil cross-epic lessons, decisions, and follow-ups into the epic's evolution
+  record; keep the transcript as ignored working memory through that distillation.
 
 **Phase 6 — Epic gate** · branch `feature/foundation` (+ `fix/foundation/<issue>` if needed) · personas `tea`, `investigator`, `worker`
 - `tea`: `testarch-trace` (initial coverage matrix + interim gate) and `testarch-nfr` (NFR report).
@@ -366,6 +381,8 @@ Update `.bmad/sdlc-state.yaml` at every phase boundary.
   fix/foundation/<issue>` -> `worker` applies the fix (re-spawn `dev-story`) -> commit on the fix branch ->
   `git checkout feature/foundation; merge --no-ff fix; branch -d fix` -> re-run cold-start E2E. Repeat until green.
 - `tea`: re-run `testarch-trace` after the fix -> **final** gate verdict (PASS / CONCERNS / FAIL / WAIVED).
+- Write one schema-valid `research/evolution/gates/<candidate>.json` receipt for the final candidate. Trace,
+  NFR, and raw execution output remain working memory; the receipt retains verdict, checks, waivers, and risk.
 - (check) human disposes any CONCERNS.
 
 **Phase 7 — Handoff** · branch `feature/foundation` -> `dev` -> `main` · system
@@ -406,7 +423,8 @@ Then:
 2. **Branch.** `git checkout feature/foundation && git checkout -b feature/foundation/task-<id>`. Update `branch`.
 3. **create-story (worker).** The worker **invokes the `create-story` skill** (the Skill tool) — not a
    hand-written spec (Rule 3) — to turn the task into a concrete work spec grounded in the docs, steered from
-   `13`/`10` and the task's AC. (The task is the story; this fleshes the implementation plan.)
+   `13`/`10` and the task's AC. (The task is the story; this ignored file fleshes out working detail through
+   implementation and review.)
 4. **dev-story (worker).** The worker **invokes `dev-story`** to implement the task with its tests together.
    Use focused checks while the diff is moving; the stable-diff gate below proves the full DoD.
 5. **qa-generate-e2e-tests (worker / tea).** **Invoke `qa-generate-e2e-tests`** to add the end-to-end/acceptance
@@ -420,15 +438,27 @@ Then:
    (`--check-ac <n>`). Never tick what you haven't shown.
 8. **Record & close.** Tick DoD items (`--check-dod <n>`), record in `--notes` which BMAD skills this story
    actually ran (create-story / dev-story / qa / review — Rule 3's evidence trail), add a decision note if
-   worth keeping, then `backlog task edit <id> -s "Done"`.
+   worth keeping, transfer unresolved follow-ups, then `backlog task edit <id> -s "Done"`. Backlog notes hold
+   the durable story evidence; generated stories and QA summaries do not.
 9. **Integrate.** Commit on the sub-branch (message references `task-<id>`); `git checkout feature/foundation &&
    git merge --no-ff feature/foundation/task-<id>`; `git branch -d feature/foundation/task-<id>`. Clear
-   `active_story`; update state.
+   `activeStory`; update state. Before staging, run `npm run check:process-artifacts` so working memory cannot
+   enter the merge.
 10. **Next.** Return to the top with the next dependency-ready task. When the epic's tasks are Done — culminating
     in the **walking skeleton (task-33)** — proceed to the Phase 6 epic gate.
 
 Honor the repo's branching, PR/review, and versioning conventions (tasks 2–4, in `CONTRIBUTING.md`) for commit
 and merge mechanics.
+
+## Process-artifact closeout
+
+At every story, investigation, retrospective, epic, and candidate boundary, name the **last consumer** of
+each generated artifact. Once that consumer finishes: distil accepted facts into canonical docs, Backlog.md,
+an evolution record, or a gate receipt; optionally archive raw evidence only to a human-approved external
+store with safe metadata; then leave it ignored locally or clean it. Archive unavailability never authorizes
+committing raw output. The complete ownership and retention contract is
+[`PROCESS-ARTIFACTS.md`](./PROCESS-ARTIFACTS.md); `.bmad/artifact-policy.yaml` and
+`npm run check:process-artifacts` enforce its tracked boundary.
 
 ---
 

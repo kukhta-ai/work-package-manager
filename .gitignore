@@ -1,6 +1,14 @@
 # Local agent / orchestration state (not part of the project)
 .omc/
 .remember/
+.serena/
+
+# Generated workflow working memory. BMAD and other skills may write here while active, but durable
+# outcomes are distilled into docs/, Backlog.md, or research/evolution/ (see PROCESS-ARTIFACTS.md).
+_bmad-output/
+Skills-Results/
+.bmad/archive-staging/
+.bmad/local/
 
 # Node / TypeScript build output (the builder is a TS-ESM npm package; see docs/12)
 node_modules/

@@ -118,10 +118,13 @@ builder*; the `## Branching model` section above defines the branches these PRs 
 
 A PR is mergeable only when all three hold (`AGENTS.md` Phase 7 + "User gates"; task-8):
 
-- **Passing checks.** CI runs the three-command gate — `tsc --noEmit`, `biome ci`, and `vitest` — and a
-  failure **blocks the merge** (task-8 AC#1). This is the *same* suite a contributor runs locally (see
+- **Passing checks.** CI runs the three-leg gate — typecheck, lint/process-policy validation, and tests — and
+  a failure **blocks the merge** (task-8 AC#1). This is the *same* suite a contributor runs locally (see
   [The merge gate is the local check suite](#the-merge-gate-is-the-local-check-suite)), green across the
   supported Node/OS matrix.
+- **Clean process-artifact boundary.** Generated workflow output remains ignored working memory; the PR may
+  contain compact state and schema-valid evolution/gate records, but no tracked path below a configured
+  working-memory root. See [Process-artifact retention](#process-artifact-retention).
 - **Review.** At least one approving review is required, and you **never self-merge** — merging into `dev`
   (or `main`) is a human gate, performed by a reviewer other than the author (`AGENTS.md` → "User gates":
   "merging into `dev` or `main`"; "Never self-merge to `dev` or `main`").
@@ -153,12 +156,12 @@ CI-only bar to be surprised by (task-8 AC#2). The three commands are:
 | Check | Locally | In CI (the merge gate) |
 |---|---|---|
 | Types | `npm run typecheck` (`tsc --noEmit`) | `tsc --noEmit` |
-| Lint + format | `npm run lint` (`biome check .`) | `biome ci` |
+| Lint + process policy | `npm run lint` (`biome check .` + worktree retention validation) | `npm run lint:ci` (`biome ci .` + strict tracked-candidate validation) |
 | Tests | `npm test` (`vitest run`) | `vitest` |
 
-(`biome check` and `biome ci` enforce the **same** rules — including the core import-boundary rule from
-task-5; `ci` is just Biome's non-interactive, no-write CI mode. Run the local commands before opening a PR
-and you have already run the gate.)
+(`biome check` and `biome ci` enforce the **same** code rules — including the core import-boundary rule from
+task-5; `ci` is just Biome's non-interactive, no-write mode. Both lint scripts also run the same read-only
+process-artifact validator. Run the local commands before opening a PR and you have already run the gate.)
 
 Crucially, the project **Definition of Done is a named, explicit part of what a PR must meet** — not an
 unwritten expectation. This echoes the install contract's *Definition-of-Done-as-gate* principle from
@@ -183,6 +186,31 @@ Opening a PR auto-populates the body from
 you verified it** (paste the three-command gate output); and **confirmation CI is green**. Fill it in fully
 — a reviewer approves against exactly that information, and (per the rules above) no one merges their own
 PR.
+
+## Process-artifact retention
+
+BMAD plans, story projections, sprint mirrors, raw test summaries, investigation transcripts, and other
+workflow-generated files are **working memory**, not product truth. Workflows may create and consume them in
+their conventional locations below `_bmad-output/` or `Skills-Results/`, but those roots are ignored and must
+not be staged. A fresh checkout must be operable without the local corpus.
+
+At the last consumer boundary, distil only durable facts into their authority:
+
+- approved product intent or architecture belongs in `docs/`;
+- accepted work, status, and story evidence belong in `backlog/` through the Backlog.md CLI;
+- implemented behaviour belongs in source and executable tests; and
+- experimental observations, decisions, waivers, residual risks, and explicitly provisional evolution
+  hypotheses belong in schema-validated `research/evolution/` records and gate receipts.
+
+Keep `.bmad/sdlc-state.yaml` small and current-only; Git history is the history store. Raw evidence may be
+archived externally only after a human chooses the store and privacy class. If no archive is configured,
+leave the raw material ignored locally until explicit cleanup rather than committing it as a fallback.
+
+Before staging, run `npm run check:process-artifacts`; after staging, use
+`npm run check:process-artifacts:ci` to prove the durable files are part of the exact candidate. The checker is
+read-only and reports every tracked working-memory path or malformed durable record without changing the
+worktree. The full ownership, lifecycle, migration, and recovery policy is in
+[`PROCESS-ARTIFACTS.md`](./PROCESS-ARTIFACTS.md).
 
 ## Versioning & releases
 

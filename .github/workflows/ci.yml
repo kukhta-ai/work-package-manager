@@ -1,8 +1,10 @@
 # Continuous integration — the quality gate for the `wpm` builder.
 #
 # Runs the SAME three-command gate a contributor runs locally and the pre-commit hook runs on staged
-# files (docs/12 §"CI"; _bmad-output/test-artifacts/ci.md; CONTRIBUTING.md -> "Pull requests, review &
-# merge"). CI's added value is BREADTH -- the OS x Node matrix -- not a different or stronger gate.
+# files (docs/12 §"CI"; PROCESS-ARTIFACTS.md; CONTRIBUTING.md -> "Pull requests, review & merge").
+# The lint leg includes the read-only process-artifact policy check. CI adds the OS x Node matrix and verifies
+# that durable evidence belongs to the checked-out Git candidate; contributors can run the same strict mode
+# locally after staging with `npm run check:process-artifacts:ci`.
 #
 # "A failure blocks merge" (AC#1): a failing run reports a red status on the push/PR. Turning that status
 # into a *required* check that actually prevents merging is a GitHub branch-protection SETTING (repo admin,
@@ -66,14 +68,14 @@ jobs:
         run: npm ci
 
       # The three-command gate, in order, failing the job on the first non-zero exit. These are the
-      # IDENTICAL rules a developer runs locally -- `biome ci .` is Biome's CI mode of the same biome.json
-      # (the local `biome check` <-> CI `biome ci` mapping CONTRIBUTING documents), `tsc` type-checks with
-      # no emit, and `vitest run` runs the whole suite (unit + integration).
+      # IDENTICAL rules a developer runs locally -- `npm run lint:ci` combines Biome's non-writing CI
+      # mode with the read-only process-artifact policy check; `tsc` type-checks with no emit; and
+      # `vitest run` runs the whole suite (unit + integration).
       - name: Type-check (tsc --noEmit)
         run: npm run typecheck
 
-      - name: Lint + format check (biome ci, incl. the core import-boundary rule)
-        run: npx biome ci .
+      - name: Lint + process-artifact policy (incl. the core import-boundary rule)
+        run: npm run lint:ci
 
       # Build and inspect the real local npm archive from the still-clean checkout. This preparation step
       # writes only to a temporary local directory; it has no publication, release, credential, or remote
