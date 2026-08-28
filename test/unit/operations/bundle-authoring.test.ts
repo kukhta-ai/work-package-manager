@@ -1,3 +1,4 @@
+import { posix, win32 } from "node:path";
 import { describe, expect, it } from "vitest";
 import { FakeBacklog } from "../../../src/adapters/fake-backlog.js";
 import { MemoryFileSystem } from "../../../src/adapters/memory-fs.js";
@@ -18,6 +19,46 @@ const WORKSPACE = "/workspace";
 const ROOT = `${WORKSPACE}/wip`;
 const AUTHORING = `${WORKSPACE}/.authoring-backlog`;
 const BUILTIN = "/package/templates";
+
+function isPortableAbsolute(path: string): boolean {
+  return posix.isAbsolute(path) || win32.isAbsolute(path);
+}
+
+class AlternateAbsoluteAliasObservationFileSystem extends MemoryFileSystem {
+  override inspectPath(...args: Parameters<MemoryFileSystem["inspectPath"]>) {
+    const inspected = super.inspectPath(...args);
+    if (inspected.kind !== "symbolic-link" || !isPortableAbsolute(inspected.target)) {
+      return inspected;
+    }
+    return {
+      kind: "symbolic-link" as const,
+      target:
+        process.platform === "win32"
+          ? inspected.target.replaceAll("\\", "/")
+          : inspected.target.replaceAll("/", "\\"),
+    };
+  }
+}
+
+class DifferentAbsoluteAliasObservationFileSystem extends MemoryFileSystem {
+  override inspectPath(...args: Parameters<MemoryFileSystem["inspectPath"]>) {
+    const inspected = super.inspectPath(...args);
+    if (inspected.kind !== "symbolic-link" || !isPortableAbsolute(inspected.target)) {
+      return inspected;
+    }
+    return { kind: "symbolic-link" as const, target: `${inspected.target}-different` };
+  }
+}
+
+class AlternateRelativeAliasObservationFileSystem extends MemoryFileSystem {
+  override inspectPath(...args: Parameters<MemoryFileSystem["inspectPath"]>) {
+    const inspected = super.inspectPath(...args);
+    if (inspected.kind !== "symbolic-link" || isPortableAbsolute(inspected.target)) {
+      return inspected;
+    }
+    return { kind: "symbolic-link" as const, target: inspected.target.replaceAll("-", "\\") };
+  }
+}
 
 class RecordingFileSystem extends MemoryFileSystem {
   readonly mutationCalls: string[] = [];
@@ -162,6 +203,79 @@ function seed(
 }
 
 describe("bundle authoring planned operations", () => {
+  it("accepts a separator-dialect-equivalent absolute alias observation", () => {
+    const fs = new AlternateAbsoluteAliasObservationFileSystem();
+    const backlog = new FakeBacklog();
+    seed(fs, backlog);
+    fs.write(
+      `${ROOT}/manifest.yml`,
+      "project:\n  name: demo\n  version: 1.0.0\ntargets:\n  - claude-code\nbundles: []\n",
+    );
+
+    expect(() =>
+      createBundleWithAuthoring(
+        { fs, backlog, builtinTemplatesRoot: BUILTIN },
+        { deliverableRoot: ROOT, workspaceRoot: WORKSPACE },
+        { id: "web", disabled: true, advisor: false, templateName: "default" },
+      ),
+    ).not.toThrow();
+    expect(() =>
+      enableBundleWithAuthoring(
+        { fs, backlog, builtinTemplatesRoot: BUILTIN },
+        { deliverableRoot: ROOT, workspaceRoot: WORKSPACE },
+        { id: "web", advisor: false },
+      ),
+    ).not.toThrow();
+  });
+
+  it("rejects a different absolute alias observation", () => {
+    const fs = new DifferentAbsoluteAliasObservationFileSystem();
+    const backlog = new FakeBacklog();
+    seed(fs, backlog);
+    fs.write(
+      `${ROOT}/manifest.yml`,
+      "project:\n  name: demo\n  version: 1.0.0\ntargets:\n  - claude-code\nbundles: []\n",
+    );
+
+    let caught: unknown;
+    try {
+      createBundleWithAuthoring(
+        { fs, backlog, builtinTemplatesRoot: BUILTIN },
+        { deliverableRoot: ROOT, workspaceRoot: WORKSPACE },
+        { id: "web", advisor: false, templateName: "default" },
+      );
+    } catch (error) {
+      caught = error;
+    }
+
+    expect(caught).toBeInstanceOf(MutationFailure);
+    if (caught instanceof MutationFailure) {
+      expect(caught.failed.id).toBe("derived-alias:.claude/skills");
+    }
+  });
+
+  it("keeps relative alias observations byte-exact instead of normalizing separators", () => {
+    const fs = new AlternateRelativeAliasObservationFileSystem();
+    const backlog = new FakeBacklog();
+    seed(fs, backlog);
+
+    let caught: unknown;
+    try {
+      createBundleWithAuthoring(
+        { fs, backlog, builtinTemplatesRoot: BUILTIN },
+        { deliverableRoot: ROOT, workspaceRoot: WORKSPACE },
+        { id: "web", advisor: false, templateName: "default" },
+      );
+    } catch (error) {
+      caught = error;
+    }
+
+    expect(caught).toBeInstanceOf(MutationFailure);
+    if (caught instanceof MutationFailure) {
+      expect(caught.failed.id).toBe("bundle-backlog-alias");
+    }
+  });
+
   it("rejects the build-reserved bundle-template id before occupying the default scaffold boundary", () => {
     const fs = new RecordingFileSystem();
     const backlog = new RecordingBacklog();
