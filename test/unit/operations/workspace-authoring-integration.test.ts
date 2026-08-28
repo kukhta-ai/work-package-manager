@@ -15,6 +15,7 @@ import {
   WORKSPACE_INTEGRATION_STATE_PATH,
   WORKSPACE_SKILL_NAMES,
 } from "../../../src/core/services/workspace-authoring-integration.js";
+import { toPosix } from "../../../src/util/posix-path.js";
 
 const REPO_ROOT = fileURLToPath(new URL("../../..", import.meta.url));
 const WORKSPACE = "/authoring/demo";
@@ -500,7 +501,7 @@ class ParentLeakingFileSystem extends MemoryFileSystem {
   }
 
   override write(path: string, content: string): void {
-    if (path === this.failPath) {
+    if (this.failPath !== undefined && toPosix(path) === toPosix(this.failPath)) {
       this.failPath = undefined;
       super.makeDirectories(dirname(path));
       throw new Error(`injected write failure after parent creation at ${path}`);
@@ -517,7 +518,7 @@ class PartialRetirementFileSystem extends MemoryFileSystem {
   }
 
   override remove(path: string): void {
-    if (path === this.partialPath) {
+    if (this.partialPath !== undefined && toPosix(path) === toPosix(this.partialPath)) {
       this.partialPath = undefined;
       super.remove(`${path}/SKILL.md`);
       throw new Error(`injected recursive removal failure after leaf deletion at ${path}`);

@@ -324,7 +324,7 @@ describe("fresh local packed-install and inactive-candidate journey", () => {
     const home = join(consumer, "home");
     const workspace = join(consumer, "workspace");
     const cache = join(consumer, "npm-cache");
-    const prefix = join(consumer, "prefix");
+    const prefix = join(consumer, "prefix with spaces");
     for (const directory of [consumer, home, workspace, cache, prefix]) {
       mkdirSync(directory, { recursive: true });
     }
@@ -346,6 +346,8 @@ describe("fresh local packed-install and inactive-candidate journey", () => {
       provisioned.installation.status,
       String(provisioned.installation.stderr || provisioned.installation.stdout),
     ).toBe(0);
+    expect(provisioned.shimPath).toContain("prefix with spaces");
+    if (process.platform === "win32") expect(provisioned.shimPath).toMatch(/\.cmd$/i);
     expect({ status: provisioned.version.status, stderr: provisioned.version.stderr }).toEqual({
       status: 0,
       stderr: "",
@@ -438,10 +440,11 @@ describe("fresh local packed-install and inactive-candidate journey", () => {
       initializeGit(source);
 
       const dependencies = npm(source, "ci", "--ignore-scripts", "--no-audit", "--no-fund");
-      expect({ status: dependencies.status, stderr: dependencies.stderr }).toEqual({
-        status: 0,
-        stderr: "",
-      });
+      expect(
+        dependencies.error,
+        String(dependencies.stderr || dependencies.stdout),
+      ).toBeUndefined();
+      expect(dependencies.status, String(dependencies.stderr || dependencies.stdout)).toBe(0);
       const preparation = npm(
         source,
         "run",

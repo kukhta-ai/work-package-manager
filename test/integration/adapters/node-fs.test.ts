@@ -850,35 +850,38 @@ describe("NodeFileSystem (the real FileSystem adapter, against a real tmpdir)", 
     });
   });
 
-  it("retains immutable prior bytes and restores a public replacement raced in during displacement", async () => {
-    await withTempDir((dir) => {
-      const home = join(dir, "home");
-      const destination = join(home, ".agents", "skills", "wpm-create-package");
-      const skill = join(destination, "SKILL.md");
-      const quarantineRoot = join(home, ".wpm", "authoring-setup-quarantine", "request");
-      const quarantinePath = join(quarantineRoot, "codex", "current.preimage");
-      const quarantine = { root: quarantineRoot, path: quarantinePath };
-      const oldContent = "OWNED FILE\n";
-      const desiredContent = "NEW WPM FILE\n";
-      const userContent = "USER REPLACEMENT\n";
-      const precondition = {
-        kind: "sha256" as const,
-        sha256: createHash("sha256").update(oldContent).digest("hex"),
-        parentTree: "one-file" as const,
-      };
-      mkdirSync(destination, { recursive: true });
-      writeFileSync(skill, oldContent);
-      const fs = new FileReplacementDuringDetachmentFileSystem(skill, userContent);
+  it.runIf(process.platform !== "win32")(
+    "retains immutable prior bytes and restores a public replacement raced in during displacement",
+    async () => {
+      await withTempDir((dir) => {
+        const home = join(dir, "home");
+        const destination = join(home, ".agents", "skills", "wpm-create-package");
+        const skill = join(destination, "SKILL.md");
+        const quarantineRoot = join(home, ".wpm", "authoring-setup-quarantine", "request");
+        const quarantinePath = join(quarantineRoot, "codex", "current.preimage");
+        const quarantine = { root: quarantineRoot, path: quarantinePath };
+        const oldContent = "OWNED FILE\n";
+        const desiredContent = "NEW WPM FILE\n";
+        const userContent = "USER REPLACEMENT\n";
+        const precondition = {
+          kind: "sha256" as const,
+          sha256: createHash("sha256").update(oldContent).digest("hex"),
+          parentTree: "one-file" as const,
+        };
+        mkdirSync(destination, { recursive: true });
+        writeFileSync(skill, oldContent);
+        const fs = new FileReplacementDuringDetachmentFileSystem(skill, userContent);
 
-      expect(() => fs.writeConfined(home, skill, desiredContent, precondition, quarantine)).toThrow(
-        /raced during displacement/,
-      );
-      expect(readFileSync(skill, "utf8")).toBe(userContent);
-      expect(readFileSync(quarantinePath, "utf8")).toBe(oldContent);
-      expect(readFileSync(`${quarantinePath}.staged`, "utf8")).toBe(desiredContent);
-      expect(existsSync(`${quarantinePath}.displaced`)).toBe(false);
-    });
-  });
+        expect(() =>
+          fs.writeConfined(home, skill, desiredContent, precondition, quarantine),
+        ).toThrow(/raced during displacement/);
+        expect(readFileSync(skill, "utf8")).toBe(userContent);
+        expect(readFileSync(quarantinePath, "utf8")).toBe(oldContent);
+        expect(readFileSync(`${quarantinePath}.staged`, "utf8")).toBe(desiredContent);
+        expect(existsSync(`${quarantinePath}.displaced`)).toBe(false);
+      });
+    },
+  );
 
   it("replays exact deterministic displacement evidence after interruption", async () => {
     await withTempDir((dir) => {
@@ -1374,35 +1377,38 @@ describe("NodeFileSystem (the real FileSystem adapter, against a real tmpdir)", 
     });
   });
 
-  it("retains an immutable legacy preimage when an open public handle changes displaced bytes", async () => {
-    await withTempDir((dir) => {
-      const home = join(dir, "home");
-      const legacy = join(home, ".agents", "skills", "installer-builder");
-      const legacySkill = join(legacy, "SKILL.md");
-      const quarantineRoot = join(home, ".wpm", "authoring-setup-quarantine", "request");
-      const quarantinePath = join(quarantineRoot, "codex", "legacy");
-      const quarantine = { root: quarantineRoot, path: quarantinePath };
-      const content = "OWNED LEGACY\n";
-      const descriptor = (() => {
-        mkdirSync(legacy, { recursive: true });
-        writeFileSync(legacySkill, content);
-        return openSync(legacySkill, "r+");
-      })();
-      try {
-        const fs = new TreeOpenHandleRaceFileSystem(legacy, descriptor);
-        expect(() =>
-          fs.removeConfined(home, legacy, singleFileTreeFingerprint(content), quarantine),
-        ).toThrow(/changed during displacement/);
-        expect(existsSync(legacy)).toBe(false);
-        expect(readFileSync(join(quarantinePath, "SKILL.md"), "utf8")).toBe(content);
-        expect(readFileSync(join(`${quarantinePath}.displaced.raced`, "SKILL.md"), "utf8")).toBe(
-          "RACED LEGACY\n",
-        );
-      } finally {
-        closeSync(descriptor);
-      }
-    });
-  });
+  it.runIf(process.platform !== "win32")(
+    "retains an immutable legacy preimage when an open public handle changes displaced bytes",
+    async () => {
+      await withTempDir((dir) => {
+        const home = join(dir, "home");
+        const legacy = join(home, ".agents", "skills", "installer-builder");
+        const legacySkill = join(legacy, "SKILL.md");
+        const quarantineRoot = join(home, ".wpm", "authoring-setup-quarantine", "request");
+        const quarantinePath = join(quarantineRoot, "codex", "legacy");
+        const quarantine = { root: quarantineRoot, path: quarantinePath };
+        const content = "OWNED LEGACY\n";
+        const descriptor = (() => {
+          mkdirSync(legacy, { recursive: true });
+          writeFileSync(legacySkill, content);
+          return openSync(legacySkill, "r+");
+        })();
+        try {
+          const fs = new TreeOpenHandleRaceFileSystem(legacy, descriptor);
+          expect(() =>
+            fs.removeConfined(home, legacy, singleFileTreeFingerprint(content), quarantine),
+          ).toThrow(/changed during displacement/);
+          expect(existsSync(legacy)).toBe(false);
+          expect(readFileSync(join(quarantinePath, "SKILL.md"), "utf8")).toBe(content);
+          expect(readFileSync(join(`${quarantinePath}.displaced.raced`, "SKILL.md"), "utf8")).toBe(
+            "RACED LEGACY\n",
+          );
+        } finally {
+          closeSync(descriptor);
+        }
+      });
+    },
+  );
 
   it("fails closed and preserves an unexpectedly changed private retained slot", async () => {
     await withTempDir((dir) => {

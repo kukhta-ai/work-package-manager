@@ -38,6 +38,7 @@ import {
   parseWorkspaceHandoffReceipt,
   WORKSPACE_HANDOFF_RECEIPT_PATH,
 } from "../../../src/core/services/workspace-handoff.js";
+import { toPosix } from "../../../src/util/posix-path.js";
 import { parseYaml } from "../../../src/util/yaml.js";
 
 /**
@@ -129,7 +130,7 @@ class FailOnceAtInitPathFileSystem extends MemoryFileSystem {
   }
 
   override write(path: string, content: string): void {
-    if (!this.failed && path === this.failurePath) {
+    if (!this.failed && toPosix(path) === toPosix(this.failurePath)) {
       this.failed = true;
       throw new Error(`injected init failure at ${path}`);
     }
@@ -143,7 +144,7 @@ class MutateProjectAfterBundleResolutionFileSystem extends MemoryFileSystem {
 
   override read(path: string): string {
     const content = super.read(path);
-    if (!this.mutated && path === `${BUILTIN}/bundle/default/template.yml`) {
+    if (!this.mutated && toPosix(path) === toPosix(`${BUILTIN}/bundle/default/template.yml`)) {
       this.mutated = true;
       super.write(
         `${BUILTIN}/project/minimal/snippets/AGENTS.md`,

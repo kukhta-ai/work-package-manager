@@ -14,6 +14,7 @@ import {
   parseBundleAuthoringContributions,
   serializeBundleAuthoringContributions,
 } from "../../../src/core/services/bundle-authoring-contributions.js";
+import { toPosix } from "../../../src/util/posix-path.js";
 
 const WORKSPACE = "/workspace";
 const ROOT = `${WORKSPACE}/wip`;
@@ -480,7 +481,7 @@ describe("bundle authoring planned operations", () => {
       override inspectMutationCapability(
         path: Parameters<MemoryFileSystem["inspectMutationCapability"]>[0],
       ) {
-        if (path === `${AUTHORING}/backlog/.locks/create`) {
+        if (toPosix(path) === toPosix(`${AUTHORING}/backlog/.locks/create`)) {
           return { capable: false as const, reason: "injected create-lock denial" };
         }
         return super.inspectMutationCapability(path);
@@ -532,7 +533,7 @@ describe("bundle authoring planned operations", () => {
       override inspectMutationCapability(
         path: Parameters<MemoryFileSystem["inspectMutationCapability"]>[0],
       ) {
-        if (path === `${AUTHORING}/backlog/.locks/create`) {
+        if (toPosix(path) === toPosix(`${AUTHORING}/backlog/.locks/create`)) {
           return { capable: false as const, reason: "injected create-lock denial" };
         }
         return super.inspectMutationCapability(path);
@@ -1462,7 +1463,7 @@ describe("bundle authoring planned operations", () => {
         if (
           this.armed &&
           !this.injected &&
-          path === `${WORKSPACE}/${BUNDLE_AUTHORING_CONTRIBUTIONS_PATH}` &&
+          toPosix(path) === toPosix(`${WORKSPACE}/${BUNDLE_AUTHORING_CONTRIBUTIONS_PATH}`) &&
           backlog.listTasks(AUTHORING).length > 1
         ) {
           this.injected = true;
@@ -1505,7 +1506,11 @@ describe("bundle authoring planned operations", () => {
 
       override write(path: string, content: string): void {
         super.write(path, content);
-        if (this.armed && !this.injected && path === `${ROOT}/bundles/web/bundle.yml`) {
+        if (
+          this.armed &&
+          !this.injected &&
+          toPosix(path) === toPosix(`${ROOT}/bundles/web/bundle.yml`)
+        ) {
           this.injected = true;
           super.write(
             `${ROOT}/bundles/bundle-template/payload/files/MARKER-{{bundle-id}}.txt`,
@@ -1689,7 +1694,7 @@ describe("bundle authoring planned operations", () => {
   it("reports ordered typed progress when an unforeseen write fails", () => {
     class FailManifestFileSystem extends MemoryFileSystem {
       override write(path: string, content: string): void {
-        if (path === `${ROOT}/manifest.yml` && content.includes("web")) {
+        if (toPosix(path) === toPosix(`${ROOT}/manifest.yml`) && content.includes("web")) {
           throw new Error("injected manifest failure");
         }
         super.write(path, content);

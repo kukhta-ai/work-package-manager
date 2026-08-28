@@ -50,7 +50,7 @@ function deps(home: string, workspace: string): CliDeps {
     fs: new NodeFileSystem(),
     backlog: new FakeBacklog(),
     clock: new FixedClock("2026-08-22T00:00:00.000Z"),
-    env: new FakeEnvironment({ cwd: workspace, env: { HOME: home } }),
+    env: new FakeEnvironment({ cwd: workspace, env: { HOME: home }, platform: process.platform }),
     builtinTemplatesRoot: join(workspace, "unused-templates"),
   };
 }
