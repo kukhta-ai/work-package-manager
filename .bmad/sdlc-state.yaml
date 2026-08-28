@@ -2,22 +2,22 @@
 schemaVersion: 1
 phase: 6
 phaseName: "Epic gate — PR #5 current-tip CI"
-branch: fix/authoring-agent-onboarding/windows-confined-publication
+branch: fix/authoring-agent-onboarding/portable-release-harness
 epic: authoring-agent-onboarding
-activeStory: task-133
+activeStory: task-134
 reviewCycle: 1
 activeChange:
-  id: task-133-windows-confined-publication
+  id: task-134-portable-release-harness
 specialists:
   worker:
     role: implementation
-    lastSkill: bmad-qa-generate-e2e-tests @ task-133 / 4-6-keep-confined-file-publication-usable-on-windows
+    lastSkill: bmad-qa-generate-e2e-tests @ task-134 / 4-7-keep-the-release-harness-faithful-across-supported-hosts
   reviewer:
     role: independent review
-    lastSkill: bmad-story-automator-review @ task-133 cycle 1 / 4-6-keep-confined-file-publication-usable-on-windows
+    lastSkill: bmad-story-automator-review @ task-134 cycle 1 / 4-7-keep-the-release-harness-faithful-across-supported-hosts
   investigator:
     role: gate failure diagnosis
-    lastSkill: bmad-investigate @ pr-5-cross-platform-ci-test-environment
+    lastSkill: bmad-investigate @ pr-5-macos-node22-bundle-id-timeout
   tea:
     role: onboarding trace and NFR gate
     lastSkill: bmad-testarch-trace @ onboarding human-waiver validation
@@ -34,4 +34,4 @@ workingMemory:
     - Skills-Results
   durableEpisode: research/evolution/records/authoring-agent-onboarding.yaml
 designRevisionLoaded: db2b3d7be8f20d21aa8f299064514ca676464eee
-lastUpdated: "2026-08-28T16:49:33Z"
+lastUpdated: "2026-08-28T17:15:09Z"

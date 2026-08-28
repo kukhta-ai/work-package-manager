@@ -164,7 +164,7 @@ describe("portable global package layout and generated shims", () => {
       ),
     ).toEqual({
       executable: "C:\\Windows\\System32\\cmd.exe",
-      args: ["/d", "/s", "/v:off", "/c", '"C:\\consumer root\\wpm.cmd" --version'],
+      args: ["/d", "/s", "/v:off", "/c", '""C:\\consumer root\\wpm.cmd" --version"'],
       shimPath: "C:\\consumer root\\wpm.cmd",
     });
   });

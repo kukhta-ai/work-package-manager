@@ -25,6 +25,7 @@ import {
   parseWorkspaceHandoffReceipt,
   WORKSPACE_HANDOFF_RECEIPT_PATH,
 } from "../../../src/core/services/workspace-handoff.js";
+import { toPosix } from "../../../src/util/posix-path.js";
 
 const REPO_ROOT = fileURLToPath(new URL("../../..", import.meta.url));
 const WORKSPACE = "/authoring/demo";
@@ -54,7 +55,10 @@ class ReceiptFailOnceFileSystem extends MemoryFileSystem {
   }
 
   override write(path: string, content: string): void {
-    if (path === `${WORKSPACE}/${WORKSPACE_HANDOFF_RECEIPT_PATH}` && this.failAt !== undefined) {
+    if (
+      toPosix(path) === toPosix(`${WORKSPACE}/${WORKSPACE_HANDOFF_RECEIPT_PATH}`) &&
+      this.failAt !== undefined
+    ) {
       this.receiptWrite += 1;
       if (this.receiptWrite === this.failAt) {
         this.failAt = undefined;

@@ -364,7 +364,9 @@ export function resolveInstalledExecutableInvocation(
   const command = [`"${shimPath}"`, ...args.map(windowsCommandArgument)].join(" ");
   return {
     executable: commandProcessor,
-    args: ["/d", "/s", "/v:off", "/c", command],
+    // `/s` removes one outer quote pair from the `/c` command. Keep that envelope distinct from the quotes
+    // protecting the shim path, otherwise a prefix containing spaces is parsed as the command name.
+    args: ["/d", "/s", "/v:off", "/c", `"${command}"`],
     shimPath,
   };
 }

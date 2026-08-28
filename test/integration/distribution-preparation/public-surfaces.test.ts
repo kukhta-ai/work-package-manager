@@ -11,6 +11,7 @@ import { MemoryFileSystem } from "../../../src/adapters/memory-fs.js";
 import { buildProgram, type CliDeps, run } from "../../../src/cli.js";
 import { initProject } from "../../../src/core/operations/init-project.js";
 import type { CliIo, OutputSink } from "../../../src/util/exit.js";
+import { toPosix } from "../../../src/util/posix-path.js";
 
 const REPO_ROOT = fileURLToPath(new URL("../../..", import.meta.url));
 const REAL_TEMPLATES = join(REPO_ROOT, "templates");
@@ -281,8 +282,8 @@ describe("inactive distribution public-surface contract", () => {
 
     for (const file of PREPARATION_FILES) {
       const path = join(REPO_ROOT, "distribution-preparation", file);
-      expect(typecheck.fileNames).toContain(path);
-      expect(build.fileNames).not.toContain(path);
+      expect(typecheck.fileNames.map(toPosix)).toContain(toPosix(path));
+      expect(build.fileNames.map(toPosix)).not.toContain(toPosix(path));
     }
 
     const biome = JSON.parse(readProjectFile("biome.json")) as {

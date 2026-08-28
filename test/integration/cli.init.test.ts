@@ -623,13 +623,12 @@ describeIfBacklog(
         };
         const proj = join(dir, "proj");
         const streams = io();
-        expect(
-          await run(
-            ["init", "real-plan", "--at", proj, "--authoring-client", "codex"],
-            dependencies,
-            streams,
-          ),
-        ).toBe(0);
+        const exitCode = await run(
+          ["init", "real-plan", "--at", proj, "--authoring-client", "codex"],
+          dependencies,
+          streams,
+        );
+        expect(exitCode, streams.err.text).toBe(0);
         expect(streams.out.text).toMatch(/materialised: 22 authoring task/);
 
         const root = join(proj, ".authoring-backlog");

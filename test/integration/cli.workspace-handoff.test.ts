@@ -29,12 +29,16 @@ function io(): CliIo & { out: ReturnType<typeof collector>; err: ReturnType<type
   return { out: collector(), err: collector(), debug: false };
 }
 
+function hostEnvironment(cwd: string): FakeEnvironment {
+  return new FakeEnvironment({ cwd, platform: process.platform });
+}
+
 function deps(cwd: string, fs = new NodeFileSystem(), backlog = new FakeBacklog()): CliDeps {
   return {
     fs,
     backlog,
     clock: new FixedClock("2026-01-01T00:00:00.000Z"),
-    env: new FakeEnvironment({ cwd }),
+    env: hostEnvironment(cwd),
     builtinTemplatesRoot: TEMPLATES,
     bundledSkillsRoot: SKILLS,
   };
@@ -80,7 +84,7 @@ describe("workspace handoff through source CLI and real filesystem", () => {
       expect(
         await run(
           ["-C", workspace, "authoring", "handoff", "prepare", "--json"],
-          { ...shared, env: new FakeEnvironment({ cwd: workspace }) },
+          { ...shared, env: hostEnvironment(workspace) },
           failed,
         ),
       ).toBe(1);
@@ -103,7 +107,7 @@ describe("workspace handoff through source CLI and real filesystem", () => {
       expect(
         await run(
           ["-C", workspace, "authoring", "handoff", "prepare", "--json"],
-          { ...shared, env: new FakeEnvironment({ cwd: workspace }) },
+          { ...shared, env: hostEnvironment(workspace) },
           retried,
         ),
       ).toBe(0);
@@ -145,7 +149,7 @@ describe("workspace handoff through source CLI and real filesystem", () => {
         expect(
           await run(
             ["-C", workspace, "authoring", "handoff", "verify", "--client", client, "--json"],
-            { ...shared, env: new FakeEnvironment({ cwd: workspace }) },
+            { ...shared, env: hostEnvironment(workspace) },
             verified,
           ),
         ).toBe(0);
@@ -224,7 +228,7 @@ describe("workspace handoff through source CLI and real filesystem", () => {
       expect(
         await run(
           ["-C", workspace, "authoring", "handoff", "verify", "--client", "codex"],
-          { ...shared, env: new FakeEnvironment({ cwd: parent }) },
+          { ...shared, env: hostEnvironment(parent) },
           verified,
         ),
       ).toBe(0);
@@ -271,7 +275,7 @@ describe("workspace handoff through source CLI and real filesystem", () => {
       expect(
         await run(
           ["authoring", "handoff", "verify", "--client", "codex"],
-          { ...shared, env: new FakeEnvironment({ cwd: join(workspace, "wip") }) },
+          { ...shared, env: hostEnvironment(join(workspace, "wip")) },
           failed,
         ),
       ).toBe(1);
@@ -284,7 +288,7 @@ describe("workspace handoff through source CLI and real filesystem", () => {
       expect(
         await run(
           ["authoring", "handoff", "verify", "--client", "codex", "--json"],
-          { ...shared, env: new FakeEnvironment({ cwd: join(workspace, "wip") }) },
+          { ...shared, env: hostEnvironment(join(workspace, "wip")) },
           structuredFailure,
         ),
       ).toBe(1);
@@ -325,7 +329,7 @@ describe("workspace handoff through source CLI and real filesystem", () => {
       expect(
         await run(
           ["-C", workspace, "authoring", "handoff", "verify", "--client", "codex", "--json"],
-          { ...shared, env: new FakeEnvironment({ cwd: join(workspace, "wip") }) },
+          { ...shared, env: hostEnvironment(join(workspace, "wip")) },
           missingMarker,
         ),
       ).toBe(1);
@@ -355,7 +359,7 @@ describe("workspace handoff through source CLI and real filesystem", () => {
             "--client",
             "claude-code",
           ],
-          { ...shared, env: new FakeEnvironment({ cwd: workspace }) },
+          { ...shared, env: hostEnvironment(workspace) },
           io(),
         ),
       ).toBe(0);
@@ -363,7 +367,7 @@ describe("workspace handoff through source CLI and real filesystem", () => {
       expect(
         await run(
           ["-C", workspace, "authoring", "handoff", "verify", "--client", "codex"],
-          { ...shared, env: new FakeEnvironment({ cwd: workspace }) },
+          { ...shared, env: hostEnvironment(workspace) },
           recovered,
         ),
       ).toBe(0);
@@ -378,7 +382,7 @@ describe("workspace handoff through source CLI and real filesystem", () => {
         expect(
           await run(
             ["-C", workspace, "authoring", "handoff", "prepare"],
-            { ...shared, env: new FakeEnvironment({ cwd: workspace }) },
+            { ...shared, env: hostEnvironment(workspace) },
             prepared,
           ),
         ).toBe(0);
@@ -391,7 +395,7 @@ describe("workspace handoff through source CLI and real filesystem", () => {
       expect(
         await run(
           ["-C", workspace, "authoring", "handoff", "prepare", "--json"],
-          { ...shared, env: new FakeEnvironment({ cwd: workspace }) },
+          { ...shared, env: hostEnvironment(workspace) },
           conflicted,
         ),
       ).toBe(1);
@@ -422,7 +426,7 @@ describe("workspace handoff through source CLI and real filesystem", () => {
       expect(
         await run(
           ["-C", workspace, "authoring", "handoff", "verify", "--client", "openclaw", "--json"],
-          { ...shared, env: new FakeEnvironment({ cwd: workspace }) },
+          { ...shared, env: hostEnvironment(workspace) },
           failed,
         ),
       ).toBe(2);
@@ -439,7 +443,7 @@ describe("workspace handoff through source CLI and real filesystem", () => {
       expect(
         await run(
           ["-C", workspace, "authoring", "handoff", "verify", "--client", "codex", "--json"],
-          { ...shared, env: new FakeEnvironment({ cwd: workspace }) },
+          { ...shared, env: hostEnvironment(workspace) },
           missingState,
         ),
       ).toBe(1);
@@ -485,7 +489,7 @@ describe("workspace handoff through source CLI and real filesystem", () => {
       expect(
         await run(
           ["-C", workspace, "authoring", "handoff", "prepare"],
-          { ...shared, env: new FakeEnvironment({ cwd: parent }) },
+          { ...shared, env: hostEnvironment(parent) },
           prepared,
         ),
       ).toBe(0);
@@ -503,7 +507,7 @@ describe("workspace handoff through source CLI and real filesystem", () => {
       expect(
         await run(
           ["authoring", "handoff", "verify", "--client", "codex"],
-          { ...shared, env: new FakeEnvironment({ cwd: wrongCwd }) },
+          { ...shared, env: hostEnvironment(wrongCwd) },
           failed,
         ),
       ).toBe(1);
