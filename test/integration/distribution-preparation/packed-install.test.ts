@@ -20,7 +20,10 @@ import { tmpdir } from "node:os";
 import { delimiter, dirname, join, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
-import { resolveInstalledExecutableInvocation } from "../../../distribution-preparation/packed-install.js";
+import {
+  resolveGlobalInstallLayout,
+  resolveInstalledExecutableInvocation,
+} from "../../../distribution-preparation/packed-install.js";
 import { resolveNpmInvocation } from "../../../distribution-preparation/prepare-package.js";
 import { ACTIVATION_FACT_KEYS } from "../../../distribution-preparation/readiness.js";
 import { createIsolatedEnvironment } from "../../../distribution-preparation/verify-packed-install.js";
@@ -40,6 +43,7 @@ const WORKSPACE_SKILL_NAMES = [
   "wpm-review-package",
 ] as const;
 const PERSONAL_BOOTSTRAP_SKILL_NAME = "wpm-create-package";
+const BACKLOG_PEER_PACKAGE = "backlog.md@1.45.2";
 const TEST_NPM_TIMEOUT_MS = 660_000;
 const COMPLETE_JOURNEY_TIMEOUT_MS = 720_000;
 
@@ -95,6 +99,43 @@ function npm(cwd: string, ...args: string[]): ReturnType<typeof spawnSync> {
     encoding: "utf8",
     timeout: TEST_NPM_TIMEOUT_MS,
   });
+}
+
+/** Provision the mapped external peer into one disposable consumer prefix and observe its real shim. */
+function provisionBacklogPeer(cwd: string, prefix: string, env: NodeJS.ProcessEnv) {
+  const npmInvocation = resolveNpmInvocation();
+  const installation = spawnSync(
+    npmInvocation.executable,
+    [
+      ...npmInvocation.argumentPrefix,
+      "install",
+      "--global",
+      "--prefix",
+      prefix,
+      "--no-audit",
+      "--no-fund",
+      BACKLOG_PEER_PACKAGE,
+    ],
+    { cwd, encoding: "utf8", timeout: TEST_NPM_TIMEOUT_MS, env },
+  );
+  const layout = resolveGlobalInstallLayout(prefix, "backlog.md");
+  const invocation = resolveInstalledExecutableInvocation(
+    process.platform,
+    join(layout.executableRoot, "backlog"),
+    ["--version"],
+  );
+  const version = spawnSync(invocation.executable, invocation.args, {
+    cwd,
+    encoding: "utf8",
+    timeout: 60_000,
+    env,
+  });
+  return {
+    installation,
+    version,
+    packageRoot: layout.packageRoot,
+    shimPath: invocation.shimPath,
+  };
 }
 
 function directorySnapshot(
@@ -275,6 +316,59 @@ describe("fresh local packed-install and inactive-candidate journey", () => {
     );
     expect(missing.status).toBe(1);
     expect(missing.stderr).toMatch(/package inspection report.*npm run package:inspect/is);
+  });
+
+  it("exposes the mapped Backlog peer only from an isolated consumer prefix", () => {
+    const root = temporaryRoot("wpm-packed-backlog-peer-");
+    const consumer = join(root, "consumer");
+    const home = join(consumer, "home");
+    const workspace = join(consumer, "workspace");
+    const cache = join(consumer, "npm-cache");
+    const prefix = join(consumer, "prefix");
+    for (const directory of [consumer, home, workspace, cache, prefix]) {
+      mkdirSync(directory, { recursive: true });
+    }
+    const env = createIsolatedEnvironment(
+      {
+        home,
+        workspace,
+        cache,
+        prefix,
+        userConfig: join(consumer, "npmrc"),
+        sourceRoot: REPO_ROOT,
+      },
+      process.env,
+    );
+
+    const provisioned = provisionBacklogPeer(consumer, prefix, env);
+    expect(provisioned.installation.error).toBeUndefined();
+    expect(
+      provisioned.installation.status,
+      String(provisioned.installation.stderr || provisioned.installation.stdout),
+    ).toBe(0);
+    expect({ status: provisioned.version.status, stderr: provisioned.version.stderr }).toEqual({
+      status: 0,
+      stderr: "",
+    });
+    expect(String(provisioned.version.stdout).trim()).toBe("1.45.2");
+    expect(realpathSync(provisioned.packageRoot).startsWith(`${resolve(prefix)}${sep}`)).toBe(true);
+    expect(resolve(provisioned.shimPath).startsWith(`${resolve(prefix)}${sep}`)).toBe(true);
+    expect(resolve(provisioned.packageRoot).startsWith(`${resolve(REPO_ROOT)}${sep}`)).toBe(false);
+    expect(resolve(provisioned.shimPath).startsWith(`${resolve(REPO_ROOT)}${sep}`)).toBe(false);
+    expect(
+      JSON.parse(readFileSync(join(provisioned.packageRoot, "package.json"), "utf8")),
+    ).toMatchObject({ name: "backlog.md", version: "1.45.2" });
+
+    const wpmManifest = JSON.parse(readFileSync(join(REPO_ROOT, "package.json"), "utf8")) as {
+      dependencies?: Record<string, string>;
+      devDependencies?: Record<string, string>;
+      peerDependencies?: Record<string, string>;
+      peerDependenciesMeta?: Record<string, { optional?: boolean }>;
+    };
+    expect(wpmManifest.peerDependencies).toEqual({ "backlog.md": ">=1.0.0" });
+    expect(wpmManifest.peerDependenciesMeta?.["backlog.md"]).toEqual({ optional: false });
+    expect(wpmManifest.dependencies ?? {}).not.toHaveProperty("backlog.md");
+    expect(wpmManifest.devDependencies ?? {}).not.toHaveProperty("backlog.md");
   });
 
   it(
@@ -597,6 +691,20 @@ describe("fresh local packed-install and inactive-candidate journey", () => {
       const installedWpm = result.executables.find(({ name }) => name === "wpm");
       expect(installedWpm).toBeDefined();
       if (installedWpm === undefined) throw new Error("accepted packed install did not expose wpm");
+      const installedWpmManifest = JSON.parse(
+        readFileSync(join(result.environment.packageRoot, "package.json"), "utf8"),
+      ) as {
+        dependencies?: Record<string, string>;
+        devDependencies?: Record<string, string>;
+        peerDependencies?: Record<string, string>;
+        peerDependenciesMeta?: Record<string, { optional?: boolean }>;
+      };
+      expect(installedWpmManifest.peerDependencies).toEqual({ "backlog.md": ">=1.0.0" });
+      expect(installedWpmManifest.peerDependenciesMeta?.["backlog.md"]).toEqual({
+        optional: false,
+      });
+      expect(installedWpmManifest.dependencies ?? {}).not.toHaveProperty("backlog.md");
+      expect(installedWpmManifest.devDependencies ?? {}).not.toHaveProperty("backlog.md");
       const installedHome = join(consumer, "home");
       const isolatedInstalledEnv = createIsolatedEnvironment(
         {
@@ -619,6 +727,34 @@ describe("fresh local packed-install and inactive-candidate journey", () => {
           .filter((entry) => entry !== "")
           .join(delimiter),
       };
+      const installedBacklog = provisionBacklogPeer(
+        consumer,
+        result.environment.prefix,
+        installedEnv,
+      );
+      expect(installedBacklog.installation.error).toBeUndefined();
+      expect(
+        installedBacklog.installation.status,
+        String(installedBacklog.installation.stderr || installedBacklog.installation.stdout),
+      ).toBe(0);
+      expect({
+        status: installedBacklog.version.status,
+        stderr: installedBacklog.version.stderr,
+      }).toEqual({ status: 0, stderr: "" });
+      expect(String(installedBacklog.version.stdout).trim()).toBe("1.45.2");
+      expect(
+        realpathSync(installedBacklog.packageRoot).startsWith(
+          `${resolve(result.environment.prefix)}${sep}`,
+        ),
+      ).toBe(true);
+      expect(
+        resolve(installedBacklog.shimPath).startsWith(
+          `${resolve(result.environment.prefix)}${sep}`,
+        ),
+      ).toBe(true);
+      expect(resolve(installedBacklog.shimPath).startsWith(`${resolve(REPO_ROOT)}${sep}`)).toBe(
+        false,
+      );
       const runInstalledWpm = (
         args: readonly string[],
         cwd: string,
@@ -704,18 +840,7 @@ describe("fresh local packed-install and inactive-candidate journey", () => {
       expect(String(packedBundleInit.stdout)).toContain("materialised: 8 authoring task(s)");
 
       const packedBundleBacklogRoot = join(packedBundleWorkspace, ".authoring-backlog");
-      const packedBundleBacklogExecutable = (installedEnv[pathKey] ?? "")
-        .split(delimiter)
-        .flatMap((directory) =>
-          process.platform === "win32"
-            ? ["backlog.cmd", "backlog.exe"].map((name) => join(directory, name))
-            : [join(directory, "backlog")],
-        )
-        .find((path) => existsSync(path));
-      expect(packedBundleBacklogExecutable).toBeDefined();
-      if (packedBundleBacklogExecutable === undefined) {
-        throw new Error("packed-bundle environment exposed no installed Backlog CLI prerequisite");
-      }
+      const packedBundleBacklogExecutable = installedBacklog.shimPath;
       const runPackedBundleBacklog = (args: readonly string[]): ReturnType<typeof spawnSync> => {
         const invocation =
           process.platform === "win32" && packedBundleBacklogExecutable.endsWith(".exe")
@@ -1410,18 +1535,7 @@ describe("fresh local packed-install and inactive-candidate journey", () => {
       }
 
       const backlogRoot = join(installedWorkspace, ".authoring-backlog");
-      const backlogExecutable = (installedEnv[pathKey] ?? "")
-        .split(delimiter)
-        .flatMap((directory) =>
-          process.platform === "win32"
-            ? ["backlog.cmd", "backlog.exe"].map((name) => join(directory, name))
-            : [join(directory, "backlog")],
-        )
-        .find((path) => existsSync(path));
-      expect(backlogExecutable).toBeDefined();
-      if (backlogExecutable === undefined) {
-        throw new Error("fresh installed-package environment exposed no Backlog CLI prerequisite");
-      }
+      const backlogExecutable = installedBacklog.shimPath;
       expect(resolve(backlogExecutable).startsWith(`${resolve(REPO_ROOT)}${sep}`)).toBe(false);
       const runInstalledBacklog = (args: readonly string[]): ReturnType<typeof spawnSync> => {
         const invocation =

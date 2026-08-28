@@ -160,6 +160,8 @@ export class BacklogCli implements BacklogMd {
       "Backlog",
       "--task-prefix",
       options.taskPrefix,
+      "--default-editor",
+      "vim",
       "--defaults",
       "--integration-mode",
       "none",
