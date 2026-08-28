@@ -717,6 +717,11 @@ export class NodeFileSystem implements FileSystem {
           }
           throw new Error(`confined public path raced during displacement: ${path}`);
         }
+        const verifiedInitialPublicDescriptor = initialPublicDescriptor;
+        initialPublicDescriptor = undefined;
+        if (verifiedInitialPublicDescriptor !== undefined) {
+          closeSync(verifiedInitialPublicDescriptor);
+        }
         unlinkSync(displacedPath);
         displacedDigest = undefined;
         publicDigest = undefined;

@@ -1,23 +1,23 @@
 # Current orchestration pointer. History belongs in Git, Backlog.md, and research/evolution/.
 schemaVersion: 1
 phase: 6
-phaseName: "Epic gate — TASK-135 Windows repair cycle 2"
+phaseName: "Epic gate — TASK-135 Windows repair cycle 3"
 branch: fix/authoring-agent-onboarding/windows-release-boundaries
 epic: authoring-agent-onboarding
 activeStory: task-135
-reviewCycle: 2
+reviewCycle: 3
 activeChange:
-  id: task-135-windows-state-cleanup
+  id: task-135-windows-displaced-descriptor
 specialists:
   worker:
     role: implementation
-    lastSkill: bmad-qa-generate-e2e-tests @ task-135 cycle 2 / 4-8-complete-supported-host-release-boundaries
+    lastSkill: bmad-qa-generate-e2e-tests @ task-135 cycle 3 / 4-8-complete-supported-host-release-boundaries
   reviewer:
     role: independent review
-    lastSkill: bmad-story-automator-review @ task-135 cycle 2 / 4-8-complete-supported-host-release-boundaries
+    lastSkill: bmad-story-automator-review @ task-135 cycle 3 / 4-8-complete-supported-host-release-boundaries
   investigator:
     role: gate failure diagnosis
-    lastSkill: bmad-investigate @ task-135 candidate 9be9a43 / job 98973889650
+    lastSkill: bmad-investigate @ task-135 candidate 7cbba3d / job 98997319223
   tea:
     role: onboarding trace and NFR gate
     lastSkill: bmad-testarch-trace @ onboarding human-waiver validation
@@ -34,4 +34,4 @@ workingMemory:
     - Skills-Results
   durableEpisode: research/evolution/records/authoring-agent-onboarding.yaml
 designRevisionLoaded: db2b3d7be8f20d21aa8f299064514ca676464eee
-lastUpdated: "2026-08-28T21:33:07Z"
+lastUpdated: "2026-08-28T22:57:28Z"

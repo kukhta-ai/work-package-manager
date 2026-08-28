@@ -4,7 +4,7 @@ title: Complete supported-host release boundaries
 status: In Progress
 assignee: []
 created_date: '2026-08-28 19:21'
-updated_date: '2026-08-28 21:11'
+updated_date: '2026-08-28 22:59'
 labels:
   - follow-up
   - ci
@@ -41,9 +41,7 @@ PR #5 current-tip CI exposed two Windows release-boundary defects and three meas
 ## Implementation Notes
 
 <!-- SECTION:NOTES:BEGIN -->
-Evidence: literal bmad-investigate @ PR #5 candidate b6254a3; push run 33196449021 and pull-request run 33196452919. Confirmed gaps: no-quarantine direct-child writeConfined geometry, Node default argv re-escaping of the cmd.exe outer envelope, and three observed 60-second E2E overruns. Preserve hard-link no-clobber publication, confinement/identity checks, unsafe cmd syntax rejection, and focused timeout policy. Reject NodeFS refactors, blanket EPERM handling, shell:true, retries, global timeout increases, and broad normalization.
-
-Cycle-2 evidence: literal bmad-investigate @ candidate 9be9a43, run 33207995447, Windows/Node20 job 98973889650. The direct no-quarantine NodeFS regression and isolated spaced-prefix Backlog invocation pass. Remaining distinct causes: quarantined state cleanup nested beneath a retained publication-parent handle (strong Windows inference); two invalid core fixtures omit required install-backlog/config.yml (confirmed); three handoff expectations compare native instead of portable paths (confirmed). Keep the cmd fix. Reject alias fallback changes, product path normalization, retries, and broad filesystem refactors.
+Initial evidence: literal bmad-investigate @ PR #5 candidate b6254a3; push run 33196449021 and pull-request run 33196452919. Confirmed gaps: no-quarantine direct-child writeConfined geometry, Node default argv re-escaping of the cmd.exe outer envelope, and three observed 60-second E2E overruns. Preserve hard-link no-clobber publication, confinement/identity checks, unsafe cmd syntax rejection, and focused timeout policy. Reject NodeFS refactors, blanket EPERM handling, shell:true, retries, global timeout increases, and broad normalization. Cycle-2 evidence: literal bmad-investigate @ candidate 9be9a43, run 33207995447, Windows/Node20 job 98973889650. Direct no-quarantine NodeFS and isolated spaced-prefix Backlog pass. Remaining causes: quarantined state cleanup under a retained publication-parent handle; two invalid core fixtures missing install-backlog/config.yml; and three handoff expectations using native paths. Keep the cmd fix; reject alias fallback changes, product path normalization, retries, and broad filesystem refactors. Cycle-3 evidence: literal bmad-investigate @ candidate 7cbba3d, run 33215249287, Windows/Node20 job 98997319223. Complete log: 10 failed files / 113 failed tests, all one deterministic replacement defect. After the original public file is verified and renamed to quarantine .displaced, its owned initialPublicDescriptor remains open through unlink; Windows leaves the name delete-pending and retained lstat receives EPERM. Close and clear only that verified descriptor before displaced unlink; preserve identity, digest, lstat, cleanup, confinement, and no-clobber checks. Reject EPERM-as-missing, retries, sleeps, more directory-handle cases, or changes to aliases, paths, cmd handling, fixtures, or timeouts.
 <!-- SECTION:NOTES:END -->
 
 ## Definition of Done
