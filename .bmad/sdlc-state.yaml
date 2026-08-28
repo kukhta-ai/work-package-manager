@@ -1,22 +1,23 @@
 # Current orchestration pointer. History belongs in Git, Backlog.md, and research/evolution/.
 schemaVersion: 1
-phase: 7
-phaseName: "Handoff — experimental onboarding PR"
+phase: 6
+phaseName: "Epic gate — PR #5 current-tip CI"
 branch: feature/authoring-agent-onboarding
 epic: authoring-agent-onboarding
 activeStory: null
 reviewCycle: 0
-activeChange: null
+activeChange:
+  id: pr-5-current-tip-ci
 specialists:
   worker:
     role: implementation
-    lastSkill: bmad-dev-story @ task-128 repair review-cycle-2 absorption / 4-1-ship-portable-target-skill-scope-aliases
+    lastSkill: bmad-qa-generate-e2e-tests @ task-130 / 4-3-keep-strict-ci-evidence-validation-supplied-with-repository-history
   reviewer:
     role: independent review
-    lastSkill: bmad-story-automator-review @ task-128 package-layout confirmation cycle 3 / 4-1-ship-portable-target-skill-scope-aliases
+    lastSkill: bmad-story-automator-review @ task-130 cycle 1 / 4-3-keep-strict-ci-evidence-validation-supplied-with-repository-history
   investigator:
     role: gate failure diagnosis
-    lastSkill: bmad-investigate @ task-128-package-layout-regression
+    lastSkill: bmad-investigate @ pr-5-ci-process-artifact-history
   tea:
     role: onboarding trace and NFR gate
     lastSkill: bmad-testarch-trace @ onboarding human-waiver validation
@@ -32,5 +33,5 @@ workingMemory:
     - _bmad-output
     - Skills-Results
   durableEpisode: research/evolution/records/authoring-agent-onboarding.yaml
-designRevisionLoaded: ce0690a34ec3523bfd68ffb106ac6caadcf43f66
-lastUpdated: "2026-08-26T16:56:44Z"
+designRevisionLoaded: 49f289ca30cec1bfe38f4939e429fecb1e106edf
+lastUpdated: "2026-08-28T14:21:56Z"

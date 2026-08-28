@@ -19,6 +19,10 @@ interface PackageLock {
 interface CiWorkflow {
   readonly jobs: {
     readonly gate: {
+      readonly steps: readonly {
+        readonly uses?: string;
+        readonly with?: Readonly<Record<string, unknown>>;
+      }[];
       readonly strategy: {
         readonly matrix: {
           readonly node: readonly number[];
@@ -72,5 +76,12 @@ describe("declared Node runtime support", () => {
       os: ["ubuntu-latest", "macos-latest", "windows-latest"],
       node: [20, 22],
     });
+  });
+
+  it("supplies repository history to strict CI evidence validation", () => {
+    const workflow = parse(readProjectFile(".github/workflows/ci.yml")) as CiWorkflow;
+    const checkout = workflow.jobs.gate.steps.find((step) => step.uses === "actions/checkout@v4");
+
+    expect(checkout?.with?.["fetch-depth"]).toBe(0);
   });
 });
