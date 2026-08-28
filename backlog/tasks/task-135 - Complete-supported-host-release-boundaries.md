@@ -4,7 +4,7 @@ title: Complete supported-host release boundaries
 status: In Progress
 assignee: []
 created_date: '2026-08-28 19:21'
-updated_date: '2026-08-28 19:22'
+updated_date: '2026-08-28 21:11'
 labels:
   - follow-up
   - ci
@@ -33,12 +33,17 @@ PR #5 current-tip CI exposed two Windows release-boundary defects and three meas
 - [ ] #4 Unsafe Windows command expansion or quoting syntax remains rejected, and a failed installed-command execution retains actionable diagnostics.
 - [ ] #5 The real bundle-create and source-free packed-install journeys complete their publication and installed-command boundaries on supported Windows runners.
 - [ ] #6 Only the three real-CLI scenarios observed exceeding 60 seconds receive a bounded 90-second budget; unrelated test timeout contracts remain unchanged.
+- [ ] #7 Existing and first-publication workspace state files that use request-bound quarantine publish exact bytes on Windows and retire their staged or prior evidence without residue.
+- [ ] #8 Synthetic core-bundle release fixtures include the required minimal install backlog and remain aliasable through the supported Windows fallback.
+- [ ] #9 Workspace-handoff integration expectations accept the product portable path dialect on every supported host without changing product path output.
 <!-- AC:END -->
 
 ## Implementation Notes
 
 <!-- SECTION:NOTES:BEGIN -->
 Evidence: literal bmad-investigate @ PR #5 candidate b6254a3; push run 33196449021 and pull-request run 33196452919. Confirmed gaps: no-quarantine direct-child writeConfined geometry, Node default argv re-escaping of the cmd.exe outer envelope, and three observed 60-second E2E overruns. Preserve hard-link no-clobber publication, confinement/identity checks, unsafe cmd syntax rejection, and focused timeout policy. Reject NodeFS refactors, blanket EPERM handling, shell:true, retries, global timeout increases, and broad normalization.
+
+Cycle-2 evidence: literal bmad-investigate @ candidate 9be9a43, run 33207995447, Windows/Node20 job 98973889650. The direct no-quarantine NodeFS regression and isolated spaced-prefix Backlog invocation pass. Remaining distinct causes: quarantined state cleanup nested beneath a retained publication-parent handle (strong Windows inference); two invalid core fixtures omit required install-backlog/config.yml (confirmed); three handoff expectations compare native instead of portable paths (confirmed). Keep the cmd fix. Reject alias fallback changes, product path normalization, retries, and broad filesystem refactors.
 <!-- SECTION:NOTES:END -->
 
 ## Definition of Done

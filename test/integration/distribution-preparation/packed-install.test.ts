@@ -433,6 +433,13 @@ describe("fresh local packed-install and inactive-candidate journey", () => {
         join(packedTaskTemplate, "files", "bundles", "core", "bundle.yml"),
         "id: core\nversion: 1.2.3\nsummary: core bundle\nconfirmation: safe\nrequires: {}\n",
       );
+      mkdirSync(join(packedTaskTemplate, "files", "bundles", "core", "install-backlog"), {
+        recursive: true,
+      });
+      writeFileSync(
+        join(packedTaskTemplate, "files", "bundles", "core", "install-backlog", "config.yml"),
+        "task_prefix: core\n",
+      );
       const packedBundleTemplate = join(source, "templates", "bundle", "default", "template.yml");
       writeFileSync(
         packedBundleTemplate,

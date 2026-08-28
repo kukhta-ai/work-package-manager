@@ -11,6 +11,7 @@ import {
   WORKSPACE_HANDOFF_RECEIPT_PATH,
 } from "../../src/core/services/workspace-handoff.js";
 import type { CliIo, OutputSink } from "../../src/util/exit.js";
+import { toPosix } from "../../src/util/posix-path.js";
 import { withTempDir } from "../helpers/tmpdir.js";
 
 const TEMPLATES = fileURLToPath(new URL("../../templates", import.meta.url));
@@ -114,7 +115,7 @@ describe("workspace handoff through source CLI and real filesystem", () => {
       expect(JSON.parse(retried.out.text)).toMatchObject({
         status: "prepared",
         handoffPrepared: true,
-        changedPaths: [join(workspace, WORKSPACE_HANDOFF_RECEIPT_PATH)],
+        changedPaths: [toPosix(join(workspace, WORKSPACE_HANDOFF_RECEIPT_PATH))],
       });
     });
   });
@@ -158,7 +159,7 @@ describe("workspace handoff through source CLI and real filesystem", () => {
           selectedClient: client,
           clients: [{ id: client, status: "valid" }],
           agreement: {
-            workingDirectory: { status: "valid", path: workspace },
+            workingDirectory: { status: "valid", path: toPosix(workspace) },
             receipt: { status: "valid", path: ".wpm-handoff.json" },
             managedState: { status: "valid", path: ".wpm-authoring.json" },
             authoringBacklog: { status: "valid", path: ".authoring-backlog" },
@@ -209,7 +210,7 @@ describe("workspace handoff through source CLI and real filesystem", () => {
         ),
       ).toBe(0);
       expect(created.out.text).toContain("handoff: prepared");
-      expect(created.out.text).toContain(`workspace root: ${JSON.stringify(workspace)}`);
+      expect(created.out.text).toContain(`workspace root: ${JSON.stringify(toPosix(workspace))}`);
       expect(created.out.text).toContain("wpm authoring handoff verify --client codex");
       expect(created.out.text).toContain("then invoke: $wpm-author");
       expect(created.out.text).toContain("then invoke: /wpm-author");

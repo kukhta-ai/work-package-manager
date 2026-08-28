@@ -462,6 +462,17 @@ export class NodeFileSystem implements FileSystem {
         : dirname(privateSlot.path);
     const windowsSameParentTransient =
       process.platform === "win32" && privateSlot === undefined && stagingDirectory === parent;
+    const privateSlotFromParent =
+      privateSlot === undefined ? undefined : relative(parent, privateSlot.path);
+    // Windows directory-search handles can block retirement of request-bound evidence below the directory
+    // they inspect. Other quarantine geometries retain the shorter publication-only release window.
+    const windowsNestedPrivateCleanup =
+      process.platform === "win32" &&
+      privateSlotFromParent !== undefined &&
+      privateSlotFromParent.length > 0 &&
+      privateSlotFromParent !== ".." &&
+      !privateSlotFromParent.startsWith(`..${sep}`) &&
+      !isAbsolute(privateSlotFromParent);
     const beforeDigest = expected.kind === "missing" ? undefined : this.expectedDigest(expected);
     let initialPublicDescriptor: number | undefined;
     let initialPublicIdentity: NodePathIdentity | undefined;
@@ -757,7 +768,7 @@ export class NodeFileSystem implements FileSystem {
           unlinkSync(tmp);
           tmp = undefined;
         }
-        if (process.platform === "win32") {
+        if (process.platform === "win32" && !windowsNestedPrivateCleanup) {
           publicationParentHandle = opendirSync(parent);
           this.assertConfinedMutationPath(confinementRoot, path, "file-or-missing");
           this.assertDirectoryIdentity(parent, publicationParentIdentity);
@@ -768,6 +779,13 @@ export class NodeFileSystem implements FileSystem {
       }
       this.assertWriteParentPreimage(path, expected, "published");
       this.assertDirectoryIdentity(parent, publicationParentIdentity);
+      if (windowsNestedPrivateCleanup) {
+        const inspectionHandle = publicationParentHandle;
+        publicationParentHandle = undefined;
+        inspectionHandle?.closeSync();
+        this.assertConfinedMutationPath(confinementRoot, path, "file-or-missing");
+        this.assertDirectoryIdentity(parent, publicationParentIdentity);
+      }
       if (stagedPath !== undefined && this.lstatIfPresent(stagedPath) !== undefined) {
         if (this.fileDigestIfRegular(stagedPath) !== desiredDigest) {
           throw new Error(`confined staged bytes changed before cleanup: ${stagedPath}`);
@@ -814,6 +832,15 @@ export class NodeFileSystem implements FileSystem {
           throw new Error(`confined retained preimage changed before cleanup: ${privateSlot.path}`);
         }
         unlinkSync(privateSlot.path);
+      }
+      if (windowsNestedPrivateCleanup) {
+        publicationParentHandle = opendirSync(parent);
+        this.assertConfinedMutationPath(confinementRoot, path, "file-or-missing");
+        this.assertDirectoryIdentity(parent, publicationParentIdentity);
+        if (this.fileDigestIfRegular(path) !== desiredDigest) {
+          throw new Error(`confined write publication changed after private cleanup: ${path}`);
+        }
+        this.assertWriteParentPreimage(path, expected, "published");
       }
     } catch (error) {
       const retained = privateSlot?.path;

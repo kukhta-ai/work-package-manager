@@ -483,6 +483,67 @@ describe("NodeFileSystem (the real FileSystem adapter, against a real tmpdir)", 
     });
   });
 
+  it("replaces direct-child workspace state and retires quarantine nested beneath its parent", async () => {
+    await withTempDir((dir) => {
+      const home = join(dir, "home");
+      const stateParent = join(home, ".wpm");
+      const state = join(stateParent, "authoring-setup.json");
+      const quarantineRoot = join(stateParent, "authoring-setup-quarantine", "request");
+      const quarantinePath = join(quarantineRoot, "state-complete.preimage");
+      const applying = '{"status":"applying"}\n';
+      const complete = '{"status":"complete","message":"WPM κ"}\r\n';
+      mkdirSync(stateParent, { recursive: true });
+      writeFileSync(join(stateParent, "KEEP.txt"), "KEEP\n");
+      writeFileSync(state, applying);
+
+      new NodeFileSystem().writeConfined(
+        home,
+        state,
+        complete,
+        {
+          kind: "sha256",
+          sha256: createHash("sha256").update(applying).digest("hex"),
+        },
+        { root: quarantineRoot, path: quarantinePath },
+      );
+
+      expect(readFileSync(state)).toEqual(Buffer.from(complete, "utf8"));
+      expect(readdirSync(stateParent).sort()).toEqual(["KEEP.txt", "authoring-setup.json"]);
+      expect(existsSync(quarantinePath)).toBe(false);
+      expect(existsSync(`${quarantinePath}.staged`)).toBe(false);
+      expect(existsSync(`${quarantinePath}.displaced`)).toBe(false);
+      expect(existsSync(quarantineRoot)).toBe(false);
+    });
+  });
+
+  it("first-publishes direct-child workspace state and retires nested private staging", async () => {
+    await withTempDir((dir) => {
+      const home = join(dir, "home");
+      const stateParent = join(home, ".wpm");
+      const state = join(stateParent, "authoring-setup.json");
+      const quarantineRoot = join(stateParent, "authoring-setup-quarantine", "request");
+      const quarantinePath = join(quarantineRoot, "state-complete.preimage");
+      const complete = '{"status":"complete","message":"WPM κ"}\r\n';
+      mkdirSync(stateParent, { recursive: true });
+      writeFileSync(join(stateParent, "KEEP.txt"), "KEEP\n");
+
+      new NodeFileSystem().writeConfined(
+        home,
+        state,
+        complete,
+        { kind: "missing" },
+        { root: quarantineRoot, path: quarantinePath },
+      );
+
+      expect(readFileSync(state)).toEqual(Buffer.from(complete, "utf8"));
+      expect(readdirSync(stateParent).sort()).toEqual(["KEEP.txt", "authoring-setup.json"]);
+      expect(existsSync(quarantinePath)).toBe(false);
+      expect(existsSync(`${quarantinePath}.staged`)).toBe(false);
+      expect(existsSync(`${quarantinePath}.displaced`)).toBe(false);
+      expect(existsSync(quarantineRoot)).toBe(false);
+    });
+  });
+
   it("refuses existing and escaped direct-file requests without changing unrelated entries", async () => {
     await withTempDir((dir) => {
       const root = join(dir, "home");
