@@ -735,7 +735,20 @@ export class NodeFileSystem implements FileSystem {
         );
         this.assertConfinedMutationPath(confinementRoot, path, "file-or-missing");
         this.assertDirectoryIdentity(parent, publicationParentIdentity);
+        // On Windows, opendirSync can retain a directory-search handle for a non-empty parent. Release that
+        // handle across hard-link publication; path identity checks bracket this platform-specific window.
+        if (process.platform === "win32") {
+          const inspectionHandle = publicationParentHandle;
+          publicationParentHandle = undefined;
+          inspectionHandle?.closeSync();
+          this.assertConfinedMutationPath(confinementRoot, path, "file-or-missing");
+          this.assertDirectoryIdentity(parent, publicationParentIdentity);
+        }
         linkSync(tmp, path);
+        if (process.platform === "win32") {
+          publicationParentHandle = opendirSync(parent);
+          this.assertDirectoryIdentity(parent, publicationParentIdentity);
+        }
       }
       if (this.fileDigestIfRegular(path) !== desiredDigest) {
         throw new Error(`confined write publication changed: ${path}`);

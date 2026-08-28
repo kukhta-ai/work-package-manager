@@ -440,6 +440,61 @@ describe("NodeFileSystem (the real FileSystem adapter, against a real tmpdir)", 
     });
   });
 
+  it("publishes exact bytes beneath a stable non-empty parent and removes private staging", async () => {
+    await withTempDir((dir) => {
+      const home = join(dir, "home");
+      const destination = join(home, ".agents", "skills", "wpm-create-package");
+      const skill = join(destination, "SKILL.md");
+      const quarantineRoot = join(home, ".wpm", "authoring-setup-quarantine", "request");
+      const quarantinePath = join(quarantineRoot, "codex", "current.preimage");
+      const content = "WPM FILE\r\nκ\n";
+      mkdirSync(destination, { recursive: true });
+      writeFileSync(join(destination, "KEEP.txt"), "KEEP\n");
+
+      new NodeFileSystem().writeConfined(
+        home,
+        skill,
+        content,
+        { kind: "missing" },
+        {
+          root: quarantineRoot,
+          path: quarantinePath,
+        },
+      );
+
+      expect(readFileSync(skill)).toEqual(Buffer.from(content, "utf8"));
+      expect(readdirSync(destination).sort()).toEqual(["KEEP.txt", "SKILL.md"]);
+      expect(existsSync(quarantineRoot)).toBe(false);
+    });
+  });
+
+  it("does not create a required publication parent that is absent", async () => {
+    await withTempDir((dir) => {
+      const home = join(dir, "home");
+      const destination = join(home, ".agents", "skills", "wpm-create-package");
+      const skill = join(destination, "SKILL.md");
+      const quarantineRoot = join(home, ".wpm", "authoring-setup-quarantine", "request");
+      const quarantinePath = join(quarantineRoot, "codex", "current.preimage");
+      mkdirSync(home);
+
+      expect(() =>
+        new NodeFileSystem().writeConfined(
+          home,
+          skill,
+          "WPM FILE\n",
+          { kind: "missing" },
+          {
+            root: quarantineRoot,
+            path: quarantinePath,
+          },
+        ),
+      ).toThrow(/parent identity changed/);
+
+      expect(existsSync(destination)).toBe(false);
+      expect(existsSync(skill)).toBe(false);
+    });
+  });
+
   it("publishes a missing confined file without clobbering one that races in", async () => {
     await withTempDir((dir) => {
       const home = join(dir, "home");
