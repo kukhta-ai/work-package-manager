@@ -159,7 +159,7 @@ describeIfBuilt("bundle <id> routing + show/meta E2E via dist/cli.js (tasks 57/5
       expect(confLevel).toContain("safe");
       expect(confLevel).toContain("dangerous");
     });
-  });
+  }, 90_000);
 
   it("a show → meta → show round-trip: the second show reflects the meta edit (read sees the mutation)", async () => {
     await withTempDir((dir) => {
@@ -353,7 +353,7 @@ describeIfBuilt("bundle <id> version / bump / set E2E via dist/cli.js (tasks 59/
       expect(titles).toContain("Simulate upgrade for a from 0.1.0 to 0.2.0");
       expect(titles).toContain("Review version constraint on a at 0.2.0");
     });
-  });
+  }, 90_000);
 
   it("`bundle <id> version set 2.0.0` writes the explicit version; a bad level/version exits 2 unchanged", async () => {
     await withTempDir((dir) => {

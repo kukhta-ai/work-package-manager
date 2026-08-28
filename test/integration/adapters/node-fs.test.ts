@@ -468,6 +468,44 @@ describe("NodeFileSystem (the real FileSystem adapter, against a real tmpdir)", 
     });
   });
 
+  it("publishes a missing direct child of a stable non-empty confinement root without transient residue", async () => {
+    await withTempDir((dir) => {
+      const root = join(dir, "home");
+      const destination = join(root, "authoring-setup.json");
+      const content = '{"message":"WPM κ"}\r\n';
+      mkdirSync(root);
+      writeFileSync(join(root, "KEEP.txt"), "KEEP\n");
+
+      new NodeFileSystem().writeConfined(root, destination, content, { kind: "missing" });
+
+      expect(readFileSync(destination)).toEqual(Buffer.from(content, "utf8"));
+      expect(readdirSync(root).sort()).toEqual(["KEEP.txt", "authoring-setup.json"]);
+    });
+  });
+
+  it("refuses existing and escaped direct-file requests without changing unrelated entries", async () => {
+    await withTempDir((dir) => {
+      const root = join(dir, "home");
+      const destination = join(root, "authoring-setup.json");
+      const outside = join(dir, "outside.json");
+      mkdirSync(root);
+      writeFileSync(join(root, "KEEP.txt"), "KEEP\n");
+      writeFileSync(destination, "USER FILE\n");
+      const fs = new NodeFileSystem();
+
+      expect(() =>
+        fs.writeConfined(root, destination, "WPM FILE\n", { kind: "missing" }),
+      ).toThrow();
+      expect(() =>
+        fs.writeConfined(root, outside, "MUST NOT ESCAPE\n", { kind: "missing" }),
+      ).toThrow(/escapes its root/i);
+
+      expect(readFileSync(destination, "utf8")).toBe("USER FILE\n");
+      expect(existsSync(outside)).toBe(false);
+      expect(readdirSync(root).sort()).toEqual(["KEEP.txt", "authoring-setup.json"]);
+    });
+  });
+
   it("does not create a required publication parent that is absent", async () => {
     await withTempDir((dir) => {
       const home = join(dir, "home");
@@ -629,6 +667,7 @@ describe("NodeFileSystem (the real FileSystem adapter, against a real tmpdir)", 
       const quarantineRoot = join(home, ".wpm", "authoring-setup-quarantine", "request");
       const quarantinePath = join(quarantineRoot, "codex", "current.preimage");
       mkdirSync(home);
+      writeFileSync(join(home, "KEEP.txt"), "KEEP\n");
       const fs = new ParentReplacementBeforePublicationFileSystem();
 
       expect(() =>
@@ -642,6 +681,7 @@ describe("NodeFileSystem (the real FileSystem adapter, against a real tmpdir)", 
       ).toThrow(/parent identity changed/);
       expect(existsSync(destination)).toBe(true);
       expect(existsSync(skill)).toBe(false);
+      expect(readFileSync(join(home, "KEEP.txt"), "utf8")).toBe("KEEP\n");
       expect(readFileSync(`${quarantinePath}.staged`, "utf8")).toBe("WPM FILE\n");
     });
   });

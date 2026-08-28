@@ -460,6 +460,8 @@ export class NodeFileSystem implements FileSystem {
           ? parent
           : dirname(parent)
         : dirname(privateSlot.path);
+    const windowsSameParentTransient =
+      process.platform === "win32" && privateSlot === undefined && stagingDirectory === parent;
     const beforeDigest = expected.kind === "missing" ? undefined : this.expectedDigest(expected);
     let initialPublicDescriptor: number | undefined;
     let initialPublicIdentity: NodePathIdentity | undefined;
@@ -745,8 +747,19 @@ export class NodeFileSystem implements FileSystem {
           this.assertDirectoryIdentity(parent, publicationParentIdentity);
         }
         linkSync(tmp, path);
+        if (windowsSameParentTransient && tmp !== undefined) {
+          this.assertConfinedMutationPath(confinementRoot, path, "file-or-missing");
+          this.assertDirectoryIdentity(parent, publicationParentIdentity);
+          if (this.fileDigestIfRegular(path) !== desiredDigest) {
+            throw new Error(`confined write publication changed before transient cleanup: ${path}`);
+          }
+          this.assertWriteParentPreimage(path, expected, "published");
+          unlinkSync(tmp);
+          tmp = undefined;
+        }
         if (process.platform === "win32") {
           publicationParentHandle = opendirSync(parent);
+          this.assertConfinedMutationPath(confinementRoot, path, "file-or-missing");
           this.assertDirectoryIdentity(parent, publicationParentIdentity);
         }
       }
@@ -813,6 +826,11 @@ export class NodeFileSystem implements FileSystem {
         { cause: error },
       );
     } finally {
+      if (windowsSameParentTransient && tmp !== undefined) {
+        const inspectionHandle = publicationParentHandle;
+        publicationParentHandle = undefined;
+        inspectionHandle?.closeSync();
+      }
       if (tmp !== undefined) {
         try {
           if (privateSlot === undefined) unlinkSync(tmp);

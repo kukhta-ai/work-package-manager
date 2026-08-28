@@ -129,6 +129,7 @@ function provisionBacklogPeer(cwd: string, prefix: string, env: NodeJS.ProcessEn
     encoding: "utf8",
     timeout: 60_000,
     env,
+    windowsVerbatimArguments: invocation.windowsVerbatimArguments,
   });
   return {
     installation,
@@ -380,7 +381,7 @@ describe("fresh local packed-install and inactive-candidate journey", () => {
       const source = join(root, "source");
       const artifacts = join(root, "artifacts");
       const reportPath = join(root, "inspection-report.json");
-      const consumer = join(root, "consumer");
+      const consumer = join(root, "consumer with spaces");
       copyCurrentSource(source);
       const sourcePackagePath = join(source, "package.json");
       const sourcePackage = JSON.parse(readFileSync(sourcePackagePath, "utf8")) as Record<
@@ -773,6 +774,7 @@ describe("fresh local packed-install and inactive-candidate journey", () => {
           encoding: "utf8",
           timeout: 180_000,
           env: { ...installedEnv, HOME: home, USERPROFILE: home, PWD: cwd },
+          windowsVerbatimArguments: invocation.windowsVerbatimArguments,
         });
       };
 
@@ -847,7 +849,11 @@ describe("fresh local packed-install and inactive-candidate journey", () => {
       const runPackedBundleBacklog = (args: readonly string[]): ReturnType<typeof spawnSync> => {
         const invocation =
           process.platform === "win32" && packedBundleBacklogExecutable.endsWith(".exe")
-            ? { executable: packedBundleBacklogExecutable, args: [...args] }
+            ? {
+                executable: packedBundleBacklogExecutable,
+                args: [...args],
+                windowsVerbatimArguments: false,
+              }
             : resolveInstalledExecutableInvocation(
                 process.platform,
                 packedBundleBacklogExecutable,
@@ -857,6 +863,7 @@ describe("fresh local packed-install and inactive-candidate journey", () => {
           cwd: packedBundleBacklogRoot,
           encoding: "utf8",
           timeout: 60_000,
+          windowsVerbatimArguments: invocation.windowsVerbatimArguments,
           env: {
             ...installedEnv,
             HOME: packedBundleHome,
@@ -1134,6 +1141,7 @@ describe("fresh local packed-install and inactive-candidate journey", () => {
         encoding: "utf8",
         timeout: 180_000,
         env: { ...installedEnv, PWD: bothSetupWorkspace },
+        windowsVerbatimArguments: setupInvocation.windowsVerbatimArguments,
       });
       expect({ status: installedSetup.status, stderr: installedSetup.stderr }).toEqual({
         status: 0,
@@ -1175,6 +1183,7 @@ describe("fresh local packed-install and inactive-candidate journey", () => {
         encoding: "utf8",
         timeout: 180_000,
         env: installedEnv,
+        windowsVerbatimArguments: setupInvocation.windowsVerbatimArguments,
       });
       expect(repeatedSetup.status).toBe(0);
       expect(
@@ -1209,6 +1218,7 @@ describe("fresh local packed-install and inactive-candidate journey", () => {
         encoding: "utf8",
         timeout: 180_000,
         env: installedEnv,
+        windowsVerbatimArguments: setupInvocation.windowsVerbatimArguments,
       });
       expect(updatedSetup.status).toBe(0);
       expect(
@@ -1371,6 +1381,7 @@ describe("fresh local packed-install and inactive-candidate journey", () => {
         encoding: "utf8",
         timeout: 180_000,
         env: installedEnv,
+        windowsVerbatimArguments: installedInvocation.windowsVerbatimArguments,
       });
       expect({ status: installedInit.status, stderr: installedInit.stderr }).toEqual({
         status: 0,
@@ -1457,6 +1468,7 @@ describe("fresh local packed-install and inactive-candidate journey", () => {
             encoding: "utf8",
             timeout: 180_000,
             env: installedEnv,
+            windowsVerbatimArguments: verificationInvocation.windowsVerbatimArguments,
           },
         );
         expect(
@@ -1543,13 +1555,18 @@ describe("fresh local packed-install and inactive-candidate journey", () => {
       const runInstalledBacklog = (args: readonly string[]): ReturnType<typeof spawnSync> => {
         const invocation =
           process.platform === "win32" && backlogExecutable.endsWith(".exe")
-            ? { executable: backlogExecutable, args: [...args] }
+            ? {
+                executable: backlogExecutable,
+                args: [...args],
+                windowsVerbatimArguments: false,
+              }
             : resolveInstalledExecutableInvocation(process.platform, backlogExecutable, args);
         return spawnSync(invocation.executable, invocation.args, {
           cwd: backlogRoot,
           encoding: "utf8",
           timeout: 60_000,
           env: { ...installedEnv, PWD: backlogRoot },
+          windowsVerbatimArguments: invocation.windowsVerbatimArguments,
         });
       };
       const backlogVersion = runInstalledBacklog(["--version"]);

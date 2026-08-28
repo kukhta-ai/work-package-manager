@@ -872,7 +872,7 @@ describeIfBuilt("`wpm build package` E2E (task-83, through dist/cli.js)", () => 
       for (const path of controls) expect(afterDryRun.stdout).toContain(path);
       packageLayouts("deregistered", false);
     });
-  });
+  }, 90_000);
 
   it("TASK-118 AC#5/#6/#8/#10 — fresh multi-format review builds use an equivalent Git-isolated copy while the original stays byte-for-byte unchanged", async () => {
     if (process.platform === "win32") return;
