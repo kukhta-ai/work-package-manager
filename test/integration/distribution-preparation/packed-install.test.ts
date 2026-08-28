@@ -44,7 +44,7 @@ const TEST_NPM_TIMEOUT_MS = 660_000;
 const COMPLETE_JOURNEY_TIMEOUT_MS = 720_000;
 
 function temporaryRoot(prefix: string): string {
-  const root = mkdtempSync(join(tmpdir(), prefix));
+  const root = realpathSync.native(mkdtempSync(join(tmpdir(), prefix)));
   tempRoots.push(root);
   return root;
 }

@@ -1,6 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { readFileSync } from "node:fs";
 import { delimiter, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -9,6 +8,7 @@ import {
   parseWorkspaceHandoffReceipt,
   WORKSPACE_HANDOFF_RECEIPT_PATH,
 } from "../../src/core/services/workspace-handoff.js";
+import { makeTempDir, removeTempDir } from "../helpers/tmpdir.js";
 
 /**
  * Through-the-edges integration test: builds and links the package into a temporary npm prefix, then invokes
@@ -34,7 +34,7 @@ describeIfPosix("documented linked command entrypoints (TASK-129)", () => {
   let linkedEnvironment: NodeJS.ProcessEnv;
 
   beforeAll(() => {
-    dir = mkdtempSync(join(tmpdir(), "wpm-bin-"));
+    dir = makeTempDir("wpm-bin-");
     const prefix = join(dir, "prefix");
     linkedEnvironment = {
       ...process.env,
@@ -55,7 +55,7 @@ describeIfPosix("documented linked command entrypoints (TASK-129)", () => {
   });
 
   afterAll(() => {
-    rmSync(dir, { recursive: true, force: true });
+    removeTempDir(dir);
   });
 
   function directVersion(binName: (typeof binNames)[number]): string {

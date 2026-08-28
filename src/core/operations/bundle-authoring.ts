@@ -1,4 +1,4 @@
-import { dirname, isAbsolute, join, relative } from "node:path";
+import { dirname, isAbsolute, join, posix, relative, win32 } from "node:path";
 import { toPosix } from "../../util/posix-path.js";
 import { editYaml, parseYaml, stringifyYaml } from "../../util/yaml.js";
 import {
@@ -611,11 +611,24 @@ function exactAliasOrCopy(
   copyTarget: string,
 ): boolean {
   const inspected = fs.inspectPath(linkPath);
-  if (inspected.kind === "symbolic-link") return inspected.target === symbolicTarget;
+  if (inspected.kind === "symbolic-link") {
+    return exactAliasTarget(inspected.target, symbolicTarget);
+  }
   return (
     inspected.kind === "directory" &&
     fs.inspectPath(copyTarget).kind === "directory" &&
     treeEvidence(fs, linkPath) === treeEvidence(fs, copyTarget)
+  );
+}
+
+function exactAliasTarget(observedTarget: string, expectedTarget: string): boolean {
+  // The in-memory port exposes absolute targets in a POSIX observation dialect. Relative symlink targets are
+  // portable archive data, however, and must retain their exact bytes (not merely equivalent separators).
+  const expectedIsAbsolute = posix.isAbsolute(expectedTarget) || win32.isAbsolute(expectedTarget);
+  if (!expectedIsAbsolute) return observedTarget === expectedTarget;
+  return (
+    (posix.isAbsolute(observedTarget) || win32.isAbsolute(observedTarget)) &&
+    toPosix(observedTarget) === toPosix(expectedTarget)
   );
 }
 
@@ -1032,7 +1045,8 @@ function observeDesiredChanges(
         continue;
       }
       const targetKind = fs.inspectPath(target);
-      const exactSymbolicLink = kind.kind === "symbolic-link" && kind.target === target;
+      const exactSymbolicLink =
+        kind.kind === "symbolic-link" && exactAliasTarget(kind.target, target);
       const exactCopy =
         kind.kind === "directory" &&
         targetKind.kind === "directory" &&

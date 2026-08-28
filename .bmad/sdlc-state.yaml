@@ -2,22 +2,22 @@
 schemaVersion: 1
 phase: 6
 phaseName: "Epic gate — PR #5 current-tip CI"
-branch: feature/authoring-agent-onboarding
+branch: fix/authoring-agent-onboarding/cross-platform-path-tests
 epic: authoring-agent-onboarding
-activeStory: null
-reviewCycle: 0
+activeStory: task-131
+reviewCycle: 1
 activeChange:
-  id: pr-5-current-tip-ci
+  id: task-131-cross-platform-path-tests
 specialists:
   worker:
     role: implementation
-    lastSkill: bmad-qa-generate-e2e-tests @ task-130 / 4-3-keep-strict-ci-evidence-validation-supplied-with-repository-history
+    lastSkill: bmad-qa-generate-e2e-tests @ task-131 / 4-4-keep-release-gate-tests-honest-across-supported-path-dialects
   reviewer:
     role: independent review
-    lastSkill: bmad-story-automator-review @ task-130 cycle 1 / 4-3-keep-strict-ci-evidence-validation-supplied-with-repository-history
+    lastSkill: bmad-story-automator-review @ task-131 cycle 1 / 4-4-keep-release-gate-tests-honest-across-supported-path-dialects
   investigator:
     role: gate failure diagnosis
-    lastSkill: bmad-investigate @ pr-5-ci-process-artifact-history
+    lastSkill: bmad-investigate @ pr-5-cross-platform-ci-test-environment
   tea:
     role: onboarding trace and NFR gate
     lastSkill: bmad-testarch-trace @ onboarding human-waiver validation
@@ -33,5 +33,5 @@ workingMemory:
     - _bmad-output
     - Skills-Results
   durableEpisode: research/evolution/records/authoring-agent-onboarding.yaml
-designRevisionLoaded: 49f289ca30cec1bfe38f4939e429fecb1e106edf
-lastUpdated: "2026-08-28T14:21:56Z"
+designRevisionLoaded: db2b3d7be8f20d21aa8f299064514ca676464eee
+lastUpdated: "2026-08-28T15:08:36Z"
