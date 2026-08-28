@@ -2,19 +2,19 @@
 schemaVersion: 1
 phase: 6
 phaseName: "Epic gate — PR #5 current-tip CI"
-branch: fix/authoring-agent-onboarding/cross-platform-path-tests
+branch: fix/authoring-agent-onboarding/deterministic-backlog-init
 epic: authoring-agent-onboarding
-activeStory: task-131
+activeStory: task-132
 reviewCycle: 1
 activeChange:
-  id: task-131-cross-platform-path-tests
+  id: task-132-deterministic-backlog-init
 specialists:
   worker:
     role: implementation
-    lastSkill: bmad-qa-generate-e2e-tests @ task-131 / 4-4-keep-release-gate-tests-honest-across-supported-path-dialects
+    lastSkill: bmad-qa-generate-e2e-tests @ task-132 / 4-5-make-backlog-initialization-deterministic-in-isolated-release-tests
   reviewer:
     role: independent review
-    lastSkill: bmad-story-automator-review @ task-131 cycle 1 / 4-4-keep-release-gate-tests-honest-across-supported-path-dialects
+    lastSkill: bmad-story-automator-review @ task-132 cycle 1 / 4-5-make-backlog-initialization-deterministic-in-isolated-release-tests
   investigator:
     role: gate failure diagnosis
     lastSkill: bmad-investigate @ pr-5-cross-platform-ci-test-environment
@@ -34,4 +34,4 @@ workingMemory:
     - Skills-Results
   durableEpisode: research/evolution/records/authoring-agent-onboarding.yaml
 designRevisionLoaded: db2b3d7be8f20d21aa8f299064514ca676464eee
-lastUpdated: "2026-08-28T15:08:36Z"
+lastUpdated: "2026-08-28T15:35:44Z"

@@ -32,6 +32,22 @@ function isolatedEnv(dir: string): Record<string, string> {
   };
 }
 
+/** Run one synchronous adapter boundary with both ambient editor selectors genuinely absent. */
+function withoutEditorEnvironment<T>(action: () => T): T {
+  const editor = process.env.EDITOR;
+  const visual = process.env.VISUAL;
+  delete process.env.EDITOR;
+  delete process.env.VISUAL;
+  try {
+    return action();
+  } finally {
+    if (editor === undefined) delete process.env.EDITOR;
+    else process.env.EDITOR = editor;
+    if (visual === undefined) delete process.env.VISUAL;
+    else process.env.VISUAL = visual;
+  }
+}
+
 /** Read a single task's raw `--plain` detail (for asserting AC/labels the list output doesn't surface). */
 function taskDetail(root: string, id: string): string {
   return execaSync("backlog", ["task", id, "--plain"], {
@@ -45,6 +61,22 @@ function taskDetail(root: string, id: string): string {
 describeIfBacklog(
   "BacklogCli (the real shell-out adapter, against real Backlog.md in a tmpdir)",
   () => {
+    it("initializes the exact defaults when EDITOR and VISUAL are absent", async () => {
+      await withTempDir((dir) => {
+        withoutEditorEnvironment(() => {
+          const bl = new BacklogCli("backlog", isolatedEnv(dir));
+          bl.init(dir, { taskPrefix: "authoring" });
+
+          expect(bl.inspectTaskInventory(dir)).toEqual({
+            configurationMatchesFreshDefaults: true,
+            activeEntries: [],
+            inactiveEntries: [],
+            unexpectedEntries: [],
+          });
+        });
+      });
+    });
+
     it("init + create with AC/deps/labels + list carries the prefixed id and status (AC#1, AC#2)", async () => {
       await withTempDir((dir) => {
         const bl = new BacklogCli("backlog", isolatedEnv(dir));
