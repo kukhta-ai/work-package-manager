@@ -2,12 +2,12 @@
 schemaVersion: 1
 phase: 6
 phaseName: "Epic gate — PR #5 current-tip CI"
-branch: fix/authoring-agent-onboarding/deterministic-backlog-init
+branch: feature/authoring-agent-onboarding
 epic: authoring-agent-onboarding
-activeStory: task-132
-reviewCycle: 1
+activeStory: null
+reviewCycle: 0
 activeChange:
-  id: task-132-deterministic-backlog-init
+  id: pr-5-final-ci
 specialists:
   worker:
     role: implementation
@@ -34,4 +34,4 @@ workingMemory:
     - Skills-Results
   durableEpisode: research/evolution/records/authoring-agent-onboarding.yaml
 designRevisionLoaded: db2b3d7be8f20d21aa8f299064514ca676464eee
-lastUpdated: "2026-08-28T15:35:44Z"
+lastUpdated: "2026-08-28T15:39:16Z"
