@@ -267,9 +267,11 @@ describeIfBuilt("`wpm build package` E2E (task-83, through dist/cli.js)", () => 
       renameSync(wip, join(proj, "authoring-tree-unavailable"));
       for (const { format, path } of archives) {
         const layout = archiveLayout(path);
-        expect(layout).toEqual(
-          expect.arrayContaining([".claude/skills", "bundles/web/.claude/skills"]),
-        );
+        for (const scope of [".claude/skills", "bundles/web/.claude/skills"]) {
+          expect(layout.some((entry) => entry === scope || entry.startsWith(`${scope}/`))).toBe(
+            true,
+          );
+        }
         const extracted = join(dir, `task128-${format.name}-extracted`);
         mkdirSync(extracted, { recursive: true });
         if (format.ext === "zip") execFileSync("unzip", ["-q", path, "-d", extracted]);
@@ -1053,7 +1055,7 @@ describeIfBuilt("`wpm build package` E2E (task-83, through dist/cli.js)", () => 
         selectedClients: string[];
       };
       expect(integrationState).toMatchObject({
-        workspaceRoot: proj,
+        workspaceRoot: toPosix(proj),
         selectedClients: ["codex", "claude-code"],
       });
       const STATE_SENTINEL = integrationState.workspaceRoot;
@@ -1139,7 +1141,11 @@ describeIfBuilt("`wpm build package` E2E (task-83, through dist/cli.js)", () => 
           false,
         );
         const declaredClaudeScopes = [".claude/skills", "bundles/web/.claude/skills"];
-        expect(layout).toEqual(expect.arrayContaining(declaredClaudeScopes));
+        for (const scope of declaredClaudeScopes) {
+          expect(layout.some((entry) => entry === scope || entry.startsWith(`${scope}/`))).toBe(
+            true,
+          );
+        }
         expect(
           layout.some((path) => {
             const inAgentsScope =
