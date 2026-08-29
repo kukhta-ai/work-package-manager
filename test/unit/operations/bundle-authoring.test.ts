@@ -277,6 +277,107 @@ describe("bundle authoring planned operations", () => {
     }
   });
 
+  it("preserves a colliding alias-copy edit introduced at the publication boundary", () => {
+    const copiedSkills = `${ROOT}/.claude/skills`;
+    const copiedInstaller = `${copiedSkills}/demo-installer/SKILL.md`;
+    class AliasCopyPublicationRaceFileSystem extends MemoryFileSystem {
+      private armed = false;
+
+      arm(): void {
+        this.armed = true;
+      }
+
+      protected override beforeConfinedAliasCopyPublication(aliasPath: string): void {
+        if (this.armed && toPosix(aliasPath) === copiedSkills) {
+          this.armed = false;
+          super.write(copiedInstaller, "concurrent installer bytes\n");
+        }
+      }
+    }
+
+    const fs = new AliasCopyPublicationRaceFileSystem();
+    const backlog = new FakeBacklog();
+    seed(fs, backlog);
+    fs.write(
+      `${ROOT}/manifest.yml`,
+      "project:\n  name: demo\n  version: 1.0.0\ntargets:\n  - claude-code\nbundles: []\n",
+    );
+    fs.copyTree(`${ROOT}/installer-skills`, copiedSkills);
+    fs.arm();
+
+    let caught: unknown;
+    try {
+      createBundleWithAuthoring(
+        { fs, backlog, builtinTemplatesRoot: BUILTIN },
+        { deliverableRoot: ROOT, workspaceRoot: WORKSPACE },
+        { id: "web", templateName: "default" },
+      );
+    } catch (error) {
+      caught = error;
+    }
+
+    expect(caught).toBeInstanceOf(MutationFailure);
+    if (caught instanceof MutationFailure) {
+      expect(caught.failed.id).toBe("derived-alias-refresh:.claude/skills");
+    }
+    expect(fs.read(copiedInstaller)).toBe("concurrent installer bytes\n");
+    expect(fs.inspectPath(`${copiedSkills}/web-advisor/SKILL.md`).kind).toBe("missing");
+  });
+
+  it("does not expose a mixed alias copy when staging fails after writing an entry", () => {
+    const copiedSkills = `${ROOT}/.claude/skills`;
+    class FailingAliasCopyFileSystem extends MemoryFileSystem {
+      private armed = false;
+
+      arm(): void {
+        this.armed = true;
+      }
+
+      protected override afterConfinedAliasCopyStageEntry(
+        aliasPath: string,
+        _stagedPath: string,
+        entryPath: string,
+      ): void {
+        if (
+          this.armed &&
+          toPosix(aliasPath) === copiedSkills &&
+          toPosix(entryPath).endsWith("/SKILL.md")
+        ) {
+          this.armed = false;
+          throw new Error("injected recursive-copy failure");
+        }
+      }
+    }
+
+    const fs = new FailingAliasCopyFileSystem();
+    const backlog = new FakeBacklog();
+    seed(fs, backlog);
+    fs.write(
+      `${ROOT}/manifest.yml`,
+      "project:\n  name: demo\n  version: 1.0.0\ntargets:\n  - claude-code\nbundles: []\n",
+    );
+    fs.copyTree(`${ROOT}/installer-skills`, copiedSkills);
+    expect(fs.list(copiedSkills)).toEqual([]);
+    fs.arm();
+
+    let caught: unknown;
+    try {
+      createBundleWithAuthoring(
+        { fs, backlog, builtinTemplatesRoot: BUILTIN },
+        { deliverableRoot: ROOT, workspaceRoot: WORKSPACE },
+        { id: "web", templateName: "default" },
+      );
+    } catch (error) {
+      caught = error;
+    }
+
+    expect(caught).toBeInstanceOf(MutationFailure);
+    if (caught instanceof MutationFailure) {
+      expect(caught.failed.id).toBe("derived-alias-refresh:.claude/skills");
+    }
+    expect(fs.list(copiedSkills)).toEqual([]);
+  });
+
   it("rejects the build-reserved bundle-template id before occupying the default scaffold boundary", () => {
     const fs = new RecordingFileSystem();
     const backlog = new RecordingBacklog();

@@ -166,7 +166,21 @@ describe("portable global package layout and generated shims", () => {
       executable: "C:\\Windows\\System32\\cmd.exe",
       args: ["/d", "/s", "/v:off", "/c", '""C:\\consumer root\\wpm.cmd" --version"'],
       shimPath: "C:\\consumer root\\wpm.cmd",
+      windowsVerbatimArguments: true,
     });
+  });
+
+  it("rejects unsafe Windows cmd syntax in installed-command arguments", () => {
+    for (const unsafeArgument of ['quoted"argument', "%TEMP%", "line\rbreak", "line\nbreak"]) {
+      expect(() =>
+        resolveInstalledExecutableInvocation(
+          "win32",
+          "C:\\consumer root\\wpm",
+          [unsafeArgument],
+          "C:\\Windows\\System32\\cmd.exe",
+        ),
+      ).toThrow(/expansion or quoting syntax/i);
+    }
   });
 
   it("rejects Windows cmd variable expansion in a generated shim path actionably", () => {

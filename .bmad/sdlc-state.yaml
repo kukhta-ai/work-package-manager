@@ -1,23 +1,23 @@
 # Current orchestration pointer. History belongs in Git, Backlog.md, and research/evolution/.
 schemaVersion: 1
 phase: 6
-phaseName: "Epic gate — PR #5 current-tip CI"
-branch: feature/authoring-agent-onboarding
+phaseName: "Epic gate — TASK-135 final candidate green"
+branch: fix/authoring-agent-onboarding/windows-release-boundaries
 epic: authoring-agent-onboarding
-activeStory: null
+activeStory: task-135
 reviewCycle: 0
 activeChange:
-  id: pr-5-final-ci
+  id: task-135-final-candidate-0c27477-run-33241122085
 specialists:
   worker:
     role: implementation
-    lastSkill: bmad-qa-generate-e2e-tests @ task-134 / 4-7-keep-the-release-harness-faithful-across-supported-hosts
+    lastSkill: bmad-qa-generate-e2e-tests @ task-135 cycle 8 / 4-8-complete-supported-host-release-boundaries
   reviewer:
     role: independent review
-    lastSkill: bmad-story-automator-review @ task-134 cycle 1 / 4-7-keep-the-release-harness-faithful-across-supported-hosts
+    lastSkill: bmad-story-automator-review @ task-135 cycle 8 / 4-8-complete-supported-host-release-boundaries — approved with no findings
   investigator:
     role: gate failure diagnosis
-    lastSkill: bmad-investigate @ pr-5-macos-node22-bundle-id-timeout
+    lastSkill: bmad-investigate @ task-135 candidate 91706a2 / job 99058042907
   tea:
     role: onboarding trace and NFR gate
     lastSkill: bmad-testarch-trace @ onboarding human-waiver validation
@@ -34,4 +34,4 @@ workingMemory:
     - Skills-Results
   durableEpisode: research/evolution/records/authoring-agent-onboarding.yaml
 designRevisionLoaded: db2b3d7be8f20d21aa8f299064514ca676464eee
-lastUpdated: "2026-08-28T17:17:04Z"
+lastUpdated: "2026-08-29T10:04:39Z"

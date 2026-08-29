@@ -162,7 +162,7 @@ export function createIsolatedEnvironment(input, ambient = process.env) {
 }
 
 /**
- * @param {{executable: string, args: readonly string[]}} invocation
+ * @param {{executable: string, args: readonly string[], windowsVerbatimArguments?: boolean}} invocation
  * @param {{cwd: string, env: NodeJS.ProcessEnv, timeout?: number}} options
  */
 function execute(invocation, options) {
@@ -172,6 +172,7 @@ function execute(invocation, options) {
     encoding: "utf8",
     stdio: ["ignore", "pipe", "pipe"],
     timeout: options.timeout ?? 300_000,
+    windowsVerbatimArguments: invocation.windowsVerbatimArguments,
   });
 }
 

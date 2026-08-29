@@ -8,7 +8,7 @@ import {
   readlinkSync,
   writeFileSync,
 } from "node:fs";
-import { join } from "node:path";
+import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import pkg from "../../package.json" with { type: "json" };
@@ -93,7 +93,7 @@ function seedOnDisk(dir: string): void {
       "{{project-name}}-installer",
       "SKILL.md",
     ),
-    "---\nname: {{project-name}}-installer\n---\nInstall {{project-name}}.\n",
+    "---\nname: {{project-name}}-installer\n---\nInstall {{project-name}}.\n{{bundles}}\n",
   );
   // The advisor snippet `bundle new`'s auto-advisor renders (doc 10 step 6).
   writeFileSync(
@@ -152,6 +152,101 @@ describe("cli `bundle new` over a real filesystem (task-27 proof leaf)", () => {
       expect(i.out.text).toContain("created bundle web");
     });
   });
+
+  it("refreshes an exact Windows target copy after default-advisor bundle creation changes its source", async () => {
+    await withTempDir(async (dir) => {
+      seedOnDisk(dir);
+      writeFileSync(
+        join(dir, "wip", "manifest.yml"),
+        "project:\n  name: demo\n  version: 1.0.0\ntargets: []\nbundles: []\n",
+      );
+      const backlog = new FakeBacklog();
+      const authoringBacklog = join(dir, ".authoring-backlog");
+      mkdirSync(authoringBacklog, { recursive: true });
+      backlog.init(authoringBacklog, { taskPrefix: "authoring" });
+      const deps: CliDeps = {
+        fs: new NodeFileSystem({ platform: "win32" }),
+        backlog,
+        clock: new FixedClock("2026-01-01T00:00:00.000Z"),
+        env: new ProcessEnvironment(),
+        builtinTemplatesRoot: join(dir, "builtin-templates"),
+      };
+
+      const targetIo = io();
+      expect(
+        await run(["project", "targets", "add", "claude-code", "-C", dir], deps, targetIo),
+      ).toBe(0);
+      const canonicalSkills = join(dir, "wip", "installer-skills");
+      const copiedSkills = join(dir, "wip", ".claude", "skills");
+      const copiedInstaller = join(copiedSkills, "demo-installer", "SKILL.md");
+      expect(lstatSync(copiedSkills).isDirectory()).toBe(true);
+      expect(readFileSync(copiedInstaller, "utf8")).not.toContain("web bundle");
+      expect(existsSync(join(copiedSkills, "web-advisor", "SKILL.md"))).toBe(false);
+
+      const bundleIo = io();
+      const code = await run(["bundle", "new", "web", "-C", dir], deps, bundleIo);
+
+      expect(code, bundleIo.err.text).toBe(0);
+      expect(readFileSync(copiedInstaller, "utf8")).toBe(
+        readFileSync(join(canonicalSkills, "demo-installer", "SKILL.md"), "utf8"),
+      );
+      expect(readFileSync(copiedInstaller, "utf8")).toContain("web bundle");
+      expect(readFileSync(join(copiedSkills, "web-advisor", "SKILL.md"), "utf8")).toBe(
+        readFileSync(join(canonicalSkills, "web-advisor", "SKILL.md"), "utf8"),
+      );
+    });
+  });
+
+  it.runIf(process.platform !== "win32")(
+    "promotes an inherited exact target copy to a live relative symlink on POSIX",
+    async () => {
+      await withTempDir(async (dir) => {
+        seedOnDisk(dir);
+        writeFileSync(
+          join(dir, "wip", "manifest.yml"),
+          "project:\n  name: demo\n  version: 1.0.0\ntargets: []\nbundles: []\n",
+        );
+        const backlog = new FakeBacklog();
+        const authoringBacklog = join(dir, ".authoring-backlog");
+        mkdirSync(authoringBacklog, { recursive: true });
+        backlog.init(authoringBacklog, { taskPrefix: "authoring" });
+        const sharedDeps = {
+          backlog,
+          clock: new FixedClock("2026-01-01T00:00:00.000Z"),
+          env: new ProcessEnvironment(),
+          builtinTemplatesRoot: join(dir, "builtin-templates"),
+        };
+        const windowsDeps: CliDeps = {
+          ...sharedDeps,
+          fs: new NodeFileSystem({ platform: "win32" }),
+        };
+
+        expect(
+          await run(["project", "targets", "add", "claude-code", "-C", dir], windowsDeps, io()),
+        ).toBe(0);
+        const canonicalSkills = join(dir, "wip", "installer-skills");
+        const inheritedCopy = join(dir, "wip", ".claude", "skills");
+        expect(lstatSync(inheritedCopy).isDirectory()).toBe(true);
+
+        const bundleIo = io();
+        const code = await run(
+          ["bundle", "new", "web", "-C", dir],
+          { ...sharedDeps, fs: new NodeFileSystem({ platform: "linux" }) },
+          bundleIo,
+        );
+
+        expect(code, bundleIo.err.text).toBe(0);
+        expect(lstatSync(inheritedCopy).isSymbolicLink()).toBe(true);
+        expect(readlinkSync(inheritedCopy)).toBe(relative(dirname(inheritedCopy), canonicalSkills));
+        expect(readFileSync(join(inheritedCopy, "demo-installer", "SKILL.md"), "utf8")).toContain(
+          "web bundle",
+        );
+        expect(readFileSync(join(inheritedCopy, "web-advisor", "SKILL.md"), "utf8")).toBe(
+          readFileSync(join(canonicalSkills, "web-advisor", "SKILL.md"), "utf8"),
+        );
+      });
+    },
+  );
 });
 
 /**

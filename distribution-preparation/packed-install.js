@@ -368,5 +368,6 @@ export function resolveInstalledExecutableInvocation(
     // protecting the shim path, otherwise a prefix containing spaces is parsed as the command name.
     args: ["/d", "/s", "/v:off", "/c", `"${command}"`],
     shimPath,
+    windowsVerbatimArguments: true,
   };
 }

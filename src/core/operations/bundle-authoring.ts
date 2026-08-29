@@ -119,7 +119,11 @@ interface ObservedAlias {
   readonly before:
     | { readonly kind: "missing" }
     | { readonly kind: "symbolic-link"; readonly target: string }
-    | { readonly kind: "directory"; readonly evidence: string };
+    | {
+        readonly kind: "directory";
+        readonly evidence: string;
+        readonly fingerprint: string;
+      };
 }
 
 interface ObservedDerivedPlan {
@@ -392,6 +396,31 @@ function ensureAliasAtBoundary(
   }
 }
 
+function refreshOwnedAliasCopyAtBoundary(
+  fs: FileSystem,
+  confinementRoot: string,
+  targetPath: string,
+  linkPath: string,
+  beforeEvidence: string,
+  beforeFingerprint: string,
+  quarantine: ConfinedQuarantine,
+): void {
+  assertRealDirectory(fs, confinementRoot);
+  assertRealDirectory(fs, dirname(linkPath));
+  assertRealDirectory(fs, targetPath);
+  if (
+    fs.inspectPath(linkPath).kind !== "directory" ||
+    !isCanonicalExistingPath(fs, linkPath) ||
+    treeEvidence(fs, linkPath) !== beforeEvidence
+  ) {
+    throw new Error(`owned alias copy changed after preflight: ${linkPath}`);
+  }
+  fs.refreshAliasCopyConfined(confinementRoot, targetPath, linkPath, beforeFingerprint, quarantine);
+  if (!exactAliasOrCopy(fs, linkPath, targetPath, targetPath)) {
+    throw new Error(`refreshed alias copy does not exactly match its frozen source: ${linkPath}`);
+  }
+}
+
 function inspectRealDirectory(
   fs: FileSystem,
   path: string,
@@ -612,7 +641,7 @@ function exactAliasOrCopy(
 ): boolean {
   const inspected = fs.inspectPath(linkPath);
   if (inspected.kind === "symbolic-link") {
-    return exactAliasTarget(inspected.target, symbolicTarget);
+    return exactAliasTarget(inspected.target, symbolicTarget, linkPath);
   }
   return (
     inspected.kind === "directory" &&
@@ -621,15 +650,23 @@ function exactAliasOrCopy(
   );
 }
 
-function exactAliasTarget(observedTarget: string, expectedTarget: string): boolean {
+function exactAliasTarget(
+  observedTarget: string,
+  expectedTarget: string,
+  linkPath?: string,
+): boolean {
   // The in-memory port exposes absolute targets in a POSIX observation dialect. Relative symlink targets are
   // portable archive data, however, and must retain their exact bytes (not merely equivalent separators).
   const expectedIsAbsolute = posix.isAbsolute(expectedTarget) || win32.isAbsolute(expectedTarget);
   if (!expectedIsAbsolute) return observedTarget === expectedTarget;
-  return (
-    (posix.isAbsolute(observedTarget) || win32.isAbsolute(observedTarget)) &&
-    toPosix(observedTarget) === toPosix(expectedTarget)
+  if (posix.isAbsolute(observedTarget) || win32.isAbsolute(observedTarget)) {
+    return toPosix(observedTarget) === toPosix(expectedTarget);
+  }
+  if (linkPath === undefined) return false;
+  const resolvedObservedTarget = posix.normalize(
+    posix.join(toPosix(dirname(linkPath)), toPosix(observedTarget)),
   );
+  return resolvedObservedTarget === posix.normalize(toPosix(expectedTarget));
 }
 
 function scaffoldMatches(
@@ -1046,7 +1083,7 @@ function observeDesiredChanges(
       }
       const targetKind = fs.inspectPath(target);
       const exactSymbolicLink =
-        kind.kind === "symbolic-link" && exactAliasTarget(kind.target, target);
+        kind.kind === "symbolic-link" && exactAliasTarget(kind.target, target, absolute);
       const exactCopy =
         kind.kind === "directory" &&
         targetKind.kind === "directory" &&
@@ -1059,7 +1096,11 @@ function observeDesiredChanges(
           before:
             kind.kind === "symbolic-link"
               ? { kind: "symbolic-link", target: kind.target }
-              : { kind: "directory", evidence: treeEvidence(fs, absolute) },
+              : {
+                  kind: "directory",
+                  evidence: treeEvidence(fs, absolute),
+                  fingerprint: confinedTreeFingerprint(fs, absolute),
+                },
         });
       } else {
         blocker(blockers, {
@@ -1974,6 +2015,17 @@ export function createBundleWithAuthoring(
     }
   }
 
+  const plannedCanonicalFileWrites = [
+    ...renderedFiles.map((file) => join(bundleDir, file.path)),
+    ...(advisor === undefined ? [] : [advisor.path]),
+    ...(changes?.filesToWrite.map((file) => join(ctx.deliverableRoot, file.path)) ?? []),
+  ];
+  const aliasCopiesToRefresh = (derivedObservation?.aliases ?? []).filter((alias) => {
+    if (alias.before.kind !== "directory") return false;
+    const target = join(ctx.deliverableRoot, alias.targetPath);
+    return plannedCanonicalFileWrites.some((path) => path === target || isContained(target, path));
+  });
+
   const createOutputPaths: PlannedOutputPath[] = [
     ...renderedFiles.map((file) => ({
       path: join(bundleDir, file.path),
@@ -2020,6 +2072,9 @@ export function createBundleWithAuthoring(
       changes?.filesToWrite.some(({ path }) => output.path === join(ctx.deliverableRoot, path)) ||
       changes?.aliasesToCreate.some(
         ({ linkPath }) => output.path === join(ctx.deliverableRoot, linkPath),
+      ) ||
+      aliasCopiesToRefresh.some(
+        ({ linkPath }) => output.path === join(ctx.deliverableRoot, linkPath),
       );
     if (mutates) inspectMutationPath(fs, output.path, "bundle", blockers);
   }
@@ -2051,6 +2106,14 @@ export function createBundleWithAuthoring(
         blockers,
       );
     }
+  }
+  for (const alias of aliasCopiesToRefresh) {
+    inspectQuarantinedReplacement(
+      fs,
+      join(ctx.deliverableRoot, alias.linkPath),
+      quarantineFor(`alias-${hashTextContent(alias.linkPath).slice(7, 23)}`),
+      blockers,
+    );
   }
 
   if (blockers.length > 0) throw new BundleAuthoringPreflightError(sortedBlockers(blockers));
@@ -2234,6 +2297,31 @@ export function createBundleWithAuthoring(
           ? undefined
           : quarantineFor(`derived-${hashTextContent(file.path).slice(7, 23)}`),
       ),
+    });
+  }
+  for (const alias of aliasCopiesToRefresh) {
+    const path = join(ctx.deliverableRoot, alias.linkPath);
+    actions.push({
+      boundary: {
+        id: `derived-alias-refresh:${alias.linkPath}`,
+        path: toPosix(path),
+        description: `refresh owned derived alias copy ${alias.linkPath}`,
+      },
+      beat: "RERENDER",
+      apply: () => {
+        if (alias.before.kind !== "directory") {
+          throw new Error(`derived alias is no longer a planned copy refresh: ${path}`);
+        }
+        refreshOwnedAliasCopyAtBoundary(
+          fs,
+          ctx.workspaceRoot,
+          join(ctx.deliverableRoot, alias.targetPath),
+          path,
+          alias.before.evidence,
+          alias.before.fingerprint,
+          quarantineFor(`alias-${hashTextContent(alias.linkPath).slice(7, 23)}`),
+        );
+      },
     });
   }
   for (const alias of changes.aliasesToCreate) {

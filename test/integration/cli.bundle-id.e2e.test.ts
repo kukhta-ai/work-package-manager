@@ -91,7 +91,7 @@ describeIfBuilt("bundle <id> routing + show/meta E2E via dist/cli.js (tasks 57/5
       expect(wpm(proj, ["bundle", "new", "doc"]).status).toBe(0);
       expect(existsSync(join(proj, "wip", "bundles", "doc", "bundle.yml"))).toBe(true);
     });
-  }, 90_000);
+  });
 
   it("`bundle <id> meta --version` sets the BUNDLE version (the inner sub-program parses --version)", async () => {
     await withTempDir((dir) => {

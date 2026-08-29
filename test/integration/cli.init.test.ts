@@ -573,6 +573,23 @@ describeIfBacklog(
           join(templatesRoot, "project", "minimal", "files", "bundles", "core", "bundle.yml"),
           "id: core\nversion: 1.2.3\nsummary: core bundle\nconfirmation: safe\nrequires: {}\n",
         );
+        mkdirSync(
+          join(templatesRoot, "project", "minimal", "files", "bundles", "core", "install-backlog"),
+          { recursive: true },
+        );
+        writeFileSync(
+          join(
+            templatesRoot,
+            "project",
+            "minimal",
+            "files",
+            "bundles",
+            "core",
+            "install-backlog",
+            "config.yml",
+          ),
+          "task_prefix: core\n",
+        );
         writeFileSync(
           join(templatesRoot, "project", "minimal", "template.yml"),
           [

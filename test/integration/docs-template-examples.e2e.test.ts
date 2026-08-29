@@ -75,7 +75,7 @@ describeIfBuilt("shipped documentation template examples via dist/cli.js (TASK-1
       expect(authoringTasks).toMatch(/AUTHORING-9\s+-\s+Plan bundle core/);
       expect(authoringTasks).toMatch(/AUTHORING-10\s+-\s+Fill install-backlog for core/);
 
-      expect(wpm(workspace, ["bundle", "new", "web-handoff"]).status).toBe(0);
+      expect(wpm(workspace, ["bundle", "new", "web-handoff"])).toMatchObject({ status: 0 });
       expect(
         wpm(workspace, ["bundle", "web-handoff", "requires", "add", "core", "^0.3.0"]).status,
       ).toBe(0);
