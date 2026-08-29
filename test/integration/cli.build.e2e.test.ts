@@ -1,15 +1,19 @@
 import { execFileSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import {
+  cpSync,
   existsSync,
   lstatSync,
   mkdirSync,
   readdirSync,
   readFileSync,
   readlinkSync,
+  renameSync,
+  rmSync,
   symlinkSync,
   writeFileSync,
 } from "node:fs";
-import { join } from "node:path";
+import { join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { toPosix } from "../../src/util/posix-path.js";
@@ -25,6 +29,24 @@ import { initWorkspace } from "../helpers/workspace.js";
  */
 
 const builtCli = fileURLToPath(new URL("../../dist/cli.js", import.meta.url));
+const authorRouterSkill = fileURLToPath(
+  new URL("../../agent-skills/wpm-author/SKILL.md", import.meta.url),
+);
+const authoringBundleSkill = fileURLToPath(
+  new URL("../../agent-skills/wpm-author-bundle/SKILL.md", import.meta.url),
+);
+const authoringRecipeSkill = fileURLToPath(
+  new URL("../../agent-skills/wpm-author-recipe/SKILL.md", import.meta.url),
+);
+const authoringSkillSkill = fileURLToPath(
+  new URL("../../agent-skills/wpm-author-skill/SKILL.md", import.meta.url),
+);
+const reviewPackageSkill = fileURLToPath(
+  new URL("../../agent-skills/wpm-review-package/SKILL.md", import.meta.url),
+);
+const createPackageSkill = fileURLToPath(
+  new URL("../../agent-skills/wpm-create-package/SKILL.md", import.meta.url),
+);
 const hasBuild = existsSync(builtCli);
 const describeIfBuilt = hasBuild ? describe : describe.skip;
 
@@ -101,6 +123,41 @@ function concatAllFiles(root: string): string {
   return blob;
 }
 
+/** Snapshot paths, file bytes, and symlink targets without following directory links. */
+function snapshotTree(root: string): string[] {
+  const entries: string[] = [];
+  const walk = (absolute: string): void => {
+    for (const entry of readdirSync(absolute, { withFileTypes: true })) {
+      const child = join(absolute, entry.name);
+      const path = toPosix(relative(root, child));
+      const stat = lstatSync(child);
+      if (stat.isSymbolicLink()) {
+        entries.push(`link ${path} -> ${readlinkSync(child)}`);
+      } else if (stat.isDirectory()) {
+        entries.push(`dir ${path}`);
+        walk(child);
+      } else {
+        const digest = createHash("sha256").update(readFileSync(child)).digest("hex");
+        entries.push(`file ${path} ${digest}`);
+      }
+    }
+  };
+  walk(root);
+  return entries.sort();
+}
+
+/** Resolve the enclosing Git worktree, or return undefined when `root` is deliberately isolated from Git. */
+function gitTopLevel(root: string): string | undefined {
+  try {
+    return execFileSync("git", ["-C", root, "rev-parse", "--show-toplevel"], {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "pipe"],
+    }).trim();
+  } catch {
+    return undefined;
+  }
+}
+
 /**
  * Create a real authoring workspace via `wpm init` and return the workspace root. The deliverable nests under
  * `wip/` and `build` resolves it via `-C` and packages the `wip/` tree (task-88); the `.authoring-backlog/`
@@ -132,12 +189,30 @@ describeIfBuilt("`wpm build dry-run` E2E (task-82, through dist/cli.js)", () => 
       expect(r.stdout).toMatch(/would ship \d+ file/);
       expect(r.stdout).toContain("manifest.yml");
       expect(r.stdout).toContain("AGENTS.md");
+      expect(r.stdout).toMatch(/^ {2}\.claude\/skills$/m);
+      expect(r.stdout).not.toMatch(/^ {2}\.agents\/skills$/m);
       // .authoring-backlog/ is builder-time state — it must NOT be in the would-ship tree:
       expect(r.stdout).not.toContain(".authoring-backlog");
       // NO artefact produced: the project dir's top-level entries are unchanged, and no archive sits in cwd/proj:
       expect(readdirSync(proj).sort()).toEqual(before);
       expect(readdirSync(dir).some((f) => f.endsWith(".tgz") || f.endsWith(".zip"))).toBe(false);
       expect(readdirSync(proj).some((f) => f.endsWith(".tgz") || f.endsWith(".zip"))).toBe(false);
+    });
+  });
+
+  it("TASK-128 AC#1/#2/#6 — dry-run shows exact root/enabled-bundle scopes and no absent-target scope", async () => {
+    await withTempDir(async (dir) => {
+      const proj = initProject(dir);
+      expect(cli(["project", "targets", "add", "claude-code", "-C", proj], dir).code).toBe(0);
+      expect(cli(["bundle", "new", "web", "-C", proj], dir)).toMatchObject({ code: 0 });
+
+      const r = cli(["build", "dry-run", "-C", proj], dir);
+      expect(r.code).toBe(0);
+      expect(r.stdout).toMatch(/^ {2}\.claude\/skills$/m);
+      expect(r.stdout).toMatch(/^ {2}bundles\/web\/\.claude\/skills$/m);
+      expect(r.stdout).not.toMatch(/\.agents\/skills|\.openclaw\/skills/);
+      expect(r.stdout).not.toMatch(/^ {2}\.claude$/m);
+      expect(r.stdout).not.toMatch(/^ {2}bundles\/web\/\.claude$/m);
     });
   });
 
@@ -161,6 +236,68 @@ describeIfBuilt("`wpm build dry-run` E2E (task-82, through dist/cli.js)", () => 
 });
 
 describeIfBuilt("`wpm build package` E2E (task-83, through dist/cli.js)", () => {
+  it("TASK-128 AC#3-#5/#8 — every format exposes portable root/bundle scopes after the authoring tree is unavailable", async () => {
+    await withTempDir(async (dir) => {
+      const proj = initProject(dir);
+      expect(cli(["project", "targets", "add", "claude-code", "-C", proj], dir).code).toBe(0);
+      expect(cli(["bundle", "new", "web", "-C", proj], dir)).toMatchObject({ code: 0 });
+      const wip = join(proj, "wip");
+      writeFileSync(join(wip, "installer-skills", "qa-root.txt"), "root-scope-content\n");
+      writeFileSync(
+        join(wip, "bundles", "web", "installer-skills", "qa-bundle.txt"),
+        "bundle-scope-content\n",
+      );
+
+      const formats: Array<{ name: "tarball" | "git" | "zip"; ext: "tgz" | "zip" }> = [
+        { name: "tarball", ext: "tgz" },
+        { name: "git", ext: "tgz" },
+      ];
+      if (hasZip() && hasUnzip()) formats.push({ name: "zip", ext: "zip" });
+      const archives: Array<{ format: (typeof formats)[number]; path: string }> = [];
+      for (const format of formats) {
+        const result = cli(["build", "package", "--format", format.name, "-C", proj], dir);
+        expect(result.code).toBe(0);
+        const produced = join(proj, "builds", `demo-0.1.0.${format.ext}`);
+        const retained = join(dir, `task128-${format.name}.${format.ext}`);
+        cpSync(produced, retained);
+        archives.push({ format, path: retained });
+      }
+
+      // Any source-absolute authoring link is now broken. Every retained artifact must remain self-contained.
+      renameSync(wip, join(proj, "authoring-tree-unavailable"));
+      for (const { format, path } of archives) {
+        const layout = archiveLayout(path);
+        for (const scope of [".claude/skills", "bundles/web/.claude/skills"]) {
+          expect(layout.some((entry) => entry === scope || entry.startsWith(`${scope}/`))).toBe(
+            true,
+          );
+        }
+        const extracted = join(dir, `task128-${format.name}-extracted`);
+        mkdirSync(extracted, { recursive: true });
+        if (format.ext === "zip") execFileSync("unzip", ["-q", path, "-d", extracted]);
+        else execFileSync("tar", ["-xzf", path, "-C", extracted]);
+
+        const rootScope = join(extracted, ".claude", "skills");
+        const bundleScope = join(extracted, "bundles", "web", ".claude", "skills");
+        if (process.platform === "win32") {
+          expect(lstatSync(rootScope).isDirectory()).toBe(true);
+          expect(lstatSync(bundleScope).isDirectory()).toBe(true);
+        } else {
+          expect(lstatSync(rootScope).isSymbolicLink()).toBe(true);
+          expect(lstatSync(bundleScope).isSymbolicLink()).toBe(true);
+          expect(readlinkSync(rootScope)).toBe("../installer-skills");
+          expect(readlinkSync(bundleScope)).toBe("../installer-skills");
+          expect(readlinkSync(rootScope)).not.toContain(proj);
+          expect(readlinkSync(bundleScope)).not.toContain(proj);
+        }
+        expect(readFileSync(join(rootScope, "qa-root.txt"), "utf8")).toBe("root-scope-content\n");
+        expect(readFileSync(join(bundleScope, "qa-bundle.txt"), "utf8")).toBe(
+          "bundle-scope-content\n",
+        );
+      }
+    });
+  });
+
   it("AC83#1/#2 + AC89#1/#2/#3 — `--format tarball`: exit 0, archive in <workspace>/builds/, un-nested root (manifest at root), no authoring surface", async () => {
     await withTempDir(async (dir) => {
       const proj = initProject(dir);
@@ -202,7 +339,7 @@ describeIfBuilt("`wpm build package` E2E (task-83, through dist/cli.js)", () => 
       // claude-code is a target ⇒ the build creates the CLAUDE.md alias front door beside each AGENTS.md (doc 05).
       expect(cli(["project", "targets", "add", "claude-code", "-C", proj], dir).code).toBe(0);
       // A real enabled bundle ⇒ exercises the PER-BUNDLE front door + the scope-alias symlink-preservation path.
-      expect(cli(["bundle", "new", "web", "-C", proj], dir).code).toBe(0);
+      expect(cli(["bundle", "new", "web", "-C", proj], dir)).toMatchObject({ code: 0 });
 
       // The author EDITS the reserved-prefix front doors (AC90#1). Unique sentinels prove byte-for-byte fidelity.
       const ROOT_SENTINEL = "ROOT-FRONT-DOOR-SENTINEL-зважив-7f3a";
@@ -290,7 +427,7 @@ describeIfBuilt("`wpm build package` E2E (task-83, through dist/cli.js)", () => 
     await withTempDir((dir) => {
       const proj = initProject(dir);
       expect(cli(["project", "targets", "add", "claude-code", "-C", proj], dir).code).toBe(0);
-      expect(cli(["bundle", "new", "web", "-C", proj], dir).code).toBe(0);
+      expect(cli(["bundle", "new", "web", "-C", proj], dir)).toMatchObject({ code: 0 });
 
       // The reserved-prefix front doors exist (author-owned), at the project root and in the bundle.
       expect(existsSync(join(proj, "wip", "_AGENTS.md"))).toBe(true);
@@ -314,7 +451,7 @@ describeIfBuilt("`wpm build package` E2E (task-83, through dist/cli.js)", () => 
       const proj = initProject(dir);
       expect(cli(["project", "targets", "add", "claude-code", "-C", proj], dir).code).toBe(0);
       // Two bundles ⇒ the guard covers MULTIPLE bundle subtrees, not just one.
-      expect(cli(["bundle", "new", "web", "-C", proj], dir).code).toBe(0);
+      expect(cli(["bundle", "new", "web", "-C", proj], dir)).toMatchObject({ code: 0 });
       expect(cli(["bundle", "new", "doc", "-C", proj], dir).code).toBe(0);
 
       // Walk the WHOLE deliverable (`wip/`) and assert no file's BASENAME is a canonical auto-discovered front
@@ -411,7 +548,7 @@ describeIfBuilt("`wpm build package` E2E (task-83, through dist/cli.js)", () => 
       const proj = initProject(dir);
       expect(cli(["project", "targets", "add", "claude-code", "-C", proj], dir).code).toBe(0);
       // a config-only bundle: a fresh `bundle new` registers/ships no payload skill (TASK-103):
-      expect(cli(["bundle", "new", "web", "-C", proj], dir).code).toBe(0);
+      expect(cli(["bundle", "new", "web", "-C", proj], dir)).toMatchObject({ code: 0 });
 
       const r = cli(["build", "package", "--format", "tarball", "-C", proj], dir);
       expect(r.code).toBe(0);
@@ -442,7 +579,7 @@ describeIfBuilt("`wpm build package` E2E (task-83, through dist/cli.js)", () => 
       // Zero enabled bundles: init renders a complete runtime-discovery protocol, never a static menu.
       assertRuntimeBundleMenu();
       expect(cli(["project", "targets", "add", "claude-code", "-C", proj], dir).code).toBe(0);
-      expect(cli(["bundle", "new", "web", "-C", proj], dir).code).toBe(0);
+      expect(cli(["bundle", "new", "web", "-C", proj], dir)).toMatchObject({ code: 0 });
       // One enabled bundle: the author-owned front door remains complete and discovers it from the manifest.
       assertRuntimeBundleMenu();
 
@@ -536,7 +673,7 @@ describeIfBuilt("`wpm build package` E2E (task-83, through dist/cli.js)", () => 
     await withTempDir(async (dir) => {
       const proj = initProject(dir);
       expect(cli(["project", "targets", "add", "claude-code", "-C", proj], dir).code).toBe(0);
-      expect(cli(["bundle", "new", "web", "-C", proj], dir).code).toBe(0);
+      expect(cli(["bundle", "new", "web", "-C", proj], dir)).toMatchObject({ code: 0 });
       expect(cli(["bundle", "new", "other", "-C", proj], dir).code).toBe(0);
 
       const wip = join(proj, "wip");
@@ -739,31 +876,341 @@ describeIfBuilt("`wpm build package` E2E (task-83, through dist/cli.js)", () => 
     });
   });
 
+  it("TASK-118 AC#5/#6/#8/#10 — fresh multi-format review builds use an equivalent Git-isolated copy while the original stays byte-for-byte unchanged", async () => {
+    if (process.platform === "win32") return;
+    await withTempDir(async (dir) => {
+      const sourceRepo = join(dir, "source-repository");
+      mkdirSync(sourceRepo);
+      execFileSync("git", ["init", "--quiet"], { cwd: sourceRepo });
+      const sourceAscentMarker = "TASK118-SOURCE-GIT-ASCENT-MUST-NOT-SHIP-a712";
+      writeFileSync(join(sourceRepo, "source-only-review-marker.txt"), sourceAscentMarker);
+
+      const proj = initProject(sourceRepo);
+      expect(cli(["project", "targets", "add", "claude-code", "-C", proj], dir).code).toBe(0);
+      expect(cli(["bundle", "new", "web", "-C", proj], dir).code).toBe(0);
+      expect(gitTopLevel(proj)).toBe(sourceRepo);
+
+      // Give the review subject a pre-existing prospective deliverable. Review must not replace these bytes.
+      expect(cli(["build", "package", "--format", "tarball", "-C", proj], dir).code).toBe(0);
+      const originalArchive = join(proj, "builds", "demo-0.1.0.tgz");
+      const originalArchiveDigest = createHash("sha256")
+        .update(readFileSync(originalArchive))
+        .digest("hex");
+      const authoringFrontDoorMarker = "<!-- wpm:workspace-authoring:start -->";
+      expect(readFileSync(join(proj, "AGENTS.md"), "utf8")).toContain(authoringFrontDoorMarker);
+      expect(JSON.parse(readFileSync(join(proj, ".wpm-authoring.json"), "utf8"))).toMatchObject({
+        status: "complete",
+        selectedClients: ["codex"],
+      });
+      expect(existsSync(join(proj, "CLAUDE.md"))).toBe(false);
+
+      // Establish the immutable subject baseline BEFORE copying or planting any review-only marker.
+      const before = snapshotTree(proj);
+      const reviewCopy = join(dir, "isolated-review", "workspace");
+      mkdirSync(join(dir, "isolated-review"));
+      cpSync(proj, reviewCopy, {
+        recursive: true,
+        dereference: false,
+        verbatimSymlinks: true,
+      });
+
+      // The unmodified copy is equivalent at the review boundary and cannot ascend to the source repository.
+      expect(snapshotTree(reviewCopy)).toEqual(before);
+      expect(snapshotTree(proj)).toEqual(before);
+      expect(gitTopLevel(reviewCopy)).toBeUndefined();
+      expect(existsSync(join(reviewCopy, "CLAUDE.md"))).toBe(false);
+
+      // Copied archives are stale input, never proof of this review. Every format must create absent output.
+      rmSync(join(reviewCopy, "builds"), { recursive: true, force: true });
+      mkdirSync(join(reviewCopy, "builds"));
+      expect(readdirSync(join(reviewCopy, "builds"))).toEqual([]);
+
+      // Plant exact workspace-native authoring paths and unique content in the disposable copy only.
+      const marker = "TASK118-WPM-REVIEW-PACKAGE-MUST-NOT-SHIP-6d29";
+      const reviewBytes = `${readFileSync(reviewPackageSkill, "utf8")}\n${marker}\n`;
+      for (const nativePath of [
+        join(reviewCopy, ".agents", "skills", "wpm-review-package", "SKILL.md"),
+        join(reviewCopy, ".claude", "skills", "wpm-review-package", "SKILL.md"),
+      ]) {
+        mkdirSync(join(nativePath, ".."), { recursive: true });
+        writeFileSync(nativePath, reviewBytes);
+      }
+      expect(snapshotTree(proj)).toEqual(before);
+
+      const dryRun = cli(["build", "dry-run", "-C", reviewCopy], dir);
+      expect(dryRun.code).toBe(0);
+
+      const formats: Array<{ name: "tarball" | "git" | "zip"; ext: "tgz" | "zip" }> = [
+        { name: "tarball", ext: "tgz" },
+        { name: "git", ext: "tgz" },
+      ];
+      if (hasZip() && hasUnzip()) formats.push({ name: "zip", ext: "zip" });
+
+      const layouts: string[][] = [];
+      for (const format of formats) {
+        const copyArchive = join(reviewCopy, "builds", `demo-0.1.0.${format.ext}`);
+        rmSync(copyArchive, { force: true });
+        expect(existsSync(copyArchive)).toBe(false);
+
+        const packed = cli(["build", "package", "--format", format.name, "-C", reviewCopy], dir);
+        expect(packed.code).toBe(0);
+        expect(existsSync(copyArchive)).toBe(true);
+
+        const layout = archiveLayout(copyArchive);
+        layouts.push(layout);
+        expect(layout.some((path) => path.includes("wpm-review-package"))).toBe(false);
+        const declaredClaudeScopes = [".claude/skills", "bundles/web/.claude/skills"];
+        expect(layout).toEqual(expect.arrayContaining(declaredClaudeScopes));
+        expect(
+          layout.some((path) => {
+            const inAgentsScope =
+              /^\.agents(?:\/|$)/.test(path) || /^bundles\/[^/]+\/\.agents(?:\/|$)/.test(path);
+            const inClaudeScope =
+              /^\.claude(?:\/|$)/.test(path) || /^bundles\/[^/]+\/\.claude(?:\/|$)/.test(path);
+            const isDeclaredClaudeSkillPath = declaredClaudeScopes.some(
+              (scope) => path === scope || path.startsWith(`${scope}/`),
+            );
+            return inAgentsScope || (inClaudeScope && !isDeclaredClaudeSkillPath);
+          }),
+        ).toBe(false);
+        expect(layout).not.toContain("source-only-review-marker.txt");
+
+        const extracted = join(dir, `task118-review-copy-${format.name}-extracted`);
+        mkdirSync(extracted);
+        if (format.ext === "zip") execFileSync("unzip", ["-q", copyArchive, "-d", extracted]);
+        else execFileSync("tar", ["-xzf", copyArchive, "-C", extracted]);
+        const extractedBytes = concatAllFiles(extracted);
+        expect(extractedBytes).not.toContain(marker);
+        expect(extractedBytes).not.toContain(sourceAscentMarker);
+        expect(extractedBytes).not.toContain(authoringFrontDoorMarker);
+        expect(lstatSync(join(extracted, "CLAUDE.md")).isSymbolicLink()).toBe(true);
+        expect(readlinkSync(join(extracted, "CLAUDE.md"))).toBe("AGENTS.md");
+        expect(lstatSync(join(extracted, "bundles", "web", "CLAUDE.md")).isSymbolicLink()).toBe(
+          true,
+        );
+        expect(readlinkSync(join(extracted, "bundles", "web", "CLAUDE.md"))).toBe("AGENTS.md");
+      }
+      for (const layout of layouts.slice(1)) expect(layout).toEqual(layouts[0]);
+
+      // The exact original paths, bytes, links, and pre-existing archive remain unchanged after real build.
+      expect(snapshotTree(proj)).toEqual(before);
+      expect(createHash("sha256").update(readFileSync(originalArchive)).digest("hex")).toBe(
+        originalArchiveDigest,
+      );
+    });
+  });
+
   it("TASK-95 AC#1-4 — git packages the same un-nested, prefix-stripped layout as tarball (and zip when available)", async () => {
     await withTempDir(async (dir) => {
       const proj = initProject(dir);
       expect(cli(["project", "targets", "add", "claude-code", "-C", proj], dir).code).toBe(0);
-      expect(cli(["bundle", "new", "web", "-C", proj], dir).code).toBe(0);
+      expect(cli(["bundle", "new", "web", "-C", proj], dir)).toMatchObject({ code: 0 });
+      expect(
+        cli(
+          ["authoring", "integrate", "--client", "codex", "--client", "claude-code", "-C", proj],
+          dir,
+        ).code,
+      ).toBe(0);
+      expect(cli(["authoring", "handoff", "prepare", "-C", proj], dir).code).toBe(0);
 
       const ROOT_SENTINEL = "TASK95-ROOT-EXECUTOR-3f8c";
       const BUNDLE_SENTINEL = "TASK95-BUNDLE-EXECUTOR-b247";
       const WRAPPER_SENTINEL = "TASK95-WORKSPACE-WRAPPER-MUST-NOT-SHIP-91ad";
+      const PREPARATION_SENTINEL = "TASK108-DISTRIBUTION-PREPARATION-MUST-NOT-SHIP-2e4c";
+      const FRONTDOOR_SENTINEL = "TASK120-MANAGED-FRONT-DOOR-MUST-NOT-SHIP-53fe";
+      const PERSONAL_SKILL_SENTINEL = "TASK122-WPM-CREATE-PACKAGE-MUST-NOT-SHIP-4c8e";
+      const PERSONAL_STATE_SENTINEL = "TASK123-PERSONAL-SETUP-STATE-MUST-NOT-SHIP-87d1";
+      const PERSONAL_QUARANTINE_SENTINEL = "TASK124-PERSONAL-SETUP-QUARANTINE-MUST-NOT-SHIP-16cf";
+      const TEMPLATE_TASK_DEFINITION_SENTINEL =
+        "TASK126-TEMPLATE-TASK-DEFINITION-MUST-NOT-SHIP-6f13";
+      const TEMPLATE_TASK_PROVENANCE_SENTINEL =
+        "wpm:template-origin:built-in:project:task126-nonleak";
+      const BUNDLE_CONTRIBUTION_RECORD_SENTINEL =
+        "TASK127-BUNDLE-CONTRIBUTION-RECORD-MUST-NOT-SHIP-842c";
+      const BUNDLE_TASK_DEFINITION_SENTINEL = "TASK127-BUNDLE-TASK-DEFINITION-MUST-NOT-SHIP-a17e";
+      const BUNDLE_TASK_PROVENANCE_SENTINEL =
+        "wpm:template-origin:project-local:bundle:task127-nonleak";
+      const workspaceSkillEvidence = [
+        [
+          "wpm-author",
+          authorRouterSkill,
+          "Treat orientation and selection as one fail-closed workflow.",
+        ],
+        ["wpm-author-bundle", authoringBundleSkill, "Turn the request into four short lists:"],
+        [
+          "wpm-author-recipe",
+          authoringRecipeSkill,
+          "The bundle's install backlog is the single recipe task source:",
+        ],
+        [
+          "wpm-author-skill",
+          authoringSkillSkill,
+          "Classify all requested artifacts and existing collisions before changing state.",
+        ],
+        ["wpm-review-package", reviewPackageSkill, "## Evaluate the complete bounded catalog"],
+      ] as const;
+      const integrationStateText = readFileSync(join(proj, ".wpm-authoring.json"), "utf8");
+      const integrationState = JSON.parse(integrationStateText) as {
+        workspaceRoot: string;
+        selectedClients: string[];
+      };
+      expect(integrationState).toMatchObject({
+        workspaceRoot: toPosix(proj),
+        selectedClients: ["codex", "claude-code"],
+      });
+      const STATE_SENTINEL = integrationState.workspaceRoot;
+      const handoffReceiptText = readFileSync(join(proj, ".wpm-handoff.json"), "utf8");
+      const handoffReceipt = JSON.parse(handoffReceiptText) as {
+        status: string;
+        configuredClients: string[];
+      };
+      expect(handoffReceipt).toMatchObject({
+        status: "prepared",
+        configuredClients: ["codex", "claude-code"],
+      });
+      const HANDOFF_SENTINEL = '"authoringBacklogPath": ".authoring-backlog"';
+      expect(handoffReceiptText).toContain(HANDOFF_SENTINEL);
       writeFileSync(join(proj, "wip", "_AGENTS.md"), `# root\n${ROOT_SENTINEL}\n`);
       writeFileSync(
         join(proj, "wip", "bundles", "web", "_AGENTS.md"),
         `# web\n${BUNDLE_SENTINEL}\n`,
       );
-      writeFileSync(join(proj, ".authoring-backlog", "task95-leak.txt"), WRAPPER_SENTINEL);
+      writeFileSync(
+        join(proj, ".authoring-backlog", "task95-leak.txt"),
+        [
+          WRAPPER_SENTINEL,
+          TEMPLATE_TASK_DEFINITION_SENTINEL,
+          TEMPLATE_TASK_PROVENANCE_SENTINEL,
+          BUNDLE_TASK_DEFINITION_SENTINEL,
+          BUNDLE_TASK_PROVENANCE_SENTINEL,
+          "revision: task126-nonleak",
+          "authoring-tasks:",
+        ].join("\n"),
+      );
       writeFileSync(join(proj, "builds", "task95-leak.txt"), WRAPPER_SENTINEL);
+      writeFileSync(
+        join(proj, ".wpm-bundle-authoring.json"),
+        `${JSON.stringify({ marker: BUNDLE_CONTRIBUTION_RECORD_SENTINEL })}\n`,
+      );
+      mkdirSync(join(proj, "distribution-preparation"));
+      writeFileSync(
+        join(proj, "distribution-preparation", "package-boundary.js"),
+        PREPARATION_SENTINEL,
+      );
+      for (const frontDoor of ["AGENTS.md", "CLAUDE.md"]) {
+        const frontDoorPath = join(proj, frontDoor);
+        writeFileSync(
+          frontDoorPath,
+          `${FRONTDOOR_SENTINEL}\n${readFileSync(frontDoorPath, "utf8")}`,
+        );
+      }
+      for (const [skillName, sourcePath, sentinel] of workspaceSkillEvidence) {
+        const expectedBytes = readFileSync(sourcePath, "utf8");
+        expect(expectedBytes).toContain(sentinel);
+        for (const nativeRoot of [".agents", ".claude"]) {
+          expect(
+            readFileSync(join(proj, nativeRoot, "skills", skillName, "SKILL.md"), "utf8"),
+          ).toBe(expectedBytes);
+        }
+      }
+      const personalSkillBytes = `${readFileSync(createPackageSkill, "utf8")}\n${PERSONAL_SKILL_SENTINEL}\n`;
+      for (const nativeRoot of [".agents", ".claude"]) {
+        const personalPath = join(proj, nativeRoot, "skills", "wpm-create-package", "SKILL.md");
+        mkdirSync(join(personalPath, ".."), { recursive: true });
+        writeFileSync(personalPath, personalSkillBytes);
+      }
+      mkdirSync(join(proj, ".wpm"), { recursive: true });
+      writeFileSync(
+        join(proj, ".wpm", "authoring-setup.json"),
+        `${JSON.stringify({ marker: PERSONAL_STATE_SENTINEL })}\n`,
+      );
+      mkdirSync(join(proj, ".wpm", "authoring-setup-quarantine", "request"), {
+        recursive: true,
+      });
+      writeFileSync(
+        join(proj, ".wpm", "authoring-setup-quarantine", "request", "evidence.json"),
+        `${JSON.stringify({ marker: PERSONAL_QUARANTINE_SENTINEL })}\n`,
+      );
+
+      const assertNoWorkspaceIntegration = (layout: string[], extractedRoot: string): void => {
+        expect(layout).not.toContain(".wpm-authoring.json");
+        expect(layout).not.toContain(".wpm-handoff.json");
+        expect(layout).not.toContain(".wpm-bundle-authoring.json");
+        expect(layout).not.toContain(".wpm/authoring-setup.json");
+        expect(layout.some((path) => path.startsWith(".wpm/authoring-setup-quarantine/"))).toBe(
+          false,
+        );
+        const declaredClaudeScopes = [".claude/skills", "bundles/web/.claude/skills"];
+        for (const scope of declaredClaudeScopes) {
+          expect(layout.some((entry) => entry === scope || entry.startsWith(`${scope}/`))).toBe(
+            true,
+          );
+        }
+        expect(
+          layout.some((path) => {
+            const inAgentsScope =
+              /^\.agents(?:\/|$)/.test(path) || /^bundles\/[^/]+\/\.agents(?:\/|$)/.test(path);
+            const inClaudeScope =
+              /^\.claude(?:\/|$)/.test(path) || /^bundles\/[^/]+\/\.claude(?:\/|$)/.test(path);
+            const isDeclaredClaudeSkillPath = declaredClaudeScopes.some(
+              (scope) => path === scope || path.startsWith(`${scope}/`),
+            );
+            return inAgentsScope || (inClaudeScope && !isDeclaredClaudeSkillPath);
+          }),
+        ).toBe(false);
+        for (const [skillName] of workspaceSkillEvidence) {
+          expect(layout.some((path) => path.includes(skillName))).toBe(false);
+        }
+        expect(layout.some((path) => path.includes("wpm-create-package"))).toBe(false);
+        const extractedBytes = concatAllFiles(extractedRoot);
+        expect(extractedBytes).not.toContain(STATE_SENTINEL);
+        expect(extractedBytes).not.toContain(HANDOFF_SENTINEL);
+        expect(extractedBytes).not.toContain(FRONTDOOR_SENTINEL);
+        expect(extractedBytes).not.toContain(PERSONAL_SKILL_SENTINEL);
+        expect(extractedBytes).not.toContain(PERSONAL_STATE_SENTINEL);
+        expect(extractedBytes).not.toContain(PERSONAL_QUARANTINE_SENTINEL);
+        expect(extractedBytes).not.toContain(TEMPLATE_TASK_DEFINITION_SENTINEL);
+        expect(extractedBytes).not.toContain(TEMPLATE_TASK_PROVENANCE_SENTINEL);
+        expect(extractedBytes).not.toContain(BUNDLE_CONTRIBUTION_RECORD_SENTINEL);
+        expect(extractedBytes).not.toContain(BUNDLE_TASK_DEFINITION_SENTINEL);
+        expect(extractedBytes).not.toContain(BUNDLE_TASK_PROVENANCE_SENTINEL);
+        for (const [, , sentinel] of workspaceSkillEvidence) {
+          expect(extractedBytes).not.toContain(sentinel);
+        }
+      };
+
+      const sourceDeliverableBefore = snapshotTree(join(proj, "wip"));
+      expect(sourceDeliverableBefore.some((entry) => entry.includes("wpm-author/SKILL.md"))).toBe(
+        false,
+      );
+      for (const [, , sentinel] of workspaceSkillEvidence) {
+        expect(concatAllFiles(join(proj, "wip"))).not.toContain(sentinel);
+      }
+      expect(concatAllFiles(join(proj, "wip"))).not.toContain(HANDOFF_SENTINEL);
+      expect(concatAllFiles(join(proj, "wip"))).not.toContain(PERSONAL_SKILL_SENTINEL);
+      expect(concatAllFiles(join(proj, "wip"))).not.toContain(PERSONAL_STATE_SENTINEL);
+      expect(concatAllFiles(join(proj, "wip"))).not.toContain(PERSONAL_QUARANTINE_SENTINEL);
+      expect(concatAllFiles(join(proj, "wip"))).not.toContain(TEMPLATE_TASK_DEFINITION_SENTINEL);
+      expect(concatAllFiles(join(proj, "wip"))).not.toContain(TEMPLATE_TASK_PROVENANCE_SENTINEL);
+      expect(concatAllFiles(join(proj, "wip"))).not.toContain(BUNDLE_CONTRIBUTION_RECORD_SENTINEL);
+      expect(concatAllFiles(join(proj, "wip"))).not.toContain(BUNDLE_TASK_DEFINITION_SENTINEL);
+      expect(concatAllFiles(join(proj, "wip"))).not.toContain(BUNDLE_TASK_PROVENANCE_SENTINEL);
 
       const tgz = join(proj, "builds", "demo-0.1.0.tgz");
       expect(cli(["build", "package", "--format", "tarball", "-C", proj], dir).code).toBe(0);
       const tarballLayout = archiveLayout(tgz);
+      const tarballExtracted = join(dir, "task95-tarball-extracted");
+      mkdirSync(tarballExtracted);
+      execFileSync("tar", ["-xzf", tgz, "-C", tarballExtracted]);
+      assertNoWorkspaceIntegration(tarballLayout, tarballExtracted);
 
       // The workspace created by init is intentionally NOT initialized as its own Git repository. Git format
       // must package the prepared ship set, not require/ascend to an enclosing repository's raw HEAD.
+      rmSync(tgz);
+      expect(existsSync(tgz)).toBe(false);
       const gitBuild = cli(["build", "package", "--format", "git", "-C", proj], dir);
       expect(gitBuild.code).toBe(0);
+      expect(existsSync(tgz)).toBe(true);
       const gitLayout = archiveLayout(tgz);
       expect(gitLayout).toEqual(tarballLayout);
 
@@ -778,6 +1225,7 @@ describeIfBuilt("`wpm build package` E2E (task-83, through dist/cli.js)", () => 
       // AC#2: the three workspace-wrapper regions and the archive itself never enter the Git archive.
       expect(gitLayout.some((path) => path.startsWith(".authoring-backlog/"))).toBe(false);
       expect(gitLayout.some((path) => path.startsWith("builds/"))).toBe(false);
+      expect(gitLayout.some((path) => path.startsWith("distribution-preparation/"))).toBe(false);
       expect(gitLayout).not.toContain("task95-leak.txt");
 
       const extracted = join(dir, "task95-git-extracted");
@@ -789,12 +1237,44 @@ describeIfBuilt("`wpm build package` E2E (task-83, through dist/cli.js)", () => 
       );
       expect(lstatSync(join(extracted, "CLAUDE.md")).isSymbolicLink()).toBe(true);
       expect(concatAllFiles(extracted)).not.toContain(WRAPPER_SENTINEL);
+      expect(concatAllFiles(extracted)).not.toContain(PREPARATION_SENTINEL);
+      assertNoWorkspaceIntegration(gitLayout, extracted);
 
       // AC#4: zip is part of the same parity assertion when both authoring and listing tools are available.
       if (hasZip() && hasUnzip()) {
         expect(cli(["build", "package", "--format", "zip", "-C", proj], dir).code).toBe(0);
-        expect(archiveLayout(join(proj, "builds", "demo-0.1.0.zip"))).toEqual(tarballLayout);
+        const zip = join(proj, "builds", "demo-0.1.0.zip");
+        expect(archiveLayout(zip)).toEqual(tarballLayout);
+        const zipExtracted = join(dir, "task95-zip-extracted");
+        mkdirSync(zipExtracted);
+        execFileSync("unzip", ["-q", zip, "-d", zipExtracted]);
+        assertNoWorkspaceIntegration(tarballLayout, zipExtracted);
       }
+
+      expect(snapshotTree(join(proj, "wip"))).toEqual(sourceDeliverableBefore);
+      for (const [, , sentinel] of workspaceSkillEvidence) {
+        expect(concatAllFiles(join(proj, "wip"))).not.toContain(sentinel);
+      }
+      expect(concatAllFiles(join(proj, "wip"))).not.toContain(PERSONAL_SKILL_SENTINEL);
+      expect(concatAllFiles(join(proj, "wip"))).not.toContain(PERSONAL_STATE_SENTINEL);
+      expect(concatAllFiles(join(proj, "wip"))).not.toContain(PERSONAL_QUARANTINE_SENTINEL);
+      expect(concatAllFiles(join(proj, "wip"))).not.toContain(TEMPLATE_TASK_DEFINITION_SENTINEL);
+      expect(concatAllFiles(join(proj, "wip"))).not.toContain(TEMPLATE_TASK_PROVENANCE_SENTINEL);
+      expect(concatAllFiles(join(proj, "wip"))).not.toContain(BUNDLE_CONTRIBUTION_RECORD_SENTINEL);
+      expect(concatAllFiles(join(proj, "wip"))).not.toContain(BUNDLE_TASK_DEFINITION_SENTINEL);
+      expect(concatAllFiles(join(proj, "wip"))).not.toContain(BUNDLE_TASK_PROVENANCE_SENTINEL);
+      expect(readFileSync(join(proj, ".wpm-bundle-authoring.json"), "utf8")).toContain(
+        BUNDLE_CONTRIBUTION_RECORD_SENTINEL,
+      );
+      expect(readFileSync(join(proj, ".wpm", "authoring-setup.json"), "utf8")).toContain(
+        PERSONAL_STATE_SENTINEL,
+      );
+      expect(
+        readFileSync(
+          join(proj, ".wpm", "authoring-setup-quarantine", "request", "evidence.json"),
+          "utf8",
+        ),
+      ).toContain(PERSONAL_QUARANTINE_SENTINEL);
     });
   });
 

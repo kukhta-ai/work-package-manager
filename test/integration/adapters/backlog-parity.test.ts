@@ -41,8 +41,11 @@ function exercise(bl: BacklogMd, root: string) {
   const b = bl.createTask(root, { title: "Beta", dependencies: [a.id] });
   bl.editTask(root, b.id, { status: "In Progress" });
   return {
+    root: bl.inspectRoot(root),
+    inventory: bl.inspectTaskInventory(root),
     created: [a, b],
     list: bl.listTasks(root).sort((x, y) => x.id.localeCompare(y.id)),
+    records: [bl.readTask(root, a.id), bl.readTask(root, b.id)],
   };
 }
 
@@ -52,10 +55,12 @@ describeIfBacklog("BacklogCli vs FakeBacklog parity", () => {
       const real = exercise(new BacklogCli("backlog", isolatedEnv(dir)), dir);
       const fake = exercise(new FakeBacklog(), "/virtual/.authoring-backlog");
 
+      expect(real.root).toEqual(fake.root);
       // Same ids assigned (prefix + monotonic counter).
       expect(real.created.map((t) => t.id)).toEqual(fake.created.map((t) => t.id));
       // Same list shape: ids, titles, and statuses match.
       expect(real.list).toEqual(fake.list);
+      expect(real.records).toEqual(fake.records);
     });
   });
 });

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { realpathSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { join, posix, resolve, win32 } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Argument, Command, Option } from "commander";
 import { BacklogCli } from "./adapters/backlog-cli.js";
@@ -11,7 +11,17 @@ import { SystemClock } from "./adapters/system-clock.js";
 import { type CompletionSpecs, completeArgv } from "./completion/complete.js";
 import { BUILD_FORMATS, BUMP_LEVELS, CONFIRMATION_LEVELS } from "./completion/enums.js";
 import { defaultRegistry } from "./completion/registry.js";
-import { NotFoundError, UsageError, ValidationError } from "./core/errors.js";
+import {
+  exitCodeFor,
+  HandoffPreparationPreflightError,
+  HandoffVerificationError,
+  isMutationFailure,
+  NotFoundError,
+  PersonalAuthoringSetupMutationFailure,
+  PersonalAuthoringSetupPreflightError,
+  UsageError,
+  ValidationError,
+} from "./core/errors.js";
 import {
   type AgentName,
   type ConfirmationLevel,
@@ -26,8 +36,18 @@ import {
 } from "./core/model/index.js";
 import { advisorSkillDir, advisorSkillPath } from "./core/operations/advisor.js";
 import { advisorAddSpec, advisorRemoveSpec } from "./core/operations/advisor-commands.js";
+import {
+  type InspectedAuthoringClient,
+  inspectAuthoringClient,
+  inspectAuthoringClients,
+} from "./core/operations/authoring-clients.js";
 import { type BuildPlan, computeBuildPlan } from "./core/operations/build.js";
-import { disableBundleSpec, enableBundleSpec } from "./core/operations/bundle-lifecycle.js";
+import {
+  createBundleWithAuthoring,
+  enableBundleWithAuthoring,
+  setDefaultBundleTemplateWithAuthoring,
+} from "./core/operations/bundle-authoring.js";
+import { disableBundleSpec } from "./core/operations/bundle-lifecycle.js";
 import {
   type BundleListRow,
   hasKindLabel,
@@ -52,15 +72,13 @@ import {
   readBundleVersionSpec,
   setBundleVersionSpec,
 } from "./core/operations/bundle-version.js";
-import { createBundleSpec } from "./core/operations/create-bundle.js";
+import { perBundleAuthoringTaskCatalog } from "./core/operations/create-bundle.js";
 import { makeArtefactDeriver } from "./core/operations/derive-artefacts-capability.js";
-import { initProject } from "./core/operations/init-project.js";
 import {
-  AUTHORING_SKILL_NAME,
-  authoringSkillPresent,
-  type InstallAuthoringSkillResult,
-  installAuthoringSkill,
-} from "./core/operations/install-authoring-skill.js";
+  type InitProjectResult,
+  initProject,
+  projectWideAuthoringTaskCatalog,
+} from "./core/operations/init-project.js";
 import {
   attachProjectInstallerSkillSpec,
   conventionalProjectSkillPath,
@@ -83,6 +101,11 @@ import {
   SCRIPTS_DESCRIPTOR,
   TEMPLATES_DESCRIPTOR,
 } from "./core/operations/payload-refs.js";
+import {
+  type PersonalAuthoringSetupResult,
+  preparePersonalAuthoringSetup,
+  setupPersonalAuthoring,
+} from "./core/operations/personal-authoring-setup.js";
 import { editProjectMetaSpec } from "./core/operations/project-meta.js";
 import {
   type ProjectOrientation,
@@ -102,7 +125,18 @@ import {
 } from "./core/operations/skill-refs.js";
 import { addTargetSpec, listTargetsSpec, removeTargetSpec } from "./core/operations/targets.js";
 import { bumpVersionSpec, readVersionSpec, setVersionSpec } from "./core/operations/version.js";
+import {
+  integrateWorkspaceAuthoring,
+  type WorkspaceAuthoringIntegrationResult,
+} from "./core/operations/workspace-authoring-integration.js";
+import {
+  type PreparedWorkspaceHandoffResult,
+  prepareWorkspaceHandoff,
+  type VerifiedWorkspaceHandoffResult,
+  verifyWorkspaceHandoff,
+} from "./core/operations/workspace-handoff.js";
 import type { BacklogMd, Clock, Environment, FileSystem } from "./core/ports/index.js";
+import { authoringClientReloadGuidance } from "./core/services/authoring-clients.js";
 import { resolveContext } from "./core/services/context.js";
 import { parseManifest, parseTemplateDescriptor } from "./core/services/schema/index.js";
 import {
@@ -110,14 +144,29 @@ import {
   payloadSkillPackageRoot,
 } from "./core/services/skill-ref-path.js";
 import {
+  inspectTemplateAuthoringTasks,
+  type TemplateAuthoringTaskInspection,
+} from "./core/services/template-authoring-tasks.js";
+import {
   listTemplates,
   resolveTemplate,
   type TemplateSummary,
 } from "./core/services/template-resolver.js";
 import { withExamples } from "./help/examples.js";
 import { installCompletion, type Shell } from "./util/completion-install.js";
-import { readConfirmation } from "./util/confirm.js";
-import { type CliIo, runWithExit } from "./util/exit.js";
+import {
+  createInputLineSession,
+  isAffirmativeConfirmation,
+  readConfirmation,
+} from "./util/confirm.js";
+import {
+  type CliIo,
+  escapeHumanText,
+  formatHumanValue,
+  JsonCliFailure,
+  runWithExit,
+  stringifyCliJson,
+} from "./util/exit.js";
 import { toPosix } from "./util/posix-path.js";
 import { parseYaml } from "./util/yaml.js";
 import { VERSION } from "./version.js";
@@ -150,10 +199,9 @@ export interface CliDeps {
   /** The built-in templates root shipped with the package (project-local templates shadow these). */
   readonly builtinTemplatesRoot: string;
   /**
-   * The bundled `agent-skills/` root shipped with the package — the source `wpm skill install` copies the
-   * `installer-builder/` authoring skill from (doc 12). Threaded exactly like {@link builtinTemplatesRoot} and
-   * always populated by {@link makeRealDeps}; OPTIONAL only so the many existing test deps-literals that never
-   * exercise `skill install` need not all supply it (the command raises a clear internal error if it is absent).
+   * The bundled `agent-skills/` root shipped with the package — personal setup reads the exact
+   * `wpm-create-package/` bytes and legacy migration signature from it. Threaded like
+   * {@link builtinTemplatesRoot}; optional only for older command tests that do not exercise these surfaces.
    */
   readonly bundledSkillsRoot?: string;
 }
@@ -182,7 +230,7 @@ function formatResult(result: {
   changedPaths: readonly string[];
   materialisedTaskTitles: readonly string[];
 }): string {
-  const lines = [result.summary];
+  const lines = [escapeHumanText(result.summary)];
   if (result.changedPaths.length > 0) {
     lines.push(`changed: ${result.changedPaths.length} path(s)`);
   }
@@ -190,6 +238,170 @@ function formatResult(result: {
     lines.push(`materialised: ${result.materialisedTaskTitles.length} authoring task(s)`);
   }
   return `${lines.join("\n")}\n`;
+}
+
+function requireBundledSkillsRoot(deps: CliDeps): string {
+  if (deps.bundledSkillsRoot === undefined) {
+    throw new Error("internal: bundledSkillsRoot was not assembled");
+  }
+  return deps.bundledSkillsRoot;
+}
+
+function formatPersonalAuthoringSetup(result: PersonalAuthoringSetupResult): string {
+  const lines = [
+    escapeHumanText(result.summary),
+    `defaults: ${result.defaults.join(", ")}`,
+    `state: ${formatHumanValue(result.statePath)}`,
+  ];
+  for (const client of result.clients) {
+    lines.push(
+      `${client.id}: ${client.outcome} at ${formatHumanValue(client.destination)}`,
+      `  legacy installer-builder: ${client.legacy}`,
+    );
+    if (client.reloadGuidance !== undefined) {
+      lines.push(`  reload: ${escapeHumanText(client.reloadGuidance)}`);
+    }
+    lines.push(`  next action: ${client.nextAction}`);
+  }
+  lines.push("workspace/handoff: not created or claimed");
+  return `${lines.join("\n")}\n`;
+}
+
+function throwJsonPersonalSetupFailure(error: unknown): never {
+  if (error instanceof PersonalAuthoringSetupPreflightError) {
+    throw new JsonCliFailure(
+      {
+        status: "failed",
+        operation: "personal-authoring-setup",
+        setupApplied: false,
+        blockers: error.blockers,
+      },
+      exitCodeFor(error),
+    );
+  }
+  if (error instanceof PersonalAuthoringSetupMutationFailure) {
+    throw new JsonCliFailure(
+      {
+        status: "failed",
+        operation: "personal-authoring-setup",
+        setupApplied: false,
+        failedBeat: error.failedBeat,
+        completedClients: error.completedClients,
+        failedClient: error.failedClient,
+        unattemptedClients: error.unattemptedClients,
+        completed: error.completed,
+        failed: error.failed,
+        unattempted: error.unattempted,
+        recovery: error.recovery,
+      },
+      1,
+    );
+  }
+  throw error;
+}
+
+function formatWorkspaceAuthoringIntegration(result: WorkspaceAuthoringIntegrationResult): string {
+  return `${[
+    result.summary,
+    `clients: ${result.selectedClients.join(", ")}`,
+    `state: ${result.statePath}`,
+    `changed: ${result.changedPaths.length} path(s)`,
+    "handoff prepared: no",
+  ].join("\n")}\n`;
+}
+
+function formatPreparedHandoff(result: PreparedWorkspaceHandoffResult): string {
+  const lines = [
+    `prepared fresh-agent handoff at ${formatHumanValue(result.workspaceRoot)} for ${result.configuredClients.join(", ")}`,
+    "handoff: prepared",
+    `workspace root: ${formatHumanValue(result.workspaceRoot)}`,
+    `receipt: ${result.receiptPath}`,
+    `changed: ${result.changedPaths.length} path(s)`,
+  ];
+  for (const client of result.clients) {
+    lines.push(
+      `${client.id}:`,
+      `  launch: ${client.launch.command} from ${formatHumanValue(client.launch.workingDirectory)}`,
+      `  front door: ${client.frontDoor}`,
+      `  reload: ${client.reload.guidance}`,
+      `  verify: wpm authoring handoff verify --client ${client.id} from the recorded root (the receipt carries exact structured argv)`,
+      `  then invoke: ${client.firstSkill.invocation}`,
+    );
+  }
+  lines.push(
+    "agent process: not spawned or authenticated; receiving-agent acceptance is not claimed",
+  );
+  return `${lines.join("\n")}\n`;
+}
+
+function formatInitResult(result: InitProjectResult): string {
+  return `${formatResult(result).trimEnd()}\n${formatPreparedHandoff(result.handoff)}`;
+}
+
+function formatVerifiedHandoff(result: VerifiedWorkspaceHandoffResult): string {
+  const agreement = result.agreement;
+  return `${[
+    `verified fresh-agent handoff at ${formatHumanValue(result.workspaceRoot)} for ${result.selectedClient}`,
+    `workspace root: ${formatHumanValue(result.workspaceRoot)}`,
+    `selected client: ${result.selectedClient}`,
+    "agreement:",
+    `  working directory: ${agreement.workingDirectory.status} (${formatHumanValue(agreement.workingDirectory.path)})`,
+    `  receipt: ${agreement.receipt.status} (${agreement.receipt.path})`,
+    `  managed state: ${agreement.managedState.status} (${agreement.managedState.path})`,
+    `  authoring backlog: ${agreement.authoringBacklog.status} (${agreement.authoringBacklog.path})`,
+    ...agreement.clients.flatMap((client) => [
+      `  ${client.id} front door: ${client.frontDoor.status} (${client.frontDoor.path})`,
+      `  ${client.id} five-skill family: ${client.skillFamily.status} (${client.skillFamily.names.join(", ")})`,
+    ]),
+    ...result.clients.map(({ id, status }) => `${id}: ${status}`),
+    `durable core work: resumable=${result.workEvidence.resumable ? "yes" : "no"}; dependency-eligible=${result.workEvidence.dependencyEligible ? "yes" : "no"}`,
+    `next action: invoke ${result.nextAction.invocation} (${result.nextAction.skill})`,
+    "agent process: not spawned or authenticated; receiving-agent acceptance is not claimed",
+  ].join("\n")}\n`;
+}
+
+function throwJsonHandoffFailure(error: unknown): never {
+  if (error instanceof HandoffPreparationPreflightError) {
+    throw new JsonCliFailure(
+      {
+        status: "failed",
+        operation: "workspace-handoff-preparation",
+        handoffPrepared: false,
+        blockers: error.blockers,
+      },
+      exitCodeFor(error),
+    );
+  }
+  if (error instanceof HandoffVerificationError) {
+    throw new JsonCliFailure(
+      {
+        status: "failed",
+        operation: "workspace-handoff-verification",
+        handoffPrepared: false,
+        selectedClient: error.selectedClient,
+        sharedValid: error.sharedValid,
+        clients: error.clients,
+        blockers: error.blockers,
+      },
+      exitCodeFor(error),
+    );
+  }
+  if (isMutationFailure(error) && error.operation === "workspace handoff preparation") {
+    throw new JsonCliFailure(
+      {
+        status: "failed",
+        operation: "workspace-handoff-preparation",
+        handoffPrepared: false,
+        failedBeat: error.failedBeat,
+        completed: error.completed,
+        failed: error.failed,
+        unattempted: error.unattempted,
+        recovery: error.recovery,
+      },
+      1,
+    );
+  }
+  throw error;
 }
 
 /**
@@ -246,6 +458,30 @@ function requireProject(ctx: CommandContext, parent: Command): WorkspaceRoots {
     throw new NotFoundError(NO_PROJECT_MESSAGE);
   }
   return { deliverableRoot: context.deliverableRoot, workspaceRoot: context.workspaceRoot };
+}
+
+/**
+ * Resolve the bounded root a handoff command must inspect even when the normal workspace marker is itself one
+ * of the broken surfaces. An explicit `-C` is authoritative; otherwise retain normal ancestor orientation and
+ * fall back only to the actual cwd so verification can report a missing marker instead of failing dispatch.
+ */
+function handoffCandidateRoot(ctx: CommandContext, parent: Command): string {
+  const projectOverride = parent.opts().project as string | undefined;
+  const path = ctx.deps.env.platform() === "win32" ? win32 : posix;
+  if (projectOverride !== undefined) {
+    return path.resolve(ctx.deps.env.cwd(), projectOverride);
+  }
+  const context = resolveContext({ fs: ctx.deps.fs, env: ctx.deps.env });
+  return context.found ? context.workspaceRoot : path.resolve(ctx.deps.env.cwd());
+}
+
+/** Explicit `-C` intentionally establishes the receiving root; discovery alone never rewrites actual cwd. */
+function handoffEffectiveWorkingDirectory(
+  ctx: CommandContext,
+  parent: Command,
+  workspaceRoot: string,
+): string {
+  return parent.opts().project !== undefined ? workspaceRoot : ctx.deps.env.cwd();
 }
 
 /**
@@ -1823,24 +2059,23 @@ const bundleModule: CommandModule = {
           const root = context.deliverableRoot;
           const workspaceRoot = context.workspaceRoot;
 
-          const result = runMutation(
+          const result = createBundleWithAuthoring(
             {
               fs: ctx.deps.fs,
               backlog: ctx.deps.backlog,
-              deriveArtefacts: makeArtefactDeriver({
-                fs: ctx.deps.fs,
-                builtinTemplatesRoot: ctx.deps.builtinTemplatesRoot,
-                projectTemplatesRoot: join(root, "templates"),
-              }),
+              builtinTemplatesRoot: ctx.deps.builtinTemplatesRoot,
             },
             { deliverableRoot: root, workspaceRoot },
-            createBundleSpec({
-              builtinTemplatesRoot: ctx.deps.builtinTemplatesRoot,
-              ...(opts.template !== undefined ? { bundleTemplateName: opts.template } : {}),
-            }),
-            { id, version: opts.version, disabled: opts.disabled, advisor: opts.advisor },
+            {
+              id,
+              version: opts.version,
+              disabled: opts.disabled,
+              advisor: opts.advisor,
+              templateName: opts.template,
+            },
           );
           ctx.io.out.write(formatResult(result));
+          writeWarnings(ctx, result.warnings);
         },
       );
 
@@ -1865,10 +2100,13 @@ const bundleModule: CommandModule = {
       .option("--no-advisor", "skip the advisor scaffold")
       .action((id: string, opts: { advisor?: boolean }) => {
         const { deliverableRoot: root, workspaceRoot } = requireProject(ctx, parent);
-        const result = runMutation(
-          lifecycleDepsFor(ctx, root),
+        const result = enableBundleWithAuthoring(
+          {
+            fs: ctx.deps.fs,
+            backlog: ctx.deps.backlog,
+            builtinTemplatesRoot: ctx.deps.builtinTemplatesRoot,
+          },
           { deliverableRoot: root, workspaceRoot },
-          enableBundleSpec({ builtinTemplatesRoot: ctx.deps.builtinTemplatesRoot }),
           { id, advisor: opts.advisor },
         );
         ctx.io.out.write(formatResult(result));
@@ -2040,13 +2278,9 @@ const bundleModule: CommandModule = {
     ]);
 
     // ── bundle template set <name> ──────────────────────────────────────────────────────────────────────────
-    // MUTATION (doc 10 row 156): resolve <name> as a BUNDLE-scope template, then REPLACE bundles/bundle-template/
-    // contents from its files/ tree. A name that does not resolve OR resolves to a non-bundle scope ⇒ a typed
-    // error (exit 1) changing nothing (AC56#2). On success, clear (fs.remove) THEN write each template file
-    // VERBATIM — NO {{placeholder}} substitution, because the scaffold keeps its placeholders for `bundle new` to
-    // fill when it instantiates from this template. This is a direct shell effect (resolve in core via the pure
-    // resolveTemplate; clear+write via the fs port), NOT runMutation — it touches only the scaffold dir, which is
-    // not part of the loaded Project nor an input to the front-door deriver, so there is nothing to ④ RERENDER.
+    // MUTATION (doc 10 row 156): replace the scaffold and its inert authoring-task contribution as one planned
+    // authoring operation. The operation freezes the selected registry snapshot before any effect and leaves an
+    // explicit pending marker if an unforeseen write failure interrupts publication.
     const templateSetLeaf = template
       .command("set")
       .description(
@@ -2057,38 +2291,23 @@ const bundleModule: CommandModule = {
         "the bundle-scope template to copy from (its files/ tree replaces bundles/bundle-template/)",
       )
       .action((name: string) => {
-        const { deliverableRoot: root } = requireProject(ctx, parent);
-        const resolution = resolveTemplate(name, "bundle", {
-          fs: ctx.deps.fs,
-          builtinTemplatesRoot: ctx.deps.builtinTemplatesRoot,
-          projectTemplatesRoot: join(root, "templates"),
-        });
-        if (!resolution.found) {
-          // AC56#2: a name that does not resolve as a BUNDLE template → typed NotFound (exit 1), nothing changed.
-          // (A project-scope name is ALREADY not-found here: a `bundle` resolution only searches the `bundle/`
-          // scope dir, so a `project/`-scoped template like `minimal` does not resolve as a bundle template.)
-          throw new NotFoundError(
-            `bundle template "${name}" not found (searched: ${resolution.searched.join(", ")})`,
-          );
-        }
-        // Defense-in-depth (AC56#2 wrong-scope): the resolver only finds `bundle/`-scope templates here, so the
-        // descriptor's scope is bundle by construction — assert it anyway so a mis-scoped descriptor is rejected
-        // before any write.
-        if (resolution.template.scope !== "bundle") {
-          throw new ValidationError(
-            `template "${name}" is not a bundle-scope template (scope: ${resolution.template.scope})`,
-          );
-        }
-
-        // AC56#1: REPLACE the contents — clear THEN copy (the fs port's copyTree MERGES into an existing dir, so a
-        // true replace is remove-first). Write each resolved file verbatim (no substitution).
-        const dest = join(root, "bundles", BUNDLE_TEMPLATE_DIR);
-        ctx.deps.fs.remove(dest);
-        for (const file of resolution.template.files) {
-          ctx.deps.fs.write(join(dest, file.path), file.content);
-        }
+        const { deliverableRoot: root, workspaceRoot } = requireProject(ctx, parent);
+        const result = setDefaultBundleTemplateWithAuthoring(
+          {
+            fs: ctx.deps.fs,
+            backlog: ctx.deps.backlog,
+            builtinTemplatesRoot: ctx.deps.builtinTemplatesRoot,
+          },
+          {
+            workspaceRoot,
+            deliverableRoot: root,
+          },
+          {
+            name,
+          },
+        );
         ctx.io.out.write(
-          `set bundle template from "${name}" → bundles/${BUNDLE_TEMPLATE_DIR}/ (${resolution.template.files.length} file(s))\n`,
+          `set bundle template from "${name}" → bundles/${BUNDLE_TEMPLATE_DIR}/ (${result.fileCount} file(s))\n`,
         );
       });
     withExamples(templateSetLeaf, [
@@ -2274,6 +2493,11 @@ const initModule: CommandModule = {
         "a placeholder-substitution value (repeatable, e.g. --param author=me)",
         (value: string, previous: string[] = []) => [...previous, value],
       )
+      .option(
+        "--authoring-client <id>",
+        "select codex or claude-code workspace integration (repeatable; retained personal defaults apply only when omitted)",
+        (value: string, previous: string[] = []) => [...previous, value],
+      )
       .action(
         (
           name: string,
@@ -2282,6 +2506,7 @@ const initModule: CommandModule = {
             template?: string;
             listTemplates?: boolean;
             param?: string[];
+            authoringClient?: string[];
           },
         ) => {
           // --list-templates (AC#6): print the available PROJECT templates and exit 0, creating nothing. This
@@ -2304,35 +2529,30 @@ const initModule: CommandModule = {
             {
               fs: ctx.deps.fs,
               backlog: ctx.deps.backlog,
+              env: ctx.deps.env,
               builtinTemplatesRoot: ctx.deps.builtinTemplatesRoot,
+              bundledSkillsRoot: requireBundledSkillsRoot(ctx.deps),
+              integrationVersion: VERSION,
             },
             {
               targetDir,
               name,
               ...(opts.template !== undefined ? { templateName: opts.template } : {}),
               params,
+              ...(opts.authoringClient === undefined
+                ? {}
+                : { authoringClientIds: opts.authoringClient }),
             },
           );
-          ctx.io.out.write(formatResult(result));
-
-          // AC#4 (task-91): point the author at how to install the authoring skill when it is absent. The
-          // workspace's authoring front door already tells the agent to *invoke* the installer-builder skill;
-          // here we surface, in init's own summary, the command that makes it available — but only when it is
-          // not already present in the detected user agent scope(s) (so a set-up machine stays quiet). Detection
-          // reads HOME via the env port; with no HOME we cannot probe, so we skip (the front door still covers it).
-          const home = ctx.deps.env.getEnv("HOME");
-          if (home !== undefined && home !== "" && !authoringSkillPresent(ctx.deps.fs, home)) {
-            ctx.io.out.write(
-              `tip: run \`wpm skill install\` to make the ${AUTHORING_SKILL_NAME} authoring skill available to your agent\n`,
-            );
-          }
+          ctx.io.out.write(formatInitResult(result));
         },
       );
 
     withExamples(leaf, [
       {
-        command: "wpm init hermes-handoff --template minimal --at ./my-installer",
-        note: "scaffold a project at ./my-installer from the minimal template (or `--list-templates` to list them, `--param k=v` to add substitutions)",
+        command:
+          "wpm init hermes-handoff --authoring-client codex --template minimal --at ./my-installer",
+        note: "scaffold a project with explicit Codex workspace integration (repeat --authoring-client for Claude Code too)",
       },
     ]);
   },
@@ -2397,21 +2617,66 @@ function formatTemplateList(
   return `${lines.join("\n")}\n`;
 }
 
-/** Render the `template show` output: the template's metadata + a tree summary of its `files/`. */
-function formatTemplateShow(template: Template, source: "built-in" | "project-local"): string {
+/** Render one aggregate authoring-task inspection below the existing template metadata/tree. */
+function formatTemplateAuthoringTasks(inspection: TemplateAuthoringTaskInspection): string[] {
+  if (inspection.status === "none") return ["Additional authoring tasks: none"];
+  const producer = inspection.producer;
+  const lines = [
+    inspection.status === "valid"
+      ? "Additional authoring tasks: valid (append-only; mandatory work remains)"
+      : "Additional authoring tasks: invalid",
+    `Producer: ${escapeHumanText(producer.source)}/${escapeHumanText(producer.scope)}/${escapeHumanText(producer.name)}  Revision: ${escapeHumanText(inspection.revision ?? "(invalid)")}`,
+    `Materialisation: ${inspection.materialisationScope}`,
+  ];
+  if (inspection.status === "invalid") {
+    lines.push("Findings:");
+    for (const problem of inspection.problems) {
+      lines.push(
+        `  - ${escapeHumanText(problem.code)} ${escapeHumanText(problem.path)}: ${escapeHumanText(problem.message)}`,
+      );
+    }
+    return lines;
+  }
+  for (const task of inspection.tasks) {
+    lines.push(`  - ${escapeHumanText(task.key)}  [${escapeHumanText(task.identity)}]`);
+    lines.push(`    Title: ${escapeHumanText(task.title)}`);
+    lines.push("    Acceptance outcomes:");
+    for (const criterion of task.acceptanceCriteria) {
+      lines.push(`      - ${escapeHumanText(criterion)}`);
+    }
+    lines.push("    Dependencies:");
+    if (task.dependencies.length === 0) lines.push("      (none)");
+    for (const dependency of task.dependencies) {
+      lines.push(
+        `      - ${escapeHumanText(dependency.reference)} -> ${escapeHumanText(dependency.resolvedIdentity)}`,
+      );
+    }
+    lines.push(
+      `    Context: ${task.contextKeys.length === 0 ? "(literal only)" : task.contextKeys.map(escapeHumanText).join(", ")}`,
+    );
+  }
+  return lines;
+}
+
+/** Render the `template show` output: metadata, file tree, and inert authoring-task inspection. */
+function formatTemplateShow(
+  template: Template,
+  source: "built-in" | "project-local",
+  inspection: TemplateAuthoringTaskInspection,
+): string {
   const lines: string[] = [
-    `Template: ${template.name}  (scope: ${template.scope}, source: ${source})`,
+    `Template: ${escapeHumanText(template.name)}  (scope: ${template.scope}, source: ${source})`,
   ];
   // The top-level description (doc-10 "print metadata"), only when the template.yml declares one.
   if (template.description !== undefined) {
-    lines.push(`Description: ${template.description}`);
+    lines.push(`Description: ${escapeHumanText(template.description)}`);
   }
   if (template.parameters.length > 0) {
     lines.push("Parameters:");
     for (const p of template.parameters) {
       const desc = p.description !== undefined ? `  ${p.description}` : "";
       const def = p.default !== undefined ? ` (default: ${p.default})` : "";
-      lines.push(`  ${p.name}${desc}${def}`);
+      lines.push(`  ${escapeHumanText(p.name)}${escapeHumanText(desc)}${escapeHumanText(def)}`);
     }
   }
   lines.push("Files:");
@@ -2419,8 +2684,9 @@ function formatTemplateShow(template: Template, source: "built-in" | "project-lo
     lines.push("  (none)");
   }
   for (const f of [...template.files].map((f) => f.path).sort()) {
-    lines.push(`  ${f}`);
+    lines.push(`  ${escapeHumanText(f)}`);
   }
+  lines.push(...formatTemplateAuthoringTasks(inspection));
   return `${lines.join("\n")}\n`;
 }
 
@@ -2469,7 +2735,9 @@ const templateModule: CommandModule = {
     // ── template show <name> [--scope project|bundle] ───────────────────────────────────────────────────
     const showLeaf = group
       .command("show")
-      .description("print a template's metadata and a tree summary of its files (doc 10)")
+      .description(
+        "inspect a template's metadata, file tree, and inert additional authoring tasks (doc 10)",
+      )
       .argument("<name>", "the template name to inspect")
       .addOption(
         new Option("--scope <scope>", "disambiguate a project-vs-bundle name clash").choices([
@@ -2487,14 +2755,12 @@ const templateModule: CommandModule = {
         // The scopes to try: the one `--scope` names, else both (project then bundle).
         const scopes: TemplateScope[] =
           opts.scope !== undefined ? [opts.scope] : [...TEMPLATE_SCOPES];
-        const matches = scopes.filter((s) => resolveTemplate(name, s, resolverDeps).found);
+        const observations = scopes.map((scope) => resolveTemplate(name, scope, resolverDeps));
+        const matches = observations.filter((observation) => observation.found);
 
         if (matches.length === 0) {
-          const searched = scopes
-            .map((s) => {
-              const r = resolveTemplate(name, s, resolverDeps);
-              return r.found ? "" : r.searched.join(", ");
-            })
+          const searched = observations
+            .map((observation) => (observation.found ? "" : observation.searched.join(", ")))
             .filter((s) => s.length > 0)
             .join("; ");
           throw new NotFoundError(`template "${name}" not found (searched: ${searched})`);
@@ -2506,22 +2772,23 @@ const templateModule: CommandModule = {
           );
         }
 
-        const scope = matches[0] as TemplateScope;
-        const resolution = resolveTemplate(name, scope, resolverDeps);
-        // (resolution.found is true — `scope` came from `matches`.)
-        if (!resolution.found) {
+        const resolution = matches[0];
+        if (resolution === undefined || !resolution.found)
           throw new NotFoundError(`template "${name}" not found`);
+        const scope = resolution.template.scope;
+        const mandatoryTasks =
+          scope === "project"
+            ? projectWideAuthoringTaskCatalog()
+            : perBundleAuthoringTaskCatalog("<bundle-id>", { advisor: false });
+        const inspection = inspectTemplateAuthoringTasks({
+          template: resolution.template,
+          producer: { source: resolution.source, scope, name },
+          mandatoryTasks,
+        });
+        ctx.io.out.write(formatTemplateShow(resolution.template, resolution.source, inspection));
+        if (inspection.status === "invalid") {
+          throw new ValidationError("template authoring-task contribution is invalid");
         }
-        // The source is project-local iff a project-only resolution finds it (else built-in).
-        const source: "built-in" | "project-local" =
-          projectTemplatesRoot !== undefined &&
-          resolveTemplate(name, scope, {
-            fs: ctx.deps.fs,
-            builtinTemplatesRoot: projectTemplatesRoot,
-          }).found
-            ? "project-local"
-            : "built-in";
-        ctx.io.out.write(formatTemplateShow(resolution.template, source));
       });
     withExamples(showLeaf, [
       {
@@ -2925,7 +3192,7 @@ const projectModule: CommandModule = {
           undefined,
         );
         ctx.io.out.write(
-          opts.json === true ? `${JSON.stringify(value, null, 2)}\n` : formatOrientation(value),
+          opts.json === true ? `${stringifyCliJson(value, 2)}\n` : formatOrientation(value),
         );
       });
     withExamples(showLeaf, [
@@ -3186,6 +3453,7 @@ const buildModule: CommandModule = {
           format: opts.format,
           files: plan.shippable,
           transforms: plan.frontDoorTransforms, // task-90: strip `_AGENTS.md` → `AGENTS.md` (+ per-target aliases)
+          scopeAliases: plan.scopeAliases,
         });
         ctx.io.out.write(`packaged ${plan.name} ${plan.version} → ${out}\n`); // AC83#2
       });
@@ -3235,6 +3503,7 @@ const buildModule: CommandModule = {
           format: opts.format,
           files: plan.shippable,
           transforms: plan.frontDoorTransforms, // task-90: strip `_AGENTS.md` → `AGENTS.md` (+ per-target aliases)
+          scopeAliases: plan.scopeAliases,
         });
 
         // Only now — with a successfully built archive — push it (AC84#1).
@@ -3262,10 +3531,20 @@ export const COMPLETION_SPECS: CompletionSpecs = {
     // `--template`/`--list-templates` complete from the PROJECT-scope templates (AC#8); a project template can't
     // scaffold a bundle, so the source is `project-template-names`, not the unscoped `template-names`.
     options: {
+      "--authoring-client": "authoring-client-ids",
       "--template": "project-template-names",
       "--list-templates": "project-template-names",
     },
     args: [undefined], // <name> — a brand-new project name, no suggestions (doc 10)
+  },
+  "authoring integrate": {
+    options: { "--client": "authoring-client-ids" },
+  },
+  "authoring setup": {
+    options: { "--client": "authoring-client-ids" },
+  },
+  "authoring handoff verify": {
+    options: { "--client": "authoring-client-ids" },
   },
   "template list": {
     options: { "--scope": "template-scopes" },
@@ -3333,54 +3612,346 @@ export const COMPLETION_SPECS: CompletionSpecs = {
  * from the `"shells"` fixed-enum source (dogfooding AC#2).
  */
 /**
- * Render the `skill install` result (output lives in the shell, not the core — doc 13 §3). Names every scope
- * written and whether each was a fresh install or an update (AC#2, AC#5), e.g.:
- *
- *   installed installer-builder into 2 agent scope(s):
- *     installed  /home/me/.claude/skills/installer-builder  (claude-code)
- *     updated    /home/me/.agents/skills/installer-builder  (codex)
- */
-function formatInstallAuthoringSkill(result: InstallAuthoringSkillResult): string {
-  const lines = [`installed ${result.skillName} into ${result.installed.length} agent scope(s):`];
-  for (const record of result.installed) {
-    lines.push(`  ${record.status.padEnd(9)} ${record.destination}  (${record.agent})`);
-  }
-  return `${lines.join("\n")}\n`;
-}
-
-/**
- * The `skill` group (doc 12 line 349: `installer skill install`) — manage the bundled `installer-builder`
- * authoring skill. Project-independent (like {@link completionModule}): it writes to the machine-wide user
- * agent scope under HOME, so it needs no project context and never touches a workspace deliverable (AC#6).
+ * Compatibility group for the retired ambient detected-all installer. It cannot authorize personal writes;
+ * callers must use the one explicit/interactive setup action instead.
  */
 const skillModule: CommandModule = {
-  register(parent, ctx) {
+  register(parent, _ctx) {
     const group = parent
       .command("skill")
-      .description("manage the bundled installer-builder authoring skill (doc 12)");
+      .description("legacy compatibility commands for personal authoring setup");
 
     const installLeaf = group
       .command("install")
       .description(
-        "copy the bundled installer-builder authoring skill into the detected agents' user skill scope (doc 12)",
+        "retired: use authoring setup with an explicit client selection or interactive consent",
       )
       .action(() => {
-        const bundledSkillsRoot = ctx.deps.bundledSkillsRoot;
-        if (bundledSkillsRoot === undefined) {
-          // The composition root always sets this; only a mis-wired deps object reaches here.
-          throw new Error("internal: bundledSkillsRoot was not assembled");
-        }
-        const result = installAuthoringSkill(
-          { fs: ctx.deps.fs, env: ctx.deps.env },
-          { bundledSkillsRoot },
+        throw new UsageError(
+          "wpm skill install is retired because detection cannot authorize personal writes; use `wpm authoring setup --client codex` and/or `--client claude-code`",
         );
-        ctx.io.out.write(formatInstallAuthoringSkill(result));
       });
 
     withExamples(installLeaf, [
       {
-        command: "wpm skill install",
-        note: "copy the installer-builder skill into your agent's user skill scope (~/.claude/skills, ~/.agents/skills, …)",
+        command: "wpm authoring setup --client codex",
+        note: "replace the retired ambient command with one explicit authorized client selection",
+      },
+    ]);
+  },
+};
+
+function reloadGuidance(client: InspectedAuthoringClient): string {
+  return authoringClientReloadGuidance(client.id);
+}
+
+function formatAuthoringClient(client: InspectedAuthoringClient): string {
+  const detection =
+    client.currentDetection.status === "unavailable"
+      ? "unavailable (HOME is not set to an absolute path)"
+      : `${client.currentDetection.status === "detected" ? "personal config directory detected" : "personal config directory not detected"} (${formatHumanValue(client.currentDetection.observedPath)})`;
+  return [
+    `${client.displayName} (${client.id})`,
+    `  support:          ${client.supportStatus}`,
+    `  configured:       no`,
+    `  detection hint:   ${detection}`,
+    `  personal skills:  ${client.personalSkillsDirectory}`,
+    `  workspace skills: ${client.workspaceSkillsDirectory}`,
+    `  front door:       ${client.workspaceFrontDoor}`,
+    `  launch:           ${client.launch.command} (from the workspace root)`,
+    `  reload:           ${reloadGuidance(client)}`,
+  ].join("\n");
+}
+
+function chooserSelection(answer: string): readonly string[] {
+  const aliases = new Map([
+    ["1", "codex"],
+    ["codex", "codex"],
+    ["2", "claude-code"],
+    ["claude-code", "claude-code"],
+  ]);
+  const raw = answer
+    .trim()
+    .toLowerCase()
+    .split(/[\s,]+/)
+    .filter((value) => value.length > 0);
+  const selected = raw.map((value) => aliases.get(value));
+  if (selected.some((value) => value === undefined)) {
+    throw new UsageError(
+      "invalid personal authoring-client choice; select 1/codex and/or 2/claude-code",
+    );
+  }
+  return [...new Set(selected as string[])];
+}
+
+async function runPersonalAuthoringSetupCommand(
+  ctx: CommandContext,
+  options: { readonly client?: string[]; readonly json?: boolean },
+): Promise<void> {
+  let selected = options.client ?? [];
+  const deps = { fs: ctx.deps.fs, env: ctx.deps.env };
+  const input = (clientIds: readonly string[]) => ({
+    bundledSkillsRoot: requireBundledSkillsRoot(ctx.deps),
+    clientIds,
+    setupVersion: VERSION,
+  });
+
+  try {
+    let authorizedPlan: ReturnType<typeof preparePersonalAuthoringSetup> | undefined;
+    if (selected.length === 0) {
+      if (options.json === true) {
+        throw new JsonCliFailure(
+          {
+            status: "failed",
+            operation: "personal-authoring-setup",
+            setupApplied: false,
+            blockers: [
+              {
+                code: "personal-clients-required",
+                surface: "selection",
+                message: "structured setup requires one or more explicit --client values",
+                recovery: "repeat --client codex and/or --client claude-code",
+              },
+            ],
+          },
+          2,
+        );
+      }
+      if (ctx.io.in === undefined || ctx.io.interactive !== true) {
+        throw new UsageError(
+          "personal setup without --client requires a direct interactive terminal; headless callers must pass --client codex and/or --client claude-code",
+        );
+      }
+      const session = createInputLineSession(ctx.io.in);
+      const clients = inspectAuthoringClients(deps);
+      ctx.io.err.write(
+        `${[
+          "Select personal authoring clients (comma-separated):",
+          ...clients.map(
+            (client, index) =>
+              `  ${index + 1}. ${client.displayName} (${client.id}) — detection: ${client.currentDetection.status}`,
+          ),
+          "choice [blank cancels]: ",
+        ].join("\n")}`,
+      );
+      const answer = await session.readLine();
+      if (answer === undefined || answer.trim().length === 0) {
+        ctx.io.out.write("cancelled — personal authoring setup made no changes\n");
+        return;
+      }
+      selected = [...chooserSelection(answer)];
+      authorizedPlan = preparePersonalAuthoringSetup(deps, input(selected));
+      const preview = authorizedPlan.preview;
+      ctx.io.err.write(
+        `${[
+          "Authorize this complete personal setup selection:",
+          ...preview.clients.map(
+            (client) => `  ${client.id}: ${client.outcome} ${formatHumanValue(client.destination)}`,
+          ),
+          `  state: ${formatHumanValue(preview.statePath)}`,
+          "continue? [y/N] ",
+        ].join("\n")}`,
+      );
+      if (!isAffirmativeConfirmation(await session.readLine())) {
+        ctx.io.out.write("cancelled — personal authoring setup made no changes\n");
+        return;
+      }
+    }
+
+    const result =
+      authorizedPlan === undefined
+        ? setupPersonalAuthoring(deps, input(selected))
+        : authorizedPlan.apply();
+    ctx.io.out.write(
+      options.json === true
+        ? `${stringifyCliJson(result)}\n`
+        : formatPersonalAuthoringSetup(result),
+    );
+  } catch (error) {
+    if (options.json === true) throwJsonPersonalSetupFailure(error);
+    throw error;
+  }
+}
+
+/** Read-only authoring-client inventory; it is independent of deliverable `manifest.yml.targets`. */
+const authoringModule: CommandModule = {
+  register(parent, ctx) {
+    const group = parent
+      .command("authoring")
+      .description("inspect clients and reconcile workspace-local WPM authoring integration");
+    const clients = group
+      .command("clients [id]")
+      .description(
+        "inspect Codex (codex) and Claude Code (claude-code); detection is advisory and independent of manifest.yml.targets",
+      )
+      .option("--json", "print the stable machine-readable contract")
+      .action((id: string | undefined, options: { json?: boolean }) => {
+        if (id !== undefined) {
+          const result = inspectAuthoringClient({ fs: ctx.deps.fs, env: ctx.deps.env }, id);
+          if (options.json === true) {
+            ctx.io.out.write(`${stringifyCliJson(result)}\n`);
+            return;
+          }
+          if (result.supportStatus === "selectable") {
+            ctx.io.out.write(`${formatAuthoringClient(result)}\n`);
+            return;
+          }
+          ctx.io.out.write(
+            [
+              `${result.id.length > 0 ? formatHumanValue(result.id) : "(empty)"}`,
+              `  support:    ${result.supportStatus}`,
+              `  selectable: no`,
+              `  configured: no`,
+              `  reason:     ${result.reason}`,
+              "",
+            ].join("\n"),
+          );
+          return;
+        }
+
+        const result = inspectAuthoringClients({ fs: ctx.deps.fs, env: ctx.deps.env });
+        if (options.json === true) {
+          ctx.io.out.write(`${stringifyCliJson({ clients: result })}\n`);
+          return;
+        }
+        ctx.io.out.write(`${result.map(formatAuthoringClient).join("\n\n")}\n`);
+      });
+
+    withExamples(clients, [
+      {
+        command: "wpm authoring clients claude-code --json",
+        note: "inspect one client as structured data; omit the id to list both selectable clients",
+      },
+    ]);
+
+    const setup = group
+      .command("setup")
+      .description(
+        "configure wpm-create-package for Codex and/or Claude Code; explicit IDs are prompt-free and detection is advisory only",
+      )
+      .option(
+        "--client <id>",
+        "authorize codex or claude-code (repeatable; omit only for an interactive chooser)",
+        (value: string, previous: string[] = []) => [...previous, value],
+      )
+      .option("--json", "print the stable machine-readable setup result")
+      .action(async (options: { client?: string[]; json?: boolean }) => {
+        await runPersonalAuthoringSetupCommand(ctx, options);
+      });
+
+    withExamples(setup, [
+      {
+        command: "wpm authoring setup --client codex --client claude-code",
+        note: "configure only the complete explicitly authorized personal client set",
+      },
+    ]);
+
+    const integrate = group
+      .command("integrate")
+      .description(
+        "apply or reapply WPM authoring integration for an explicit workspace client selection",
+      )
+      .option(
+        "--client <id>",
+        "select codex or claude-code (repeatable; at least one is required)",
+        (value: string, previous: string[] = []) => [...previous, value],
+      )
+      .action((options: { client?: string[] }) => {
+        const { workspaceRoot } = requireProject(ctx, parent);
+        const result = integrateWorkspaceAuthoring(
+          {
+            fs: ctx.deps.fs,
+            backlog: ctx.deps.backlog,
+            builtinTemplatesRoot: ctx.deps.builtinTemplatesRoot,
+            bundledSkillsRoot: requireBundledSkillsRoot(ctx.deps),
+          },
+          {
+            workspaceRoot,
+            clientIds: options.client ?? [],
+            integrationVersion: VERSION,
+          },
+        );
+        ctx.io.out.write(formatWorkspaceAuthoringIntegration(result));
+      });
+
+    withExamples(integrate, [
+      {
+        command: "wpm authoring integrate --client codex --client claude-code",
+        note: "reconcile both native workspace scopes from the installed WPM package",
+      },
+    ]);
+
+    const handoff = group
+      .command("handoff")
+      .description("prepare or verify one fresh-agent workspace handoff");
+
+    const prepare = handoff
+      .command("prepare")
+      .description("publish an exact prepared receipt for the current integrated workspace")
+      .option("--json", "print the stable machine-readable prepared result")
+      .action((options: { json?: boolean }) => {
+        const workspaceRoot = handoffCandidateRoot(ctx, parent);
+        try {
+          const result = prepareWorkspaceHandoff(
+            {
+              fs: ctx.deps.fs,
+              backlog: ctx.deps.backlog,
+              bundledSkillsRoot: requireBundledSkillsRoot(ctx.deps),
+            },
+            { workspaceRoot, integrationVersion: VERSION },
+          );
+          ctx.io.out.write(
+            options.json === true ? `${stringifyCliJson(result)}\n` : formatPreparedHandoff(result),
+          );
+        } catch (error) {
+          if (options.json === true) throwJsonHandoffFailure(error);
+          throw error;
+        }
+      });
+
+    withExamples(prepare, [
+      {
+        command: "wpm -C ./workspace authoring handoff prepare",
+        note: "prepare an already integrated workspace without starting or authenticating another agent",
+      },
+    ]);
+
+    const verify = handoff
+      .command("verify")
+      .description(
+        "verify the actual cwd, receipt, managed state, native client surfaces, and core authoring backlog",
+      )
+      .requiredOption("--client <id>", "verify as one configured codex or claude-code client")
+      .option("--json", "print the stable machine-readable verified result")
+      .action((options: { client: string; json?: boolean }) => {
+        const workspaceRoot = handoffCandidateRoot(ctx, parent);
+        try {
+          const result = verifyWorkspaceHandoff(
+            {
+              fs: ctx.deps.fs,
+              backlog: ctx.deps.backlog,
+              bundledSkillsRoot: requireBundledSkillsRoot(ctx.deps),
+            },
+            {
+              workspaceRoot,
+              actualWorkingDirectory: handoffEffectiveWorkingDirectory(ctx, parent, workspaceRoot),
+              clientId: options.client,
+              integrationVersion: VERSION,
+            },
+          );
+          ctx.io.out.write(
+            options.json === true ? `${stringifyCliJson(result)}\n` : formatVerifiedHandoff(result),
+          );
+        } catch (error) {
+          if (options.json === true) throwJsonHandoffFailure(error);
+          throw error;
+        }
+      });
+
+    withExamples(verify, [
+      {
+        command: "wpm -C ./workspace authoring handoff verify --client codex",
+        note: "run from the recorded workspace root; then invoke the reported native wpm-author skill",
       },
     ]);
   },
@@ -3573,6 +4144,7 @@ const TOP_LEVEL_MODULES: readonly CommandModule[] = [
   projectModule,
   bundleModule,
   buildModule,
+  authoringModule,
   skillModule,
   completionModule,
 ];
@@ -3723,6 +4295,7 @@ if (isMainModule()) {
     // The confirmation input source for destructive commands (`bundle remove`); reading stdin lives in the shell
     // (doc 13 §3). Tests pass a `Readable.from([...])` instead.
     in: process.stdin,
+    interactive: process.stdin.isTTY === true,
   };
   void run(process.argv.slice(2), deps, io).then((code) => process.exit(code));
 }

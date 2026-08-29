@@ -1,10 +1,14 @@
 import type {
+  BacklogAvailability,
   BacklogMd,
+  BacklogRootInspection,
+  BacklogTaskInventory,
   CreateTaskInput,
   EditTaskChanges,
   InitOptions,
   ListFilter,
   TaskId,
+  TaskRecord,
   TaskStatus,
   TaskSummary,
 } from "../core/ports/backlog.js";
@@ -45,6 +49,25 @@ interface FakeRoot {
  */
 export class FakeBacklog implements BacklogMd {
   private readonly roots = new Map<string, FakeRoot>();
+  private availability: BacklogAvailability = { available: true, version: "1.45.2" };
+
+  /** @inheritdoc */
+  inspectAvailability(): BacklogAvailability {
+    return { ...this.availability };
+  }
+
+  /** Test-only control for predictable Backlog.md availability preflight. */
+  setAvailability(availability: BacklogAvailability): void {
+    this.availability = { ...availability };
+  }
+
+  /** @inheritdoc */
+  inspectRoot(root: string): BacklogRootInspection {
+    const value = this.roots.get(this.key(root));
+    return value === undefined
+      ? { valid: false, reason: `No backlog initialised at '${root}'` }
+      : { valid: true, taskPrefix: value.taskPrefix };
+  }
 
   /**
    * The Map key for a root: its POSIX form. The real adapter resolves a single cwd regardless of how the caller
@@ -121,6 +144,48 @@ export class FakeBacklog implements BacklogMd {
       result.push({ id: task.id, title: task.title, status: task.status });
     }
     return result;
+  }
+
+  /** @inheritdoc */
+  readTask(root: string, id: TaskId): TaskRecord {
+    const task = this.requireRoot(root).tasks.get(id);
+    if (task === undefined || task.archived) {
+      throw new Error(`Task '${id}' not found in backlog at '${root}'`);
+    }
+    return {
+      id: task.id,
+      title: task.title,
+      status: task.status,
+      ordinal: [...this.requireRoot(root).tasks.keys()].indexOf(id) * 1000 + 1000,
+      description: task.description ?? null,
+      acceptanceCriteria: task.acceptanceCriteria.map(({ text, checked }) => ({ text, checked })),
+      definitionOfDone: task.definitionOfDone.map(({ text, checked }) => ({ text, checked })),
+      dependencies: [...task.dependencies],
+      labels: [...task.labels],
+      extraMetadata: [],
+      extraSections:
+        task.notes.length === 0 ? [] : [{ heading: "Implementation Notes", content: task.notes }],
+    };
+  }
+
+  /** @inheritdoc */
+  inspectTaskInventory(root: string): BacklogTaskInventory {
+    const activeEntries: string[] = [];
+    const inactiveEntries: string[] = [];
+    for (const task of this.requireRoot(root).tasks.values()) {
+      (task.archived ? inactiveEntries : activeEntries).push(task.id);
+    }
+    return {
+      configurationMatchesFreshDefaults: true,
+      activeEntries: activeEntries.sort(),
+      inactiveEntries: inactiveEntries.sort(),
+      unexpectedEntries: [],
+    };
+  }
+
+  /** @inheritdoc */
+  inspectEmptyInitialisationResidue(_root: string): boolean {
+    return false;
   }
 
   /** @inheritdoc */

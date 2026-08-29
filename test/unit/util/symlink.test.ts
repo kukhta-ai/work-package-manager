@@ -20,18 +20,22 @@ describe("ensureSymlinkOrCopy — both branches forced on any OS (AC#3)", () => 
   it("on Windows, falls back to a copy and returns the copy kind + a warning", () => {
     const symlink = vi.fn();
     const copy = vi.fn();
+    const rename = vi.fn();
     const result = ensureSymlinkOrCopy("/target", "/dir/link", {
       platform: "win32",
       symlink,
       copy,
+      rename,
       makeDirectories: vi.fn(),
+      temporaryPath: (path) => `${path}.tmp`,
     });
     expect(result.kind).toBe("copy");
     if (result.kind === "copy") {
       expect(result.warning.length).toBeGreaterThan(0);
       expect(result.warning).toContain("Windows");
     }
-    expect(copy).toHaveBeenCalledWith("/target", "/dir/link");
+    expect(copy).toHaveBeenCalledWith("/target", "/dir/link.tmp");
+    expect(rename).toHaveBeenCalledWith("/dir/link.tmp", "/dir/link");
     expect(symlink).not.toHaveBeenCalled();
   });
 
@@ -54,6 +58,8 @@ describe("ensureSymlinkOrCopy — both branches forced on any OS (AC#3)", () => 
     const result = ensureSymlinkOrCopy("/installer-skills", "/.claude/skills", {
       platform: "win32",
       copy: vi.fn(),
+      rename: vi.fn(),
+      temporaryPath: (path) => `${path}.tmp`,
       // Mock the mkdir primitive: this test only inspects the warning string, and the default
       // `defaultMakeDirectories` would `mkdirSync(dirname("/.claude/skills"))` = real `mkdir /.claude`
       // at the filesystem root — which succeeds as root but fails (EACCES/ENOENT) for a non-root CI user.
@@ -64,5 +70,24 @@ describe("ensureSymlinkOrCopy — both branches forced on any OS (AC#3)", () => 
       expect(result.warning).toContain("/installer-skills");
       expect(result.warning).toContain("/.claude/skills");
     }
+  });
+
+  it("removes a partial unpublished Windows copy and never publishes its destination", () => {
+    const rename = vi.fn();
+    const remove = vi.fn();
+    expect(() =>
+      ensureSymlinkOrCopy("/target", "/dir/link", {
+        platform: "win32",
+        copy: vi.fn(() => {
+          throw new Error("partial copy failure");
+        }),
+        rename,
+        remove,
+        makeDirectories: vi.fn(),
+        temporaryPath: (path) => `${path}.tmp`,
+      }),
+    ).toThrow("partial copy failure");
+    expect(remove).toHaveBeenCalledWith("/dir/link.tmp");
+    expect(rename).not.toHaveBeenCalled();
   });
 });

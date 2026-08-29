@@ -1,8 +1,8 @@
 import { defineConfig } from "vitest/config";
 
 /**
- * Vitest harness (task-6) for the `wpm` builder, per `docs/12` §"Testing: vitest" and the test-design
- * (`_bmad-output/test-artifacts/test-design.md` §1, §6).
+ * Vitest harness (task-6) for the `wpm` builder, per `docs/12` §"Testing: vitest". Raw test-design
+ * projections are working memory under the policy in `PROCESS-ARTIFACTS.md`.
  *
  * The two test flavours that exist today are first-class **projects** so they can be run together (the
  * single `vitest run` — AC#1) or in isolation (`vitest run --project unit` / `--project integration`):
@@ -46,13 +46,13 @@ export default defineConfig({
           fileParallelism: false,
           // Each integration test drives the REAL `backlog` CLI (and the built binary) over multiple
           // subprocess round-trips (an `init` + several `bundle new` + the command under test), so a single
-          // test legitimately takes several seconds — and, run serially under load, the heaviest ones (e.g.
-          // the `requires`/`installer-skills` families, which scaffold multiple bundles then materialise into
-          // the real `.authoring-backlog`) exceed vitest's 5s default. The robust fix for a stateful-external
-          // serial suite is a realistic time budget, NOT retries: raise the per-test + per-hook timeout so the
-          // cold CI gate (`vitest run`) is reliably green. The unit project keeps the fast default.
-          testTimeout: 60000,
-          hookTimeout: 60000,
+          // test legitimately takes several seconds — and Windows command startup makes real bundle creation
+          // roughly 40–43s per bundle, with measured multi-command journeys reaching 85–95s on supported
+          // hosts. Give every integration test one bounded 120s budget; the robust fix for a stateful-external
+          // serial suite is a measured budget, not retries. Unit tests keep the fast default, and hook timing
+          // retains its existing platform-specific contract.
+          testTimeout: 120_000,
+          hookTimeout: process.platform === "win32" ? 120_000 : 60_000,
         },
       },
     ],

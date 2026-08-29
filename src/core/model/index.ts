@@ -21,6 +21,7 @@ export {
 export type { ConfirmationLevel, Manifest, ProjectMeta } from "./manifest.js";
 export type {
   AuthoringTaskSpec,
+  MandatoryAuthoringTask,
   OperationResult,
   ValidationReport,
 } from "./operation.js";
@@ -28,6 +29,7 @@ export type { Project } from "./project.js";
 export { fail, ok, type Parsed, type ValidationProblem } from "./result.js";
 export type {
   Template,
+  TemplateAuthoringTaskSource,
   TemplateFile,
   TemplateParameter,
   TemplateScope,

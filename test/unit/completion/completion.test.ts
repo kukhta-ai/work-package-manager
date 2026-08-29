@@ -3,7 +3,7 @@ import { FakeBacklog } from "../../../src/adapters/fake-backlog.js";
 import { FakeEnvironment } from "../../../src/adapters/fake-env.js";
 import { FixedClock } from "../../../src/adapters/fixed-clock.js";
 import { MemoryFileSystem } from "../../../src/adapters/memory-fs.js";
-import { buildProgram, type CliDeps } from "../../../src/cli.js";
+import { buildProgram, type CliDeps, COMPLETION_SPECS } from "../../../src/cli.js";
 import { completeArgv } from "../../../src/completion/complete.js";
 import { defaultRegistry } from "../../../src/completion/registry.js";
 import { type CompletionContext, CompletionRegistry } from "../../../src/completion/sources.js";
@@ -72,16 +72,12 @@ function seededDeps(): CliDeps {
 /** Run completeArgv against the real program tree + the real default registry + the CLI's specs. */
 function complete(deps: CliDeps, words: string[]): string[] {
   const program = buildProgram(deps, io());
-  // The CLI's COMPLETION_SPECS aren't exported; re-declare the one wired today for the dispatch test.
   return completeArgv(program, words, {
     fs: deps.fs,
     env: deps.env,
     builtinTemplatesRoot: deps.builtinTemplatesRoot,
     registry: defaultRegistry(),
-    specs: {
-      "bundle new": { options: { "--template": "bundle-template-names" }, args: [undefined] },
-      "completion install": { options: { "--shell": "shells" } },
-    },
+    specs: COMPLETION_SPECS,
   });
 }
 
@@ -179,6 +175,27 @@ describe("AC#2 — options with a fixed set of valid values complete to those va
     expect(registry.resolve("confirmation-levels", ctx(""))).toEqual(["safe", "dangerous"]);
     expect(registry.resolve("task-kinds", ctx(""))).toEqual(["kind:state", "kind:migration"]);
     expect(registry.resolve("template-scopes", ctx(""))).toEqual(["project", "bundle"]);
+    expect(registry.resolve("authoring-client-ids", ctx(""))).toEqual(["codex", "claude-code"]);
+  });
+
+  it("workspace integration and handoff client flags complete from the shared catalog", () => {
+    const deps = seededDeps();
+    expect(complete(deps, ["init", "demo", "--authoring-client", ""])).toEqual([
+      "codex",
+      "claude-code",
+    ]);
+    expect(complete(deps, ["authoring", "integrate", "--client", "c"])).toEqual([
+      "codex",
+      "claude-code",
+    ]);
+    expect(complete(deps, ["authoring", "setup", "--client", "c"])).toEqual([
+      "codex",
+      "claude-code",
+    ]);
+    expect(complete(deps, ["authoring", "handoff", "verify", "--client", "c"])).toEqual([
+      "codex",
+      "claude-code",
+    ]);
   });
 
   it("a live option completes to its fixed enum end-to-end (`completion install --shell <tab>`)", () => {

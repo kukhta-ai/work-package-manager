@@ -12,6 +12,8 @@
     "noUncheckedIndexedAccess": true,
     "noImplicitOverride": true,
     "verbatimModuleSyntax": true,
+    "allowJs": true,
+    "checkJs": true,
 
     /* This is the type-check-only base config (IDE + `npm run typecheck`): it emits nothing and
        covers src + tests + tooling, so nothing escapes the check. The production build that emits
@@ -24,6 +26,12 @@
     "forceConsistentCasingInFileNames": true,
     "skipLibCheck": true
   },
-  "include": ["src/**/*.ts", "test/**/*.ts", "vitest.config.ts"],
+  "include": [
+    "src/**/*.ts",
+    "test/**/*.ts",
+    "distribution-preparation/**/*.js",
+    "scripts/**/*.mjs",
+    "vitest.config.ts"
+  ],
   "exclude": ["node_modules", "dist"]
 }

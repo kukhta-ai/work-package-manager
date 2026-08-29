@@ -1,4 +1,4 @@
-import { existsSync, readdirSync, writeFileSync } from "node:fs";
+import { existsSync, readdirSync, realpathSync, writeFileSync } from "node:fs";
 import { isAbsolute, join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { makeTempDir, removeTempDir, withTempDir } from "../helpers/tmpdir.js";
@@ -13,6 +13,8 @@ describe("tmpdir helper", () => {
     const b = makeTempDir();
     try {
       expect(isAbsolute(a)).toBe(true);
+      expect(a).toBe(realpathSync.native(a));
+      expect(b).toBe(realpathSync.native(b));
       expect(existsSync(a)).toBe(true);
       expect(readdirSync(a)).toEqual([]); // freshly created ⇒ empty
       expect(a).not.toBe(b); // unique per call

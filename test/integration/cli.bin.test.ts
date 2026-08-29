@@ -1,45 +1,119 @@
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdtempSync, rmSync, symlinkSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { readFileSync } from "node:fs";
+import { delimiter, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import pkg from "../../package.json" with { type: "json" };
+import {
+  parseWorkspaceHandoffReceipt,
+  WORKSPACE_HANDOFF_RECEIPT_PATH,
+} from "../../src/core/services/workspace-handoff.js";
+import { makeTempDir, removeTempDir } from "../helpers/tmpdir.js";
 
 /**
- * Through-the-edges (integration) test: drives the *built* `dist/cli.js` through a `bin` symlink — the
- * real `installer`/`wpm` install path. It also guards the regression where the entry-point check compared
- * `import.meta.url` to `process.argv[1]` directly: under a symlink those differ, so the CLI ran but
- * produced no output. The test is skipped (not failed) when `dist/` has not been built, so `vitest run`
- * works on a fresh checkout without a prior build; CI builds first, so the assertion runs there.
+ * Through-the-edges integration test: builds and links the package into a temporary npm prefix, then invokes
+ * its bare command names through a controlled PATH. This reaches the POSIX executable-mode boundary that
+ * `node <bin-link>` bypasses, without mutating the user's global npm prefix.
  */
-const builtCli = fileURLToPath(new URL("../../dist/cli.js", import.meta.url));
-const hasBuild = existsSync(builtCli);
-const describeIfBuilt = hasBuild ? describe : describe.skip;
+const repositoryRoot = fileURLToPath(new URL("../..", import.meta.url));
+const describeIfPosix = process.platform === "win32" ? describe.skip : describe;
 
-describeIfBuilt("installer/wpm binary via a bin symlink (AC#1)", () => {
+const binNames = ["wpm", "installer"] as const;
+
+describe("published CLI bin map (TASK-106 AC#5)", () => {
+  it("declares both executable aliases against the built CLI entry point", () => {
+    expect(pkg.bin).toEqual({
+      wpm: "./dist/cli.js",
+      installer: "./dist/cli.js",
+    });
+  });
+});
+
+describeIfPosix("documented linked command entrypoints (TASK-129)", () => {
   let dir: string;
-  let link: string;
+  let linkedEnvironment: NodeJS.ProcessEnv;
 
   beforeAll(() => {
-    dir = mkdtempSync(join(tmpdir(), "wpm-bin-"));
-    link = join(dir, "installer");
-    // Mimic how npm exposes the bin: a symlink on PATH pointing at dist/cli.js.
-    symlinkSync(builtCli, link);
+    dir = makeTempDir("wpm-bin-");
+    const prefix = join(dir, "prefix");
+    linkedEnvironment = {
+      ...process.env,
+      PATH: `${join(prefix, "bin")}${delimiter}${process.env.PATH ?? ""}`,
+      npm_config_prefix: prefix,
+    };
+
+    execFileSync("npm", ["run", "build"], {
+      cwd: repositoryRoot,
+      env: linkedEnvironment,
+      stdio: "pipe",
+    });
+    execFileSync("npm", ["link", "--no-audit", "--no-fund"], {
+      cwd: repositoryRoot,
+      env: linkedEnvironment,
+      stdio: "pipe",
+    });
   });
 
   afterAll(() => {
-    rmSync(dir, { recursive: true, force: true });
+    removeTempDir(dir);
   });
 
-  it("prints the version and exits 0 when run through the symlink", () => {
-    const out = execFileSync(process.execPath, [link, "--version"], { encoding: "utf8" });
-    expect(out.trim()).toBe(pkg.version);
+  function directVersion(binName: (typeof binNames)[number]): string {
+    return execFileSync(binName, ["--version"], {
+      cwd: dir,
+      env: linkedEnvironment,
+      encoding: "utf8",
+    }).trim();
+  }
+
+  it("directly executes both linked commands before and after a clean rebuild", () => {
+    for (const binName of binNames) {
+      expect(directVersion(binName)).toBe(pkg.version);
+    }
+
+    execFileSync("npm", ["run", "build"], {
+      cwd: repositoryRoot,
+      env: linkedEnvironment,
+      stdio: "pipe",
+    });
+
+    for (const binName of binNames) {
+      expect(directVersion(binName)).toBe(pkg.version);
+    }
   });
 
-  it("prints usage through the symlink for --help", () => {
-    const out = execFileSync(process.execPath, [link, "--help"], { encoding: "utf8" });
-    // commander renders a `Usage: wpm …` block (task-27 replaced the bootstrap usage line).
-    expect(out).toMatch(/Usage:/);
+  it("executes a prepared receipt's command, argv, and cwd literally through linked PATH", () => {
+    const workspace = join(dir, "receipt-workspace");
+    execFileSync(
+      "wpm",
+      ["init", "receipt-workspace", "--at", workspace, "--authoring-client", "codex"],
+      {
+        cwd: dir,
+        env: linkedEnvironment,
+        stdio: "pipe",
+      },
+    );
+
+    const parsed = parseWorkspaceHandoffReceipt(
+      readFileSync(join(workspace, WORKSPACE_HANDOFF_RECEIPT_PATH), "utf8"),
+    );
+    expect(parsed).toMatchObject({
+      ok: true,
+      value: { status: "prepared", integrationVersion: pkg.version },
+    });
+    if (!parsed.ok || parsed.value.status !== "prepared") {
+      throw new Error("expected a prepared workspace handoff receipt");
+    }
+
+    const verification = parsed.value.clients[0]?.verification;
+    if (!verification) {
+      throw new Error("expected the prepared receipt to contain a client verification command");
+    }
+    const out = execFileSync(verification.command, [...verification.args], {
+      cwd: verification.workingDirectory,
+      env: linkedEnvironment,
+      encoding: "utf8",
+    });
+    expect(out).toContain("verified fresh-agent handoff");
   });
 });

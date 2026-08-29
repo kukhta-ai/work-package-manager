@@ -6,6 +6,10 @@ is not about installing or using a generated bundle-project. The authoritative p
 SDLC in [`AGENTS.md`](./AGENTS.md) and its sequence diagram in [`docs/SDLC.md`](./docs/SDLC.md); the
 sections below are the concrete conventions those describe.
 
+> **Public distribution is inactive.** This repository has no approved public package coordinate, release
+> workflow, publication authority, or public release channel. Contributor work may prepare and verify local
+> artifacts, but public activation remains a separate human-authorized decision.
+
 > **Section ownership.** This file is assembled across a few foundational tasks. The `## Branching model`
 > section below is owned by task-2. `## Pull requests, review & merge` (task-3) and
 > `## Versioning & releases` (task-4) are appended later and are intentionally absent for now.
@@ -114,10 +118,13 @@ builder*; the `## Branching model` section above defines the branches these PRs 
 
 A PR is mergeable only when all three hold (`AGENTS.md` Phase 7 + "User gates"; task-8):
 
-- **Passing checks.** CI runs the three-command gate — `tsc --noEmit`, `biome ci`, and `vitest` — and a
-  failure **blocks the merge** (task-8 AC#1). This is the *same* suite a contributor runs locally (see
+- **Passing checks.** CI runs the three-leg gate — typecheck, lint/process-policy validation, and tests — and
+  a failure **blocks the merge** (task-8 AC#1). This is the *same* suite a contributor runs locally (see
   [The merge gate is the local check suite](#the-merge-gate-is-the-local-check-suite)), green across the
   supported Node/OS matrix.
+- **Clean process-artifact boundary.** Generated workflow output remains ignored working memory; the PR may
+  contain compact state and schema-valid evolution/gate records, but no tracked path below a configured
+  working-memory root. See [Process-artifact retention](#process-artifact-retention).
 - **Review.** At least one approving review is required, and you **never self-merge** — merging into `dev`
   (or `main`) is a human gate, performed by a reviewer other than the author (`AGENTS.md` → "User gates":
   "merging into `dev` or `main`"; "Never self-merge to `dev` or `main`").
@@ -149,12 +156,12 @@ CI-only bar to be surprised by (task-8 AC#2). The three commands are:
 | Check | Locally | In CI (the merge gate) |
 |---|---|---|
 | Types | `npm run typecheck` (`tsc --noEmit`) | `tsc --noEmit` |
-| Lint + format | `npm run lint` (`biome check .`) | `biome ci` |
+| Lint + process policy | `npm run lint` (`biome check .` + worktree retention validation) | `npm run lint:ci` (`biome ci .` + strict tracked-candidate validation) |
 | Tests | `npm test` (`vitest run`) | `vitest` |
 
-(`biome check` and `biome ci` enforce the **same** rules — including the core import-boundary rule from
-task-5; `ci` is just Biome's non-interactive, no-write CI mode. Run the local commands before opening a PR
-and you have already run the gate.)
+(`biome check` and `biome ci` enforce the **same** code rules — including the core import-boundary rule from
+task-5; `ci` is just Biome's non-interactive, no-write mode. Both lint scripts also run the same read-only
+process-artifact validator. Run the local commands before opening a PR and you have already run the gate.)
 
 Crucially, the project **Definition of Done is a named, explicit part of what a PR must meet** — not an
 unwritten expectation. This echoes the install contract's *Definition-of-Done-as-gate* principle from
@@ -180,13 +187,39 @@ you verified it** (paste the three-command gate output); and **confirmation CI i
 — a reviewer approves against exactly that information, and (per the rules above) no one merges their own
 PR.
 
+## Process-artifact retention
+
+BMAD plans, story projections, sprint mirrors, raw test summaries, investigation transcripts, and other
+workflow-generated files are **working memory**, not product truth. Workflows may create and consume them in
+their conventional locations below `_bmad-output/` or `Skills-Results/`, but those roots are ignored and must
+not be staged. A fresh checkout must be operable without the local corpus.
+
+At the last consumer boundary, distil only durable facts into their authority:
+
+- approved product intent or architecture belongs in `docs/`;
+- accepted work, status, and story evidence belong in `backlog/` through the Backlog.md CLI;
+- implemented behaviour belongs in source and executable tests; and
+- experimental observations, decisions, waivers, residual risks, and explicitly provisional evolution
+  hypotheses belong in schema-validated `research/evolution/` records and gate receipts.
+
+Keep `.bmad/sdlc-state.yaml` small and current-only; Git history is the history store. Raw evidence may be
+archived externally only after a human chooses the store and privacy class. If no archive is configured,
+leave the raw material ignored locally until explicit cleanup rather than committing it as a fallback.
+
+Before staging, run `npm run check:process-artifacts`; after staging, use
+`npm run check:process-artifacts:ci` to prove the durable files are part of the exact candidate. The checker is
+read-only and reports every tracked working-memory path or malformed durable record without changing the
+worktree. The full ownership, lifecycle, migration, and recovery policy is in
+[`PROCESS-ARTIFACTS.md`](./PROCESS-ARTIFACTS.md).
+
 ## Versioning & releases
 
 This section governs the version of **the `wpm` builder itself** — the number in `package.json` (currently
 `0.1.0`). It applies the Semantic Versioning model that [`docs/08`](./docs/08-versioning-and-migrations.md)
-establishes for the artifacts the builder produces, to the builder as a published npm package, and defines
-how a release is cut and recorded. (Doc 08 itself is about *bundle* versioning; see [The builder's version
-is not a bundle's version](#the-builders-version-is-not-a-bundles-version) for the distinction.)
+establishes for the artifacts the builder produces to the builder's eventual releases. It does not imply that
+the current private package is publicly distributed. (Doc 08 itself is about *bundle* versioning; see [The
+builder's version is not a bundle's version](#the-builders-version-is-not-a-bundles-version) for the
+distinction.)
 
 ### Semantic versioning for the builder
 
@@ -229,26 +262,65 @@ a bundle never bumps the builder** — they are separate version lines in separa
 different actors. Consequently, **this `CHANGELOG.md` tracks the builder's releases only**; a generated
 project keeps its own per-bundle history in its bundles' `bundle.yml` files, not here.
 
-### Release process
+### Release activation is deferred
 
-Cutting a builder release follows these steps (doc 12 §CI: "build on tag, publish to npm on tagged
-release"; §Distribution: `npm i -g`). It is the agreed **convention** — see the automation note below:
+No builder release can be cut from the current repository state. `package.json` is deliberately private, the
+public identity and GitHub/npm channel policy are unresolved, and `.github/workflows/release.yml` does not
+exist. The current CI workflow is a source-quality gate only; `wpm build publish` remains a separate command
+for pushing a generated work-package archive and is not a mechanism for releasing WPM itself.
 
-1. **Bump** the version in `package.json` to `X.Y.Z` (per the rules above).
-2. **Roll the changelog**: move the entries under `## [Unreleased]` in `CHANGELOG.md` into a new
-   `## [X.Y.Z] - YYYY-MM-DD` heading, and leave a fresh, empty `## [Unreleased]` on top.
-3. **Commit** the bump + changelog roll (through the normal reviewed-PR flow — releases are not committed
-   straight to a protected branch; see [Pull requests, review & merge](#pull-requests-review--merge)).
-4. **Tag** the release commit `vX.Y.Z` and **push the tag**.
-5. **CI publishes**: the tag triggers the release workflow (`.github/workflows/release.yml`), which builds
-   the package and publishes it to npm. Users then install it with `npm i -g` (Backlog.md is a
-   `peerDependency`, pinged-not-bundled — doc 12 §Distribution).
+Routine version development and maintenance of the `[Unreleased]` changelog remain valid. Cutting a public
+release — rolling those entries into a released version, tagging it, creating a GitHub Release, or publishing
+to npm — becomes actionable only after a later human-authorized activation defines the public identity,
+channel policy, trust/authority, and immutable release procedure. Until then, contributor work stops at
+reviewed source changes and non-publishing local package evidence.
 
-> **Automation note (not yet wired).** The publish workflow file (`release.yml`) and the `wpm build`
-> dry-run/package/publish command are **later** work — the foundation deliberately does not include them
-> yet; task-8 wires the CI **test** gate (the three-command suite), not the release/publish job. So treat
-> this section as the **convention** a release follows once that automation lands, not as a button that
-> exists today.
+Maintainers can produce that local evidence with `npm run package:inspect -- --revision HEAD`. The command
+requires a clean checkout, performs a clean production build, packs and inspects the real local archive, and
+reports its exact boundary. It does not publish, tag, create a release, use credentials, or mutate remote state.
+Save the JSON report outside the checkout, then run `npm run package:verify-install -- --report <report-file>`
+to install those exact inspected bytes in a disposable consumer environment and exercise every declared bin
+and required package path. The verifier performs no WPM setup and checks that representative Codex and Claude
+Code personal/workspace configuration remains unchanged.
+
+Save the verifier's JSON output and an accepted local quality report, then bind them to the same inspected
+archive with:
+
+```bash
+npm run package:prepare-candidate -- \
+  --inspection <inspection-report.json> \
+  --install <packed-install-report.json> \
+  --quality <quality-report.json> \
+  --tag <proposed-tag> \
+  --notes <release-notes.md> \
+  --output <candidate-directory>
+```
+
+The quality report is a small JSON object with `status: "accepted"`, the inspection's `sourceRevision`, and
+a non-empty `checks` array of unique `{ "name": "...", "status": "passed" }` entries. Candidate preparation
+revalidates the exact inspection and frozen-install bytes, persists one archive plus its evidence and
+SHA-256/SHA-512 digests, and reuses an unchanged binding. A changed tag, revision, package, archive, notes, or
+required evidence is reported before later channel assessment and never overwrites the prior candidate. The
+proposed tag remains inert data: the resulting record stays inactive and release-ineligible, and this command
+cannot create tags, releases, assets, npm versions/dist-tags, trust settings, credentials, or remote state.
+
+To assess that exact candidate against a caller-supplied GitHub snapshot, use local schema-version 1 policy
+and observation JSON. An empty observation can be as small as
+`{"schemaVersion":1,"tags":[],"releases":[]}`; policy may project release facts such as
+`{"schemaVersion":1,"release":{"prerelease":false,"requireImmutable":true}}`. Then run:
+
+```bash
+npm run package:assess-github -- \
+  --candidate <candidate-directory> \
+  --policy <github-policy.json> \
+  --observation <github-observation.json>
+```
+
+The report distinguishes exact matches, genuinely missing objects, missing proof, and hard tag/release/asset
+conflicts while retaining every unresolved activation fact. The command revalidates the complete candidate and
+only reads local input; it has no GitHub client, credentials, network call, Git mutation, or release/asset
+writer. A permitted read-only observer may supply the same stable tag, release, and asset fields later, but
+this command neither obtains authority nor performs that observation itself.
 
 ### Changelog
 
@@ -259,7 +331,7 @@ Release history lives in [`CHANGELOG.md`](./CHANGELOG.md), in
 - Each released version appears below it as `## [X.Y.Z] - YYYY-MM-DD`, with changes grouped under the
   standard headings — **Added**, **Changed**, **Fixed**, **Removed** (and **Deprecated** / **Security** as
   needed).
-- At release time, the [Release process](#release-process) moves the `[Unreleased]` entries under the new
+- After later activation defines a release process, that process moves the `[Unreleased]` entries under the new
   version heading. The changelog records the **builder's** versions only (per the section above).
 
 ## Tracking work — the dogfood backlog

@@ -81,6 +81,46 @@ describe("parseTemplateDescriptor — well-formed (AC#1, AC#2)", () => {
       expect(r.value.scope).toBe("bundle");
     }
   });
+
+  it("retains an inert authoring-task source for aggregate inspection and round-trip", () => {
+    const data = {
+      ...wellFormed(),
+      revision: "rev-2",
+      "authoring-tasks": [
+        {
+          key: "write-docs",
+          title: "Write docs for {{wpm.project.name}}",
+          "acceptance-criteria": ["The docs are observable"],
+          "depends-on": ["wpm:project:set-metadata"],
+        },
+      ],
+    };
+    const parsed = parseTemplateDescriptor(data);
+    expect(parsed.ok).toBe(true);
+    if (parsed.ok) {
+      expect(parsed.value.authoringTaskSource).toEqual({
+        revision: "rev-2",
+        tasks: data["authoring-tasks"],
+      });
+      expect(serializeTemplateDescriptor(parsed.value)).toMatchObject(data);
+    }
+  });
+
+  it("retains malformed authoring-task bytes instead of failing before aggregate inspection", () => {
+    const parsed = parseTemplateDescriptor({
+      name: "broken-pack",
+      scope: "bundle",
+      revision: 17,
+      "authoring-tasks": { prompt: "run arbitrary logic" },
+    });
+    expect(parsed.ok).toBe(true);
+    if (parsed.ok) {
+      expect(parsed.value.authoringTaskSource).toEqual({
+        revision: 17,
+        tasks: { prompt: "run arbitrary logic" },
+      });
+    }
+  });
 });
 
 describe("parseTemplateDescriptor — malformed (AC#3)", () => {

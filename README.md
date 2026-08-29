@@ -21,7 +21,11 @@ the package). The roadmap grows it into the full *work package manager* the name
 build → publish → discover → install — by adding a registry and distribution layer on top of a
 stable builder and install contract.
 
-- **npm package:** `work-package-manager` · **command:** `wpm`
+> **Public distribution is inactive.** No npm coordinate or GitHub release channel has been approved or
+> published. `wpm` is the local product and command name, not a claim that an npm package named `wpm` or
+> `work-package-manager` is publicly obtainable.
+
+- **public package:** inactive; coordinate unresolved · **local command:** `wpm`
 
 ---
 
@@ -44,17 +48,21 @@ Node.js **>= 20** is also required (`wpm` is an ESM-only package).
 ## Getting started — author a work-package
 
 You don't author a work-package by editing files yourself. `wpm` scaffolds an **authoring workspace**
-and your **AI agent** authors the deliverable inside it, driving the CLI through a bundled skill. The
-first run is five steps:
+and your **AI agent** authors the deliverable inside it, driving the CLI through a bundled skill. Until
+later distribution activation is approved, the first run starts from a checked-out source tree:
 
 ```bash
-# 1. Install wpm and its required peer (see Prerequisites above).
-npm i -g work-package-manager backlog.md
+# 1. Prepare the local WPM command and its required peer.
+npm install
+npm run build
+npm link
+npm i -g backlog.md
 
-# 2. Install the authoring skill into your agent's user skill scope.
-wpm skill install
+# 2. Configure exactly the personal authoring clients you authorize.
+wpm authoring setup --client codex
+# Repeat --client claude-code on the same command to configure both.
 
-# 3. Scaffold a workspace, then enter it.
+# 3. Scaffold a workspace using those retained authoring-client defaults, then enter it.
 wpm init my-handoff
 cd my-handoff
 
@@ -67,13 +75,16 @@ wpm build dry-run        # validate + preview what would ship, producing nothing
 wpm build package        # write the distributable archive into builds/
 ```
 
-**The authoring skill is the authoring-agent's instruction surface.** `wpm skill install` copies the
-bundled `installer-builder` skill into the user (personal) skill scope of every supported agent it
-detects on your machine (`~/.claude/skills/`, `~/.agents/skills/`, …), so your agent catalogues it at
-its next session and knows how to drive the CLI idiomatically rather than guessing from `--help`. It is
-**idempotent** — re-run it any time to install or update the skill, and it reports which scopes it wrote
-to and whether each was a fresh install or an update. (`wpm init` also reminds you to run it when the
-skill isn't present yet.) The workspace's authoring front door points the agent at this skill.
+**Personal setup is explicit consent, not agent detection.** `wpm authoring setup` installs exactly one
+`wpm-create-package` skill into each selected personal scope (`~/.agents/skills/` for Codex and
+`~/.claude/skills/` for Claude Code). Repeat `--client` for the complete selection, or omit it only in a
+direct terminal to use the two-client chooser and one combined confirmation. Re-running reports each scope as
+installed, unchanged, updated, or migrated and preserves unrelated personal content. The selected IDs become
+defaults for a later `wpm init`; explicit `wpm init --authoring-client …` flags always replace those defaults.
+The old detected-all `wpm skill install` entry point is retired and performs no write.
+
+After setup, invoke `$wpm-create-package` in Codex or `/wpm-create-package` in Claude Code for the guarded
+workspace bootstrap flow. Personal setup itself does not create a workspace or claim a prepared handoff.
 
 ### The authoring workspace layout
 
@@ -95,6 +106,53 @@ content unchanged (stripping the reserved `_AGENTS.md` prefix back to the live `
 the archive into `builds/`. The wrapper around it — the authoring front door, the `.authoring-backlog/`,
 and `builds/` itself — is **never part of any shipped artifact**. So the deliverable is authored under
 `wip/`, not at the workspace root, and everything outside `wip/` is authoring-only scaffolding.
+
+### Declaring additional template authoring work
+
+A project or bundle template may declare an inert, revisioned list of **additional** authoring tasks in its
+`template.yml`. `wpm template show <name> --scope project|bundle` previews the contribution; inspection never
+creates a project, bundle, or Backlog task. A contribution cannot replace or disable WPM's mandatory work.
+
+```yaml
+name: example
+scope: project
+revision: "rev-1"
+authoring-tasks:
+  - key: collect-license
+    title: "Collect license for {{wpm.project.name}}"
+    acceptance-criteria:
+      - "The license for {{wpm.project.name}} is recorded"
+    depends-on:
+      - wpm:project:set-metadata
+```
+
+Keys are lowercase kebab-case and local to one template producer and revision. `self:<key>` names another
+task in the same contribution. Mandatory dependencies use the documented stable references below; raw task
+titles and Backlog IDs are not references.
+
+- Project: `wpm:project:set-metadata`, `wpm:project:confirm-target-agents`,
+  `wpm:project:verify-manifest`, `wpm:project:verify-scope-aliases`,
+  `wpm:project:verify-front-door`, `wpm:project:verify-helpers-and-advisors`,
+  `wpm:project:bump-release-version`, `wpm:project:build-dry-run`.
+- Bundle: `wpm:bundle:plan`, `wpm:bundle:fill-install-backlog`, `wpm:bundle:author-payload`,
+  `wpm:bundle:scaffold-payload-skill`, `wpm:bundle:verify-step-slugs`, `wpm:bundle:verify-dod`,
+  `wpm:bundle:verify-payload-references`, `wpm:bundle:verify-skill-registration`,
+  `wpm:bundle:verify-version-constraints`, `wpm:bundle:review-install-backlog-independence`,
+  `wpm:bundle:simulate-fresh-install`.
+
+Task text is literal except for WPM-provided context. Project contributions may use
+`{{wpm.project.name}}`; bundle contributions may additionally use `{{wpm.bundle.id}}` and
+`{{wpm.bundle.version}}`. These are separate from scaffold parameters: prompts, hooks, executable
+interpolation, arbitrary template parameters, and cross-template dependencies are unsupported. Generic
+inspection renders symbolic previews (`<project-name>`, `<bundle-id>`, `<bundle-version>`) and reports all
+declaration, context, collision, dependency, and cycle findings together.
+
+On a fresh `wpm init`, WPM combines the selected project template's valid contribution with mandatory project
+work. For every bundle pre-included by that project template, it also combines the default bundle template's
+contribution with that concrete bundle's mandatory work. The complete dependency-ordered plan is written once
+to the shared authoring backlog; template origin, revision, and local key remain authoring-only task metadata.
+Changing or removing the source template later never rewrites an initialized workspace, and neither task
+definitions nor their provenance enter a built deliverable.
 
 ## What's in here
 
@@ -137,6 +195,10 @@ npm run dev          # live-rebuild: tsc --watch, recompiles dist/ on every sour
 npm run typecheck    # type-check only (tsc, no emit) — separate from the test run
 npm test             # the whole vitest suite (npm run test:unit / test:integration for a split)
 npm run lint         # biome check (lint + format check, incl. the core import-boundary rule)
+npm run package:inspect -- --revision HEAD  # clean-build, pack, and inspect the local npm boundary
+npm run package:verify-install -- --report ../wpm-package-report.json  # install the accepted archive freshly
+npm run package:prepare-candidate -- --inspection ../wpm-package-report.json --install ../wpm-install-report.json --quality ../wpm-quality-report.json --tag <proposed-tag> --notes ../release-notes.md --output ../wpm-candidate
+npm run package:assess-github -- --candidate ../wpm-candidate --policy ../github-policy.json --observation ../github-observation.json
 ```
 
 To exercise the in-development command **as if it were installed**, link it onto your `PATH`:
@@ -150,6 +212,29 @@ npm rm -g wpm                # unlink when done (removes the global symlink)
 `build` always cleans first, so a rebuild never carries stale output from a since-deleted source, and the
 emitted sourcemaps map `dist/*.js` back to the original `src/*.ts` for source-level debugging. See
 [`CONTRIBUTING.md`](./CONTRIBUTING.md) for branching, PR, and versioning conventions.
+
+`package:inspect` is local, non-publishing preparation: it requires a clean checkout at the requested Git
+revision, creates a fresh build, inspects the actual `.tgz`, and reports its exact paths and metadata. It does
+not activate a public package coordinate or create tags, releases, registry writes, or remote state.
+
+To prove the consumer journey, save the inspection report outside the clean checkout, then pass that report to
+`package:verify-install`. For example, run `npm run package:inspect -- --revision HEAD --output
+../wpm-package-evidence > ../wpm-package-report.json`, followed by the verification command above. Verification
+freezes those inspected archive bytes, installs them into a disposable HOME/workspace/global prefix, invokes
+every declared executable, resolves the declared package paths, and confirms installation did not change
+representative Codex or Claude Code configuration. It remains local and non-publishing.
+
+After saving the verifier's JSON output and a local accepted quality report, `package:prepare-candidate`
+persists one exact archive, its SHA-256/SHA-512 digests, the inspection/quality/install evidence, and a
+release-note preview. Repeating the same binding reuses its stable candidate identity; changed evidence is
+reported without replacing it. The record explicitly remains inactive and release-ineligible, and the command
+has no tag, release, registry, trust, credential, or remote-write capability.
+
+`package:assess-github` revalidates that persisted candidate and compares it with caller-supplied local GitHub
+policy and observation JSON. Its structured report lists the exact required tag, draft metadata, asset,
+checksums, notes/evidence, missing work, matches, unverifiable facts, and hard conflicts. It only reads those
+inputs: matching state is reused in the report, while activation remains disabled and no Git or GitHub object
+is created or changed.
 
 ## A note on the word "installer"
 

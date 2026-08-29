@@ -56,7 +56,10 @@ describeIfBuilt("shipped documentation template examples via dist/cli.js (TASK-1
     await withTempDir((dir) => {
       const workspace = join(dir, "hermes-handoff");
 
-      const init = cli(["init", "hermes-handoff", "--template", "minimal"], dir);
+      const init = cli(
+        ["init", "hermes-handoff", "--template", "minimal", "--authoring-client", "codex"],
+        dir,
+      );
       expect(init.status).toBe(0);
       expect(init.stdout).toContain("materialised: 8 authoring task(s)");
       expect(wpm(workspace, ["project", "targets", "add", "claude-code"]).status).toBe(0);
@@ -72,7 +75,7 @@ describeIfBuilt("shipped documentation template examples via dist/cli.js (TASK-1
       expect(authoringTasks).toMatch(/AUTHORING-9\s+-\s+Plan bundle core/);
       expect(authoringTasks).toMatch(/AUTHORING-10\s+-\s+Fill install-backlog for core/);
 
-      expect(wpm(workspace, ["bundle", "new", "web-handoff"]).status).toBe(0);
+      expect(wpm(workspace, ["bundle", "new", "web-handoff"])).toMatchObject({ status: 0 });
       expect(
         wpm(workspace, ["bundle", "web-handoff", "requires", "add", "core", "^0.3.0"]).status,
       ).toBe(0);
@@ -104,14 +107,25 @@ describeIfBuilt("shipped documentation template examples via dist/cli.js (TASK-1
         unavailableProject,
         "--template",
         "single-bundle",
+        "--authoring-client",
+        "codex",
       ]);
       expect(project.status).toBe(1);
-      expect(project.stderr).toContain('project template "single-bundle" not found');
+      expect(project.stderr).toContain('project template "single-bundle" was not found');
       expect(existsSync(unavailableProject)).toBe(false);
 
       const workspace = join(dir, "valid-project");
       expect(
-        cli(["init", "valid-project", "--at", workspace, "--template", "minimal"]).status,
+        cli([
+          "init",
+          "valid-project",
+          "--at",
+          workspace,
+          "--template",
+          "minimal",
+          "--authoring-client",
+          "codex",
+        ]).status,
       ).toBe(0);
       const bundle = wpm(workspace, [
         "bundle",

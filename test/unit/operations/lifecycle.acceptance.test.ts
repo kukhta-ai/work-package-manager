@@ -96,14 +96,18 @@ const ALIAS_LINKS = [`${DELIV}/.claude/skills`];
 
 /**
  * Snapshot the observable filesystem under `dir` + the targets of known alias links, from the PUBLIC port
- * surface (`list`/`read`/`exists`) + the `aliasTarget` test accessor — so "nothing changed" is a deep-equal.
+ * surface (`list`/`inspectPath`/`read`/`exists`) + the `aliasTarget` test accessor — so "nothing changed" is
+ * a deep-equal.
  */
 function snapshot(fs: MemoryFileSystem, dir: string): unknown {
   const files: Record<string, string> = {};
   const walk = (d: string): void => {
     for (const entry of fs.list(d)) {
       const child = `${d}/${entry.name}`;
-      if (entry.kind === "directory") walk(child);
+      const inspection = fs.inspectPath(child);
+      if (inspection.kind === "symbolic-link") {
+        // Alias identity is captured separately below; never read a directory link as a regular file.
+      } else if (inspection.kind === "directory") walk(child);
       else files[child] = fs.read(child);
     }
   };

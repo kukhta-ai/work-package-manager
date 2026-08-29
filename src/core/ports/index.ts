@@ -7,15 +7,26 @@
  */
 
 export type {
+  BacklogAvailability,
   BacklogMd,
+  BacklogRootInspection,
+  BacklogTaskInventory,
   CreateTaskInput,
   EditTaskChanges,
   InitOptions,
   ListFilter,
   TaskId,
+  TaskRecord,
   TaskStatus,
   TaskSummary,
 } from "./backlog.js";
 export type { Clock } from "./clock.js";
 export type { Environment } from "./environment.js";
-export type { AliasResult, DirEntry, FileSystem } from "./filesystem.js";
+export type {
+  AliasResult,
+  ConfinedQuarantine,
+  DigestedText,
+  DirEntry,
+  FileSystem,
+  PathInspection,
+} from "./filesystem.js";

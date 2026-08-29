@@ -52,6 +52,7 @@ function seedDeps(): CliDeps {
       "",
     ].join("\n"),
   );
+  fs.makeDirectories(AUTHORING);
   backlog.init(AUTHORING, { taskPrefix: "authoring" });
   fs.makeDirectories(`${ROOT}/wip/installer-skills`);
 
@@ -72,10 +73,6 @@ function seedDeps(): CliDeps {
   fs.write(
     `${BUILTIN}/bundle/default/template.yml`,
     "name: default\nscope: bundle\nparameters:\n  - name: bundle-id\n  - name: version\n",
-  );
-  fs.write(
-    `${BUILTIN}/bundle/default/files/bundle.yml`,
-    "id: {{bundle-id}}\nversion: {{version}}\n",
   );
   fs.write(`${BUILTIN}/bundle/default/files/installer-skills/.keep`, "");
   fs.write(
@@ -100,7 +97,7 @@ describe("cli dispatch + DI + reserved-verb (task-27)", () => {
 
     const code = await run(["bundle", "new", "web", "-C", ROOT], deps, i);
 
-    expect(code).toBe(0);
+    expect(code, i.err.text).toBe(0);
     // AC#2: the SAME injected fs instance received the operation's writes (the scaffold appears in it):
     expect(deps.fs.exists(`${ROOT}/wip/bundles/web/bundle.yml`)).toBe(true);
     // AC#1: dispatch reached the real operation — the manifest now lists the new bundle:
@@ -151,7 +148,7 @@ describe("cli dispatch + DI + reserved-verb (task-27)", () => {
     const deps = seedDeps();
     const i = io();
     const code = await run(["bundle", "new", "web-handoff", "-C", ROOT], deps, i);
-    expect(code).toBe(0);
+    expect(code, i.err.text).toBe(0);
     expect(deps.fs.exists(`${ROOT}/wip/bundles/web-handoff/bundle.yml`)).toBe(true);
   });
 

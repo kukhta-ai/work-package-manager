@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -14,15 +14,16 @@ import { join } from "node:path";
 const DEFAULT_PREFIX = "wpm-test-";
 
 /**
- * Create a fresh, uniquely-named temporary directory inside the OS temp location and return its absolute
- * path. The caller is responsible for removing it (use {@link removeTempDir}, or prefer {@link withTempDir}
- * which cleans up automatically).
+ * Create a fresh, uniquely-named temporary directory inside the OS temp location and return its canonical
+ * absolute path. Canonicalizing the directory we just created keeps test-owned roots honest at product
+ * safety boundaries on hosts whose temp location has an aliased spelling. The caller is responsible for
+ * removing it (use {@link removeTempDir}, or prefer {@link withTempDir} which cleans up automatically).
  *
  * @param prefix - Optional name prefix for the directory (default `"wpm-test-"`).
- * @returns The absolute path of the newly created directory.
+ * @returns The canonical absolute path of the newly created directory.
  */
 export function makeTempDir(prefix: string = DEFAULT_PREFIX): string {
-  return mkdtempSync(join(tmpdir(), prefix));
+  return realpathSync.native(mkdtempSync(join(tmpdir(), prefix)));
 }
 
 /**

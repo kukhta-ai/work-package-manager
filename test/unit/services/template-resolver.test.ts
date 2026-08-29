@@ -1,6 +1,7 @@
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { MemoryFileSystem } from "../../../src/adapters/memory-fs.js";
+import { inspectTemplateAuthoringTasks } from "../../../src/core/services/template-authoring-tasks.js";
 import {
   listTemplates,
   type ResolverDeps,
@@ -61,6 +62,7 @@ describe("resolveTemplate — two-tier resolution (AC#1)", () => {
     const result = resolveTemplate("minimal", "project", deps(fs));
     expect(result.found).toBe(true);
     if (result.found) {
+      expect(result.source).toBe("built-in");
       expect(result.template.name).toBe("minimal");
       expect(result.template.scope).toBe("project");
       expect(result.template.parameters).toEqual([{ name: "project-name" }]);
@@ -81,6 +83,7 @@ describe("resolveTemplate — two-tier resolution (AC#1)", () => {
     const result = resolveTemplate("minimal", "project", deps(fs));
     expect(result.found).toBe(true);
     if (result.found) {
+      expect(result.source).toBe("project-local");
       expect(result.template.files[0]?.content).toBe("PROJECT-LOCAL");
     }
   });
@@ -164,6 +167,100 @@ describe("resolveTemplate — not found (AC#3)", () => {
       scope: "project",
       searched: nativeCandidates.map((path) => path.replaceAll("\\", "/")),
     });
+  });
+});
+
+describe("resolveTemplate — portable registry identity and descriptor failures", () => {
+  it.each([
+    "../escape",
+    "nested/name",
+    "nested\\name",
+    ".",
+    "UPPER",
+  ])("rejects non-portable template name %s before probing outside the registry", (name) => {
+    const fs = new RecordingMemoryFileSystem();
+    expect(() => resolveTemplate(name, "project", deps(fs))).toThrow(/lowercase kebab-case/);
+    expect(fs.existsCalls).toEqual([]);
+  });
+
+  it("rejects a descriptor that spoofs the requested registry identity", () => {
+    const fs = new MemoryFileSystem();
+    writeTemplate(fs, BUILTIN, "project", "honest", { scopeInYml: "bundle" });
+    expect(() => resolveTemplate("honest", "project", deps(fs))).toThrow(
+      /descriptor identity mismatch/,
+    );
+  });
+
+  it("reports malformed descriptor YAML as an authoring failure", () => {
+    const fs = new MemoryFileSystem();
+    fs.write(`${BUILTIN}/project/broken/template.yml`, "name: [unterminated\n");
+    expect(() => resolveTemplate("broken", "project", deps(fs))).toThrow(/invalid YAML/);
+  });
+
+  it("retains unsupported YAML tags as aggregate authoring-task findings instead of executable-looking strings", () => {
+    const fs = new MemoryFileSystem();
+    fs.write(
+      `${BUILTIN}/project/tagged/template.yml`,
+      [
+        "name: tagged",
+        "scope: project",
+        'revision: "1"',
+        "authoring-tasks:",
+        "  - key: tagged-task",
+        "    title: !exec run-me",
+        "    acceptance-criteria:",
+        "      - !prompt ask-me",
+        "",
+      ].join("\n"),
+    );
+
+    const resolved = resolveTemplate("tagged", "project", deps(fs, false));
+    expect(resolved.found).toBe(true);
+    if (!resolved.found) return;
+    const inspection = inspectTemplateAuthoringTasks({
+      template: resolved.template,
+      producer: { source: resolved.source, scope: "project", name: "tagged" },
+      mandatoryTasks: [],
+    });
+    expect(inspection.status).toBe("invalid");
+    expect(
+      inspection.problems.filter(({ code }) => code === "unsupported-yaml-content"),
+    ).toHaveLength(2);
+    expect(inspection.tasks).toEqual([]);
+  });
+
+  it("retains authoring-task YAML parse errors alongside independently discoverable declaration findings", () => {
+    const fs = new MemoryFileSystem();
+    fs.write(
+      `${BUILTIN}/project/duplicate-field/template.yml`,
+      [
+        "name: duplicate-field",
+        "scope: project",
+        'revision: "1"',
+        "authoring-tasks:",
+        "  - key: first-key",
+        "    key: selected-key",
+        "    title: Inspect malformed YAML",
+        "    acceptance-criteria:",
+        "      - The malformed declaration is observable",
+        "    prompt: unsupported",
+        "",
+      ].join("\n"),
+    );
+
+    const resolved = resolveTemplate("duplicate-field", "project", deps(fs, false));
+    expect(resolved.found).toBe(true);
+    if (!resolved.found) return;
+    const inspection = inspectTemplateAuthoringTasks({
+      template: resolved.template,
+      producer: { source: resolved.source, scope: "project", name: "duplicate-field" },
+      mandatoryTasks: [],
+    });
+    expect(inspection.status).toBe("invalid");
+    expect(inspection.problems.map(({ code }) => code)).toEqual(
+      expect.arrayContaining(["unsupported-field", "unsupported-yaml-content"]),
+    );
+    expect(inspection.tasks).toEqual([]);
   });
 });
 

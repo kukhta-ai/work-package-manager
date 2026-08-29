@@ -36,6 +36,52 @@ export type AliasResult =
   | { readonly kind: "copy"; readonly warning: string };
 
 /**
+ * A no-follow inspection of one filesystem path. Workspace-integration ownership checks must distinguish a
+ * regular file/directory from a symbolic link (including a broken link) before they authorize a write; the
+ * existing `exists` probe intentionally follows links and therefore cannot supply that evidence.
+ */
+export type PathInspection =
+  | { readonly kind: "missing" }
+  | { readonly kind: "file" }
+  | { readonly kind: "directory" }
+  | { readonly kind: "symbolic-link"; readonly target: string }
+  | { readonly kind: "other" };
+
+/** One immutable UTF-8 read bound to the digest of those exact bytes. */
+export interface DigestedText {
+  readonly content: string;
+  readonly sha256: string;
+}
+
+/** Read-only evidence that the current process can mutate one path through its existing parent chain. */
+export type MutationCapability =
+  | { readonly capable: true }
+  | { readonly capable: false; readonly reason: string };
+
+/** Exact file preimage checked inside one confined atomic write. */
+export type ConfinedWritePrecondition =
+  | {
+      readonly kind: "missing";
+      /** When set, the target's direct parent must itself be absent before this one-file tree is created. */
+      readonly parentTree?: "missing";
+    }
+  | { readonly kind: "text"; readonly content: string; readonly parentTree?: never }
+  | {
+      readonly kind: "sha256";
+      readonly sha256: string;
+      /** When set, the target's direct parent must contain this file and no sibling entries. */
+      readonly parentTree?: "one-file";
+    };
+
+/** Deterministic WPM-private residue identity for one guarded applying beat. */
+export interface ConfinedQuarantine {
+  /** Request-bound private root recorded in the applying state. */
+  readonly root: string;
+  /** Exact file/tree slot beneath {@link root} used by this beat. */
+  readonly path: string;
+}
+
+/**
  * The file-system operations the builder needs, as a replaceable, synchronous abstraction (doc 13 §3).
  */
 export interface FileSystem {
@@ -53,12 +99,26 @@ export interface FileSystem {
    *
    * The write either fully succeeds or leaves a pre-existing file at `path` intact — an interrupted write
    * never leaves a partial or corrupt file observable at `path` (the real adapter writes to a temp file in
-   * the same directory, then renames over the target).
+   * the same directory, then renames over the target). If the adapter created missing parents for a failed
+   * write, it removes only those that remain empty so an initial bootstrap write can be retried safely.
    *
    * @param path - The destination file path.
    * @param content - The full contents to write.
    */
   write(path: string, content: string): void;
+
+  /**
+   * Recheck that every existing component from `confinementRoot` through `path` is a regular, no-follow
+   * descendant at the mutation boundary, bind any requested one-file parent-tree preimage, then publish the
+   * complete text without clobbering a path that appears after inspection.
+   */
+  writeConfined(
+    confinementRoot: string,
+    path: string,
+    content: string,
+    expected: ConfinedWritePrecondition,
+    quarantine?: ConfinedQuarantine,
+  ): void;
 
   /**
    * Test whether a path exists (file or directory).
@@ -67,6 +127,44 @@ export interface FileSystem {
    * @returns `true` if something exists at `path`.
    */
   exists(path: string): boolean;
+
+  /**
+   * Inspect a path without following its final symbolic link.
+   *
+   * @param path - The path to inspect.
+   * @returns Its concrete kind, or `missing`; symbolic links include their stored target.
+   */
+  inspectPath(path: string): PathInspection;
+
+  /**
+   * Compute the SHA-256 digest of one readable file's bytes. Used only as durable exact-content ownership
+   * evidence; callers still inspect the path kind first.
+   *
+   * @param path - The file to digest.
+   * @returns A lowercase hexadecimal SHA-256 digest.
+   * @throws If the path is missing or not a readable file.
+   */
+  digestFile(path: string): string;
+
+  /** Read one regular UTF-8 file and hash the exact same captured bytes. */
+  readWithDigest(path: string): DigestedText;
+
+  /**
+   * Resolve an existing path through every symbolic-link ancestor to its absolute canonical identity.
+   * Workspace integration uses this only to bind a durable root and prevent managed descendants escaping
+   * through an aliased ancestor.
+   */
+  canonicalPath(path: string): string;
+
+  /**
+   * Inspect whether a later atomic write or owned removal at `path` is predictably possible now.
+   * This performs no probe write and creates nothing; a later effect can still fail and is reported by the
+   * operation's typed partial contract.
+   */
+  inspectMutationCapability(path: string): MutationCapability;
+
+  /** Read-only proof that two effect paths resolve through existing ancestors on one filesystem/device. */
+  inspectMutationCompatibility(firstPath: string, secondPath: string): MutationCapability;
 
   /**
    * Create a directory and any missing parents (like `mkdir -p`). A no-op if it already exists.
@@ -96,11 +194,48 @@ export interface FileSystem {
   copyTree(from: string, to: string): void;
 
   /**
+   * Refresh one ownership-verified directory-copy alias without merging into public state. An adapter may
+   * use a native no-replace whole-directory publication where the representation/platform supplies it, or
+   * atomically create a source-exact relative symbolic link at the absent public path. A raced destination is
+   * never overwritten; failure leaves the prior copy public or retains exact request-owned recovery evidence
+   * beneath `quarantine`.
+   */
+  refreshAliasCopyConfined(
+    confinementRoot: string,
+    sourcePath: string,
+    aliasPath: string,
+    expectedAliasTreeFingerprint: string,
+    quarantine: ConfinedQuarantine,
+  ): void;
+
+  /**
    * Recursively remove a path (file or directory). Does nothing — and does not error — if it is absent.
    *
    * @param path - The path to remove.
    */
   remove(path: string): void;
+
+  /**
+   * Recheck a no-follow descendant and its canonical no-follow tree fingerprint at the mutation boundary,
+   * detach that exact tree without replacing a raced destination, then retire only the detached owned tree.
+   */
+  removeConfined(
+    confinementRoot: string,
+    path: string,
+    expectedTreeFingerprint: string,
+    quarantine?: ConfinedQuarantine,
+  ): void;
+
+  /**
+   * Atomically detach one exact regular-file preimage beneath a no-follow confinement root. A raced public
+   * replacement is preserved and the request-owned preimage remains in quarantine for diagnosis.
+   */
+  removeFileConfined(
+    confinementRoot: string,
+    path: string,
+    expectedContent: string,
+    quarantine: ConfinedQuarantine,
+  ): void;
 
   /**
    * Create a scope-alias link from `target` to `linkPath`, hiding the platform decision (doc 13 §3; doc 12).

@@ -1,5 +1,15 @@
 import { CommanderError } from "commander";
-import { exitCodeFor, isDomainError } from "../core/errors.js";
+import {
+  BundleAuthoringPreflightError,
+  exitCodeFor,
+  HandoffPreparationPreflightError,
+  HandoffVerificationError,
+  isDomainError,
+  isMutationFailure,
+  PersonalAuthoringSetupMutationFailure,
+  PersonalAuthoringSetupPreflightError,
+  WorkspaceIntegrationPreflightError,
+} from "../core/errors.js";
 
 /**
  * The top-level error handler + output/exit-code mapping for the CLI (doc 12 line 144: "error formatting +
@@ -41,6 +51,20 @@ export interface CliIo {
    * confirmed).
    */
   readonly in?: NodeJS.ReadableStream;
+  /** True only for a direct human terminal; commands must never infer consent from a piped stream. */
+  readonly interactive?: boolean;
+}
+
+/** An already-structured CLI failure whose JSON bytes and exit code must be preserved by the global shell. */
+export class JsonCliFailure extends Error {
+  constructor(
+    readonly payload: unknown,
+    readonly exitCode: number,
+  ) {
+    super("structured JSON CLI failure");
+    Object.setPrototypeOf(this, new.target.prototype);
+    this.name = "JsonCliFailure";
+  }
 }
 
 /** The commander error codes that mean "help or version was displayed" — a successful, already-printed exit. */
@@ -49,6 +73,50 @@ const HELP_OR_VERSION_CODES = new Set<string>([
   "commander.helpDisplayed",
   "commander.version",
 ]);
+
+const TERMINAL_FORMAT_CHARACTER = /\p{Cf}/u;
+const JSON_TERMINAL_FORMAT_CHARACTERS = /[\p{Cf}\u2028\u2029]/gu;
+
+function unicodeEscape(character: string): string {
+  const codePoint = character.codePointAt(0) as number;
+  if (codePoint <= 0xffff) return `\\u${codePoint.toString(16).padStart(4, "0")}`;
+  const scalar = codePoint - 0x10000;
+  const high = 0xd800 + (scalar >> 10);
+  const low = 0xdc00 + (scalar & 0x3ff);
+  return `\\u${high.toString(16).padStart(4, "0")}\\u${low.toString(16).padStart(4, "0")}`;
+}
+
+/** Stable JSON whose parsed value is unchanged but whose terminal bytes contain no bidi/format controls. */
+export function stringifyCliJson(value: unknown, space?: number): string {
+  const serialized = JSON.stringify(value, null, space);
+  if (serialized === undefined) throw new TypeError("CLI JSON root is not serializable");
+  return serialized.replace(JSON_TERMINAL_FORMAT_CHARACTERS, unicodeEscape);
+}
+
+/** Make arbitrary text inert in a terminal/shell transcript while preserving readable ordinary prose. */
+export function escapeHumanText(value: string): string {
+  return [...value]
+    .map((character) => {
+      if (character === "\n") return "\\n";
+      if (character === "\r") return "\\r";
+      if (character === "\t") return "\\t";
+      const codePoint = character.codePointAt(0) as number;
+      return codePoint < 32 ||
+        (codePoint >= 127 && codePoint <= 159) ||
+        character === "\u2028" ||
+        character === "\u2029" ||
+        TERMINAL_FORMAT_CHARACTER.test(character) ||
+        "$`!".includes(character)
+        ? unicodeEscape(character)
+        : character;
+    })
+    .join("");
+}
+
+/** Quote one value as JSON data, then neutralize shell metacharacters that JSON leaves literal. */
+export function formatHumanValue(value: string): string {
+  return escapeHumanText(stringifyCliJson(value));
+}
 
 /**
  * Format a thrown value into a user-facing message (doc 13 §7). A task-23 `DomainError` yields a clean
@@ -61,6 +129,118 @@ const HELP_OR_VERSION_CODES = new Set<string>([
  * @returns The formatted message, newline-terminated.
  */
 export function formatError(error: unknown, debug: boolean): string {
+  if (error instanceof BundleAuthoringPreflightError) {
+    const lines = [`error: ${error.message}`, "blockers:"];
+    for (const blocker of error.blockers) {
+      lines.push(
+        `  - [${blocker.code}] ${blocker.surface}${blocker.path !== undefined ? ` ${formatHumanValue(blocker.path)}` : ""}: ${escapeHumanText(blocker.message)}`,
+        `    recovery: ${escapeHumanText(blocker.recovery)}`,
+      );
+    }
+    lines.push("bundle changed: no");
+    return `${lines.join("\n")}\n`;
+  }
+  if (error instanceof PersonalAuthoringSetupPreflightError) {
+    const lines = [`error: ${error.message}`, "blockers:"];
+    for (const blocker of error.blockers) {
+      lines.push(
+        `  - [${blocker.code}] ${blocker.surface}${blocker.client !== undefined ? ` (${escapeHumanText(blocker.client)})` : ""}${blocker.path !== undefined ? ` ${formatHumanValue(blocker.path)}` : ""}: ${escapeHumanText(blocker.message)}`,
+        `    recovery: ${escapeHumanText(blocker.recovery)}`,
+      );
+    }
+    lines.push("personal setup applied: no");
+    return `${lines.join("\n")}\n`;
+  }
+  if (error instanceof PersonalAuthoringSetupMutationFailure) {
+    const client = (value: (typeof error.completedClients)[number]): string =>
+      `${value.id} (${formatHumanValue(value.destination)}; ${value.outcome})`;
+    const lines = [
+      `error: ${error.message}`,
+      `failed beat: ${error.failedBeat}`,
+      "completed clients:",
+      ...(error.completedClients.length > 0
+        ? error.completedClients.map((value) => `  - ${client(value)}`)
+        : ["  - (none)"]),
+      `failed client: ${error.failedClient === null ? "(state boundary)" : client(error.failedClient)}`,
+      "unattempted clients:",
+      ...(error.unattemptedClients.length > 0
+        ? error.unattemptedClients.map((value) => `  - ${client(value)}`)
+        : ["  - (none)"]),
+      `failed boundary: ${error.failed.id} — ${escapeHumanText(error.failed.description)}${error.failed.path !== undefined ? ` (${formatHumanValue(error.failed.path)})` : ""}`,
+      `recovery: ${escapeHumanText(error.recovery)}`,
+      "personal setup applied: no",
+    ];
+    if (debug && error.underlyingCause instanceof Error) {
+      lines.push(escapeHumanText(error.underlyingCause.stack ?? error.underlyingCause.message));
+    }
+    return `${lines.join("\n")}\n`;
+  }
+  if (error instanceof HandoffPreparationPreflightError) {
+    const lines = [`error: ${error.message}`, "blockers:"];
+    for (const blocker of error.blockers) {
+      lines.push(
+        `  - [${blocker.code}] ${blocker.surface}${blocker.client !== undefined ? ` (${escapeHumanText(blocker.client)})` : ""}: ${escapeHumanText(blocker.message)}`,
+        `    recovery: ${escapeHumanText(blocker.recovery)}`,
+      );
+    }
+    lines.push("handoff prepared: no");
+    return `${lines.join("\n")}\n`;
+  }
+  if (error instanceof HandoffVerificationError) {
+    const lines = [`error: ${error.message}`, "blockers:"];
+    for (const blocker of error.blockers) {
+      lines.push(
+        `  - [${blocker.code}] ${blocker.surface}${blocker.client !== undefined ? ` (${escapeHumanText(blocker.client)})` : ""}: ${escapeHumanText(blocker.message)}`,
+        `    recovery: ${escapeHumanText(blocker.recovery)}`,
+      );
+    }
+    lines.push(
+      `shared surfaces: ${error.sharedValid ? "valid" : "invalid"}`,
+      ...error.clients.map(({ id, status }) => `${id}: ${status}`),
+      "verification: failed",
+    );
+    return `${lines.join("\n")}\n`;
+  }
+  if (error instanceof WorkspaceIntegrationPreflightError) {
+    const lines = [`error: ${error.message}`, "blockers:"];
+    for (const blocker of error.blockers) {
+      lines.push(
+        `  - [${blocker.code}] ${blocker.surface}: ${escapeHumanText(blocker.message)}`,
+        `    recovery: ${escapeHumanText(blocker.recovery)}`,
+      );
+    }
+    lines.push("handoff prepared: no");
+    return `${lines.join("\n")}\n`;
+  }
+  if (isMutationFailure(error)) {
+    const lines = [
+      `error: ${error.message}`,
+      `failed beat: ${error.failedBeat}`,
+      "completed:",
+      ...(error.completed.length > 0
+        ? error.completed.map(
+            ({ id, path, description }) =>
+              `  - ${id}: ${escapeHumanText(description)}${path !== undefined ? ` (${formatHumanValue(path)})` : ""}`,
+          )
+        : ["  - (none)"]),
+      `failed: ${error.failed.id}: ${escapeHumanText(error.failed.description)}${error.failed.path !== undefined ? ` (${formatHumanValue(error.failed.path)})` : ""}`,
+      "unattempted:",
+      ...(error.unattempted.length > 0
+        ? error.unattempted.map(
+            ({ id, path, description }) =>
+              `  - ${id}: ${escapeHumanText(description)}${path !== undefined ? ` (${formatHumanValue(path)})` : ""}`,
+          )
+        : ["  - (none)"]),
+      `recovery: ${escapeHumanText(error.recovery)}`,
+    ];
+    if (debug && error.underlyingCause instanceof Error) {
+      lines.push(escapeHumanText(error.underlyingCause.stack ?? error.underlyingCause.message));
+    }
+    if (error.operation === "workspace handoff preparation") {
+      lines.push("handoff prepared: no");
+    }
+    return `${lines.join("\n")}\n`;
+  }
   if (isDomainError(error)) {
     return `error: ${error.message}\n`;
   }
@@ -101,6 +281,10 @@ export async function runWithExit(io: CliIo, body: () => Promise<void>): Promise
     await body();
     return 0;
   } catch (error) {
+    if (error instanceof JsonCliFailure) {
+      io.err.write(`${stringifyCliJson(error.payload)}\n`);
+      return error.exitCode;
+    }
     if (error instanceof CommanderError) {
       // Commander already wrote help/version/usage text via the configured output; do not duplicate it.
       if (HELP_OR_VERSION_CODES.has(error.code)) {
@@ -113,6 +297,10 @@ export async function runWithExit(io: CliIo, body: () => Promise<void>): Promise
     if (isDomainError(error)) {
       io.err.write(formatError(error, io.debug));
       return exitCodeFor(error); // usage→2, else→1
+    }
+    if (isMutationFailure(error)) {
+      io.err.write(formatError(error, io.debug));
+      return 1;
     }
     // An unexpected failure → general error, with detail only in debug mode.
     io.err.write(formatError(error, io.debug));
