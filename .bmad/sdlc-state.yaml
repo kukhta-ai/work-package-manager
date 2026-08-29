@@ -1,23 +1,23 @@
 # Current orchestration pointer. History belongs in Git, Backlog.md, and research/evolution/.
 schemaVersion: 1
 phase: 6
-phaseName: "Epic gate — TASK-135 Windows repair cycle 7"
+phaseName: "Epic gate — TASK-135 supported-host repair cycle 8"
 branch: fix/authoring-agent-onboarding/windows-release-boundaries
 epic: authoring-agent-onboarding
 activeStory: task-135
-reviewCycle: 7
+reviewCycle: 8
 activeChange:
-  id: task-135-portable-build-evidence
+  id: task-135-supported-host-integration-timeout
 specialists:
   worker:
     role: implementation
-    lastSkill: bmad-qa-generate-e2e-tests @ task-135 cycle 7 / 4-8-complete-supported-host-release-boundaries
+    lastSkill: bmad-qa-generate-e2e-tests @ task-135 cycle 8 / 4-8-complete-supported-host-release-boundaries
   reviewer:
     role: independent review
-    lastSkill: bmad-story-automator-review @ task-135 cycle 7 / 4-8-complete-supported-host-release-boundaries — approved after one test fix
+    lastSkill: bmad-story-automator-review @ task-135 cycle 8 / 4-8-complete-supported-host-release-boundaries — approved with no findings
   investigator:
     role: gate failure diagnosis
-    lastSkill: bmad-investigate @ task-135 candidate 62bff985 / job 99044366184
+    lastSkill: bmad-investigate @ task-135 candidate 91706a2 / job 99058042907
   tea:
     role: onboarding trace and NFR gate
     lastSkill: bmad-testarch-trace @ onboarding human-waiver validation
@@ -34,4 +34,4 @@ workingMemory:
     - Skills-Results
   durableEpisode: research/evolution/records/authoring-agent-onboarding.yaml
 designRevisionLoaded: db2b3d7be8f20d21aa8f299064514ca676464eee
-lastUpdated: "2026-08-29T04:59:43Z"
+lastUpdated: "2026-08-29T06:57:35Z"

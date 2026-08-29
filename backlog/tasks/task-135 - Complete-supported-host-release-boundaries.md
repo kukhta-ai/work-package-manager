@@ -4,7 +4,7 @@ title: Complete supported-host release boundaries
 status: In Progress
 assignee: []
 created_date: '2026-08-28 19:21'
-updated_date: '2026-08-29 05:00'
+updated_date: '2026-08-29 06:59'
 labels:
   - follow-up
   - ci
@@ -63,4 +63,6 @@ Cycle-6 implementation and QA: literal bmad-dev-story and bmad-qa-generate-e2e-t
 Cycle-7 gate evidence: literal bmad-investigate @ candidate 62bff985, run 33231248102, Windows/Node20 job 99044366184. Exact result: 141 files passed, one file failed; 1,974 tests passed, 16 skipped, two failed. No native errno, mutation failure, timeout, or product exit-code failure. Both failures are invalid build-E2E expectations: archiveLayout removes directory-only entries but TASK-128 still requires exact `.claude/skills` and `bundles/web/.claude/skills` entries despite correct descendant content; TASK-95 compares native `C:\...` workspaceRoot against the product portable `C:/...` dialect. Apply only exact-or-descendant scope checks and compare to toPosix(proj). Reject product path/archive/alias changes, retries, and timeout changes.
 
 Cycle-7 implementation/QA: literal bmad-dev-story and bmad-qa-generate-e2e-tests changed only cli.build.e2e expectations: each declared Claude scope accepts an exact entry or slash-delimited descendant, and serialized workspaceRoot is compared with toPosix(proj). Focused E2E 2/2 passed twice; build/typecheck/Biome/process/diff passed. Cycle-7 independent review: literal bmad-story-automator-review approved after auto-fixing one Medium test-only omission—the later TASK-95 archive helper repeated the same exact-directory assumption, so it now applies the same independent per-scope evidence rule. No product/config/timeout/archive-writer/alias behavior changed.
+
+Cycle-8 gate evidence: literal bmad-investigate at candidate 91706a2, hosted run 33236404866, Ubuntu/Node20 job 99058042907. Exactly two built-CLI integration tests exceeded the generic 60-second Vitest ceiling at 63.126s and 61.563s; 1,990 tests passed, one skipped, and there was no assertion diff, product exit failure, errno, or product stack. Prior and Node22 timings establish normal runner variation, so product changes, retries, per-test exceptions, wrappers, splitting, and a timeout above 120 seconds were rejected. Cycle-8 implementation and QA: literal bmad-dev-story and bmad-qa-generate-e2e-tests made the integration project existing 120-second test budget platform-independent while preserving unit defaults and platform-specific hook timing. Both affected journeys passed twice in 55.16s and 54.69s; typecheck, focused Biome, process policy, and diff checks passed. Cycle-8 independent review: literal bmad-story-automator-review approved with no findings and independently reran both journeys in 51.94s.
 <!-- SECTION:NOTES:END -->

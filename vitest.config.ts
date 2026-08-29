@@ -47,11 +47,11 @@ export default defineConfig({
           // Each integration test drives the REAL `backlog` CLI (and the built binary) over multiple
           // subprocess round-trips (an `init` + several `bundle new` + the command under test), so a single
           // test legitimately takes several seconds — and Windows command startup makes real bundle creation
-          // roughly 40–43s per bundle, with measured multi-command journeys reaching 85–95s. Keep the existing
-          // 60s ceiling on other hosts and give Windows one bounded 120s per-test + per-hook budget. The robust
-          // fix for a stateful-external serial suite is a measured budget, not retries; unit tests keep the fast
-          // default.
-          testTimeout: process.platform === "win32" ? 120_000 : 60_000,
+          // roughly 40–43s per bundle, with measured multi-command journeys reaching 85–95s on supported
+          // hosts. Give every integration test one bounded 120s budget; the robust fix for a stateful-external
+          // serial suite is a measured budget, not retries. Unit tests keep the fast default, and hook timing
+          // retains its existing platform-specific contract.
+          testTimeout: 120_000,
           hookTimeout: process.platform === "win32" ? 120_000 : 60_000,
         },
       },
