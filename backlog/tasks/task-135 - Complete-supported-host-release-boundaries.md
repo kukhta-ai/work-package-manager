@@ -1,10 +1,10 @@
 ---
 id: TASK-135
 title: Complete supported-host release boundaries
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-08-28 19:21'
-updated_date: '2026-08-29 06:59'
+updated_date: '2026-08-29 10:04'
 labels:
   - follow-up
   - ci
@@ -27,23 +27,47 @@ PR #5 current-tip CI exposed Windows release-boundary defects, portable archive-
 
 ## Definition of Done
 <!-- DOD:BEGIN -->
-- [ ] #1 Typechecks clean (tsc --noEmit) and Biome clean (biome ci)
-- [ ] #2 Tests added and green (vitest): unit for pure logic, integration where it touches ports
-- [ ] #3 Public functions documented; no dead code; the core import-boundary rule is not violated
+- [x] #1 Typechecks clean (tsc --noEmit) and Biome clean (biome ci)
+- [x] #2 Tests added and green (vitest): unit for pure logic, integration where it touches ports
+- [x] #3 Public functions documented; no dead code; the core import-boundary rule is not violated
 <!-- DOD:END -->
+
+
+
+
+
+
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 A missing confined file that is a direct child of a stable non-empty confinement root publishes the exact requested bytes on Windows and leaves no transient staging entry.
-- [ ] #2 Direct-child confined publication still refuses an existing target, an escaped path, or a changed parent identity without replacing unrelated entries.
-- [ ] #3 An installed npm command shim beneath a Windows path containing spaces executes through the resolved invocation with its exact arguments and reports the installed version.
-- [ ] #4 Unsafe Windows command expansion or quoting syntax remains rejected, and a failed installed-command execution retains actionable diagnostics.
-- [ ] #5 The real bundle-create and source-free packed-install journeys complete their publication and installed-command boundaries on supported Windows runners.
-- [ ] #6 Every real-CLI integration journey completes on supported Windows runners within 120 seconds; a stalled journey still fails within that bound.
-- [ ] #7 Existing and first-publication workspace state files that use request-bound quarantine publish exact bytes on Windows and retire their staged or prior evidence without residue.
-- [ ] #8 Synthetic core-bundle release fixtures include the required minimal install backlog and remain aliasable through the supported Windows fallback.
-- [ ] #9 Workspace-handoff integration expectations accept the product portable path dialect on every supported host without changing product path output.
+- [x] #1 A missing confined file that is a direct child of a stable non-empty confinement root publishes the exact requested bytes on Windows and leaves no transient staging entry.
+- [x] #2 Direct-child confined publication still refuses an existing target, an escaped path, or a changed parent identity without replacing unrelated entries.
+- [x] #3 An installed npm command shim beneath a Windows path containing spaces executes through the resolved invocation with its exact arguments and reports the installed version.
+- [x] #4 Unsafe Windows command expansion or quoting syntax remains rejected, and a failed installed-command execution retains actionable diagnostics.
+- [x] #5 The real bundle-create and source-free packed-install journeys complete their publication and installed-command boundaries on supported Windows runners.
+- [x] #6 Every real-CLI integration journey completes on supported Windows runners within 120 seconds; a stalled journey still fails within that bound.
+- [x] #7 Existing and first-publication workspace state files that use request-bound quarantine publish exact bytes on Windows and retire their staged or prior evidence without residue.
+- [x] #8 Synthetic core-bundle release fixtures include the required minimal install backlog and remain aliasable through the supported Windows fallback.
+- [x] #9 Workspace-handoff integration expectations accept the product portable path dialect on every supported host without changing product path output.
 <!-- AC:END -->
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 ## Implementation Notes
 
@@ -65,4 +89,6 @@ Cycle-7 gate evidence: literal bmad-investigate @ candidate 62bff985, run 332312
 Cycle-7 implementation/QA: literal bmad-dev-story and bmad-qa-generate-e2e-tests changed only cli.build.e2e expectations: each declared Claude scope accepts an exact entry or slash-delimited descendant, and serialized workspaceRoot is compared with toPosix(proj). Focused E2E 2/2 passed twice; build/typecheck/Biome/process/diff passed. Cycle-7 independent review: literal bmad-story-automator-review approved after auto-fixing one Medium test-only omission—the later TASK-95 archive helper repeated the same exact-directory assumption, so it now applies the same independent per-scope evidence rule. No product/config/timeout/archive-writer/alias behavior changed.
 
 Cycle-8 gate evidence: literal bmad-investigate at candidate 91706a2, hosted run 33236404866, Ubuntu/Node20 job 99058042907. Exactly two built-CLI integration tests exceeded the generic 60-second Vitest ceiling at 63.126s and 61.563s; 1,990 tests passed, one skipped, and there was no assertion diff, product exit failure, errno, or product stack. Prior and Node22 timings establish normal runner variation, so product changes, retries, per-test exceptions, wrappers, splitting, and a timeout above 120 seconds were rejected. Cycle-8 implementation and QA: literal bmad-dev-story and bmad-qa-generate-e2e-tests made the integration project existing 120-second test budget platform-independent while preserving unit defaults and platform-specific hook timing. Both affected journeys passed twice in 55.16s and 54.69s; typecheck, focused Biome, process policy, and diff checks passed. Cycle-8 independent review: literal bmad-story-automator-review approved with no findings and independently reran both journeys in 51.94s.
+
+Final cycle-8 candidate evidence: exact committed revision 0c274772dda6decf6116dde0751552bc424b505a passed a fresh clean-clone gate: npm ci; typecheck; lint:ci including strict tracked process-artifact policy; package inspection accepted wpm 0.1.0 with clean source binding and zero violations; build; and Vitest 142 of 142 files, 1,991 passed, one skipped, zero failed in 1,958.37 seconds. Hosted CI run 33241122085 passed all six cells: Ubuntu Node20 job 99070525974, Windows Node22 job 99070526032, Ubuntu Node22 job 99070526035, macOS Node20 job 99070526068, macOS Node22 job 99070526074, and Windows Node20 job 99070526108. The rejected predecessor run 33236404866 also passed both Windows cells and exposed only the diagnosed Ubuntu generic-timeout defect.
 <!-- SECTION:NOTES:END -->

@@ -1,13 +1,13 @@
 # Current orchestration pointer. History belongs in Git, Backlog.md, and research/evolution/.
 schemaVersion: 1
 phase: 6
-phaseName: "Epic gate — TASK-135 supported-host repair cycle 8"
+phaseName: "Epic gate — TASK-135 final candidate green"
 branch: fix/authoring-agent-onboarding/windows-release-boundaries
 epic: authoring-agent-onboarding
 activeStory: task-135
-reviewCycle: 8
+reviewCycle: 0
 activeChange:
-  id: task-135-supported-host-integration-timeout
+  id: task-135-final-candidate-0c27477-run-33241122085
 specialists:
   worker:
     role: implementation
@@ -34,4 +34,4 @@ workingMemory:
     - Skills-Results
   durableEpisode: research/evolution/records/authoring-agent-onboarding.yaml
 designRevisionLoaded: db2b3d7be8f20d21aa8f299064514ca676464eee
-lastUpdated: "2026-08-29T06:57:35Z"
+lastUpdated: "2026-08-29T10:04:39Z"
