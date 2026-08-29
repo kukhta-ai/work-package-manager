@@ -1,0 +1,37 @@
+{
+  "compilerOptions": {
+    /* Language + module system: ESM-only, modern Node (docs/12 §Engineering decisions). */
+    "target": "ES2022",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "lib": ["ES2022"],
+    "types": ["node"],
+
+    /* Strict type-checking (docs/13 §2 — illegal states unrepresentable starts at the compiler). */
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "noImplicitOverride": true,
+    "verbatimModuleSyntax": true,
+    "allowJs": true,
+    "checkJs": true,
+
+    /* This is the type-check-only base config (IDE + `npm run typecheck`): it emits nothing and
+       covers src + tests + tooling, so nothing escapes the check. The production build that emits
+       dist/ is tsconfig.build.json, which extends this and re-enables output for src/ only. */
+    "noEmit": true,
+
+    /* Interop. resolveJsonModule lets cli.ts import package.json so the version tracks the manifest. */
+    "resolveJsonModule": true,
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+    "skipLibCheck": true
+  },
+  "include": [
+    "src/**/*.ts",
+    "test/**/*.ts",
+    "distribution-preparation/**/*.js",
+    "scripts/**/*.mjs",
+    "vitest.config.ts"
+  ],
+  "exclude": ["node_modules", "dist"]
+}

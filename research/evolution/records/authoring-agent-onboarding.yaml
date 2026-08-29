@@ -1,0 +1,71 @@
+schemaVersion: 1
+id: authoring-agent-onboarding
+title: Authoring-agent onboarding experiment
+episodeStatus: active
+maturity: make-it-exist-first
+architectureStatus: provisional
+purpose: >-
+  Make the autonomously produced onboarding path usable on real projects first, then use observed project
+  behaviour to research better evolution destinations without presenting the current architecture as the target.
+baselineRevision: 24d4ed8cea927da16abf9f99297168c4f2cdc550
+preCleanupRevision: 9d28f96903cb3cf9b9cb8765f4f33fd76d07af39
+pullRequest: https://github.com/kukhta-ai/work-package-manager/pull/5
+canonicalTruth:
+  - docs/00-foundation-and-lineage.md through docs/14-lineage-reference.md
+  - backlog/ via the Backlog.md CLI
+  - src/ and executable tests
+  - PROCESS-ARTIFACTS.md
+observations:
+  - statement: The onboarding implementation reached 127 Done Backlog tasks before artifact closeout.
+    evidence:
+      - backlog task list --plain at pre-cleanup revision 9d28f96903cb3cf9b9cb8765f4f33fd76d07af39
+  - statement: The pre-cleanup tree tracked 216 workflow-output files under the two working-memory roots.
+    evidence:
+      - git ls-files at revision 9d28f96903cb3cf9b9cb8765f4f33fd76d07af39
+  - statement: WPM's package boundary already classifies BMAD output and .bmad content as prohibited planning material.
+    evidence:
+      - distribution-preparation/package-boundary.js
+      - test/unit/distribution-preparation/package-boundary.test.ts
+  - statement: Frozen sprint snapshots and story projections can contradict the authoritative completed Backlog state.
+    evidence:
+      - git:9d28f96903cb3cf9b9cb8765f4f33fd76d07af39:_bmad-output/implementation-artifacts/sprint-status-foundation.yaml
+      - backlog task list --plain
+decisions:
+  - decision: Treat conventional BMAD output paths as ignored working memory through their last consumer.
+    rationale: Workflows remain usable while generated projections stop competing with canonical docs and Backlog state.
+    evidence:
+      - PROCESS-ARTIFACTS.md
+      - .bmad/artifact-policy.yaml
+  - decision: Permanently retain compact evolution records and candidate gate receipts instead of raw workflow transcripts.
+    rationale: Decisions, lessons, waivers, and residual risk survive without preserving stale status mirrors and copied evidence.
+    evidence:
+      - research/evolution/schemas/evolution-record.schema.json
+      - research/evolution/schemas/gate-receipt.schema.json
+  - decision: Preserve the legacy corpus through a named pre-cleanup Git revision without rewriting history.
+    rationale: Historical research remains recoverable while current review sees the smaller active boundary.
+    evidence:
+      - git revision 9d28f96903cb3cf9b9cb8765f4f33fd76d07af39
+waivers:
+  - id: authenticated-claude-parity
+    scope: NFR8 authenticated Claude six-skill parity
+    authority: human
+    approvedBy: project user
+    approvedAt: 2026-08-25
+    limitation: No Claude behavioral acceptance is claimed because zero of 24 cells executed after OAuth expiry.
+    evidence:
+      - git:9d28f96903cb3cf9b9cb8765f4f33fd76d07af39:_bmad-output/test-artifacts/gate-decision-authoring-agent-onboarding-complete.json
+residualRisks:
+  - PR #5 still requires its current CI matrix and human review before merge to dev.
+  - The architecture remains provisional and may need replacement after observation on real projects.
+  - Ignored raw evidence exists only on machines that produced or explicitly restored it.
+candidateDestinations:
+  - status: hypothesis
+    hypothesis: A smaller authoring core may emerge after repeated real-project onboarding episodes expose stable seams.
+    evidenceNeeded: Compare failure modes and adaptation choices across multiple unrelated project types.
+  - status: hypothesis
+    hypothesis: Evolution records and executable checks may replace most narrative planning projections.
+    evidenceNeeded: Measure whether future maintainers can explain and change the system using only canonical truth and compact records.
+archive:
+  status: not-configured
+  rawEvidenceDisposition: local-ignored-until-cleanup
+updatedAt: "2026-08-26T13:07:23Z"

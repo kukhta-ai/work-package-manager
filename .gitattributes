@@ -1,0 +1,6 @@
+# Enforce LF line endings for all text files on checkout, regardless of platform.
+# Without this, a Windows runner's `git checkout` (autocrlf) converts LF -> CRLF on
+# disk, and `biome ci` (configured `formatter.lineEnding: "lf"`) then reports every
+# file as "content differs from formatting output", failing the Windows CI gate.
+# git auto-detects binary files and leaves them untouched.
+* text=auto eol=lf

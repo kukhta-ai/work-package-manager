@@ -1,0 +1,34 @@
+# Current orchestration pointer. History belongs in Git, Backlog.md, and research/evolution/.
+schemaVersion: 1
+phase: 7
+phaseName: "Handoff — first-release PR to main"
+branch: dev
+epic: authoring-agent-onboarding
+activeStory: null
+reviewCycle: 0
+activeChange:
+  id: first-release-dev-to-main
+specialists:
+  worker:
+    role: implementation
+    lastSkill: bmad-qa-generate-e2e-tests @ task-135 cycle 8 / 4-8-complete-supported-host-release-boundaries
+  reviewer:
+    role: independent review
+    lastSkill: bmad-story-automator-review @ task-135 cycle 8 / 4-8-complete-supported-host-release-boundaries — approved with no findings
+  investigator:
+    role: gate failure diagnosis
+    lastSkill: bmad-investigate @ task-135 candidate 91706a2 / job 99058042907
+  tea:
+    role: onboarding trace and NFR gate
+    lastSkill: bmad-testarch-trace @ onboarding human-waiver validation
+gatesPending: []
+waivers:
+  - receipt: research/evolution/gates/authoring-agent-onboarding-phase-6.json
+    id: authenticated-claude-parity
+workingMemory:
+  roots:
+    - _bmad-output
+    - Skills-Results
+  durableEpisode: research/evolution/records/authoring-agent-onboarding.yaml
+designRevisionLoaded: db2b3d7be8f20d21aa8f299064514ca676464eee
+lastUpdated: "2026-08-29T12:03:08Z"

@@ -1,0 +1,71 @@
+{
+  "$schema": "https://biomejs.dev/schemas/2.4.16/schema.json",
+  "vcs": {
+    "enabled": true,
+    "clientKind": "git",
+    "useIgnoreFile": true
+  },
+  "files": {
+    "includes": [
+      "src/**",
+      "test/**",
+      "distribution-preparation/**",
+      "scripts/**",
+      "research/evolution/**/*.json",
+      "*.json",
+      "*.ts"
+    ]
+  },
+  "formatter": {
+    "enabled": true,
+    "indentStyle": "space",
+    "indentWidth": 2,
+    "lineWidth": 100,
+    "lineEnding": "lf"
+  },
+  "javascript": {
+    "formatter": {
+      "quoteStyle": "double",
+      "semicolons": "always",
+      "trailingCommas": "all"
+    }
+  },
+  "linter": {
+    "enabled": true,
+    "rules": {
+      "recommended": true
+    }
+  },
+  "assist": {
+    "actions": {
+      "source": {
+        "organizeImports": "on"
+      }
+    }
+  },
+  "overrides": [
+    {
+      "includes": ["src/core/**"],
+      "linter": {
+        "rules": {
+          "style": {
+            "noRestrictedImports": {
+              "level": "error",
+              "options": {
+                "paths": {
+                  "commander": "The core is pure (doc 13 §1): the CLI framework belongs in src/commands/ or src/cli.ts, not src/core/.",
+                  "execa": "The core is pure (doc 13 §1): subprocess calls live in an adapter (e.g. the backlog-cli adapter), never in src/core/.",
+                  "omelette": "The core is pure (doc 13 §1): the completion library belongs in the command/adapter layer, not src/core/.",
+                  "node:fs": "The core is pure (doc 13 §1): file-system effects go through the injected FileSystem port and its node-fs adapter, never node:fs in src/core/.",
+                  "node:fs/promises": "The core is pure (doc 13 §1): file-system effects go through the injected FileSystem port and its node-fs adapter, never node:fs/promises in src/core/.",
+                  "node:os": "The core is pure (doc 13 §1): platform/OS access goes through the injected Environment port, never node:os in src/core/.",
+                  "node:child_process": "The core is pure (doc 13 §1): subprocess execution lives in an adapter, never node:child_process in src/core/."
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  ]
+}

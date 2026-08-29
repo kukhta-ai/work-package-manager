@@ -1,0 +1,84 @@
+# Conventions (compressed from doc `08`, `10`, `11`)
+
+The rules you apply when you create recipe tasks and decide which surface to use. For the full versioning and
+migration model, read doc `08`.
+
+## V2 recipe-task tagging (doc `08` §"Task tagging system")
+
+Every install-backlog task carries three structural tags — and *only* these as tags; everything else the
+executor records (inverse op, ownership, checksums) goes into the task's notes, not into more tags.
+
+| Tag | Form | Job |
+|---|---|---|
+| **Identity** | `step:<slug>` (label, immutable) | stable correlation key — survives version changes and Backlog.md's ID recycling after archive. Address preserved tasks by slug, never by `task-N`. |
+| **Kind** | `kind:state` or `kind:migration` (label, immutable) | which discipline applies. |
+| **Version** | `-m <version>` (Backlog.md **milestone**) | the version whose recipe currently defines this task — the one natively queryable axis (`backlog task list -m <v>`). |
+
+- **`kind:state`** — the idempotent "ensure desired state" steps: **detect → setup → verify**. Safe to re-run
+  (that *is* Repair), and **editable across versions** (re-running reconciles to the new desired state).
+- **`kind:migration`** — a step that only makes sense moving *from* a prior version (move a renamed config,
+  transform data). Runs **once**, version-gated, and is **immutable once shipped** — fix forward with a new
+  migration, never edit an applied one. The from-version gate lives in the task's AC body (it can't sit in a
+  label), e.g. "applies when installed version < 0.2.0".
+
+The detect/setup/verify trio is the floor of every bundle. A version-gated change coming from an older install
+is the only reason to add a `kind:migration`.
+
+## Backlog.md flag mechanics (doc `08` §"How these tags ride on Backlog.md")
+
+These trip people up — get them right:
+
+- **Labels do NOT accumulate** across repeated `-l` flags (only the last is kept) → put both labels in **one
+  comma-separated** flag: `-l "kind:state,step:ensure-chromium"`.
+- **`--ac` and `--dod` DO accumulate** across repeated flags — use one per criterion / DoD item.
+- **`--dep` is by task id** (`web-handoff-1`), not by step slug. Look the id up first with
+  `backlog task list --plain`. Ids display upper-cased (`WEB-HANDOFF-1`) but are referenced lower-case.
+- A bundle's `task_prefix` is its id (set by `wpm bundle new` in `install-backlog/config.yml` **before** any
+  task is created — changing it later orphans existing tasks), so its task ids are `<id>-1`, `<id>-2`, …
+
+Example (a state task, then a dependent one):
+
+```
+# Each bundle ships a `backlog → install-backlog` symlink, so the Backlog.md CLI resolves the recipe from
+# inside the bundle — just cd in and use it directly:
+(cd wip/bundles/web-handoff && \
+  backlog task create "ensure Chromium present" \
+    -l "kind:state,step:ensure-chromium" -m 0.1.0 \
+    --ac "chromium --version prints" --dod "ownership recorded" && \
+  backlog task create "place launcher config" \
+    -l "kind:state,step:place-launcher-config" -m 0.1.0 --dep web-handoff-1 \
+    --ac "launcher reachable from agent scope")
+```
+
+## The two cross-cutting rules
+
+- **Structure, not content** (doc `10`). The CLI manages structure (projects, bundles, manifest entries,
+  registered file/skill references); you write all **content** (task bodies, SKILL.md bodies, payload files) via
+  the filesystem. The CLI registers/lists/validates what you placed — it never authors prose.
+- **No-mirror** (doc `10`, `11`). The CLI does **not** wrap Backlog.md task ops; operate every install-backlog
+  and the authoring-backlog with **Backlog.md directly** (it only *materialises* authoring tasks as scope changes).
+
+## The deliverable executor front door is `_AGENTS.md` (doc `06`, `12`)
+
+The shipped artifact's executor front door — the `AGENTS.md` that, once installed, recognises an *end user's*
+agent and runs the install — is **author-owned content you may edit**, but it lives under a **reserved
+leading-underscore name**: `wip/_AGENTS.md` at the project root, and `wip/bundles/<id>/_AGENTS.md` per bundle.
+This is deliberate, not a stray file: under its canonical name (`AGENTS.md`) your *authoring* agent would
+auto-discover it by exact basename and follow it as a directive (closest-wins), contradicting the authoring
+front door. The leading underscore keeps it `.md` and editable while no agent auto-loads it.
+
+- **Edit the `_AGENTS.md` directly** (your editor / write tools — the same "structure, not content" rule). Do
+  **not** rename it to `AGENTS.md`/`CLAUDE.md`/`GEMINI.md`, and do **not** give it a `.tmpl` suffix — those are
+  reserved (auto-discovered names, and the placeholder-template convention, respectively).
+- **The build strips the prefix for you.** `wpm build` renames each `_AGENTS.md` → `AGENTS.md` in the archive
+  (root and per bundle) and creates the per-target alias front doors beside it (`CLAUDE.md` for `claude-code`,
+  `GEMINI.md` for `gemini`; agents that read `AGENTS.md` natively get none — from `manifest.targets`). Your bytes
+  are copied **verbatim** — the build never regenerates the content. The reserved `_AGENTS.md` never appears in
+  the archive.
+
+## Recipe vs receipt (doc `00`, `08`)
+
+You author the **recipe** — the shipped, versioned `install-backlog/` task definitions (replaced wholesale on
+update; holds no state). The **receipt** is the persistent filled-in copy the install stamps out on the user's
+machine and writes as it goes. Never store state in the shippable recipe; never write the receipt yourself —
+that is the executing agent's job at install time.

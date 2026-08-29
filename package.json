@@ -1,0 +1,72 @@
+{
+  "name": "wpm",
+  "version": "0.1.0",
+  "description": "The work-package-manager (wpm) installer-builder CLI: authors and packages agentic bundle-projects (see docs/00-14).",
+  "type": "module",
+  "license": "MIT",
+  "engines": {
+    "node": ">=20"
+  },
+  "peerDependencies": {
+    "backlog.md": ">=1.0.0"
+  },
+  "peerDependenciesMeta": {
+    "backlog.md": {
+      "optional": false
+    }
+  },
+  "bin": {
+    "wpm": "./dist/cli.js",
+    "installer": "./dist/cli.js"
+  },
+  "files": [
+    "agent-skills",
+    "dist",
+    "docs",
+    "templates"
+  ],
+  "scripts": {
+    "clean": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\"",
+    "build": "npm run clean && tsc -p tsconfig.build.json",
+    "postbuild": "node scripts/ensure-cli-executable.mjs",
+    "dev": "tsc -p tsconfig.build.json --watch",
+    "typecheck": "tsc",
+    "test": "vitest run",
+    "test:unit": "vitest run --project unit",
+    "test:integration": "vitest run --project integration",
+    "test:watch": "vitest",
+    "check:process-artifacts": "node scripts/check-process-artifacts.mjs",
+    "check:process-artifacts:ci": "node scripts/check-process-artifacts.mjs --require-tracked",
+    "lint": "biome check . && npm run check:process-artifacts",
+    "lint:ci": "biome ci . && npm run check:process-artifacts:ci",
+    "format": "biome format --write .",
+    "package:inspect": "node distribution-preparation/prepare-package.js",
+    "prepack": "npm run build",
+    "prepare": "husky",
+    "package:verify-install": "node distribution-preparation/verify-packed-install.js",
+    "package:prepare-candidate": "node distribution-preparation/prepare-candidate.js",
+    "package:assess-github": "node distribution-preparation/assess-github.js",
+    "package:assess-npm": "node distribution-preparation/assess-npm.js",
+    "package:classify-convergence": "node distribution-preparation/assess-convergence.js"
+  },
+  "lint-staged": {
+    "*.{ts,tsx,js,json,jsonc}": "biome check --write --no-errors-on-unmatched"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.4.16",
+    "@types/node": "25.9.1",
+    "@types/semver": "7.7.1",
+    "husky": "9.1.7",
+    "lint-staged": "17.0.7",
+    "typescript": "6.0.3",
+    "vitest": "4.1.7"
+  },
+  "dependencies": {
+    "commander": "14.0.3",
+    "execa": "9.6.1",
+    "omelette": "0.4.17",
+    "semver": "7.8.1",
+    "yaml": "2.9.0"
+  },
+  "private": true
+}
