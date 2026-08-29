@@ -3,19 +3,19 @@
   "id": "authoring-agent-onboarding-pr-5",
   "episodeId": "authoring-agent-onboarding",
   "candidate": {
-    "revision": "8f009260b50465699e2a3e19cd890d8ab2d1aeff",
-    "baselineRevision": "9d28f96903cb3cf9b9cb8765f4f33fd76d07af39",
+    "revision": "cbb0647c4fc4676e4df3e1e8caf06a9a62b96e1a",
+    "baselineRevision": "24d4ed8cea927da16abf9f99297168c4f2cdc550",
     "branch": "feature/authoring-agent-onboarding",
     "pullRequest": "https://github.com/kukhta-ai/work-package-manager/pull/5"
   },
-  "verdict": "pending",
+  "verdict": "waived",
   "checks": [
     {
       "name": "process-artifact-policy",
       "status": "passed",
       "evidence": [
         "npm run check:process-artifacts: PASS (1 evolution record, 2 gate receipts)",
-        "npm run check:process-artifacts:ci: PASS for the staged Git candidate",
+        "npm run check:process-artifacts:ci: PASS for the staged TASK-135 closeout candidate",
         "git ls-files '_bmad-output/**' 'Skills-Results/**': no tracked paths"
       ]
     },
@@ -27,22 +27,47 @@
     {
       "name": "biome",
       "status": "passed",
-      "evidence": ["npm run lint: 278 files checked, no fixes or violations"]
+      "evidence": ["npm run lint:ci passed in the exact clean-clone gate"]
+    },
+    {
+      "name": "package-and-build",
+      "status": "passed",
+      "evidence": [
+        "npm run package:inspect -- --revision HEAD accepted wpm 0.1.0 with clean source binding and zero violations",
+        "npm run build passed in the exact clean-clone gate"
+      ]
     },
     {
       "name": "vitest",
       "status": "passed",
-      "evidence": ["npm test: 142 files passed, 1958 tests passed in 1837.53 seconds"]
+      "evidence": [
+        "product/test revision 0c274772dda6decf6116dde0751552bc424b505a passed 142/142 files; 1991 passed, 1 skipped, 0 failed in 1958.37 seconds",
+        "candidate cbb0647c4fc4676e4df3e1e8caf06a9a62b96e1a changes no executable source or test behavior after that exact gate"
+      ]
     },
     {
       "name": "pull-request-ci-matrix",
-      "status": "pending",
-      "evidence": []
+      "status": "passed",
+      "evidence": [
+        "push CI run 33247086890 passed Node 20 and 22 on Ubuntu, macOS, and Windows for exact candidate cbb0647c4fc4676e4df3e1e8caf06a9a62b96e1a",
+        "pull-request CI run 33247089431 independently passed the same six cells on the same candidate"
+      ]
     },
     {
       "name": "human-review",
-      "status": "pending",
-      "evidence": []
+      "status": "passed",
+      "evidence": [
+        "project user explicitly authorized PR #5 merge into dev after green current-tip CI on 2026-08-28 and requested the merge on 2026-08-29"
+      ]
+    },
+    {
+      "name": "authenticated-claude-parity",
+      "status": "waived",
+      "waiverId": "authenticated-claude-parity",
+      "evidence": [
+        "0/24 required Claude behavioral subruns executed after OAuth expiry",
+        "No Claude behavioral acceptance is claimed"
+      ]
     }
   ],
   "waivers": [
@@ -59,9 +84,11 @@
     }
   ],
   "residualRisks": [
-    "This receipt is committed after its bound implementation candidate; the receipt-only commit changes no executable source or test behavior.",
-    "PR #5 cannot merge before the current CI matrix and human review complete."
+    "Authenticated Claude behavioral parity remains unproven until a human reauthenticates and all 24 fresh subruns execute.",
+    "The underlying architecture is provisional and emerged from an autonomous experimental SDLC pipeline; this candidate is a make-it-exist-first research baseline, not a claim of architectural maturity, release readiness, or a settled destination.",
+    "This receipt is committed after its bound candidate and changes no executable source or test behavior.",
+    "npm ci reports three existing high-severity development-dependency advisories; the prescribed gate and production-dependency audit boundary remain unaffected."
   ],
-  "preCleanupRevision": "9d28f96903cb3cf9b9cb8765f4f33fd76d07af39",
-  "updatedAt": "2026-08-26T13:09:10Z"
+  "preCleanupRevision": "cbb0647c4fc4676e4df3e1e8caf06a9a62b96e1a",
+  "updatedAt": "2026-08-29T11:59:55Z"
 }
