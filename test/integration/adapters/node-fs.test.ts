@@ -18,7 +18,7 @@ import {
   writeFileSync,
   writeSync,
 } from "node:fs";
-import { dirname, join } from "node:path";
+import { dirname, join, relative } from "node:path";
 import { describe, expect, it } from "vitest";
 import { NodeFileSystem } from "../../../src/adapters/node-fs.js";
 import { withTempDir } from "../../helpers/tmpdir.js";
@@ -255,6 +255,61 @@ class TreeOpenHandleRaceFileSystem extends NodeFileSystem {
     if (path !== this.racedPath || this.raced) return;
     this.raced = true;
     writeSync(this.descriptor, "RACED LEGACY\n", 0, "utf8");
+  }
+}
+
+class AliasCopyPublicationRaceFileSystem extends NodeFileSystem {
+  constructor(private readonly racedAlias: string) {
+    super({ platform: "win32" });
+  }
+
+  protected override beforeConfinedAliasCopyPublication(aliasPath: string): void {
+    if (aliasPath === this.racedAlias) {
+      writeFileSync(join(aliasPath, "SKILL.md"), "CONCURRENT ALIAS BYTES\n");
+    }
+  }
+}
+
+class AliasCopyStagingFailureFileSystem extends NodeFileSystem {
+  protected override copyConfinedAliasTree(
+    from: string,
+    to: string,
+    phase: "retained" | "staged",
+  ): void {
+    if (phase === "staged") {
+      mkdirSync(to, { recursive: true });
+      writeFileSync(join(to, "partial.txt"), `partial from ${from}\n`);
+      throw new Error("injected alias-copy staging failure");
+    }
+    super.copyConfinedAliasTree(from, to, phase);
+  }
+}
+
+class AliasCopyPostDetachmentRaceFileSystem extends NodeFileSystem {
+  racedIdentity: { readonly dev: bigint; readonly ino: bigint } | undefined;
+
+  constructor(
+    private readonly racedAlias: string,
+    platform?: NodeJS.Platform,
+  ) {
+    super(platform === undefined ? {} : { platform });
+  }
+
+  protected override beforeConfinedAliasCopyStagedPublication(aliasPath: string): void {
+    if (aliasPath !== this.racedAlias) return;
+    mkdirSync(aliasPath);
+    const raced = lstatSync(aliasPath, { bigint: true });
+    this.racedIdentity = { dev: raced.dev, ino: raced.ino };
+  }
+}
+
+class AliasCopyDirectoryPublicationFailureFileSystem extends NodeFileSystem {
+  constructor() {
+    super({ platform: "win32" });
+  }
+
+  protected override publishConfinedAliasDirectory(): void {
+    throw new Error("injected staged-directory publication failure");
   }
 }
 
@@ -1604,6 +1659,232 @@ describe("NodeFileSystem (the real FileSystem adapter, against a real tmpdir)", 
       expect(fs.read(join(dst, "a.txt"))).toBe("A");
       expect(fs.read(join(dst, "nested", "b.txt"))).toBe("B");
       expect(readFileSync(join(dst, "bin.dat")).equals(bytes)).toBe(true);
+    });
+  });
+
+  it("refreshAliasCopyConfined publishes an exact staged tree and retires private evidence", async () => {
+    await withTempDir((dir) => {
+      const fs = new NodeFileSystem({ platform: "win32" });
+      const source = join(dir, "wip", "installer-skills");
+      const alias = join(dir, "wip", ".claude", "skills");
+      const quarantine = {
+        root: join(dir, ".wpm", "bundle-authoring-quarantine"),
+        path: join(dir, ".wpm", "bundle-authoring-quarantine", "request", "alias"),
+      };
+      fs.write(join(source, "SKILL.md"), "OLD INSTALLER\n");
+      fs.copyTree(source, alias);
+      fs.write(join(source, "SKILL.md"), "NEW INSTALLER\n");
+      fs.write(join(source, "web-advisor", "SKILL.md"), "NEW ADVISOR\n");
+
+      fs.refreshAliasCopyConfined(
+        dir,
+        source,
+        alias,
+        singleFileTreeFingerprint("OLD INSTALLER\n"),
+        quarantine,
+      );
+
+      expect(readFileSync(join(alias, "SKILL.md"), "utf8")).toBe("NEW INSTALLER\n");
+      expect(readFileSync(join(alias, "web-advisor", "SKILL.md"), "utf8")).toBe("NEW ADVISOR\n");
+      expect(lstatSync(alias).isDirectory()).toBe(true);
+      expect(existsSync(quarantine.root)).toBe(false);
+    });
+  });
+
+  it.runIf(process.platform !== "win32")(
+    "refreshAliasCopyConfined promotes an inherited POSIX copy to an exact relative symlink",
+    async () => {
+      await withTempDir((dir) => {
+        const fs = new NodeFileSystem({ platform: "linux" });
+        const source = join(dir, "wip", "installer-skills");
+        const alias = join(dir, "wip", ".claude", "skills");
+        const quarantine = {
+          root: join(dir, ".wpm", "bundle-authoring-quarantine"),
+          path: join(dir, ".wpm", "bundle-authoring-quarantine", "request", "alias"),
+        };
+        fs.write(join(source, "SKILL.md"), "OLD INSTALLER\n");
+        fs.copyTree(source, alias);
+        fs.write(join(source, "SKILL.md"), "NEW INSTALLER\n");
+
+        fs.refreshAliasCopyConfined(
+          dir,
+          source,
+          alias,
+          singleFileTreeFingerprint("OLD INSTALLER\n"),
+          quarantine,
+        );
+
+        expect(lstatSync(alias).isSymbolicLink()).toBe(true);
+        expect(readlinkSync(alias)).toBe(relative(dirname(alias), source));
+        expect(readFileSync(join(alias, "SKILL.md"), "utf8")).toBe("NEW INSTALLER\n");
+        expect(existsSync(quarantine.root)).toBe(false);
+      });
+    },
+  );
+
+  it.runIf(process.platform !== "win32")(
+    "refreshAliasCopyConfined preserves an empty POSIX destination raced in after detachment",
+    async () => {
+      await withTempDir((dir) => {
+        const source = join(dir, "wip", "installer-skills");
+        const alias = join(dir, "wip", ".claude", "skills");
+        const quarantine = {
+          root: join(dir, ".wpm", "bundle-authoring-quarantine"),
+          path: join(dir, ".wpm", "bundle-authoring-quarantine", "request", "alias"),
+        };
+        const fs = new AliasCopyPostDetachmentRaceFileSystem(alias, "linux");
+        fs.write(join(source, "SKILL.md"), "OLD INSTALLER\n");
+        fs.copyTree(source, alias);
+        fs.write(join(source, "SKILL.md"), "NEW INSTALLER\n");
+
+        expect(() =>
+          fs.refreshAliasCopyConfined(
+            dir,
+            source,
+            alias,
+            singleFileTreeFingerprint("OLD INSTALLER\n"),
+            quarantine,
+          ),
+        ).toThrow();
+        const raced = lstatSync(alias, { bigint: true });
+        expect(raced.isDirectory()).toBe(true);
+        expect({ dev: raced.dev, ino: raced.ino }).toEqual(fs.racedIdentity);
+        expect(readdirSync(alias)).toEqual([]);
+        expect(readFileSync(join(quarantine.path, "SKILL.md"), "utf8")).toBe("OLD INSTALLER\n");
+        expect(readFileSync(`${quarantine.path}.displaced/SKILL.md`, "utf8")).toBe(
+          "OLD INSTALLER\n",
+        );
+      });
+    },
+  );
+
+  it("refreshAliasCopyConfined restores Windows old-copy evidence after publication failure", async () => {
+    await withTempDir((dir) => {
+      const fs = new AliasCopyDirectoryPublicationFailureFileSystem();
+      const source = join(dir, "wip", "installer-skills");
+      const alias = join(dir, "wip", ".claude", "skills");
+      const quarantine = {
+        root: join(dir, ".wpm", "bundle-authoring-quarantine"),
+        path: join(dir, ".wpm", "bundle-authoring-quarantine", "request", "alias"),
+      };
+      fs.write(join(source, "SKILL.md"), "OLD INSTALLER\n");
+      fs.copyTree(source, alias);
+      const oldAlias = lstatSync(alias, { bigint: true });
+      fs.write(join(source, "SKILL.md"), "NEW INSTALLER\n");
+
+      expect(() =>
+        fs.refreshAliasCopyConfined(
+          dir,
+          source,
+          alias,
+          singleFileTreeFingerprint("OLD INSTALLER\n"),
+          quarantine,
+        ),
+      ).toThrow("injected staged-directory publication failure");
+      const restoredAlias = lstatSync(alias, { bigint: true });
+      expect({ dev: restoredAlias.dev, ino: restoredAlias.ino }).toEqual({
+        dev: oldAlias.dev,
+        ino: oldAlias.ino,
+      });
+      expect(readFileSync(join(alias, "SKILL.md"), "utf8")).toBe("OLD INSTALLER\n");
+      expect(readFileSync(join(quarantine.path, "SKILL.md"), "utf8")).toBe("OLD INSTALLER\n");
+      expect(readFileSync(`${quarantine.path}.staged/SKILL.md`, "utf8")).toBe("NEW INSTALLER\n");
+      expect(existsSync(`${quarantine.path}.displaced`)).toBe(false);
+    });
+  });
+
+  it.runIf(process.platform === "win32")(
+    "refreshAliasCopyConfined uses native Windows no-replace directory publication",
+    async () => {
+      await withTempDir((dir) => {
+        const source = join(dir, "wip", "installer-skills");
+        const alias = join(dir, "wip", ".claude", "skills");
+        const quarantine = {
+          root: join(dir, ".wpm", "bundle-authoring-quarantine"),
+          path: join(dir, ".wpm", "bundle-authoring-quarantine", "request", "alias"),
+        };
+        const fs = new AliasCopyPostDetachmentRaceFileSystem(alias);
+        fs.write(join(source, "SKILL.md"), "OLD INSTALLER\n");
+        fs.copyTree(source, alias);
+        fs.write(join(source, "SKILL.md"), "NEW INSTALLER\n");
+
+        expect(() =>
+          fs.refreshAliasCopyConfined(
+            dir,
+            source,
+            alias,
+            singleFileTreeFingerprint("OLD INSTALLER\n"),
+            quarantine,
+          ),
+        ).toThrow();
+        const raced = lstatSync(alias, { bigint: true });
+        expect(raced.isDirectory()).toBe(true);
+        expect({ dev: raced.dev, ino: raced.ino }).toEqual(fs.racedIdentity);
+        expect(readdirSync(alias)).toEqual([]);
+        expect(readFileSync(`${quarantine.path}.displaced/SKILL.md`, "utf8")).toBe(
+          "OLD INSTALLER\n",
+        );
+      });
+    },
+  );
+
+  it("refreshAliasCopyConfined preserves a collision introduced after its final evidence check", async () => {
+    await withTempDir((dir) => {
+      const source = join(dir, "wip", "installer-skills");
+      const alias = join(dir, "wip", ".claude", "skills");
+      const quarantine = {
+        root: join(dir, ".wpm", "bundle-authoring-quarantine"),
+        path: join(dir, ".wpm", "bundle-authoring-quarantine", "request", "alias"),
+      };
+      const fs = new AliasCopyPublicationRaceFileSystem(alias);
+      fs.write(join(source, "SKILL.md"), "OLD INSTALLER\n");
+      fs.copyTree(source, alias);
+      fs.write(join(source, "SKILL.md"), "NEW INSTALLER\n");
+      fs.write(join(source, "web-advisor", "SKILL.md"), "NEW ADVISOR\n");
+
+      expect(() =>
+        fs.refreshAliasCopyConfined(
+          dir,
+          source,
+          alias,
+          singleFileTreeFingerprint("OLD INSTALLER\n"),
+          quarantine,
+        ),
+      ).toThrow("destination raced during detachment");
+      expect(readFileSync(join(alias, "SKILL.md"), "utf8")).toBe("CONCURRENT ALIAS BYTES\n");
+      expect(existsSync(join(alias, "web-advisor"))).toBe(false);
+      expect(readFileSync(join(quarantine.path, "SKILL.md"), "utf8")).toBe("OLD INSTALLER\n");
+    });
+  });
+
+  it("refreshAliasCopyConfined keeps a failed partial stage private and the public copy exact", async () => {
+    await withTempDir((dir) => {
+      const fs = new AliasCopyStagingFailureFileSystem();
+      const source = join(dir, "wip", "installer-skills");
+      const alias = join(dir, "wip", ".claude", "skills");
+      const quarantine = {
+        root: join(dir, ".wpm", "bundle-authoring-quarantine"),
+        path: join(dir, ".wpm", "bundle-authoring-quarantine", "request", "alias"),
+      };
+      fs.write(join(source, "SKILL.md"), "OLD INSTALLER\n");
+      fs.copyTree(source, alias);
+      fs.write(join(source, "SKILL.md"), "NEW INSTALLER\n");
+
+      expect(() =>
+        fs.refreshAliasCopyConfined(
+          dir,
+          source,
+          alias,
+          singleFileTreeFingerprint("OLD INSTALLER\n"),
+          quarantine,
+        ),
+      ).toThrow("injected alias-copy staging failure");
+      expect(readFileSync(join(alias, "SKILL.md"), "utf8")).toBe("OLD INSTALLER\n");
+      expect(readdirSync(alias)).toEqual(["SKILL.md"]);
+      expect(readFileSync(`${quarantine.path}.staged/partial.txt`, "utf8")).toContain(
+        "partial from",
+      );
+      expect(readFileSync(join(quarantine.path, "SKILL.md"), "utf8")).toBe("OLD INSTALLER\n");
     });
   });
 

@@ -46,13 +46,13 @@ export default defineConfig({
           fileParallelism: false,
           // Each integration test drives the REAL `backlog` CLI (and the built binary) over multiple
           // subprocess round-trips (an `init` + several `bundle new` + the command under test), so a single
-          // test legitimately takes several seconds — and, run serially under load, the heaviest ones (e.g.
-          // the `requires`/`installer-skills` families, which scaffold multiple bundles then materialise into
-          // the real `.authoring-backlog`) exceed vitest's 5s default. The robust fix for a stateful-external
-          // serial suite is a realistic time budget, NOT retries: raise the per-test + per-hook timeout so the
-          // cold CI gate (`vitest run`) is reliably green. The unit project keeps the fast default.
-          testTimeout: 60000,
-          hookTimeout: 60000,
+          // test legitimately takes several seconds — and Windows command startup makes real bundle creation
+          // roughly 40–43s per bundle, with measured multi-command journeys reaching 85–95s. Keep the existing
+          // 60s ceiling on other hosts and give Windows one bounded 120s per-test + per-hook budget. The robust
+          // fix for a stateful-external serial suite is a measured budget, not retries; unit tests keep the fast
+          // default.
+          testTimeout: process.platform === "win32" ? 120_000 : 60_000,
+          hookTimeout: process.platform === "win32" ? 120_000 : 60_000,
         },
       },
     ],

@@ -194,6 +194,21 @@ export interface FileSystem {
   copyTree(from: string, to: string): void;
 
   /**
+   * Refresh one ownership-verified directory-copy alias without merging into public state. An adapter may
+   * use a native no-replace whole-directory publication where the representation/platform supplies it, or
+   * atomically create a source-exact relative symbolic link at the absent public path. A raced destination is
+   * never overwritten; failure leaves the prior copy public or retains exact request-owned recovery evidence
+   * beneath `quarantine`.
+   */
+  refreshAliasCopyConfined(
+    confinementRoot: string,
+    sourcePath: string,
+    aliasPath: string,
+    expectedAliasTreeFingerprint: string,
+    quarantine: ConfinedQuarantine,
+  ): void;
+
+  /**
    * Recursively remove a path (file or directory). Does nothing — and does not error — if it is absent.
    *
    * @param path - The path to remove.

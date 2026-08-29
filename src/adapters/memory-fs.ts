@@ -43,6 +43,20 @@ export class MemoryFileSystem implements FileSystem {
   /** Deterministic test seam after a retained public tree has been detached. */
   protected afterConfinedTreeDetachment(_path: string, _quarantinePath: string): void {}
 
+  /** Deterministic test seam after one canonical alias-copy entry has been staged privately. */
+  protected afterConfinedAliasCopyStageEntry(
+    _aliasPath: string,
+    _stagedPath: string,
+    _entryPath: string,
+  ): void {}
+
+  /** Deterministic test seam after final evidence checks but before the conditional whole-tree swap. */
+  protected beforeConfinedAliasCopyPublication(
+    _aliasPath: string,
+    _stagedPath: string,
+    _retainedPath: string,
+  ): void {}
+
   /** Recognize both supported absolute-path dialects without depending on the test runner's host platform. */
   private isAbsolute(path: string): boolean {
     return posix.isAbsolute(path) || win32.isAbsolute(path);
@@ -690,6 +704,203 @@ export class MemoryFileSystem implements FileSystem {
         this.files.set(`${dst}/${filePath.slice(srcPrefix.length)}`, content);
         this.recordDir(this.parentOf(`${dst}/${filePath.slice(srcPrefix.length)}`));
       }
+    }
+  }
+
+  /** @inheritdoc */
+  refreshAliasCopyConfined(
+    confinementRoot: string,
+    sourcePath: string,
+    aliasPath: string,
+    expectedAliasTreeFingerprint: string,
+    quarantine: ConfinedQuarantine,
+  ): void {
+    const confinement = this.normalize(confinementRoot);
+    const source = this.normalize(sourcePath);
+    const alias = this.normalize(aliasPath);
+    this.assertConfinedMutationPath(confinement, source, "directory");
+    this.assertConfinedMutationPath(confinement, alias, "directory");
+    const privateSlot = this.assertQuarantine(confinement, quarantine, "directory");
+    const retainedPath = privateSlot.path;
+    const stagedPath = `${privateSlot.path}.staged`;
+    const displacedPath = `${privateSlot.path}.displaced`;
+    for (const privatePath of [retainedPath, stagedPath, displacedPath]) {
+      if (this.inspectPath(privatePath).kind !== "missing") {
+        throw new Error(`confined alias-copy evidence is occupied: ${privatePath}`);
+      }
+      this.assertConfinedMutationPath(confinement, privatePath, "file-or-missing");
+    }
+
+    const sourceIdentity = this.directoryIdentity(source);
+    const aliasIdentity = this.directoryIdentity(alias);
+    const confinementIdentity = this.directoryIdentity(confinement);
+    const sourceParent = this.parentOf(source);
+    const aliasParent = this.parentOf(alias);
+    const sourceParentIdentity = this.directoryIdentity(sourceParent);
+    const aliasParentIdentity = this.directoryIdentity(aliasParent);
+    const sourceFingerprint = this.treeFingerprint(source);
+    if (
+      sourceIdentity === undefined ||
+      aliasIdentity === undefined ||
+      confinementIdentity === undefined ||
+      sourceParentIdentity === undefined ||
+      aliasParentIdentity === undefined ||
+      this.treeFingerprint(alias) !== expectedAliasTreeFingerprint
+    ) {
+      throw new Error(`confined alias-copy preimage changed: ${alias}`);
+    }
+
+    const copyPrivateTree = (from: string, to: string, reportStagedEntries: boolean): void => {
+      this.recordDir(to);
+      const walk = (sourceDirectory: string, destinationDirectory: string): void => {
+        for (const entry of [...this.list(sourceDirectory)].sort((left, right) =>
+          compareCodeUnits(left.name, right.name),
+        )) {
+          const sourceEntry = `${sourceDirectory}/${entry.name}`;
+          const destinationEntry = `${destinationDirectory}/${entry.name}`;
+          const inspected = this.inspectPath(sourceEntry);
+          if (inspected.kind === "directory") {
+            this.recordDir(destinationEntry);
+          } else if (inspected.kind === "file") {
+            this.files.set(destinationEntry, this.read(sourceEntry));
+            this.recordDir(this.parentOf(destinationEntry));
+          } else if (inspected.kind === "symbolic-link") {
+            const rawTarget = this.aliases.get(this.normalize(sourceEntry));
+            if (rawTarget === undefined) {
+              throw new Error(
+                `confined alias-copy link disappeared during staging: ${sourceEntry}`,
+              );
+            }
+            this.aliases.set(destinationEntry, rawTarget);
+            this.recordDir(this.parentOf(destinationEntry));
+          } else {
+            throw new Error(
+              `confined alias-copy source contains ${inspected.kind}: ${sourceEntry}`,
+            );
+          }
+          if (reportStagedEntries) {
+            this.afterConfinedAliasCopyStageEntry(alias, stagedPath, destinationEntry);
+          }
+          if (inspected.kind === "directory") walk(sourceEntry, destinationEntry);
+        }
+      };
+      walk(from, to);
+    };
+
+    const moveTree = (from: string, to: string): void => {
+      if (this.inspectPath(from).kind !== "directory") {
+        throw new Error(`confined alias-copy move source is not a directory: ${from}`);
+      }
+      if (this.inspectPath(to).kind !== "missing") {
+        throw new Error(`confined alias-copy publication destination appeared: ${to}`);
+      }
+      const prefix = `${from}/`;
+      const reroot = (path: string): string =>
+        path === from ? to : `${to}/${path.slice(prefix.length)}`;
+      const movedDirectories = [...this.directories]
+        .filter((path) => path === from || path.startsWith(prefix))
+        .map((path) => [path, reroot(path), this.directoryIdentities.get(path)] as const);
+      const movedFiles = [...this.files]
+        .filter(([path]) => path.startsWith(prefix))
+        .map(([path, content]) => [path, reroot(path), content] as const);
+      const movedAliases = [...this.aliases]
+        .filter(([path]) => path.startsWith(prefix))
+        .map(([path, target]) => [path, reroot(path), target] as const);
+      for (const [path] of movedFiles) this.files.delete(path);
+      for (const [path] of movedAliases) this.aliases.delete(path);
+      for (const [path] of movedDirectories) {
+        this.directories.delete(path);
+        this.directoryIdentities.delete(path);
+      }
+      for (const [, path, identity] of movedDirectories) {
+        this.directories.add(path);
+        if (identity !== undefined) this.directoryIdentities.set(path, identity);
+      }
+      for (const [, path, content] of movedFiles) this.files.set(path, content);
+      for (const [, path, target] of movedAliases) this.aliases.set(path, target);
+    };
+
+    try {
+      copyPrivateTree(alias, retainedPath, false);
+      const privateParent = this.parentOf(retainedPath);
+      const privateParentIdentity = this.directoryIdentity(privateParent);
+      const assertBoundaryIdentities = (): void => {
+        this.assertDirectoryIdentity(confinement, confinementIdentity);
+        this.assertDirectoryIdentity(sourceParent, sourceParentIdentity);
+        this.assertDirectoryIdentity(aliasParent, aliasParentIdentity);
+        this.assertDirectoryIdentity(privateParent, privateParentIdentity);
+      };
+      assertBoundaryIdentities();
+      if (
+        this.treeFingerprint(retainedPath) !== expectedAliasTreeFingerprint ||
+        this.directoryIdentity(alias) !== aliasIdentity ||
+        this.treeFingerprint(alias) !== expectedAliasTreeFingerprint
+      ) {
+        throw new Error(`confined alias-copy preimage changed during retention: ${alias}`);
+      }
+
+      copyPrivateTree(source, stagedPath, true);
+      if (
+        this.treeFingerprint(stagedPath) !== sourceFingerprint ||
+        this.directoryIdentity(source) !== sourceIdentity ||
+        this.treeFingerprint(source) !== sourceFingerprint
+      ) {
+        throw new Error(`confined alias-copy source changed during staging: ${source}`);
+      }
+      this.assertConfinedMutationPath(confinement, source, "directory");
+      this.assertConfinedMutationPath(confinement, alias, "directory");
+      assertBoundaryIdentities();
+      if (
+        this.directoryIdentity(alias) !== aliasIdentity ||
+        this.treeFingerprint(alias) !== expectedAliasTreeFingerprint ||
+        this.directoryIdentity(source) !== sourceIdentity ||
+        this.treeFingerprint(source) !== sourceFingerprint
+      ) {
+        throw new Error(`confined alias-copy boundary changed before publication: ${alias}`);
+      }
+
+      this.beforeConfinedAliasCopyPublication(alias, stagedPath, retainedPath);
+      if (
+        this.directoryIdentity(alias) !== aliasIdentity ||
+        this.treeFingerprint(alias) !== expectedAliasTreeFingerprint
+      ) {
+        throw new Error(`confined alias-copy destination raced at publication: ${alias}`);
+      }
+      moveTree(alias, displacedPath);
+      moveTree(stagedPath, alias);
+      this.assertConfinedMutationPath(confinement, source, "directory");
+      this.assertConfinedMutationPath(confinement, alias, "directory");
+      assertBoundaryIdentities();
+      if (
+        this.treeFingerprint(alias) !== sourceFingerprint ||
+        this.directoryIdentity(source) !== sourceIdentity ||
+        this.treeFingerprint(source) !== sourceFingerprint ||
+        this.treeFingerprint(displacedPath) !== expectedAliasTreeFingerprint ||
+        this.treeFingerprint(retainedPath) !== expectedAliasTreeFingerprint
+      ) {
+        throw new Error(`confined alias-copy publication could not be verified: ${alias}`);
+      }
+      this.remove(displacedPath);
+      this.remove(retainedPath);
+      this.removeEmptyDirectoryChain(this.parentOf(retainedPath), this.parentOf(privateSlot.root));
+    } catch (error) {
+      if (
+        this.inspectPath(alias).kind === "missing" &&
+        this.inspectPath(displacedPath).kind === "directory"
+      ) {
+        moveTree(displacedPath, alias);
+      }
+      const evidence = [retainedPath, stagedPath, displacedPath].filter(
+        (path) => this.inspectPath(path).kind !== "missing",
+      );
+      throw new Error(
+        `${error instanceof Error ? error.message : String(error)}${
+          evidence.length === 0
+            ? ""
+            : `; request-owned alias-copy evidence retained at ${evidence.join(", ")}`
+        }`,
+        { cause: error },
+      );
     }
   }
 

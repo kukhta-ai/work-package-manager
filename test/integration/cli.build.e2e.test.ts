@@ -204,7 +204,7 @@ describeIfBuilt("`wpm build dry-run` E2E (task-82, through dist/cli.js)", () => 
     await withTempDir(async (dir) => {
       const proj = initProject(dir);
       expect(cli(["project", "targets", "add", "claude-code", "-C", proj], dir).code).toBe(0);
-      expect(cli(["bundle", "new", "web", "-C", proj], dir).code).toBe(0);
+      expect(cli(["bundle", "new", "web", "-C", proj], dir)).toMatchObject({ code: 0 });
 
       const r = cli(["build", "dry-run", "-C", proj], dir);
       expect(r.code).toBe(0);
@@ -240,7 +240,7 @@ describeIfBuilt("`wpm build package` E2E (task-83, through dist/cli.js)", () => 
     await withTempDir(async (dir) => {
       const proj = initProject(dir);
       expect(cli(["project", "targets", "add", "claude-code", "-C", proj], dir).code).toBe(0);
-      expect(cli(["bundle", "new", "web", "-C", proj], dir).code).toBe(0);
+      expect(cli(["bundle", "new", "web", "-C", proj], dir)).toMatchObject({ code: 0 });
       const wip = join(proj, "wip");
       writeFileSync(join(wip, "installer-skills", "qa-root.txt"), "root-scope-content\n");
       writeFileSync(
@@ -337,7 +337,7 @@ describeIfBuilt("`wpm build package` E2E (task-83, through dist/cli.js)", () => 
       // claude-code is a target ⇒ the build creates the CLAUDE.md alias front door beside each AGENTS.md (doc 05).
       expect(cli(["project", "targets", "add", "claude-code", "-C", proj], dir).code).toBe(0);
       // A real enabled bundle ⇒ exercises the PER-BUNDLE front door + the scope-alias symlink-preservation path.
-      expect(cli(["bundle", "new", "web", "-C", proj], dir).code).toBe(0);
+      expect(cli(["bundle", "new", "web", "-C", proj], dir)).toMatchObject({ code: 0 });
 
       // The author EDITS the reserved-prefix front doors (AC90#1). Unique sentinels prove byte-for-byte fidelity.
       const ROOT_SENTINEL = "ROOT-FRONT-DOOR-SENTINEL-зважив-7f3a";
@@ -425,7 +425,7 @@ describeIfBuilt("`wpm build package` E2E (task-83, through dist/cli.js)", () => 
     await withTempDir((dir) => {
       const proj = initProject(dir);
       expect(cli(["project", "targets", "add", "claude-code", "-C", proj], dir).code).toBe(0);
-      expect(cli(["bundle", "new", "web", "-C", proj], dir).code).toBe(0);
+      expect(cli(["bundle", "new", "web", "-C", proj], dir)).toMatchObject({ code: 0 });
 
       // The reserved-prefix front doors exist (author-owned), at the project root and in the bundle.
       expect(existsSync(join(proj, "wip", "_AGENTS.md"))).toBe(true);
@@ -449,7 +449,7 @@ describeIfBuilt("`wpm build package` E2E (task-83, through dist/cli.js)", () => 
       const proj = initProject(dir);
       expect(cli(["project", "targets", "add", "claude-code", "-C", proj], dir).code).toBe(0);
       // Two bundles ⇒ the guard covers MULTIPLE bundle subtrees, not just one.
-      expect(cli(["bundle", "new", "web", "-C", proj], dir).code).toBe(0);
+      expect(cli(["bundle", "new", "web", "-C", proj], dir)).toMatchObject({ code: 0 });
       expect(cli(["bundle", "new", "doc", "-C", proj], dir).code).toBe(0);
 
       // Walk the WHOLE deliverable (`wip/`) and assert no file's BASENAME is a canonical auto-discovered front
@@ -546,7 +546,7 @@ describeIfBuilt("`wpm build package` E2E (task-83, through dist/cli.js)", () => 
       const proj = initProject(dir);
       expect(cli(["project", "targets", "add", "claude-code", "-C", proj], dir).code).toBe(0);
       // a config-only bundle: a fresh `bundle new` registers/ships no payload skill (TASK-103):
-      expect(cli(["bundle", "new", "web", "-C", proj], dir).code).toBe(0);
+      expect(cli(["bundle", "new", "web", "-C", proj], dir)).toMatchObject({ code: 0 });
 
       const r = cli(["build", "package", "--format", "tarball", "-C", proj], dir);
       expect(r.code).toBe(0);
@@ -577,7 +577,7 @@ describeIfBuilt("`wpm build package` E2E (task-83, through dist/cli.js)", () => 
       // Zero enabled bundles: init renders a complete runtime-discovery protocol, never a static menu.
       assertRuntimeBundleMenu();
       expect(cli(["project", "targets", "add", "claude-code", "-C", proj], dir).code).toBe(0);
-      expect(cli(["bundle", "new", "web", "-C", proj], dir).code).toBe(0);
+      expect(cli(["bundle", "new", "web", "-C", proj], dir)).toMatchObject({ code: 0 });
       // One enabled bundle: the author-owned front door remains complete and discovers it from the manifest.
       assertRuntimeBundleMenu();
 
@@ -671,7 +671,7 @@ describeIfBuilt("`wpm build package` E2E (task-83, through dist/cli.js)", () => 
     await withTempDir(async (dir) => {
       const proj = initProject(dir);
       expect(cli(["project", "targets", "add", "claude-code", "-C", proj], dir).code).toBe(0);
-      expect(cli(["bundle", "new", "web", "-C", proj], dir).code).toBe(0);
+      expect(cli(["bundle", "new", "web", "-C", proj], dir)).toMatchObject({ code: 0 });
       expect(cli(["bundle", "new", "other", "-C", proj], dir).code).toBe(0);
 
       const wip = join(proj, "wip");
@@ -872,7 +872,7 @@ describeIfBuilt("`wpm build package` E2E (task-83, through dist/cli.js)", () => 
       for (const path of controls) expect(afterDryRun.stdout).toContain(path);
       packageLayouts("deregistered", false);
     });
-  }, 90_000);
+  });
 
   it("TASK-118 AC#5/#6/#8/#10 — fresh multi-format review builds use an equivalent Git-isolated copy while the original stays byte-for-byte unchanged", async () => {
     if (process.platform === "win32") return;
@@ -1002,7 +1002,7 @@ describeIfBuilt("`wpm build package` E2E (task-83, through dist/cli.js)", () => 
     await withTempDir(async (dir) => {
       const proj = initProject(dir);
       expect(cli(["project", "targets", "add", "claude-code", "-C", proj], dir).code).toBe(0);
-      expect(cli(["bundle", "new", "web", "-C", proj], dir).code).toBe(0);
+      expect(cli(["bundle", "new", "web", "-C", proj], dir)).toMatchObject({ code: 0 });
       expect(
         cli(
           ["authoring", "integrate", "--client", "codex", "--client", "claude-code", "-C", proj],

@@ -18,6 +18,7 @@ import {
   renameSync,
   rmdirSync,
   rmSync,
+  symlinkSync,
   unlinkSync,
   writeFileSync,
 } from "node:fs";
@@ -56,12 +57,16 @@ interface NodePathIdentity {
  * instead.
  */
 export class NodeFileSystem implements FileSystem {
+  private readonly aliasPlatform: NodeJS.Platform;
+
   /**
    * @param aliasOptions - Optional injected symlink/copy strategy (platform + primitives), forwarded to
    *   {@link ensureSymlinkOrCopy}. Defaults to the real environment; tests inject `platform: "win32"` to
    *   exercise the copy fallback.
    */
-  constructor(private readonly aliasOptions: SymlinkStrategyOptions = {}) {}
+  constructor(private readonly aliasOptions: SymlinkStrategyOptions = {}) {
+    this.aliasPlatform = aliasOptions.platform ?? process.platform;
+  }
 
   /** Deterministic subclass seam for exercising a change after the last file preimage read. */
   protected beforeConfinedFilePublication(_path: string): void {}
@@ -95,6 +100,41 @@ export class NodeFileSystem implements FileSystem {
 
   /** Deterministic test seam after the staged private link is retired but before prior cleanup. */
   protected afterConfinedStagedCleanup(_stagedPath: string): void {}
+
+  /** Bounded tree-copy primitive used only for private alias-refresh evidence and staging. */
+  protected copyConfinedAliasTree(from: string, to: string, _phase: "retained" | "staged"): void {
+    cpSync(from, to, {
+      recursive: true,
+      errorOnExist: true,
+      force: false,
+      verbatimSymlinks: true,
+    });
+  }
+
+  /** Deterministic test seam after final evidence checks but before whole-tree public detachment. */
+  protected beforeConfinedAliasCopyPublication(
+    _aliasPath: string,
+    _stagedPath: string,
+    _retainedPath: string,
+  ): void {}
+
+  /** Deterministic seam after exact old-copy detachment and before representation-specific publication. */
+  protected beforeConfinedAliasCopyStagedPublication(
+    _aliasPath: string,
+    _stagedPath: string,
+    _displacedPath: string,
+  ): void {}
+
+  /** Whole-directory publication used only by the logical Windows copy representation. */
+  protected publishConfinedAliasDirectory(stagedPath: string, aliasPath: string): void {
+    renameSync(stagedPath, aliasPath);
+  }
+
+  /** Direct create-if-absent publication used by the POSIX relative-symlink representation. */
+  protected publishConfinedAliasSymlink(relativeTarget: string, aliasPath: string): void {
+    const publish = this.aliasOptions.symlink ?? symlinkSync;
+    publish(relativeTarget, aliasPath);
+  }
 
   private assertConfinedMutationPath(
     confinementRoot: string,
@@ -1073,6 +1113,207 @@ export class NodeFileSystem implements FileSystem {
   /** @inheritdoc */
   copyTree(from: string, to: string): void {
     cpSync(from, to, { recursive: true });
+  }
+
+  /** @inheritdoc */
+  refreshAliasCopyConfined(
+    confinementRoot: string,
+    sourcePath: string,
+    aliasPath: string,
+    expectedAliasTreeFingerprint: string,
+    quarantine: ConfinedQuarantine,
+  ): void {
+    const confinement = resolve(confinementRoot);
+    const source = resolve(sourcePath);
+    const alias = resolve(aliasPath);
+    this.assertConfinedMutationPath(confinement, source, "directory");
+    this.assertConfinedMutationPath(confinement, alias, "directory");
+    const privateSlot = this.assertQuarantine(confinement, quarantine, "directory");
+    const retainedPath = privateSlot.path;
+    const stagedPath = `${privateSlot.path}.staged`;
+    const displacedPath = `${privateSlot.path}.displaced`;
+    for (const privatePath of [retainedPath, stagedPath, displacedPath]) {
+      if (this.lstatIfPresent(privatePath) !== undefined) {
+        throw new Error(`confined alias-copy evidence is occupied: ${privatePath}`);
+      }
+      this.assertConfinedMutationPath(confinement, privatePath, "file-or-missing");
+    }
+
+    let sourceHandle: ReturnType<typeof opendirSync> | undefined;
+    let aliasHandle: ReturnType<typeof opendirSync> | undefined;
+    let created: string[] = [];
+    let sourceIdentity: NodePathIdentity;
+    let aliasIdentity: NodePathIdentity;
+    let sourceFingerprint: string;
+    const sourceParent = dirname(source);
+    const aliasParent = dirname(alias);
+    const confinementIdentity = this.pathIdentity(confinement);
+    const sourceParentIdentity = this.pathIdentity(sourceParent);
+    const aliasParentIdentity = this.pathIdentity(aliasParent);
+    try {
+      sourceHandle = opendirSync(source);
+      sourceIdentity = this.pathIdentity(source);
+      sourceFingerprint = this.treeFingerprint(source);
+      if (!this.sameIdentity(this.pathIdentity(source), sourceIdentity)) {
+        throw new Error(`confined alias-copy source changed during capture: ${source}`);
+      }
+      aliasHandle = opendirSync(alias);
+      aliasIdentity = this.pathIdentity(alias);
+      if (
+        this.treeFingerprint(alias) !== expectedAliasTreeFingerprint ||
+        !this.sameIdentity(this.pathIdentity(alias), aliasIdentity)
+      ) {
+        throw new Error(`confined alias-copy preimage changed during capture: ${alias}`);
+      }
+      created = this.ensureConfinedDirectoryChain(confinement, dirname(retainedPath));
+      const privateParent = dirname(retainedPath);
+      const privateParentIdentity = this.pathIdentity(privateParent);
+      const assertBoundaryIdentities = (): void => {
+        this.assertDirectoryIdentity(confinement, confinementIdentity);
+        this.assertDirectoryIdentity(sourceParent, sourceParentIdentity);
+        this.assertDirectoryIdentity(aliasParent, aliasParentIdentity);
+        this.assertDirectoryIdentity(privateParent, privateParentIdentity);
+      };
+
+      this.copyConfinedAliasTree(alias, retainedPath, "retained");
+      assertBoundaryIdentities();
+      const retainedStat = this.lstatIfPresent(retainedPath);
+      if (
+        retainedStat === undefined ||
+        !retainedStat.isDirectory() ||
+        retainedStat.isSymbolicLink() ||
+        this.treeFingerprint(retainedPath) !== expectedAliasTreeFingerprint ||
+        !this.sameIdentity(this.pathIdentity(alias), aliasIdentity) ||
+        this.treeFingerprint(alias) !== expectedAliasTreeFingerprint
+      ) {
+        throw new Error(`confined alias-copy preimage changed during retention: ${alias}`);
+      }
+
+      this.copyConfinedAliasTree(source, stagedPath, "staged");
+      const stagedStat = this.lstatIfPresent(stagedPath);
+      if (
+        stagedStat === undefined ||
+        !stagedStat.isDirectory() ||
+        stagedStat.isSymbolicLink() ||
+        this.treeFingerprint(stagedPath) !== sourceFingerprint ||
+        !this.sameIdentity(this.pathIdentity(source), sourceIdentity) ||
+        this.treeFingerprint(source) !== sourceFingerprint
+      ) {
+        throw new Error(`confined alias-copy source changed during staging: ${source}`);
+      }
+      const stagedIdentity = this.pathIdentity(stagedPath);
+      this.assertConfinedMutationPath(confinement, source, "directory");
+      this.assertConfinedMutationPath(confinement, alias, "directory");
+      assertBoundaryIdentities();
+      if (
+        !this.sameIdentity(this.pathIdentity(alias), aliasIdentity) ||
+        this.treeFingerprint(alias) !== expectedAliasTreeFingerprint ||
+        !this.sameIdentity(this.pathIdentity(source), sourceIdentity) ||
+        this.treeFingerprint(source) !== sourceFingerprint
+      ) {
+        throw new Error(`confined alias-copy boundary changed before publication: ${alias}`);
+      }
+
+      // Windows will not rename an open directory. The captured identity remains bound by the retained exact
+      // copy and the immediate post-rename identity/fingerprint check below.
+      const inspectionHandle = aliasHandle;
+      aliasHandle = undefined;
+      inspectionHandle.closeSync();
+      this.beforeConfinedAliasCopyPublication(alias, stagedPath, retainedPath);
+      renameSync(alias, displacedPath);
+      if (
+        !this.sameIdentity(this.pathIdentity(displacedPath), aliasIdentity) ||
+        this.treeFingerprint(displacedPath) !== expectedAliasTreeFingerprint
+      ) {
+        if (this.aliasPlatform === "win32" && this.lstatIfPresent(alias) === undefined) {
+          try {
+            renameSync(displacedPath, alias);
+          } catch {
+            // Preserve both the raced tree and the exact retained preimage as request-owned evidence.
+          }
+        }
+        throw new Error(`confined alias-copy destination raced during detachment: ${alias}`);
+      }
+      this.assertConfinedMutationPath(confinement, alias, "file-or-missing");
+      if (this.lstatIfPresent(alias) !== undefined) {
+        throw new Error(`confined alias-copy destination appeared before publication: ${alias}`);
+      }
+      assertBoundaryIdentities();
+      this.beforeConfinedAliasCopyStagedPublication(alias, stagedPath, displacedPath);
+      const relativeSymlinkTarget = relative(aliasParent, source);
+      if (this.aliasPlatform === "win32") {
+        this.publishConfinedAliasDirectory(stagedPath, alias);
+      } else {
+        if (relativeSymlinkTarget.length === 0 || isAbsolute(relativeSymlinkTarget)) {
+          throw new Error(`confined alias-copy source has no safe relative target: ${source}`);
+        }
+        this.publishConfinedAliasSymlink(relativeSymlinkTarget, alias);
+      }
+      this.assertConfinedMutationPath(confinement, source, "directory");
+      if (this.aliasPlatform === "win32") {
+        this.assertConfinedMutationPath(confinement, alias, "directory");
+      } else {
+        this.assertConfinedMutationPath(confinement, aliasParent, "directory");
+      }
+      assertBoundaryIdentities();
+      const publishedStat = this.lstatIfPresent(alias);
+      const publicationMatches =
+        this.aliasPlatform === "win32"
+          ? publishedStat?.isDirectory() === true &&
+            !publishedStat.isSymbolicLink() &&
+            this.sameIdentity(this.pathIdentity(alias), stagedIdentity) &&
+            this.treeFingerprint(alias) === sourceFingerprint
+          : publishedStat?.isSymbolicLink() === true &&
+            readlinkSync(alias) === relativeSymlinkTarget &&
+            realpathSync.native(alias) === realpathSync.native(source);
+      if (
+        !publicationMatches ||
+        !this.sameIdentity(this.pathIdentity(source), sourceIdentity) ||
+        this.treeFingerprint(source) !== sourceFingerprint ||
+        this.treeFingerprint(displacedPath) !== expectedAliasTreeFingerprint ||
+        this.treeFingerprint(retainedPath) !== expectedAliasTreeFingerprint
+      ) {
+        throw new Error(`confined alias-copy publication could not be verified: ${alias}`);
+      }
+
+      if (this.aliasPlatform !== "win32") rmSync(stagedPath, { recursive: true });
+      rmSync(displacedPath, { recursive: true });
+      rmSync(retainedPath, { recursive: true });
+      this.cleanupEmptyQuarantine(privateSlot.root, retainedPath);
+      for (const createdPath of created.reverse()) {
+        try {
+          rmdirSync(createdPath);
+        } catch {
+          // A non-empty path contains request-owned evidence and must survive for recovery.
+        }
+      }
+    } catch (error) {
+      if (
+        this.aliasPlatform === "win32" &&
+        this.lstatIfPresent(alias) === undefined &&
+        this.lstatIfPresent(displacedPath)?.isDirectory()
+      ) {
+        try {
+          renameSync(displacedPath, alias);
+        } catch {
+          // A raced public entry or retained private tree is safer than an overwriting recovery attempt.
+        }
+      }
+      const evidence = [retainedPath, stagedPath, displacedPath].filter(
+        (path) => this.lstatIfPresent(path) !== undefined,
+      );
+      throw new Error(
+        `${error instanceof Error ? error.message : String(error)}${
+          evidence.length === 0
+            ? ""
+            : `; request-owned alias-copy evidence retained at ${evidence.join(", ")}`
+        }`,
+        { cause: error },
+      );
+    } finally {
+      aliasHandle?.closeSync();
+      sourceHandle?.closeSync();
+    }
   }
 
   /** @inheritdoc */

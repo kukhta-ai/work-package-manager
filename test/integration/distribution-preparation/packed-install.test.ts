@@ -1747,7 +1747,11 @@ describe("fresh local packed-install and inactive-candidate journey", () => {
         const layout = archiveLayout(archive);
         expect(layout).toEqual(expect.arrayContaining(["manifest.yml", "AGENTS.md", "CLAUDE.md"]));
         const declaredClaudeScopes = [".claude/skills"];
-        expect(layout).toEqual(expect.arrayContaining(declaredClaudeScopes));
+        expect(
+          layout.some((path) =>
+            declaredClaudeScopes.some((scope) => path === scope || path.startsWith(`${scope}/`)),
+          ),
+        ).toBe(true);
         for (const forbidden of [
           ".wpm-authoring.json",
           ".wpm-handoff.json",
