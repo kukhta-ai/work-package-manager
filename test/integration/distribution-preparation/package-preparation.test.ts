@@ -17,6 +17,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 import { resolveNpmInvocation } from "../../../distribution-preparation/prepare-package.js";
+import { match } from "../../helpers/match.js";
 
 const REPO_ROOT = fileURLToPath(new URL("../../..", import.meta.url));
 const ENTRY = join(REPO_ROOT, "distribution-preparation", "prepare-package.js");
@@ -218,14 +219,14 @@ describe("clean revision package preparation", () => {
       },
     });
     expect(report.violations).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
+      match.arrayContaining([
+        match.objectContaining({
           kind: "prohibited-planning",
           path: "assets/_bmad-output/plan.md",
         }),
-        expect.objectContaining({ kind: "missing-required-path", path: "LICENSE" }),
-        expect.objectContaining({ kind: "missing-required-path", path: "missing-root" }),
-        expect.objectContaining({ kind: "missing-bin-target", path: "dist/missing.js" }),
+        match.objectContaining({ kind: "missing-required-path", path: "LICENSE" }),
+        match.objectContaining({ kind: "missing-required-path", path: "missing-root" }),
+        match.objectContaining({ kind: "missing-bin-target", path: "dist/missing.js" }),
       ]),
     );
     expect(report.artifact.size).toBeGreaterThan(0);
@@ -282,7 +283,7 @@ describe("clean revision package preparation", () => {
     });
     expect(report.expectedPaths).toEqual(report.actualPaths);
     expect(report.actualPaths).toEqual(
-      expect.arrayContaining([
+      match.arrayContaining([
         "LICENSE",
         "README.md",
         "package.json",
@@ -299,7 +300,7 @@ describe("clean revision package preparation", () => {
       ]),
     );
     expect(report.actualPaths).not.toEqual(
-      expect.arrayContaining([
+      match.arrayContaining([
         "dist/stale-sentinel.js",
         "src/cli.ts",
         "backlog/config.yml",

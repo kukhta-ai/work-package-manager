@@ -4,6 +4,7 @@ import {
   createCandidateIdentity,
   evaluateCandidateBinding,
 } from "../../../distribution-preparation/candidate.js";
+import { match } from "../../helpers/match.js";
 
 const REVISION = "a".repeat(40);
 const OTHER_REVISION = "b".repeat(40);
@@ -145,7 +146,7 @@ describe("inactive candidate binding", () => {
 
     expect(result.binding).toBeUndefined();
     expect(result.findings.map(({ field }) => field)).toEqual(
-      expect.arrayContaining([
+      match.arrayContaining([
         "artifact.size",
         "packedInstall.sourceRevision",
         "packedInstall.configuration.status",
@@ -185,7 +186,7 @@ describe("inactive candidate binding", () => {
 
     expect(createCandidateIdentity(changed)).not.toBe(createCandidateIdentity(original));
     expect(compareCandidateBindings(original, changed)).toEqual([
-      expect.objectContaining({ kind: "changed", field: "evidence.quality.rawDigest" }),
+      match.objectContaining({ kind: "changed", field: "evidence.quality.rawDigest" }),
     ]);
   });
 
@@ -205,7 +206,7 @@ describe("inactive candidate binding", () => {
 
     expect(result.binding).toBeUndefined();
     expect(result.findings.map(({ field }) => field)).toEqual(
-      expect.arrayContaining([
+      match.arrayContaining([
         "packedInstall.configuration.surfaces",
         "packedInstall.artifact.inspectedPath",
         "packedInstall.executables.installer",

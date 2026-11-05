@@ -4,6 +4,7 @@ import { basename, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { parseYaml } from "../../../src/util/yaml.js";
+import { match } from "../../helpers/match.js";
 
 const SKILL_MD = fileURLToPath(
   new URL("../../../agent-skills/wpm-create-package/SKILL.md", import.meta.url),
@@ -33,7 +34,7 @@ describe("wpm-create-package personal bootstrap skill", () => {
 
     expect(metadata).toEqual({
       name: "wpm-create-package",
-      description: expect.any(String),
+      description: match.any(String),
     });
     const description = String(metadata.description).toLowerCase();
     expect(description).toMatch(/create|start|bootstrap/);

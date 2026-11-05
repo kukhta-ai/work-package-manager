@@ -17,7 +17,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { delimiter, dirname, join, resolve, sep } from "node:path";
+import { delimiter, dirname, isAbsolute, join, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 import {
@@ -27,6 +27,7 @@ import {
 import { resolveNpmInvocation } from "../../../distribution-preparation/prepare-package.js";
 import { ACTIVATION_FACT_KEYS } from "../../../distribution-preparation/readiness.js";
 import { createIsolatedEnvironment } from "../../../distribution-preparation/verify-packed-install.js";
+import { match } from "../../helpers/match.js";
 
 const REPO_ROOT = fileURLToPath(new URL("../../..", import.meta.url));
 const tempRoots: string[] = [];
@@ -101,8 +102,92 @@ function npm(cwd: string, ...args: string[]): ReturnType<typeof spawnSync> {
   });
 }
 
+function record(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+/** Export exact locked upstream bytes for explicit seeding of a fresh consumer cache. */
+function exportBacklogArchive(cwd: string, native: boolean): string {
+  const platform = process.platform === "win32" ? "windows" : process.platform;
+  const name = native ? `backlog.md-${platform}-${process.arch}` : "backlog.md";
+  const version = BACKLOG_PEER_PACKAGE.slice("backlog.md@".length);
+  const lock: unknown = JSON.parse(readFileSync(join(REPO_ROOT, "package-lock.json"), "utf8"));
+  const entry =
+    record(lock) && record(lock.packages) ? lock.packages[`node_modules/${name}`] : null;
+  if (
+    !record(entry) ||
+    entry.version !== version ||
+    typeof entry.resolved !== "string" ||
+    new URL(entry.resolved).origin !== "https://registry.npmjs.org" ||
+    typeof entry.integrity !== "string" ||
+    !/^sha512-[A-Za-z0-9+/]+={0,2}$/.test(entry.integrity)
+  )
+    throw new Error(`Root lockfile lacks the exact native Backlog peer archive for ${name}`);
+
+  const owned = temporaryRoot("wpm-backlog-native-cache-seed-");
+  const invocation = resolveNpmInvocation();
+  const packed = spawnSync(
+    invocation.executable,
+    [
+      ...invocation.argumentPrefix,
+      "pack",
+      entry.resolved,
+      "--offline",
+      "--ignore-scripts",
+      "--json",
+      "--pack-destination",
+      owned,
+    ],
+    { cwd, encoding: "utf8", timeout: 60_000 },
+  );
+  let archive: string;
+  if (packed.status === 0 && packed.error === undefined) {
+    const output: unknown = JSON.parse(packed.stdout);
+    const item: unknown = Array.isArray(output) && output.length === 1 ? output[0] : null;
+    if (!record(item) || item.filename !== `${name}-${version}.tgz`)
+      throw new Error("Offline npm pack did not identify the exact native Backlog archive");
+    archive = join(owned, item.filename);
+  } else {
+    const supplied = native ? process.env.WPM_TEST_BACKLOG_NATIVE_ARCHIVE : undefined;
+    if (packed.error || !packed.stderr.includes("ENOTCACHED") || !supplied || !isAbsolute(supplied))
+      throw new Error(
+        `Offline locked Backlog archive export failed for ${name}. Run a fresh npm ci with the same npm cache; the native artifact can also use an absolute WPM_TEST_BACKLOG_NATIVE_ARCHIVE matching the root lockfile SHA512. ${packed.stderr}`,
+      );
+    // An explicit verified fixture also supports content-only caches without npm URL-response indexes.
+    const bytes = readFileSync(supplied);
+    if (`sha512-${createHash("sha512").update(bytes).digest("base64")}` !== entry.integrity)
+      throw new Error(
+        "Supplied native Backlog fixture differs from the exact root lockfile SHA512",
+      );
+    archive = join(owned, `${name}-${version}.tgz`);
+    writeFileSync(archive, bytes, { flag: "wx" });
+  }
+  if (!lstatSync(archive).isFile() || lstatSync(archive).isSymbolicLink())
+    throw new Error("Native Backlog fixture must be an ordinary owned archive");
+  if (
+    `sha512-${createHash("sha512").update(readFileSync(archive)).digest("base64")}` !==
+    entry.integrity
+  )
+    throw new Error("Native Backlog archive differs from the exact root lockfile SHA512");
+  return archive;
+}
+
+/** Seed only the locked native archive; the peer is still installed into its real isolated prefix. */
+function seedBacklogNativeCache(cwd: string, env: NodeJS.ProcessEnv): void {
+  const archive = exportBacklogArchive(cwd, true);
+  const invocation = resolveNpmInvocation();
+  const seeded = spawnSync(
+    invocation.executable,
+    [...invocation.argumentPrefix, "cache", "add", archive, "--offline", "--ignore-scripts"],
+    { cwd, encoding: "utf8", timeout: 60_000, env },
+  );
+  expect(seeded.error).toBeUndefined();
+  expect(seeded.status, seeded.stderr || seeded.stdout).toBe(0);
+}
+
 /** Provision the mapped external peer into one disposable consumer prefix and observe its real shim. */
 function provisionBacklogPeer(cwd: string, prefix: string, env: NodeJS.ProcessEnv) {
+  seedBacklogNativeCache(cwd, env);
   const npmInvocation = resolveNpmInvocation();
   const installation = spawnSync(
     npmInvocation.executable,
@@ -371,7 +456,7 @@ describe("fresh local packed-install and inactive-candidate journey", () => {
     expect(wpmManifest.peerDependencies).toEqual({ "backlog.md": ">=1.0.0" });
     expect(wpmManifest.peerDependenciesMeta?.["backlog.md"]).toEqual({ optional: false });
     expect(wpmManifest.dependencies ?? {}).not.toHaveProperty("backlog.md");
-    expect(wpmManifest.devDependencies ?? {}).not.toHaveProperty("backlog.md");
+    expect(wpmManifest.devDependencies?.["backlog.md"]).toBe("1.45.2");
   });
 
   it(
@@ -504,6 +589,8 @@ describe("fresh local packed-install and inactive-candidate journey", () => {
       rmSync(source, { recursive: true, force: true });
       expect(existsSync(source)).toBe(false);
 
+      const nativeCacheArchive = exportBacklogArchive(REPO_ROOT, true);
+      const peerArchive = exportBacklogArchive(REPO_ROOT, false);
       const verification = npm(
         REPO_ROOT,
         "run",
@@ -514,6 +601,10 @@ describe("fresh local packed-install and inactive-candidate journey", () => {
         reportPath,
         "--output",
         consumer,
+        "--npm-cache-archive",
+        nativeCacheArchive,
+        "--peer-archive",
+        peerArchive,
       );
       expect({ status: verification.status, stderr: verification.stderr }).toEqual({
         status: 0,
@@ -531,7 +622,22 @@ describe("fresh local packed-install and inactive-candidate journey", () => {
           prefix: string;
           npmCache: string;
         };
-        installation: { status: string };
+        installation: {
+          status: string;
+          cacheBootstrap: {
+            lockfileDigest: string;
+            archives: Array<{ name: string; version: string; integrity: string }>;
+          };
+          explicitPeers: {
+            lockfileDigest: string;
+            packages: Array<{
+              name: string;
+              version: string;
+              integrity: string;
+              observedVersion: string;
+            }>;
+          };
+        };
         executables: Array<{ name: string; version: string; shimPath: string }>;
         resources: {
           status: string;
@@ -559,6 +665,29 @@ describe("fresh local packed-install and inactive-candidate journey", () => {
         configuration: { status: "unchanged" },
       });
       expect(result.artifact.frozenPath).not.toBe(result.artifact.inspectedPath);
+      expect(result.installation.cacheBootstrap.lockfileDigest).toBe(
+        `sha256:${createHash("sha256")
+          .update(readFileSync(join(REPO_ROOT, "package-lock.json")))
+          .digest("hex")}`,
+      );
+      expect(result.installation.cacheBootstrap.archives).toEqual([
+        expect.objectContaining({
+          name: `backlog.md-${process.platform === "win32" ? "windows" : process.platform}-${process.arch}`,
+          version: "1.45.2",
+          integrity: `sha512-${createHash("sha512").update(readFileSync(nativeCacheArchive)).digest("base64")}`,
+        }),
+      ]);
+      expect(result.installation.explicitPeers.lockfileDigest).toBe(
+        result.installation.cacheBootstrap.lockfileDigest,
+      );
+      expect(result.installation.explicitPeers.packages).toEqual([
+        match.objectContaining({
+          name: "backlog.md",
+          version: "1.45.2",
+          observedVersion: "1.45.2",
+          integrity: `sha512-${createHash("sha512").update(readFileSync(peerArchive)).digest("base64")}`,
+        }),
+      ]);
       expect(readFileSync(result.artifact.frozenPath)).toEqual(
         readFileSync(result.artifact.inspectedPath),
       );
@@ -715,7 +844,10 @@ describe("fresh local packed-install and inactive-candidate journey", () => {
         optional: false,
       });
       expect(installedWpmManifest.dependencies ?? {}).not.toHaveProperty("backlog.md");
-      expect(installedWpmManifest.devDependencies ?? {}).not.toHaveProperty("backlog.md");
+      expect(installedWpmManifest.devDependencies?.["backlog.md"]).toBe("1.45.2");
+      expect(existsSync(join(result.environment.packageRoot, "node_modules", "groma.md"))).toBe(
+        false,
+      );
       const installedHome = join(consumer, "home");
       const isolatedInstalledEnv = createIsolatedEnvironment(
         {
@@ -1103,7 +1235,7 @@ describe("fresh local packed-install and inactive-candidate journey", () => {
         };
         expect(setupResult.selectedClients).toEqual(cell.selectedClients);
         expect(setupResult.clients).toEqual([
-          expect.objectContaining({ id: cell.selectedClients[0], nextAction: cell.nextAction }),
+          match.objectContaining({ id: cell.selectedClients[0], nextAction: cell.nextAction }),
         ]);
         for (const forbiddenRoot of [source, REPO_ROOT]) {
           expect(String(setup.stdout)).not.toContain(forbiddenRoot);
@@ -1745,7 +1877,7 @@ describe("fresh local packed-install and inactive-candidate journey", () => {
       );
       const assertColdJourneyArchive = (archive: string, extracted: string): string[] => {
         const layout = archiveLayout(archive);
-        expect(layout).toEqual(expect.arrayContaining(["manifest.yml", "AGENTS.md", "CLAUDE.md"]));
+        expect(layout).toEqual(match.arrayContaining(["manifest.yml", "AGENTS.md", "CLAUDE.md"]));
         const declaredClaudeScopes = [".claude/skills"];
         expect(
           layout.some((path) =>
@@ -2114,7 +2246,7 @@ describe("fresh local packed-install and inactive-candidate journey", () => {
       expect(JSON.parse(String(changed.stdout))).toMatchObject({
         status: "rejected",
         releaseEligibility: "ineligible",
-        findings: [expect.objectContaining({ kind: "changed", field: "proposedTag" })],
+        findings: [match.objectContaining({ kind: "changed", field: "proposedTag" })],
       });
 
       const githubPolicyPath = join(root, "github-policy.json");
@@ -2395,7 +2527,7 @@ describe("fresh local packed-install and inactive-candidate journey", () => {
       const manualTagAssessment = assessNpm();
       expect(manualTagAssessment.assessment.conflicts).toEqual([]);
       expect(manualTagAssessment.assessment.manualAuthority).toEqual([
-        expect.objectContaining({
+        match.objectContaining({
           object: "tag",
           expected: candidateRecord.binding.package.version,
           observed: null,
@@ -2421,7 +2553,7 @@ describe("fresh local packed-install and inactive-candidate journey", () => {
       ).toEqual(["version.integrity", "version.provenance", "version.repository"]);
       expect(conflictingNpmAssessment.assessment.safeActions).toEqual([]);
       expect(conflictingNpmAssessment.assessment.prohibitedActions).toEqual(
-        expect.arrayContaining([
+        match.arrayContaining([
           "automatic-dist-tag-repair",
           "overwrite",
           "republication",
@@ -2614,7 +2746,7 @@ describe("fresh local packed-install and inactive-candidate journey", () => {
         classification: "blocked",
         requiredBoundaries: [],
         conflicts: [],
-        blockers: [expect.objectContaining({ kind: "missing-policy" })],
+        blockers: [match.objectContaining({ kind: "missing-policy" })],
       });
 
       const conflicting = classifyConvergence(
@@ -2626,7 +2758,7 @@ describe("fresh local packed-install and inactive-candidate journey", () => {
       expect(conflicting.result.conflicts.length).toBeGreaterThanOrEqual(7);
       expect(conflicting.result.recovery.safeActions).toEqual([]);
       expect(conflicting.result.recovery.prohibitedActions).toEqual(
-        expect.arrayContaining([
+        match.arrayContaining([
           "overwrite",
           "republication",
           "retagging",
@@ -2669,8 +2801,8 @@ describe("fresh local packed-install and inactive-candidate journey", () => {
       expect(JSON.parse(String(corruptAssessment.stdout))).toMatchObject({
         status: "rejected",
         releaseEligibility: "ineligible",
-        findings: expect.arrayContaining([
-          expect.objectContaining({ field: "candidate.candidateId" }),
+        findings: match.arrayContaining([
+          match.objectContaining({ field: "candidate.candidateId" }),
         ]),
       });
       expect(directorySnapshot(corruptCandidateOutput)).toEqual(corruptCandidateBefore);

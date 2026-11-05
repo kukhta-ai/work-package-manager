@@ -10,7 +10,7 @@ import {
 } from "../services/authoring-clients.js";
 
 /** Dependencies for read-only authoring-client inspection. */
-export interface InspectAuthoringClientsDeps {
+interface InspectAuthoringClientsDeps {
   /** Filesystem used only to observe native personal configuration roots. */
   readonly fs: FileSystem;
   /** Environment used only to resolve HOME. */

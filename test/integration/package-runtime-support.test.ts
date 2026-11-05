@@ -16,20 +16,28 @@ interface PackageLock {
   readonly packages: Readonly<Record<string, LockedPackage>>;
 }
 
+interface WorkflowStep {
+  readonly uses?: string;
+  readonly run?: string;
+  readonly with?: Readonly<Record<string, unknown>>;
+}
+interface WorkflowJob {
+  readonly steps: readonly WorkflowStep[];
+  readonly strategy?: {
+    readonly matrix: { readonly node: readonly string[]; readonly os: readonly string[] };
+  };
+  readonly needs?: readonly string[];
+  readonly if?: string;
+  readonly env?: Readonly<Record<string, string>>;
+  readonly permissions?: Readonly<Record<string, string>>;
+}
 interface CiWorkflow {
+  readonly permissions: Readonly<Record<string, string>>;
+  readonly on: Readonly<Record<string, unknown>>;
   readonly jobs: {
-    readonly gate: {
-      readonly steps: readonly {
-        readonly uses?: string;
-        readonly with?: Readonly<Record<string, unknown>>;
-      }[];
-      readonly strategy: {
-        readonly matrix: {
-          readonly node: readonly number[];
-          readonly os: readonly string[];
-        };
-      };
-    };
+    readonly consumer: WorkflowJob;
+    readonly policy: WorkflowJob;
+    readonly required: WorkflowJob;
   };
 }
 
@@ -69,19 +77,46 @@ describe("declared Node runtime support", () => {
     ).toEqual([]);
   });
 
-  it("keeps the six-cell Node and operating-system CI matrix", () => {
+  it("qualifies the six-cell current Node and operating-system consumer matrix", () => {
     const workflow = parse(readProjectFile(".github/workflows/ci.yml")) as CiWorkflow;
-
-    expect(workflow.jobs.gate.strategy.matrix).toEqual({
+    expect(workflow.jobs.consumer.strategy?.matrix).toEqual({
       os: ["ubuntu-latest", "macos-latest", "windows-latest"],
-      node: [20, 22],
+      node: ["24", "26"],
     });
+    const commands = workflow.jobs.consumer.steps.flatMap((step) => (step.run ? [step.run] : []));
+    expect(commands.some((command) => command.includes("package:inspect"))).toBe(true);
+    expect(commands.some((command) => command.includes("package:verify-install"))).toBe(true);
+    expect(commands).toContain("npm test");
   });
 
-  it("supplies repository history to strict CI evidence validation", () => {
+  it("keeps event code read-only with immutable actions, history and no persisted checkout credentials", () => {
     const workflow = parse(readProjectFile(".github/workflows/ci.yml")) as CiWorkflow;
-    const checkout = workflow.jobs.gate.steps.find((step) => step.uses === "actions/checkout@v4");
+    expect(workflow.permissions).toEqual({ contents: "read" });
+    expect(workflow.on).not.toHaveProperty("pull_request_target");
+    for (const job of Object.values(workflow.jobs)) {
+      expect(job.permissions).toBeUndefined();
+      for (const step of job.steps) {
+        if (step.uses) expect(step.uses).toMatch(/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+@[a-f0-9]{40}$/);
+        if (step.uses?.startsWith("actions/checkout@")) {
+          expect(step.with?.["fetch-depth"]).toBe(0);
+          expect(step.with?.["persist-credentials"]).toBe(false);
+        }
+      }
+    }
+  });
 
-    expect(checkout?.with?.["fetch-depth"]).toBe(0);
+  it("fails the required aggregate for failed, cancelled or skipped bands", () => {
+    const workflow = parse(readProjectFile(".github/workflows/ci.yml")) as CiWorkflow;
+    expect(workflow.jobs.required.if).toBe("always()");
+    expect(workflow.jobs.required.needs).toEqual(["policy", "consumer"]);
+    expect(workflow.jobs.required.env?.POLICY_RESULT).toMatch(
+      /^\$\{\{ needs\.policy\.result \}\}$/,
+    );
+    expect(workflow.jobs.required.env?.CONSUMER_RESULT).toMatch(
+      /^\$\{\{ needs\.consumer\.result \}\}$/,
+    );
+    expect(workflow.jobs.required.steps[0]?.run).toContain(
+      'test "$POLICY_RESULT" = success && test "$CONSUMER_RESULT" = success',
+    );
   });
 });

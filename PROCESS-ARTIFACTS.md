@@ -1,7 +1,7 @@
 # Process artifact lifecycle
 
-This repository uses BMAD and other agent workflows to develop `wpm`, but their generated output is
-working memory, not a fourth source of product truth. The durable truth remains deliberately small:
+The current development process is defined in `docs/development.md`. BMAD output retained from the
+legacy process and output from current agent workflows are working memory, not product truth. The durable truth remains deliberately small:
 
 - `docs/` records approved product intent and architecture;
 - `backlog/`, operated only through the Backlog.md CLI, records accepted work and story status;
@@ -18,7 +18,8 @@ their last consumer has finished.
 |---|---|---|---|
 | Canonical truth | `docs/`, `backlog/`, source, tests | Tracked | Maintained until deliberately superseded |
 | Live working memory | `_bmad-output/`, `Skills-Results/` | Ignored | Through the last workflow that consumes it |
-| Compact orchestration state | `.bmad/sdlc-state.yaml` | Tracked | Current position only; rewritten at transitions |
+| Task context | Backlog task notes (CLI-managed) | Tracked | Current revision, evidence and next action |
+| Legacy orchestration pointer | `.bmad/sdlc-state.yaml` | Tracked for retention compatibility | Historical BMAD handoff; not the vNext scheduler |
 | Durable research evidence | `research/evolution/records/`, `research/evolution/gates/` | Tracked | Permanent, compact, schema-validated |
 
 BMAD installation and customization under `_bmad/` and `.claude/skills/` are executable development
@@ -67,11 +68,10 @@ or the episode's evolution record. Then archive externally or clean the transcri
 
 ## Current-state rules
 
-`.bmad/sdlc-state.yaml` is a compact pointer, not an event log. It contains only the active phase, branch,
-epic/change, current story and review cycle, currently relevant specialists and their last actual skills,
-pending gates, waiver pointers, and update metadata. Git history already preserves earlier state revisions;
-append-only comments, completed-story inventories, old agent narratives, and copied test results do not belong
-in the live file. Backlog.md remains authoritative for story status.
+Backlog.md task notes contain the source revision, commands, limitations and next action. Backlog.md remains
+authoritative for task status. `.bmad/sdlc-state.yaml` records the historical BMAD handoff and remains
+schema-checked for retention compatibility; it does not schedule vNext work. Neither store is an append-only
+transcript: retain compact current context and place durable decisions in canonical docs.
 
 ## Archive safety
 

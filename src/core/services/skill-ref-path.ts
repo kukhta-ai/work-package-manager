@@ -8,7 +8,7 @@
  */
 
 /** Return the containing package directory for a valid portable relative skill-document path. */
-export function skillPackageRoot(path: string): string | undefined {
+function skillPackageRoot(path: string): string | undefined {
   if (
     path.length === 0 ||
     path.includes("\\") ||
@@ -71,7 +71,7 @@ export function payloadSkillPackageRoot(path: string): string | undefined {
 }
 
 /** Human-readable contract used consistently by schema and command errors. */
-export const SKILL_REF_PATH_REQUIREMENT =
+const SKILL_REF_PATH_REQUIREMENT =
   "must be a portable relative file path inside its own package directory (use '/' separators; absolute, root-level, empty, '.', and '..' segments are not allowed)";
 
 /** Additional payload-only constraint needed to keep other delivery categories independent. */

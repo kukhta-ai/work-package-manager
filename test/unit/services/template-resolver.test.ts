@@ -1,12 +1,13 @@
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { MemoryFileSystem } from "../../../src/adapters/memory-fs.js";
 import { inspectTemplateAuthoringTasks } from "../../../src/core/services/template-authoring-tasks.js";
 import {
   listTemplates,
   type ResolverDeps,
   resolveTemplate,
 } from "../../../src/core/services/template-resolver.js";
+import { MemoryFileSystem } from "../../doubles/memory-fs.js";
+import { match } from "../../helpers/match.js";
 
 const BUILTIN = "/pkg/templates";
 const PROJECT = "/proj/templates";
@@ -258,7 +259,7 @@ describe("resolveTemplate — portable registry identity and descriptor failures
     });
     expect(inspection.status).toBe("invalid");
     expect(inspection.problems.map(({ code }) => code)).toEqual(
-      expect.arrayContaining(["unsupported-field", "unsupported-yaml-content"]),
+      match.arrayContaining(["unsupported-field", "unsupported-yaml-content"]),
     );
     expect(inspection.tasks).toEqual([]);
   });

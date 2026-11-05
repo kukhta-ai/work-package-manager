@@ -10,26 +10,6 @@ import { isPlainObject, optionalString, requireArray, requireString } from "./pr
 /** The valid template `scope` values, kept in one place for the check and the error message. */
 const TEMPLATE_SCOPES: readonly TemplateScope[] = ["project", "bundle"];
 
-/**
- * The plain-object shape of a `template.yml` **descriptor** (doc 06; doc 10 `template`). It carries metadata,
- * declared scaffold parameters, and an optional inert authoring-task source, but deliberately carries no file
- * tree: the `files` and `snippets` of a {@link Template} are populated from disk by the template resolver.
- */
-export interface TemplateDescriptorData {
-  readonly name: string;
-  readonly scope: string;
-  readonly description?: string;
-  readonly parameters: readonly {
-    readonly name: string;
-    readonly description?: string;
-    readonly default?: string;
-  }[];
-  /** Opaque revision retained with a declared authoring-task contribution. */
-  readonly revision?: unknown;
-  /** Inert authoring-task declaration retained for aggregate validation by its dedicated inspector. */
-  readonly "authoring-tasks"?: unknown;
-}
-
 const CTX = "template";
 
 /**
@@ -113,31 +93,4 @@ export function parseTemplateDescriptor(data: unknown): Parsed<Template> {
         }
       : {}),
   });
-}
-
-/**
- * Serialize a {@link Template}'s **descriptor** portion back into plain {@link TemplateDescriptorData} for the
- * YAML layer (doc 13 §4). Metadata, parameters, and any inert authoring-task source are emitted; the
- * `files`/`snippets` trees are not part of `template.yml`. Pure and round-trippable.
- *
- * @param template - The template whose descriptor to serialize.
- * @returns The plain-object descriptor representation.
- */
-export function serializeTemplateDescriptor(template: Template): TemplateDescriptorData {
-  return {
-    name: template.name,
-    scope: template.scope,
-    ...(template.description !== undefined ? { description: template.description } : {}),
-    parameters: template.parameters.map((p) => ({
-      name: p.name,
-      ...(p.description !== undefined ? { description: p.description } : {}),
-      ...(p.default !== undefined ? { default: p.default } : {}),
-    })),
-    ...(template.authoringTaskSource !== undefined
-      ? {
-          revision: template.authoringTaskSource.revision,
-          "authoring-tasks": template.authoringTaskSource.tasks,
-        }
-      : {}),
-  };
 }

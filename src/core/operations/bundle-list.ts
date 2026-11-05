@@ -39,7 +39,7 @@ export interface KindCounts {
 }
 
 /** The input to {@link listBundlesSpec}: per-bundle install-backlog kind counts, keyed by bundle id. */
-export interface ListBundlesInput {
+interface ListBundlesInput {
   /** The `kind:state`/`kind:migration` counts per enabled bundle id (scanned by the shell through the fs port). */
   readonly counts: ReadonlyMap<string, KindCounts>;
 }
@@ -61,7 +61,7 @@ export function listBundlesSpec(): ReadSpec<ListBundlesInput, BundleListRow[]> {
         const c = counts.get(id) ?? { state: 0, migration: 0 };
         rows.push({
           id,
-          version: bundle.version as string,
+          version: bundle.version,
           stateCount: c.state,
           migrationCount: c.migration,
         });

@@ -17,7 +17,7 @@ import { prefixFilter } from "./sources.js";
  * @param filter - An optional scope filter (e.g. `{ scope: "bundle" }` for a bundle-template position).
  * @returns The template names, prefix-filtered by the partial.
  */
-export function templateNames(ctx: CompletionContext, filter?: ListFilter): string[] {
+function templateNames(ctx: CompletionContext, filter?: ListFilter): string[] {
   const context = resolveContext(
     { fs: ctx.fs, env: ctx.env },
     ctx.projectOverride !== undefined ? { projectOverride: ctx.projectOverride } : undefined,

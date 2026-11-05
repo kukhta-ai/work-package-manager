@@ -1,4 +1,3 @@
-import type { BundleId } from "../core/model/index.js";
 import { resolveContext } from "../core/services/context.js";
 import { parseBundleManifest } from "../core/services/schema/index.js";
 import { parseYaml } from "../util/yaml.js";
@@ -36,6 +35,6 @@ export function bundleRequires(ctx: CompletionContext): string[] {
   if (!parsed.ok) {
     return [];
   }
-  const depIds = [...parsed.value.requires.keys()].map((key) => key as BundleId as string);
+  const depIds = [...parsed.value.requires.keys()].map((key) => key as string);
   return prefixFilter(depIds, ctx.partial);
 }

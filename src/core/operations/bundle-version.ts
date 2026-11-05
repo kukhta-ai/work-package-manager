@@ -7,7 +7,6 @@ import type {
   BundleManifest,
   Project,
   SemVer,
-  VersionRange,
 } from "../model/index.js";
 import { type BumpLevel, bumpSemVer } from "../services/version-constraint.js";
 import type { ApplyContext, ApplyOutcome, OperationSpec, ReadSpec } from "./lifecycle.js";
@@ -69,13 +68,13 @@ function writeBundleVersion(ctx: ApplyContext, id: string, version: SemVer): App
 }
 
 /** The input selecting which enabled bundle to read (`bundle <id> version`). */
-export interface BundleVersionReadInput {
+interface BundleVersionReadInput {
   /** The bundle id to read (selected by the `bundle <id>` routing). */
   readonly id: string;
 }
 
 /** The input to {@link bumpBundleVersionSpec}: the target id + the (commander-validated) level to advance. */
-export interface BumpBundleVersionInput {
+interface BumpBundleVersionInput {
   /** The bundle id to bump (selected by the `bundle <id>` routing). */
   readonly id: string;
   /** The semver level to advance — `major`, `minor`, or `patch`. */
@@ -83,7 +82,7 @@ export interface BumpBundleVersionInput {
 }
 
 /** The input to {@link setBundleVersionSpec}: the target id + the (already-parsed) explicit version. */
-export interface SetBundleVersionInput {
+interface SetBundleVersionInput {
   /** The bundle id to set (selected by the `bundle <id>` routing). */
   readonly id: string;
   /** The explicit semver to write (already validated by `parseSemVer` at the CLI boundary). */
@@ -220,11 +219,8 @@ function bumpAuthoringTasks(
     },
   ];
   // For every OTHER enabled bundle whose `requires` map names `<id>`: a version-constraint review (doc 11).
-  for (const other of (project.bundles as ReadonlyMap<BundleId, BundleManifest>).values()) {
-    if (
-      other.id !== id &&
-      (other.requires as ReadonlyMap<BundleId, VersionRange>).has(id as BundleId)
-    ) {
+  for (const other of project.bundles.values()) {
+    if (other.id !== id && other.requires.has(id as BundleId)) {
       tasks.push({
         title: `Review version constraint on ${id} at ${next}`,
         acceptanceCriteria: [

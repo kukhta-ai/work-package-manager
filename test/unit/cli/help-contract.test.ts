@@ -1,12 +1,13 @@
 import type { Command } from "commander";
 import { describe, expect, it } from "vitest";
-import { FakeBacklog } from "../../../src/adapters/fake-backlog.js";
-import { FakeEnvironment } from "../../../src/adapters/fake-env.js";
-import { FixedClock } from "../../../src/adapters/fixed-clock.js";
-import { MemoryFileSystem } from "../../../src/adapters/memory-fs.js";
 import { buildProgram, type CliDeps, run } from "../../../src/cli.js";
 import { EXAMPLE_HEADING } from "../../../src/help/examples.js";
 import type { CliIo, OutputSink } from "../../../src/util/exit.js";
+import { FakeBacklog } from "../../doubles/fake-backlog.js";
+import { FakeEnvironment } from "../../doubles/fake-env.js";
+import { FixedClock } from "../../doubles/fixed-clock.js";
+import { MemoryFileSystem } from "../../doubles/memory-fs.js";
+import { match } from "../../helpers/match.js";
 
 /**
  * Acceptance test for the `--help` content contract (task-28, doc 10 §"Every command is discoverable"). Driven
@@ -132,7 +133,7 @@ describe("--help content contract (task-28, doc 10 discoverability)", () => {
       // the walk actually covered the expected set (so the guard can't pass vacuously):
       const names = commands.map((c) => c.name());
       expect(names).toEqual(
-        expect.arrayContaining(["init", "template", "project", "build", "bundle", "new"]),
+        match.arrayContaining(["init", "template", "project", "build", "bundle", "new"]),
       );
       expect(commands.length).toBeGreaterThanOrEqual(6);
 

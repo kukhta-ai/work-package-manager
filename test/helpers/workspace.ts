@@ -25,7 +25,7 @@ export function initWorkspace(builtCli: string, parentDir: string, name = "demo"
   execFileSync(
     process.execPath,
     [builtCli, "init", name, "--at", workspace, "--authoring-client", "codex"],
-    { encoding: "utf8" },
+    { encoding: "utf8", timeout: 120_000 },
   );
   return workspace;
 }

@@ -42,5 +42,5 @@ export function installedTargetNames(ctx: CompletionContext): string[] {
   if (!manifest.ok) {
     return [];
   }
-  return prefixFilter(manifest.value.targets as readonly string[], ctx.partial);
+  return prefixFilter(manifest.value.targets, ctx.partial);
 }

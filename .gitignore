@@ -21,3 +21,11 @@ backlog/.locks/
 # OS / editor cruft
 .DS_Store
 *.swp
+
+# Local quality tools, databases and evidence
+.quality/
+.stryker-tmp/
+coverage/
+test-results/
+
+/.quality

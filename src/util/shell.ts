@@ -8,7 +8,7 @@ import { execaSync } from "execa";
  */
 
 /** The result of a successful {@link runSync} call. */
-export interface ShellResult {
+interface ShellResult {
   /** The process's standard output. */
   readonly stdout: string;
   /** The process's standard error. */
@@ -18,7 +18,7 @@ export interface ShellResult {
 }
 
 /** Options for {@link runSync}. */
-export interface RunOptions {
+interface RunOptions {
   /** The working directory to run the command in (an explicit path the caller controls). */
   readonly cwd?: string;
   /**
@@ -48,7 +48,7 @@ export function runSync(
 ): ShellResult {
   try {
     const result = execaSync(file, args, {
-      cwd: options.cwd,
+      ...(options.cwd === undefined ? {} : { cwd: options.cwd }),
       ...(options.env !== undefined ? { env: options.env } : {}),
       // Never throw raw execa errors to callers; we re-wrap below for a consistent message.
       reject: false,
@@ -89,6 +89,8 @@ export function runSync(
         : err instanceof Error
           ? err.message
           : String(err);
-    throw new Error(`Command could not be run: ${command}${reason ? `\n${reason}` : ""}`);
+    throw new Error(`Command could not be run: ${command}${reason ? `\n${reason}` : ""}`, {
+      cause: err,
+    });
   }
 }

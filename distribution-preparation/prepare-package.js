@@ -145,6 +145,7 @@ function assertNoContributorLocalState(sourceRoot) {
 
 /** @param {string} output */
 function parsePackedFilename(output) {
+  /** @type {unknown} */
   const parsed = JSON.parse(output);
   if (
     !Array.isArray(parsed) ||

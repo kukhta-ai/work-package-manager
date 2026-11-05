@@ -50,7 +50,7 @@ interface RemovalReport {
 }
 
 /** The input to {@link removeBundleSpec}: the (already-confirmed, already-existence-checked) bundle id to remove. */
-export interface RemoveBundleInput {
+interface RemoveBundleInput {
   /** The id of the bundle to tear down (its directory, advisor, and authoring tasks are deleted). */
   readonly id: string;
 }
@@ -71,6 +71,7 @@ export interface RemoveBundleInput {
  * @param title - The authoring task's title.
  * @param id - The bundle id to test for as a whole token.
  * @returns `true` when `title` names `id` as a whole token (not as a prefix of a longer id).
+ * @internal Used by runtime within this module; exported for focused behavioral tests.
  */
 export function titleNamesBundle(title: string, id: string): boolean {
   // Escape any regex metacharacters in id (kebab-case ids are [a-z0-9-], but escape defensively for robustness).

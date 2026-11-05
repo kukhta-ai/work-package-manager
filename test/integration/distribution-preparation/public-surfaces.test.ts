@@ -4,14 +4,14 @@ import { fileURLToPath } from "node:url";
 import type { Command } from "commander";
 import { parseJsonConfigFileContent, readConfigFile, sys } from "typescript";
 import { describe, expect, it } from "vitest";
-import { FakeBacklog } from "../../../src/adapters/fake-backlog.js";
-import { FakeEnvironment } from "../../../src/adapters/fake-env.js";
-import { FixedClock } from "../../../src/adapters/fixed-clock.js";
-import { MemoryFileSystem } from "../../../src/adapters/memory-fs.js";
 import { buildProgram, type CliDeps, run } from "../../../src/cli.js";
 import { initProject } from "../../../src/core/operations/init-project.js";
 import type { CliIo, OutputSink } from "../../../src/util/exit.js";
 import { toPosix } from "../../../src/util/posix-path.js";
+import { FakeBacklog } from "../../doubles/fake-backlog.js";
+import { FakeEnvironment } from "../../doubles/fake-env.js";
+import { FixedClock } from "../../doubles/fixed-clock.js";
+import { MemoryFileSystem } from "../../doubles/memory-fs.js";
 
 const REPO_ROOT = fileURLToPath(new URL("../../..", import.meta.url));
 const REAL_TEMPLATES = join(REPO_ROOT, "templates");
@@ -259,7 +259,7 @@ describe("inactive distribution public-surface contract", () => {
 
   it("keeps unshipped preparation code inside typecheck and Biome but outside the production build", () => {
     const typecheckPath = join(REPO_ROOT, "tsconfig.json");
-    const typecheckConfig = readConfigFile(typecheckPath, sys.readFile);
+    const typecheckConfig = readConfigFile(typecheckPath, (path) => sys.readFile(path));
     expect(typecheckConfig.error).toBeUndefined();
     const typecheck = parseJsonConfigFileContent(
       typecheckConfig.config,
@@ -270,7 +270,7 @@ describe("inactive distribution public-surface contract", () => {
     );
 
     const buildPath = join(REPO_ROOT, "tsconfig.build.json");
-    const buildConfig = readConfigFile(buildPath, sys.readFile);
+    const buildConfig = readConfigFile(buildPath, (path) => sys.readFile(path));
     expect(buildConfig.error).toBeUndefined();
     const build = parseJsonConfigFileContent(
       buildConfig.config,
@@ -307,9 +307,10 @@ describe("inactive distribution public-surface contract", () => {
     expect(manifest.private).toBe(true);
     expect(manifest.files).toEqual(["agent-skills", "dist", "docs", "templates"]);
     expect(manifest.publishConfig).toBeUndefined();
-    expect(Object.keys(manifest.scripts)).not.toEqual(
-      expect.arrayContaining([expect.stringMatching(/publish|release/i)]),
+    expect(Object.values(manifest.scripts).join("\n")).not.toMatch(
+      /\b(?:npm\s+(?:publish|dist-tag)|gh\s+release|git\s+(?:tag|push))\b/i,
     );
+    expect(manifest.scripts["quality:release"]).toBe("node scripts/quality.mjs release");
     expect(manifest.scripts["package:inspect"]).toBe(
       "node distribution-preparation/prepare-package.js",
     );
@@ -344,7 +345,9 @@ describe("inactive distribution public-surface contract", () => {
     expect(workflows).not.toMatch(/^\s*(?:contents|packages|id-token)\s*:\s*write\s*$/m);
     expect(workflows).not.toMatch(/^\s*(?:environment|secrets?)\s*:/m);
     expect(workflows).not.toMatch(/^\s*run\s*:\s*(?:npm\s+(?:publish|dist-tag)|gh\s+release)\b/im);
-    expect(workflows).toContain("npm run package:inspect -- --revision HEAD");
+    expect(workflows).toMatch(
+      /npm\s+run(?:\s+--silent)?\s+package:inspect\s+--\s+--revision\s+HEAD/,
+    );
   });
 
   it("keeps candidate preparation structurally unable to inspect or mutate release channels", () => {

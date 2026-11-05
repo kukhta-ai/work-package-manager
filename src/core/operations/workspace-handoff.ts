@@ -8,7 +8,7 @@ import {
   type MutationBoundary,
   MutationFailure,
 } from "../errors.js";
-import { AUTHORING_TASK_PREFIX, type OperationResult } from "../model/index.js";
+import { AUTHORING_TASK_PREFIX } from "../model/index.js";
 import type { BacklogMd, FileSystem } from "../ports/index.js";
 import {
   AUTHORING_CLIENT_IDS,
@@ -34,16 +34,18 @@ import {
 } from "../services/workspace-authoring-integration.js";
 import {
   createWorkspaceHandoffReceipt,
+  type PreparedWorkspaceHandoffResult,
   parseWorkspaceHandoffReceipt,
   serializeWorkspaceHandoffReceipt,
   WORKSPACE_HANDOFF_BACKLOG_PATH,
   WORKSPACE_HANDOFF_RECEIPT_PATH,
-  type WorkspaceHandoffClientReceipt,
   type WorkspaceHandoffReceipt,
 } from "../services/workspace-handoff.js";
 import { projectWideAuthoringTasks } from "./init-project.js";
 
-/** Existing ports are sufficient for both preparation and read-only verification. */
+/** Existing ports are sufficient for both preparation and read-only verification.
+ * @internal Runtime type exported for typed test fixtures; not a public SDK surface.
+ */
 export interface WorkspaceHandoffDeps {
   readonly fs: FileSystem;
   readonly backlog: BacklogMd;
@@ -51,26 +53,18 @@ export interface WorkspaceHandoffDeps {
   readonly bundledSkillsRoot: string;
 }
 
-export interface PrepareWorkspaceHandoffInput {
+interface PrepareWorkspaceHandoffInput {
   readonly workspaceRoot: string;
   readonly integrationVersion: string;
 }
 
-export interface VerifyWorkspaceHandoffInput extends PrepareWorkspaceHandoffInput {
+interface VerifyWorkspaceHandoffInput extends PrepareWorkspaceHandoffInput {
   /** Actual injected process directory, retained separately from upward workspace discovery. */
   readonly actualWorkingDirectory: string;
   readonly clientId: string;
 }
 
-/** Truthful sender-facing result; `prepared` is emitted only after the final receipt publication succeeds. */
-export interface PreparedWorkspaceHandoffResult extends OperationResult {
-  readonly status: "prepared";
-  readonly handoffPrepared: true;
-  readonly workspaceRoot: string;
-  readonly receiptPath: typeof WORKSPACE_HANDOFF_RECEIPT_PATH;
-  readonly configuredClients: readonly AuthoringClientId[];
-  readonly clients: readonly WorkspaceHandoffClientReceipt[];
-}
+export type { PreparedWorkspaceHandoffResult } from "../services/workspace-handoff.js";
 
 export interface VerifiedWorkspaceHandoffResult {
   readonly status: "verified";
@@ -657,7 +651,7 @@ function inspectCoreBacklog(
       ),
     );
   }
-  let tasks: ReturnType<BacklogMd["listTasks"]> = [];
+  let tasks: ReturnType<BacklogMd["listTasks"]>;
   try {
     tasks = deps.backlog.listTasks(root);
     for (const task of tasks) evidence.taskStatuses.set(task.id, task.status);

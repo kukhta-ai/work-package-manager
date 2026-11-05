@@ -163,8 +163,10 @@ FAQ.md                    ← "how is this different from X?" — the busy neigh
 AGENTS.md                 ← the development front door: how an agent should build wpm
 docs/
   00-foundation-and-lineage.md … 14-lineage-reference.md   ← the design specification (read in order)
-  SDLC.md                 ← the build SDLC as a Mermaid sequence diagram
-builder-backlog.tar.gz    ← wpm's own foundational dev backlog (33 dependency-ordered tasks)
+  development.md          ← current development process and native agent guidance
+  implementation-plan.md  ← vNext implementation order and stack decisions
+  SDLC.md                 ← historical BMAD process
+backlog/                  ← CLI-managed development tasks and their evidence
 research/
   research-prior-art.md   ← competitive landscape / prior art
   research-code-quality.md← toolchain & code-quality decisions
@@ -179,14 +181,21 @@ research/
   spec-driven frameworks, autonomous loops, classic installer builders, MCP, plugins, and app
   stores.
 - **To see the direction:** `ROADMAP.md`.
-- **To build it:** unpack `builder-backlog.tar.gz`, then read `AGENTS.md` (the development front
-  door) — it explains reading the docs, initializing the SDLC, and working the 33-task backlog
-  bottom-up along the hexagonal core.
+- **To develop it:** read [AGENTS.md](./AGENTS.md) and the [implementation plan and stack decisions](./docs/implementation-plan.md). The current process uses short topic branches, independent review and executable quality gates. The foundational backlog remains historical implementation evidence.
 
 ## Development
 
-Standard Node + TypeScript (ESM) workflow. After `npm install` (which also installs the git pre-commit
-hook):
+Node 24 is the default development line (`.node-version`); the product retains its Node >=20 runtime contract. Run `npm ci` to restore exact dependencies and the local development Backlog.md CLI. Full analyzer setup also requires uv 0.11.9 and Go 1.27.3 available to the setup command; their pins live in `quality/toolchain.json`. See [native agent guidance](./docs/development.md), [Groma](./docs/groma.md), and [private delivery](./docs/delivery.md).
+
+```bash
+npm run quality:setup   # explicitly provision pinned local analyzers
+node node_modules/groma.md/cli.cjs plugin install  # restore the configured exact scanner
+npm run quality:doctor
+npm run quality:fast    # focused feedback; full consumer tests run in quality:ci
+npm run quality:ci
+```
+
+The lower-level commands remain available:
 
 ```bash
 npm run build        # clean dist/, then compile src/ → dist/ (tsc; emits sourcemaps + .d.ts)
@@ -201,13 +210,19 @@ npm run package:prepare-candidate -- --inspection ../wpm-package-report.json --i
 npm run package:assess-github -- --candidate ../wpm-candidate --policy ../github-policy.json --observation ../github-observation.json
 ```
 
-To exercise the in-development command **as if it were installed**, link it onto your `PATH`:
+For the prototype-aligned operations, groups and optional worker setup, use the additive vNext surface:
 
 ```bash
-npm run build && npm link    # exposes the `wpm` (and `installer`) commands, pointed at your build
-wpm --version                # → the in-progress build's version
-npm rm -g wpm                # unlink when done (removes the global symlink)
+npm run build
+npm run wpm -- vnext --root ../brief init brief
+npm run wpm -- vnext --root ../brief worker-setup create
+npm run wpm -- vnext --root ../brief operation add brief "Produce a brief" --ac "A readable brief describes the selected problem"
+npm run wpm -- vnext --root ../brief check
+npm run wpm -- vnext --root ../brief lock
+npm run wpm -- vnext --root ../brief build
 ```
+
+The [vNext contract](./docs/vnext.md) describes group selection, null/default setup semantics, recovery, static recipient rehearsal and the separate pinned APM lock/install/compile phases. `npm run wpm` uses this checkout and its local development tool binaries. For a real installed-consumer check, use `package:inspect` and `package:verify-install` below.
 
 `build` always cleans first, so a rebuild never carries stale output from a since-deleted source, and the
 emitted sourcemaps map `dist/*.js` back to the original `src/*.ts` for source-level debugging. See
@@ -218,7 +233,7 @@ revision, creates a fresh build, inspects the actual `.tgz`, and reports its exa
 not activate a public package coordinate or create tags, releases, registry writes, or remote state.
 
 To prove the consumer journey, save the inspection report outside the clean checkout, then pass that report to
-`package:verify-install`. For example, run `npm run package:inspect -- --revision HEAD --output
+`package:verify-install`. For example, run `npm run --silent package:inspect -- --revision HEAD --output
 ../wpm-package-evidence > ../wpm-package-report.json`, followed by the verification command above. Verification
 freezes those inspected archive bytes, installs them into a disposable HOME/workspace/global prefix, invokes
 every declared executable, resolves the declared package paths, and confirms installation did not change

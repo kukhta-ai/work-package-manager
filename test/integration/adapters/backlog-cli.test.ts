@@ -55,7 +55,7 @@ function taskDetail(root: string, id: string): string {
     env: { ...process.env, ...isolatedEnv(root) },
     stdout: "pipe",
     stderr: "pipe",
-  }).stdout as string;
+  }).stdout;
 }
 
 describeIfBacklog(

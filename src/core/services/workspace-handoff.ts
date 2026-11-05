@@ -1,5 +1,6 @@
 import { isAbsolute, posix, win32 } from "node:path";
 import { toPosix } from "../../util/posix-path.js";
+import type { OperationResult } from "../model/operation.js";
 import {
   AUTHORING_CLIENT_IDS,
   type AuthoringClientId,
@@ -42,6 +43,16 @@ export interface WorkspaceHandoffClientReceipt {
   };
 }
 
+/** Truthful sender-facing result; `prepared` is emitted only after the final receipt publication succeeds. */
+export interface PreparedWorkspaceHandoffResult extends OperationResult {
+  readonly status: "prepared";
+  readonly handoffPrepared: true;
+  readonly workspaceRoot: string;
+  readonly receiptPath: typeof WORKSPACE_HANDOFF_RECEIPT_PATH;
+  readonly configuredClients: readonly AuthoringClientId[];
+  readonly clients: readonly WorkspaceHandoffClientReceipt[];
+}
+
 interface WorkspaceHandoffReceiptBase {
   readonly schemaVersion: 1;
   readonly workspaceRoot: string;
@@ -68,7 +79,7 @@ export type WorkspaceHandoffReceipt =
   | PreparingWorkspaceHandoffReceipt
   | PreparedWorkspaceHandoffReceipt;
 
-export type WorkspaceHandoffReceiptParseResult =
+type WorkspaceHandoffReceiptParseResult =
   | { readonly ok: true; readonly value: WorkspaceHandoffReceipt }
   | { readonly ok: false; readonly reason: string };
 

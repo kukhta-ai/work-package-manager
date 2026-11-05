@@ -1,5 +1,4 @@
 import { describe, expect, it } from "vitest";
-import { MemoryFileSystem } from "../../../src/adapters/memory-fs.js";
 import type { AgentName, BundleId } from "../../../src/core/model/index.js";
 import { parseAgentName, parseBundleId } from "../../../src/core/model/index.js";
 import {
@@ -9,11 +8,10 @@ import {
   shippableFiles,
 } from "../../../src/core/operations/build.js";
 import { loadProject } from "../../../src/core/operations/lifecycle.js";
-import {
-  buildLockfile,
-  serializeLockfile,
-  type VendoredArtifact,
-} from "../../../src/core/services/integrity.js";
+import type { VendoredArtifact } from "../../../src/core/services/integrity.js";
+import { MemoryFileSystem } from "../../doubles/memory-fs.js";
+import { buildLockfile, serializeLockfile } from "../../helpers/legacy-lockfile.js";
+import { match } from "../../helpers/match.js";
 
 /**
  * Unit tests for the PURE build plan (task-82, Part A): `computeBuildPlan` + `shippableFiles` over an in-memory
@@ -321,7 +319,7 @@ describe("shippableFiles — the prune-aware ship set (AC82#3)", () => {
 
     const files = plan(fs).shippable;
     expect(files).toEqual(
-      expect.arrayContaining([
+      match.arrayContaining([
         "bundles/core/payload/agent-skills/kept/SKILL.md",
         "bundles/core/payload/agent-skills/kept/references/guide.md",
         "bundles/core/payload/agent-skills/kept/assets/prompt.tmpl",
@@ -522,7 +520,7 @@ describe("computeScopeAliasTransforms (TASK-128 portable release aliases)", () =
       { linkPath: "bundles/core/.claude/skills", aliasTo: "bundles/core/installer-skills" },
     ]);
     expect(result.shippable).toEqual(
-      expect.arrayContaining([".claude/skills", "bundles/core/.claude/skills"]),
+      match.arrayContaining([".claude/skills", "bundles/core/.claude/skills"]),
     );
     expect(result.shippable.filter((path) => path.includes("/skills/"))).toEqual([]);
     expect(result.shippable.some((path) => path.includes("bundles/disabled"))).toBe(false);

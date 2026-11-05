@@ -50,7 +50,7 @@ import { renderSkillStub, type SkillStubDeps } from "./scaffold-skill.js";
  * installer-skills (P), and project installer-skills (F). The OPERATION is generic; a family supplies a
  * descriptor (+ the model/schema registry field + its `list` source).
  */
-export interface SkillRefDescriptor {
+interface SkillRefDescriptor {
   /** The host-relative on-disk directory skills of this category live under (e.g. `payload/agent-skills` for O). */
   readonly onDiskDir: string;
   /** The `bundle.yml`/`manifest.yml` key path whose sequence holds the `{name,path}` registry (e.g. `["payload", "skills"]`). */
@@ -192,7 +192,7 @@ function registerSkillRef(
 }
 
 /** The input to {@link attachSkillRefSpec}: host id, skill name, and bundle-relative skill-document path. */
-export interface AttachSkillRefInput {
+interface AttachSkillRefInput {
   /** The host bundle (selected + enabled-guarded by the `bundle <id>` routing). */
   readonly id: string;
   /** The skill name to register (the registry key). */
@@ -202,7 +202,7 @@ export interface AttachSkillRefInput {
 }
 
 /** The input to {@link scaffoldSkillRefSpec}: the host id and the new skill name (scaffolded at the conventional path). */
-export interface ScaffoldSkillRefInput {
+interface ScaffoldSkillRefInput {
   /** The host bundle (selected + enabled-guarded by the `bundle <id>` routing). */
   readonly id: string;
   /** The new skill name to scaffold + register. */
@@ -210,7 +210,7 @@ export interface ScaffoldSkillRefInput {
 }
 
 /** The input to {@link removeSkillRefSpec}: the host id and the registered skill name to deregister. */
-export interface RemoveSkillRefInput {
+interface RemoveSkillRefInput {
   /** The host bundle (selected + enabled-guarded by the `bundle <id>` routing). */
   readonly id: string;
   /** The registered skill name to deregister (its source package is left on disk). */
@@ -218,7 +218,7 @@ export interface RemoveSkillRefInput {
 }
 
 /** The input to {@link listSkillRefsSpec}: the host bundle id to read. */
-export interface SkillListInput {
+interface SkillListInput {
   /** The host bundle whose registered skills to print (selected by the `bundle <id>` routing). */
   readonly id: string;
 }
@@ -393,7 +393,7 @@ export function removeSkillRefSpec(
 }
 
 /** The input to {@link removeUnregisteredSkillStubSpec}: the host id and the on-disk-but-unregistered skill name. */
-export interface RemoveUnregisteredSkillInput {
+interface RemoveUnregisteredSkillInput {
   /** The host bundle (selected + enabled-guarded by the `bundle <id>` routing). */
   readonly id: string;
   /** The unregistered skill name whose stray on-disk stub directory is removed. */
@@ -486,7 +486,7 @@ function skillDir(documentPath: string): string {
  * command layer (which owns the fs port). The scan itself is threaded in — like `bundle <id> show` threads its
  * file tree — so the read's projection stays pure (no fs in the core read path).
  */
-export interface ScanInstallerSkillsInput {
+interface ScanInstallerSkillsInput {
   /** The host bundle whose install-time helpers were scanned (selected by the `bundle <id>` routing). */
   readonly id: string;
   /** The helper NAMES the command scanned under the host's `installer-skills/` (sorted, already filtered). */

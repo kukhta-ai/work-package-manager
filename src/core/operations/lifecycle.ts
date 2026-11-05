@@ -142,7 +142,7 @@ export interface ReadSpec<I, T> {
 }
 
 /** The outcome of {@link runRead}: the projected value plus an empty-effect {@link OperationResult}. */
-export interface ReadOutcome<T> {
+interface ReadOutcome<T> {
   /** The value projected from the loaded project. */
   readonly value: T;
   /** The structured result (empty `changedPaths` / `materialisedTaskTitles` — a read changes nothing). */

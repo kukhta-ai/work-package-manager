@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { describe, expect, it } from "vitest";
-import { MemoryFileSystem } from "../../../src/adapters/memory-fs.js";
+import { MemoryFileSystem } from "../../doubles/memory-fs.js";
 
 class FileArrivalAfterDetachmentMemoryFileSystem extends MemoryFileSystem {
   protected override afterConfinedFileDetachment(path: string): void {

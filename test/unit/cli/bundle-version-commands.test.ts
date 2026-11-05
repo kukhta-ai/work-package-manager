@@ -1,14 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { FakeBacklog } from "../../../src/adapters/fake-backlog.js";
-import { FakeEnvironment } from "../../../src/adapters/fake-env.js";
-import { FixedClock } from "../../../src/adapters/fixed-clock.js";
-import { MemoryFileSystem } from "../../../src/adapters/memory-fs.js";
 import { buildProgram, type CliDeps, COMPLETION_SPECS, run } from "../../../src/cli.js";
 import { completeArgv } from "../../../src/completion/complete.js";
 import { defaultRegistry } from "../../../src/completion/registry.js";
 import { parseBundleManifest } from "../../../src/core/services/schema/index.js";
 import type { CliIo, OutputSink } from "../../../src/util/exit.js";
 import { parseYaml } from "../../../src/util/yaml.js";
+import { FakeBacklog } from "../../doubles/fake-backlog.js";
+import { FakeEnvironment } from "../../doubles/fake-env.js";
+import { FixedClock } from "../../doubles/fixed-clock.js";
+import { MemoryFileSystem } from "../../doubles/memory-fs.js";
 
 /**
  * Acceptance tests for the per-bundle VERSION family — `bundle <id> version` / `version bump` / `version set`
@@ -142,7 +142,7 @@ describe("bundle <id> version (task-59 — a READ)", () => {
     expect(i.err.text).toContain("init");
   });
 
-  it("AC#3 — the id position completes from enabled bundles", async () => {
+  it("AC#3 — the id position completes from enabled bundles", () => {
     const { fs, backlog } = seed();
     // `bundle <tab>` offers the enabled ids (resolved by the per-bundle routing) ∪ the fixed verbs.
     const d = deps(fs, backlog, PROJ);

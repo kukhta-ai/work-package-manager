@@ -170,6 +170,7 @@ import {
 import { toPosix } from "./util/posix-path.js";
 import { parseYaml } from "./util/yaml.js";
 import { VERSION } from "./version.js";
+import { registerVnextCommands } from "./vnext/cli.js";
 
 export type { CliIo, OutputSink } from "./util/exit.js";
 
@@ -2028,7 +2029,7 @@ const bundleModule: CommandModule = {
       .option("--disabled", "create the bundle without enabling it in the manifest")
       .option("--no-advisor", "skip the auto-scaffolded advisor")
       .action(
-        async (
+        (
           id: string,
           opts: {
             template?: string;
@@ -2068,10 +2069,10 @@ const bundleModule: CommandModule = {
             { deliverableRoot: root, workspaceRoot },
             {
               id,
-              version: opts.version,
-              disabled: opts.disabled,
-              advisor: opts.advisor,
-              templateName: opts.template,
+              ...(opts.version === undefined ? {} : { version: opts.version }),
+              ...(opts.disabled === undefined ? {} : { disabled: opts.disabled }),
+              ...(opts.advisor === undefined ? {} : { advisor: opts.advisor }),
+              ...(opts.template === undefined ? {} : { templateName: opts.template }),
             },
           );
           ctx.io.out.write(formatResult(result));
@@ -2107,7 +2108,7 @@ const bundleModule: CommandModule = {
             builtinTemplatesRoot: ctx.deps.builtinTemplatesRoot,
           },
           { deliverableRoot: root, workspaceRoot },
-          { id, advisor: opts.advisor },
+          { id, ...(opts.advisor === undefined ? {} : { advisor: opts.advisor }) },
         );
         ctx.io.out.write(formatResult(result));
         writeWarnings(ctx, result.warnings);
@@ -4190,6 +4191,7 @@ export function buildProgram(deps: CliDeps, io: CliIo): Command {
   for (const module of TOP_LEVEL_MODULES) {
     module.register(program, ctx);
   }
+  registerVnextCommands(program, io.out);
   return program;
 }
 
@@ -4214,12 +4216,12 @@ export async function run(argv: readonly string[], deps: CliDeps, io: CliIo): Pr
   //      reconstructed exactly as omelette does (`argv.slice(compgenIndex + 3).join(' ')`).
   //   2. the internal `__complete <words…>` alias (a stable, shell-agnostic entry point for tooling/tests).
   if (isCompletionCallback(argv)) {
-    return runWithExit(io, async () => {
+    return runWithExit(io, () => {
       emitCompletions(wordsFromCompgen(argv), deps, io);
     });
   }
   if (argv.length > 0 && argv[0] === COMPLETE_COMMAND) {
-    return runWithExit(io, async () => {
+    return runWithExit(io, () => {
       emitCompletions(argv.slice(1), deps, io);
     });
   }
@@ -4228,7 +4230,7 @@ export async function run(argv: readonly string[], deps: CliDeps, io: CliIo): Pr
   // keeps `wpm --version` printing the program version. A subcommand line never starts with the flag, so it is
   // not intercepted (see `isProgramVersionRequest`).
   if (isProgramVersionRequest(argv)) {
-    return runWithExit(io, async () => {
+    return runWithExit(io, () => {
       io.out.write(`${VERSION}\n`);
     });
   }
@@ -4297,5 +4299,10 @@ if (isMainModule()) {
     in: process.stdin,
     interactive: process.stdin.isTTY === true,
   };
-  void run(process.argv.slice(2), deps, io).then((code) => process.exit(code));
+  run(process.argv.slice(2), deps, io)
+    .then((code) => process.exit(code))
+    .catch((error: unknown) => {
+      io.err.write(`${error instanceof Error ? error.message : String(error)}\n`);
+      process.exitCode = 1;
+    });
 }

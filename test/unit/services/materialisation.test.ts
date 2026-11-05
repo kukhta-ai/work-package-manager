@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { FakeBacklog } from "../../../src/adapters/fake-backlog.js";
 import type { AuthoringTaskSpec } from "../../../src/core/model/index.js";
 import { materialiseAuthoringTasks } from "../../../src/core/services/materialisation.js";
+import { FakeBacklog } from "../../doubles/fake-backlog.js";
 
 const ROOT = "/proj/.authoring-backlog";
 

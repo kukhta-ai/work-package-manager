@@ -19,8 +19,11 @@ export const WORKSPACE_SKILL_NAMES = Object.freeze([
   "wpm-review-package",
 ] as const);
 
-/** One stable owned-block identity; duplicate or orphan occurrences are ambiguous ownership. */
+/** One stable owned-block identity; duplicate or orphan occurrences are ambiguous ownership.
+ * @internal Used by runtime within this module; exported for focused behavioral tests.
+ */
 export const MANAGED_FRONT_DOOR_START = "<!-- wpm:workspace-authoring:start -->";
+/** @internal Used by runtime within this module; exported for focused behavioral tests. */
 export const MANAGED_FRONT_DOOR_END = "<!-- wpm:workspace-authoring:end -->";
 
 /** One member of the exact WPM workspace family. */
@@ -60,7 +63,7 @@ export interface ManagedFrontDoorPath {
 export type ManagedWorkspacePath = ManagedSkillPath | ManagedFrontDoorPath;
 
 /** Stable facts retained after one complete reconciliation. */
-export interface ReconciliationFacts {
+interface ReconciliationFacts {
   readonly strategy: "exact-owned-content";
   readonly previousVersion: string | null;
   readonly previousClients: readonly AuthoringClientId[];
@@ -118,7 +121,7 @@ export interface ApplyingManagedAuthoringState extends ManagedStateBase {
 export type ManagedAuthoringState = CompleteManagedAuthoringState | ApplyingManagedAuthoringState;
 
 /** Successful or failed strict state parse. */
-export type ManagedStateParseResult =
+type ManagedStateParseResult =
   | { readonly ok: true; readonly value: ManagedAuthoringState }
   | { readonly ok: false; readonly reason: string };
 
@@ -180,7 +183,7 @@ export function renderManagedFrontDoorBlock(client: AuthoringClientId, version: 
 }
 
 /** Result of locating the one managed block in a front door. */
-export type ManagedFrontDoorInspection =
+type ManagedFrontDoorInspection =
   | { readonly kind: "absent" }
   | {
       readonly kind: "present";
@@ -424,14 +427,14 @@ function parseBaseState(value: unknown): ManagedAuthoringState | undefined {
   ) {
     return undefined;
   }
-  const selectedClients = [...new Set(value.selectedClients as AuthoringClientId[])];
+  const selectedClients = [...new Set(value.selectedClients)];
   if (
     selectedClients.length !== value.selectedClients.length ||
     !canonicalClients(selectedClients)
   ) {
     return undefined;
   }
-  if (!canonicalClients(value.reconciliation.previousClients as AuthoringClientId[])) {
+  if (!canonicalClients(value.reconciliation.previousClients)) {
     return undefined;
   }
   if (
@@ -448,16 +451,16 @@ function parseBaseState(value: unknown): ManagedAuthoringState | undefined {
   if (pathSet.size !== ownedPaths.length) {
     return undefined;
   }
-  const base = {
+  const base: ManagedStateBase = {
     schemaVersion: 1 as const,
     workspaceRoot: value.workspaceRoot,
     integrationVersion: value.integrationVersion,
     selectedClients,
-    origin: value.origin as WorkspaceIntegrationOrigin,
+    origin: value.origin,
     reconciliation: {
       strategy: "exact-owned-content" as const,
-      previousVersion: value.reconciliation.previousVersion as string | null,
-      previousClients: value.reconciliation.previousClients as AuthoringClientId[],
+      previousVersion: value.reconciliation.previousVersion,
+      previousClients: value.reconciliation.previousClients,
     },
     ownedPaths: ownedPaths as ManagedWorkspacePath[],
   };

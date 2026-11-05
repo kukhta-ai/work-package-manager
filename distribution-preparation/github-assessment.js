@@ -60,6 +60,7 @@ function compareObservation(left, right) {
 
 /** @param {readonly string[]} identities */
 function firstDuplicateIdentity(identities) {
+  /** @type {Map<string, number>} */
   const counts = new Map();
   for (const identity of identities) counts.set(identity, (counts.get(identity) ?? 0) + 1);
   return [...counts.entries()]

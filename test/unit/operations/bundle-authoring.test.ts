@@ -1,7 +1,5 @@
 import { posix, win32 } from "node:path";
 import { describe, expect, it } from "vitest";
-import { FakeBacklog } from "../../../src/adapters/fake-backlog.js";
-import { MemoryFileSystem } from "../../../src/adapters/memory-fs.js";
 import { BundleAuthoringPreflightError, MutationFailure } from "../../../src/core/errors.js";
 import {
   bundleScaffoldSha256,
@@ -15,6 +13,9 @@ import {
   serializeBundleAuthoringContributions,
 } from "../../../src/core/services/bundle-authoring-contributions.js";
 import { toPosix } from "../../../src/util/posix-path.js";
+import { FakeBacklog } from "../../doubles/fake-backlog.js";
+import { MemoryFileSystem } from "../../doubles/memory-fs.js";
+import { match } from "../../helpers/match.js";
 
 const WORKSPACE = "/workspace";
 const ROOT = `${WORKSPACE}/wip`;
@@ -568,7 +569,7 @@ describe("bundle authoring planned operations", () => {
       .listTasks(AUTHORING)
       .find(({ title }) => title === "Use recorded contribution for web");
     expect(backlog.readTask(AUTHORING, recordedTask?.id ?? "").labels).toEqual(
-      expect.arrayContaining([
+      match.arrayContaining([
         "wpm:template-origin:project-local:bundle:bundle-template",
         "wpm:template-revision:recorded-r1",
         "wpm:template-key:recorded-only",
@@ -610,8 +611,8 @@ describe("bundle authoring planned operations", () => {
     expect(caught).toBeInstanceOf(BundleAuthoringPreflightError);
     if (caught instanceof BundleAuthoringPreflightError) {
       expect(caught.blockers).toEqual(
-        expect.arrayContaining([
-          expect.objectContaining({
+        match.arrayContaining([
+          match.objectContaining({
             code: "bundle-mutation-unavailable",
             surface: "backlog",
             path: `${AUTHORING}/backlog/.locks/create`,
@@ -673,10 +674,10 @@ describe("bundle authoring planned operations", () => {
     expect(caught).toBeInstanceOf(BundleAuthoringPreflightError);
     if (caught instanceof BundleAuthoringPreflightError) {
       expect(caught.blockers).toEqual(
-        expect.arrayContaining([
-          expect.objectContaining({ code: "existing-definition-mismatch" }),
-          expect.objectContaining({ code: "inactive-task-ownership-ambiguous" }),
-          expect.objectContaining({
+        match.arrayContaining([
+          match.objectContaining({ code: "existing-definition-mismatch" }),
+          match.objectContaining({ code: "inactive-task-ownership-ambiguous" }),
+          match.objectContaining({
             code: "bundle-mutation-unavailable",
             path: `${AUTHORING}/backlog/.locks/create`,
           }),
@@ -883,7 +884,7 @@ describe("bundle authoring planned operations", () => {
     expect(caught).toBeInstanceOf(BundleAuthoringPreflightError);
     if (caught instanceof BundleAuthoringPreflightError) {
       expect(caught.blockers.map(({ code }) => code)).toEqual(
-        expect.arrayContaining([
+        match.arrayContaining([
           "bundle-template-destination-ambiguous",
           "mandatory-title-collision",
         ]),
@@ -953,8 +954,8 @@ describe("bundle authoring planned operations", () => {
     expect(caught).toBeInstanceOf(BundleAuthoringPreflightError);
     if (caught instanceof BundleAuthoringPreflightError) {
       expect(caught.blockers).toEqual(
-        expect.arrayContaining([
-          expect.objectContaining({
+        match.arrayContaining([
+          match.objectContaining({
             code: "recorded-bundle-title-conflict",
             surface: "authoring-task-plan",
             path: "Configure web",
@@ -1108,7 +1109,7 @@ describe("bundle authoring planned operations", () => {
     expect(fs.exists(`${ROOT}/${BUNDLE_AUTHORING_CONTRIBUTIONS_PATH}`)).toBe(false);
     const tasks = backlog.listTasks(AUTHORING);
     expect(tasks.map(({ title }) => title)).toEqual(
-      expect.arrayContaining(["Plan bundle web", "Configure web", "Verify web"]),
+      match.arrayContaining(["Plan bundle web", "Configure web", "Verify web"]),
     );
     const configure = tasks.find(({ title }) => title === "Configure web");
     const verify = tasks.find(({ title }) => title === "Verify web");
@@ -1144,7 +1145,7 @@ describe("bundle authoring planned operations", () => {
     expect(backlog.listTasks(AUTHORING)).toHaveLength(beforeCount);
     expect(backlog.readTask(AUTHORING, configure.id)).toMatchObject({
       status: "In Progress",
-      labels: expect.arrayContaining(["human:keep", "wpm:template-key:configure"]),
+      labels: match.arrayContaining(["human:keep", "wpm:template-key:configure"]),
       extraSections: [{ heading: "Implementation Notes", content: "human progress" }],
     });
     expect(result.materialisedTaskTitles).toEqual([]);
@@ -1250,7 +1251,7 @@ describe("bundle authoring planned operations", () => {
       expect(error).toBeInstanceOf(BundleAuthoringPreflightError);
       if (error instanceof BundleAuthoringPreflightError) {
         expect(error.blockers.map(({ code }) => code)).toEqual(
-          expect.arrayContaining([
+          match.arrayContaining([
             "bundle-destination-occupied",
             "contribution-record-invalid",
             "backlog-unavailable",
@@ -1323,7 +1324,7 @@ describe("bundle authoring planned operations", () => {
     expect(caught).toBeInstanceOf(BundleAuthoringPreflightError);
     if (caught instanceof BundleAuthoringPreflightError) {
       expect(caught.blockers.map(({ code }) => code)).toEqual(
-        expect.arrayContaining(["enabled-bundle-snapshot-invalid", "dependency-unresolved"]),
+        match.arrayContaining(["enabled-bundle-snapshot-invalid", "dependency-unresolved"]),
       );
     }
     expect(fs.mutationCalls).toEqual([]);

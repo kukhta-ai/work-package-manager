@@ -1,4 +1,5 @@
 import { join } from "node:path";
+import type { FrontDoorTransform, ScopeAliasTransform } from "../model/archive.js";
 import type {
   AgentName,
   BundleId,
@@ -120,36 +121,10 @@ export interface LockCheck extends VerifyResult {
 }
 
 /**
- * One executor-front-door transform the build performs while archiving (doc 06/12): rename a reserved-prefix
- * `_AGENTS.md` to its canonical `AGENTS.md`, and synthesize the per-target alias front doors beside it. Computed
- * PURELY here (the policy); the packager adapter PERFORMS it (the effect — staging + the verbatim byte copy + the
- * alias symlinks). All paths are root-relative POSIX, so they line up with {@link BuildPlan.shippable}.
- */
-export interface FrontDoorTransform {
-  /** The reserved-prefix source path in the shippable set, e.g. `_AGENTS.md` or `bundles/core/_AGENTS.md`. */
-  readonly from: string;
-  /** The canonical stripped destination, in the same directory, e.g. `AGENTS.md` or `bundles/core/AGENTS.md`. */
-  readonly to: string;
-  /**
-   * The build-created per-target alias front doors, in the same directory (e.g. `CLAUDE.md`,
-   * `bundles/core/CLAUDE.md`) — one per targeted agent whose front-door basename is not the universal `AGENTS.md`
-   * (doc 05). Empty when every target reads `AGENTS.md` natively.
-   */
-  readonly aliases: readonly string[];
-}
-
-/** One manifest-derived target skill-scope alias to synthesize in the prepared release tree. */
-export interface ScopeAliasTransform {
-  /** Exact root-relative target-native scope path, such as `.claude/skills`. */
-  readonly linkPath: string;
-  /** Corresponding root-relative canonical directory shipped in the artifact. */
-  readonly aliasTo: string;
-}
-
-/**
  * Project the portable target scope aliases for a release from manifest targets and enabled bundles. Targets
  * that share one native scope (Codex and Hermes) produce one release path. Existing authoring-tree aliases are
  * deliberately not an input: their host-specific targets are not release authority.
+ * @internal Used by runtime within this module; exported for focused behavioral tests.
  */
 export function computeScopeAliasTransforms(
   targets: readonly AgentName[],
@@ -177,6 +152,7 @@ export function computeScopeAliasTransforms(
  * @param shippable - The sorted, root-relative shippable file paths (POSIX).
  * @param targets - The project's declared target agents (`manifest.targets`).
  * @returns The front-door transforms (one per reserved-prefix `_AGENTS.md`), in `shippable` order.
+ * @internal Used by runtime within this module; exported for focused behavioral tests.
  */
 export function computeFrontDoorTransforms(
   shippable: readonly string[],
@@ -240,7 +216,7 @@ export interface BuildPlan {
 }
 
 /** The input to {@link computeBuildPlan}: the loaded project plus the inputs the shell pre-reads for it. */
-export interface BuildPlanInput {
+interface BuildPlanInput {
   /** The loaded project (manifest + every enabled bundle's parsed `bundle.yml`). */
   readonly project: Project;
   /** The directory names present under `bundles/` — the input `validateProject` needs to detect orphans. */
@@ -353,6 +329,7 @@ function checkLockfile(
  * @param project - The loaded project model: its manifest drives enabled-bundle pruning and each enabled
  * bundle's `payload.skills` registry authorizes payload-skill directory packages.
  * @returns The sorted, root-relative shippable file paths.
+ * @internal Used by runtime within this module; exported for focused behavioral tests.
  */
 export function shippableFiles(fs: FileSystem, root: string, project: Project): string[] {
   const enabled = new Set<string>(project.manifest.bundles);

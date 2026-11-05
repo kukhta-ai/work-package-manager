@@ -464,7 +464,7 @@ describe("parseBundleManifest — the installerSkills registry (Family P, doc 10
 
 describe("parseBundleManifest — malformed (AC#3)", () => {
   it.each([
-    ["not an object", "string" as unknown, "must be a mapping"],
+    ["not an object", "string", "must be a mapping"],
     ["missing id", { version: "1.0.0", summary: "s", confirmation: "safe", requires: {} }, "id"],
     [
       "missing version",

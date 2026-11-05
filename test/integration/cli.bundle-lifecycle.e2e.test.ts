@@ -62,7 +62,7 @@ function authoringTaskTitles(proj: string): string {
     cwd: join(proj, ".authoring-backlog"),
     stdout: "pipe",
     stderr: "pipe",
-  }).stdout as string;
+  }).stdout;
 }
 
 function authoringTaskId(proj: string, title: string): string {
@@ -80,7 +80,7 @@ function authoringTaskRecord(proj: string, id: string): string {
     cwd: join(proj, ".authoring-backlog"),
     stdout: "pipe",
     stderr: "pipe",
-  }).stdout as string;
+  }).stdout;
 }
 
 describeIfBuilt("bundle lifecycle E2E via dist/cli.js (tasks 50/51/52)", () => {

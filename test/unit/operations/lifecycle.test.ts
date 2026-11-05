@@ -1,6 +1,4 @@
 import { describe, expect, it } from "vitest";
-import { FakeBacklog } from "../../../src/adapters/fake-backlog.js";
-import { MemoryFileSystem } from "../../../src/adapters/memory-fs.js";
 import { ConflictError, isDomainError } from "../../../src/core/errors.js";
 import type { AgentName, Project } from "../../../src/core/model/index.js";
 import {
@@ -11,6 +9,8 @@ import {
   runRead,
 } from "../../../src/core/operations/lifecycle.js";
 import type { DesiredArtefacts } from "../../../src/core/services/derived-artefacts.js";
+import { FakeBacklog } from "../../doubles/fake-backlog.js";
+import { MemoryFileSystem } from "../../doubles/memory-fs.js";
 
 /**
  * The harness now operates on an authoring WORKSPACE (task-88): the deliverable nests under `<workspace>/wip`

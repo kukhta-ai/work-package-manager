@@ -12,29 +12,6 @@ import {
 import { parseSkillRefs } from "./bundle.js";
 import { isPlainObject, optionalString, requireArray, requireString } from "./problems.js";
 
-/**
- * The plain-object shape of a `manifest.yml`, as the YAML layer (task-13) reads and writes it. This is the
- * serialization target — pure data, all strings — distinct from the parsed {@link Manifest} (whose fields
- * are branded domain values). Optional `project` fields are omitted when absent.
- */
-export interface ManifestData {
-  readonly project: {
-    readonly name: string;
-    readonly version: string;
-    readonly description?: string;
-    readonly license?: string;
-    readonly repository?: string;
-    readonly author?: string;
-  };
-  readonly targets: readonly string[];
-  readonly bundles: readonly string[];
-  /**
-   * The PROJECT-scoped install-time helper-skill registry (doc 10 row 178) — a top-level `manifest.yml` field, a
-   * list of `{name, path}` mappings (the project analogue of a bundle's `installerSkills`). Absent ⇒ empty.
-   */
-  readonly installerSkills: readonly { readonly name: string; readonly path: string }[];
-}
-
 const CTX = "manifest";
 
 /**
@@ -156,32 +133,4 @@ export function parseManifest(data: unknown): Parsed<Manifest> {
   if (!installerSkills.ok) return installerSkills;
 
   return ok({ meta, bundles, targets, installerSkills: installerSkills.value });
-}
-
-/**
- * Serialize a {@link Manifest} back into plain {@link ManifestData} for the YAML layer to emit (doc 13 §4).
- * Absent optional `project` fields are omitted, so the output matches the shape of a hand-written
- * `manifest.yml`. Round-trips: `parseManifest(serializeManifest(m))` yields a value equal to `m` (modulo the
- * model's semver normalization). Pure.
- *
- * @param manifest - The manifest to serialize.
- * @returns The plain-object representation.
- */
-export function serializeManifest(manifest: Manifest): ManifestData {
-  const { meta } = manifest;
-  return {
-    project: {
-      name: meta.name,
-      version: meta.version,
-      ...(meta.description !== undefined ? { description: meta.description } : {}),
-      ...(meta.license !== undefined ? { license: meta.license } : {}),
-      ...(meta.repository !== undefined ? { repository: meta.repository } : {}),
-      ...(meta.author !== undefined ? { author: meta.author } : {}),
-    },
-    targets: manifest.targets.map((t) => t as string),
-    bundles: manifest.bundles.map((b) => b as string),
-    // Always emit `installerSkills` (empty ⇒ `[]`), like `targets`/`bundles` — the project-scoped install-time
-    // helper-skill registry (doc 10 row 178). Round-trips with `parseManifest` (absent ⇒ empty).
-    installerSkills: manifest.installerSkills.map((s) => ({ name: s.name, path: s.path })),
-  };
 }
