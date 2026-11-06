@@ -4,7 +4,7 @@ title: Verify architecture and release candidates in private CI
 status: In Progress
 assignee: []
 created_date: '2026-11-05 20:21'
-updated_date: '2026-11-05 22:44'
+updated_date: '2026-11-06 00:29'
 labels: []
 dependencies: []
 modified_files:
@@ -183,6 +183,10 @@ Source base 6c33347330c225dac198272d2c574228b25bcb05; private read-only CI, pinn
 Actual security qualification (21 native controls) passed through shared production command builders, including complete Markdown fixtures and same-rule secrets in narrowly approved public-example files. Full-source Semgrep (146 files, zero findings, complete parse), Gitleaks (zero findings), actionlint/zizmor, tool doctor and fresh hash-locked Python tamper controls passed. Actual OSV refreshed DB scan (552 packages, zero affected). No vulnerability exceptions or broad vendor/path ignores.
 
 Real full packed consumer journey passed in 129.83 s. Explicit root-lock-verified cache/peer archives retain ordinary npm installation and qualify mapped Backlog 1.45.2 while preserving legacy >=1 peer metadata. Candidate reuse binds source/notes/lock and explicit peer identities; captured original bytes are staged after quality. Independent focused suite (49 tests) passed. Next: clean source commit and actual candidate quality:release/prepare/verify. No remote CI, administrative protection or publication claimed.
+
+2026-11-06 checkpoint: exact source 1632e0410205f33b8631f7f1dbb1a48538867b43 passed the mandatory quality:release band on Node 24.22.2/npm 11.19.1 Linux arm64: 165 files, 2303 tests passed, one Windows-only filesystem test skipped, 2736.00 s. Security/architecture/Knip/Groma and reviewed mutation gates passed. Candidate preparation subsequently refused contributor-local ignored state because it invoked the strict package boundary against the root checkout after quality populated .quality. No candidate was persisted. The boundary is retained; an independently reviewed owned exact-revision producer clone with its own locked install is being implemented. Next: focused regression/review, commit the stable fix, then rerun mandatory exact-source candidate qualification.
+
+Producer fix ready: unchanged strict package boundary now runs in an owned full-tree Git clone at the captured commit with a fresh locked npm ci and isolated Git/npm environment. Independent review found no blocker; two real Git/npm fixture files passed 11 tests. Full quality:fast passed on the stable fix. Original ignored state/root dist/SDK stay intact; export-ignore tracked build inputs are retained and required ignored build inputs fail. Next: commit, real-repository producer preflight, then mandatory full candidate qualification on the new source revision.
 <!-- SECTION:NOTES:END -->
 
 ## Definition of Done

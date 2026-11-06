@@ -4,6 +4,7 @@ import { createHash } from "node:crypto";
 import {
   existsSync,
   lstatSync,
+  mkdirSync,
   mkdtempSync,
   readFileSync,
   realpathSync,
@@ -11,19 +12,17 @@ import {
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
+import { basename, delimiter, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { readAssessmentJson } from "../distribution-preparation/assessment-files.js";
 import {
   loadPersistedCandidate,
   runCandidatePreparation,
 } from "../distribution-preparation/prepare-candidate.js";
-import {
-  resolveNpmInvocation,
-  runPackageBoundaryPreparation,
-} from "../distribution-preparation/prepare-package.js";
+import { resolveNpmInvocation } from "../distribution-preparation/prepare-package.js";
 import {
   captureOrdinaryArchive,
+  createIsolatedEnvironment,
   runPackedInstallVerification,
   validateNpmCacheArchive,
 } from "../distribution-preparation/verify-packed-install.js";
@@ -41,13 +40,14 @@ export function digest(bytes) {
 function json(path) {
   return JSON.parse(readFileSync(path, "utf8"));
 }
-/** @param {string} executable @param {readonly string[]} args @param {string} root @param {boolean} inherit */
-function execute(executable, args, root, inherit = false) {
+/** @param {string} executable @param {readonly string[]} args @param {string} root @param {boolean} inherit @param {NodeJS.ProcessEnv | undefined} env */
+function execute(executable, args, root, inherit = false, env = undefined) {
   const result = spawnSync(executable, [...args], {
     cwd: root,
     encoding: "utf8",
     timeout: 3_600_000,
     stdio: inherit ? "inherit" : ["ignore", "pipe", "pipe"],
+    env,
   });
   if (result.status !== 0 || result.error)
     throw new Error(
@@ -58,6 +58,87 @@ function execute(executable, args, root, inherit = false) {
 /** @param {string} root */
 function revision(root) {
   return execute("git", ["rev-parse", "--verify", "HEAD^{commit}"], root);
+}
+
+/** Materialize the full exact committed tree and a fresh locked SDK without contributor-local inputs.
+ * @param {string} root @param {string} sourceRevision @param {string} lockfileDigest @param {string} scratch
+ */
+export function prepareCandidateProducer(root, sourceRevision, lockfileDigest, scratch) {
+  const producer = join(scratch, "producer");
+  const home = join(scratch, "producer-home");
+  const emptyConfig = join(scratch, "producer-empty-config");
+  const npmUserConfig = join(scratch, "producer-user.npmrc");
+  const npmGlobalConfig = join(scratch, "producer-global.npmrc");
+  const emptyTemplate = join(scratch, "producer-empty-template");
+  for (const path of [home, emptyTemplate]) mkdirSync(path, { recursive: true });
+  for (const path of [emptyConfig, npmUserConfig, npmGlobalConfig])
+    writeFileSync(path, "", { flag: "wx" });
+  const npm = resolveNpmInvocation();
+  const cache = execute(npm.executable, [...npm.argumentPrefix, "config", "get", "cache"], root);
+  /** @type {NodeJS.ProcessEnv} */
+  const env = createIsolatedEnvironment({
+    home,
+    workspace: producer,
+    cache,
+    prefix: producer,
+    userConfig: npmUserConfig,
+    sourceRoot: root,
+  });
+  for (const key of Object.keys(env)) if (/^git_/i.test(key)) delete env[key];
+  env.GIT_CONFIG_GLOBAL = emptyConfig;
+  env.GIT_CONFIG_SYSTEM = emptyConfig;
+  env.GIT_CONFIG_NOSYSTEM = "1";
+  env.GIT_TEMPLATE_DIR = emptyTemplate;
+  env.GIT_TERMINAL_PROMPT = "0";
+  env.npm_config_globalconfig = npmGlobalConfig;
+  env.PATH = [dirname(process.execPath), env.PATH].filter(Boolean).join(delimiter);
+  if (npm.argumentPrefix[0]) env.npm_execpath = npm.argumentPrefix[0];
+  /** @param {readonly string[]} args @param {string} cwd */
+  const git = (args, cwd) =>
+    execute(
+      "git",
+      ["-c", `core.hooksPath=${emptyTemplate}`, "-c", "core.autocrlf=false", ...args],
+      cwd,
+      false,
+      env,
+    );
+  git(
+    [
+      "clone",
+      "--no-local",
+      "--no-hardlinks",
+      "--no-checkout",
+      "--no-tags",
+      "--",
+      resolve(root),
+      producer,
+    ],
+    scratch,
+  );
+  git(["checkout", "--detach", sourceRevision], producer);
+  const assertUnchanged = () => {
+    if (
+      git(["rev-parse", "--verify", "HEAD^{commit}"], producer) !== sourceRevision ||
+      digest(readFileSync(join(producer, "package-lock.json"))) !== lockfileDigest ||
+      git(["status", "--porcelain=v1", "--untracked-files=all"], producer)
+    )
+      throw new Error("producer source revision or lockfile changed during candidate preparation");
+  };
+  assertUnchanged();
+  if (existsSync(join(producer, "node_modules")))
+    throw new Error("producer checkout must start without an existing dependency tree");
+  execute(
+    npm.executable,
+    [...npm.argumentPrefix, "ci", "--no-audit", "--no-fund"],
+    producer,
+    false,
+    env,
+  );
+  const dependencies = lstatSync(join(producer, "node_modules"), { throwIfNoEntry: false });
+  if (dependencies && (!dependencies.isDirectory() || dependencies.isSymbolicLink()))
+    throw new Error("producer dependencies must be its own ordinary node_modules directory");
+  assertUnchanged();
+  return { root: producer, env, assertUnchanged };
 }
 /** Resolve existing ancestors before checking an output that may not exist yet.
  * @param {string} root @param {string} output
@@ -427,17 +508,31 @@ export function runCandidate(args, root = SOURCE_ROOT) {
   assertUnchangedSource(root, sourceRevision, lockfileDigest);
   const scratch = mkdtempSync(join(tmpdir(), "wpm-candidate-work-"));
   try {
-    const inspection = capture((out, err) =>
-      runPackageBoundaryPreparation(
-        ["--revision", sourceRevision, "--output", join(scratch, "archive")],
-        out,
-        err,
-        root,
-      ),
+    const producer = prepareCandidateProducer(root, sourceRevision, lockfileDigest, scratch);
+    const inspection = /** @type {unknown} */ (
+      JSON.parse(
+        execute(
+          process.execPath,
+          [
+            join(SOURCE_ROOT, "distribution-preparation", "prepare-package.js"),
+            "--revision",
+            sourceRevision,
+            "--output",
+            join(scratch, "archive"),
+          ],
+          producer.root,
+          false,
+          producer.env,
+        ),
+      )
     );
+    producer.assertUnchanged();
+    assertUnchangedSource(root, sourceRevision, lockfileDigest);
+    if (!record(inspection) || inspection.sourceRevision !== sourceRevision)
+      throw new Error("producer inspection does not bind the exact qualified source revision");
     if (!record(inspection.artifact) || typeof inspection.artifact.path !== "string")
       throw new Error("inspected archive path missing");
-    publintArchive(root, inspection.artifact.path);
+    publintArchive(producer.root, inspection.artifact.path);
     const inspectionPath = join(scratch, "inspection.json");
     writeFileSync(inspectionPath, `${JSON.stringify(inspection)}\n`);
     /** @param {typeof requestedCache} captured @param {string} kind */
@@ -474,6 +569,7 @@ export function runCandidate(args, root = SOURCE_ROOT) {
         sourceRevision,
         checks: [
           { name: "npm run quality:release", status: "passed" },
+          { name: "exact-revision producer npm ci and package boundary", status: "passed" },
           { name: "publint exact archive --strict", status: "passed" },
         ],
       })}\n`,
