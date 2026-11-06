@@ -57,7 +57,7 @@ describe("publint archive qualification", () => {
 
 describe("isolated exact-revision candidate producer", () => {
   function fixture(owned: string, requireLocalInput: boolean) {
-    const root = join(owned, "source");
+    const root = join(owned, "source with spaces");
     mkdirSync(join(root, "fixture-sdk"), { recursive: true });
     writeFileSync(
       join(root, ".gitignore"),
@@ -188,6 +188,16 @@ describe("isolated exact-revision candidate producer", () => {
         source.lockDigest,
         scratch,
       );
+      const trust = spawnSync(
+        "git",
+        ["config", "--file", producer.env.GIT_CONFIG_GLOBAL ?? "", "--get-all", "safe.directory"],
+        { cwd: owned, encoding: "utf8", env: producer.env },
+      );
+      expect(trust.status, trust.stderr).toBe(0);
+      expect(trust.stdout.trim().split(/\r?\n/)).toEqual([
+        realpathSync(source.root),
+        realpathSync(join(source.root, ".git")),
+      ]);
       expect(readFileSync(join(producer.root, "tracked-build-input"), "utf8")).toBe(
         "committed-input",
       );

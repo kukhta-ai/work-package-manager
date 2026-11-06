@@ -64,9 +64,13 @@ function revision(root) {
  * @param {string} root @param {string} sourceRevision @param {string} lockfileDigest @param {string} scratch
  */
 export function prepareCandidateProducer(root, sourceRevision, lockfileDigest, scratch) {
+  const sourceRoot = realpathSync(root);
+  const sourceGitDirectory = realpathSync(
+    execute("git", ["rev-parse", "--absolute-git-dir"], sourceRoot),
+  );
   const producer = join(scratch, "producer");
   const home = join(scratch, "producer-home");
-  const emptyConfig = join(scratch, "producer-empty-config");
+  const emptyConfig = join(scratch, "producer-gitconfig");
   const npmUserConfig = join(scratch, "producer-user.npmrc");
   const npmGlobalConfig = join(scratch, "producer-global.npmrc");
   const emptyTemplate = join(scratch, "producer-empty-template");
@@ -82,7 +86,7 @@ export function prepareCandidateProducer(root, sourceRevision, lockfileDigest, s
     cache,
     prefix: producer,
     userConfig: npmUserConfig,
-    sourceRoot: root,
+    sourceRoot,
   });
   for (const key of Object.keys(env)) if (/^git_/i.test(key)) delete env[key];
   env.GIT_CONFIG_GLOBAL = emptyConfig;
@@ -93,6 +97,15 @@ export function prepareCandidateProducer(root, sourceRevision, lockfileDigest, s
   env.npm_config_globalconfig = npmGlobalConfig;
   env.PATH = [dirname(process.execPath), env.PATH].filter(Boolean).join(delimiter);
   if (npm.argumentPrefix[0]) env.npm_execpath = npm.argumentPrefix[0];
+  // The upload-pack child must inherit exact local trust when the source has another owner's UID.
+  for (const path of new Set([sourceRoot, sourceGitDirectory]))
+    execute(
+      "git",
+      ["config", "--file", emptyConfig, "--add", "safe.directory", path],
+      scratch,
+      false,
+      env,
+    );
   /** @param {readonly string[]} args @param {string} cwd */
   const git = (args, cwd) =>
     execute(
@@ -110,7 +123,7 @@ export function prepareCandidateProducer(root, sourceRevision, lockfileDigest, s
       "--no-checkout",
       "--no-tags",
       "--",
-      resolve(root),
+      sourceRoot,
       producer,
     ],
     scratch,

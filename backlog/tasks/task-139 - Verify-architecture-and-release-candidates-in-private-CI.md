@@ -4,7 +4,7 @@ title: Verify architecture and release candidates in private CI
 status: In Progress
 assignee: []
 created_date: '2026-11-05 20:21'
-updated_date: '2026-11-06 00:29'
+updated_date: '2026-11-06 00:32'
 labels: []
 dependencies: []
 modified_files:
@@ -187,6 +187,8 @@ Real full packed consumer journey passed in 129.83 s. Explicit root-lock-verifie
 2026-11-06 checkpoint: exact source 1632e0410205f33b8631f7f1dbb1a48538867b43 passed the mandatory quality:release band on Node 24.22.2/npm 11.19.1 Linux arm64: 165 files, 2303 tests passed, one Windows-only filesystem test skipped, 2736.00 s. Security/architecture/Knip/Groma and reviewed mutation gates passed. Candidate preparation subsequently refused contributor-local ignored state because it invoked the strict package boundary against the root checkout after quality populated .quality. No candidate was persisted. The boundary is retained; an independently reviewed owned exact-revision producer clone with its own locked install is being implemented. Next: focused regression/review, commit the stable fix, then rerun mandatory exact-source candidate qualification.
 
 Producer fix ready: unchanged strict package boundary now runs in an owned full-tree Git clone at the captured commit with a fresh locked npm ci and isolated Git/npm environment. Independent review found no blocker; two real Git/npm fixture files passed 11 tests. Full quality:fast passed on the stable fix. Original ignored state/root dist/SDK stay intact; export-ignore tracked build inputs are retained and required ignored build inputs fail. Next: commit, real-repository producer preflight, then mandatory full candidate qualification on the new source revision.
+
+Real-repository producer preflight at a9080ad191e6c9bcd06815b27832de6e531ee2c1 exposed shared-workspace UID ownership after system Git trust was isolated. The fix grants only canonical source checkout and actual Git directory paths in the owned temporary Git config; no wildcard or user/system configuration is changed. Existing producer regressions now also check exact trust entries and paths with spaces. Next: independent focused review, commit, repeat the real producer/consumer preflight, then full mandatory candidate band.
 <!-- SECTION:NOTES:END -->
 
 ## Definition of Done
