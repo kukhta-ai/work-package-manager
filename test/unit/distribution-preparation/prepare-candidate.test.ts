@@ -14,6 +14,13 @@ import { join } from "node:path";
 import { gzipSync } from "node:zlib";
 import { describe, expect, it } from "vitest";
 import { runCandidatePreparation } from "../../../distribution-preparation/prepare-candidate.js";
+import { match } from "../../helpers/match.js";
+import {
+  candidateRecord,
+  findingRecords,
+  packedInstallRecord,
+  qualityRecord,
+} from "./json-fixtures.js";
 
 const BLOCK_SIZE = 512;
 const REVISION = "a".repeat(40);
@@ -173,7 +180,7 @@ describe("local inactive candidate preparation", () => {
 
     expect(runCandidatePreparation(args(input), firstOut, firstErr)).toBe(0);
     expect(firstErr.text).toBe("");
-    const first = JSON.parse(firstOut.text);
+    const first = candidateRecord(firstOut.text);
     expect(first).toMatchObject({ status: "prepared", outcome: "created" });
     expect(first.distribution).toMatchObject({
       status: "inactive",
@@ -181,7 +188,7 @@ describe("local inactive candidate preparation", () => {
       releaseEligibility: "ineligible",
       publicationCapable: false,
     });
-    const record = JSON.parse(readFileSync(join(input.outputPath, "candidate.json"), "utf8"));
+    const record = candidateRecord(readFileSync(join(input.outputPath, "candidate.json"), "utf8"));
     expect(record.candidateId).toBe(first.candidateId);
     expect(readFileSync(join(input.outputPath, record.binding.artifact.path))).toEqual(
       readFileSync(input.artifactPath),
@@ -191,7 +198,7 @@ describe("local inactive candidate preparation", () => {
 
     const secondOut = sink();
     expect(runCandidatePreparation(args(input), secondOut, sink())).toBe(0);
-    const second = JSON.parse(secondOut.text);
+    const second: unknown = JSON.parse(secondOut.text);
     expect(second).toMatchObject({
       status: "prepared",
       outcome: "reused",
@@ -213,7 +220,7 @@ describe("local inactive candidate preparation", () => {
     expect(JSON.parse(changed.text)).toMatchObject({
       status: "rejected",
       releaseEligibility: "ineligible",
-      findings: [expect.objectContaining({ kind: "changed", field: "proposedTag" })],
+      findings: [match.objectContaining({ kind: "changed", field: "proposedTag" })],
     });
     expect(readFileSync(join(input.outputPath, "candidate.json"))).toEqual(before);
   });
@@ -229,7 +236,7 @@ describe("local inactive candidate preparation", () => {
     expect(runCandidatePreparation(args(input), out, sink())).toBe(1);
     expect(JSON.parse(out.text)).toMatchObject({
       status: "rejected",
-      findings: [expect.objectContaining({ kind: "changed", field: "evidence.quality.rawDigest" })],
+      findings: [match.objectContaining({ kind: "changed", field: "evidence.quality.rawDigest" })],
     });
     expect(readFileSync(join(input.outputPath, "candidate.json"))).toEqual(before);
   });
@@ -238,17 +245,17 @@ describe("local inactive candidate preparation", () => {
     const input = fixture();
     expect(runCandidatePreparation(args(input), sink(), sink())).toBe(0);
     const recordPath = join(input.outputPath, "candidate.json");
-    const record = JSON.parse(readFileSync(recordPath, "utf8"));
+    const record = candidateRecord(readFileSync(recordPath, "utf8"));
     record.distribution.unresolvedFacts.pop();
     record.binding.releaseNotes.path = "evidence/../release-notes.md";
     writeFileSync(recordPath, `${JSON.stringify(record, undefined, 2)}\n`);
 
     const out = sink();
     expect(runCandidatePreparation(args(input), out, sink())).toBe(1);
-    expect(JSON.parse(out.text).findings).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ field: "candidate.distribution" }),
-        expect.objectContaining({ field: "releaseNotes.file" }),
+    expect(findingRecords(out.text)).toEqual(
+      match.arrayContaining([
+        match.objectContaining({ field: "candidate.distribution" }),
+        match.objectContaining({ field: "releaseNotes.file" }),
       ]),
     );
   });
@@ -257,17 +264,17 @@ describe("local inactive candidate preparation", () => {
     const input = fixture();
     expect(runCandidatePreparation(args(input), sink(), sink())).toBe(0);
     const recordPath = join(input.outputPath, "candidate.json");
-    const record = JSON.parse(readFileSync(recordPath, "utf8"));
+    const record = candidateRecord(readFileSync(recordPath, "utf8"));
     record.unexpectedEligibility = "active";
     record.binding.evidence.quality.status = "rejected";
     writeFileSync(recordPath, `${JSON.stringify(record, undefined, 2)}\n`);
 
     const out = sink();
     expect(runCandidatePreparation(args(input), out, sink())).toBe(1);
-    expect(JSON.parse(out.text).findings).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ field: "candidate.binding" }),
-        expect.objectContaining({ field: "candidate.record.unexpectedEligibility" }),
+    expect(findingRecords(out.text)).toEqual(
+      match.arrayContaining([
+        match.objectContaining({ field: "candidate.binding" }),
+        match.objectContaining({ field: "candidate.record.unexpectedEligibility" }),
       ]),
     );
   });
@@ -282,7 +289,7 @@ describe("local inactive candidate preparation", () => {
     expect(runCandidatePreparation(args(input), out, sink())).toBe(1);
     expect(JSON.parse(out.text)).toMatchObject({
       status: "rejected",
-      findings: expect.arrayContaining([expect.objectContaining({ field: "candidate.record" })]),
+      findings: match.arrayContaining([match.objectContaining({ field: "candidate.record" })]),
     });
     expect(readFileSync(marker, "utf8")).toBe("preserve");
     expect(existsSync(join(input.outputPath, "candidate.json"))).toBe(false);
@@ -303,7 +310,7 @@ describe("local inactive candidate preparation", () => {
       expect(runCandidatePreparation(args(input), out, sink())).toBe(1);
       expect(JSON.parse(out.text)).toMatchObject({
         status: "rejected",
-        findings: expect.arrayContaining([expect.objectContaining({ field: "releaseNotes.file" })]),
+        findings: match.arrayContaining([match.objectContaining({ field: "releaseNotes.file" })]),
       });
       expect(readFileSync(externalNotes)).toEqual(readFileSync(input.notesPath));
     },
@@ -311,23 +318,25 @@ describe("local inactive candidate preparation", () => {
 
   it("aggregates independent quality, install, notes, and frozen-artifact discrepancies", () => {
     const input = fixture();
-    const install = JSON.parse(readFileSync(input.installPath, "utf8"));
+    const install = packedInstallRecord(readFileSync(input.installPath, "utf8"));
     install.sourceRevision = "b".repeat(40);
     install.sourceBinding.checkoutRevision = install.sourceRevision;
     install.configuration.status = "changed";
     writeFileSync(input.installPath, JSON.stringify(install));
-    const quality = JSON.parse(readFileSync(input.qualityPath, "utf8"));
+    const quality = qualityRecord(readFileSync(input.qualityPath, "utf8"));
     quality.sourceRevision = "c".repeat(40);
-    quality.checks[1].status = "failed";
+    const lintCheck = quality.checks.find(({ name }) => name === "lint");
+    if (!lintCheck) throw new Error("quality fixture lacks lint check");
+    lintCheck.status = "failed";
     writeFileSync(input.qualityPath, JSON.stringify(quality));
     writeFileSync(input.notesPath, "");
     writeFileSync(join(input.root, "frozen-wpm-0.1.0.tgz"), "different bytes");
 
     const out = sink();
     expect(runCandidatePreparation(args(input), out, sink())).toBe(1);
-    const fields = JSON.parse(out.text).findings.map(({ field }: { field: string }) => field);
+    const fields = findingRecords(out.text).map(({ field }: { field: string }) => field);
     expect(fields).toEqual(
-      expect.arrayContaining([
+      match.arrayContaining([
         "packedInstall.sourceRevision",
         "packedInstall.configuration.status",
         "packedInstall.frozenArtifact.size",
@@ -350,10 +359,10 @@ describe("local inactive candidate preparation", () => {
 
     const out = sink();
     expect(runCandidatePreparation(args(input), out, sink())).toBe(1);
-    expect(JSON.parse(out.text).findings).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ field: "quality.file" }),
-        expect.objectContaining({ field: "releaseNotes.preview" }),
+    expect(findingRecords(out.text)).toEqual(
+      match.arrayContaining([
+        match.objectContaining({ field: "quality.file" }),
+        match.objectContaining({ field: "releaseNotes.preview" }),
       ]),
     );
   });
@@ -362,12 +371,12 @@ describe("local inactive candidate preparation", () => {
     const input = fixture();
     expect(runCandidatePreparation(args(input), sink(), sink())).toBe(0);
     const persistedQualityPath = join(input.outputPath, "evidence", "quality.json");
-    const persistedQuality = JSON.parse(readFileSync(persistedQualityPath, "utf8"));
+    const persistedQuality = qualityRecord(readFileSync(persistedQualityPath, "utf8"));
     persistedQuality.checks.push({ name: "unreviewed-extra", status: "passed" });
     const changedBytes = Buffer.from(`${JSON.stringify(persistedQuality)}\n`);
     writeFileSync(persistedQualityPath, changedBytes);
     const recordPath = join(input.outputPath, "candidate.json");
-    const record = JSON.parse(readFileSync(recordPath, "utf8"));
+    const record = candidateRecord(readFileSync(recordPath, "utf8"));
     record.binding.evidence.quality.rawDigest = `sha256:${createHash("sha256")
       .update(changedBytes)
       .digest("hex")}`;
@@ -377,8 +386,8 @@ describe("local inactive candidate preparation", () => {
     expect(runCandidatePreparation(args(input), out, sink())).toBe(1);
     expect(JSON.parse(out.text)).toMatchObject({
       status: "rejected",
-      findings: expect.arrayContaining([
-        expect.objectContaining({ field: "evidence.quality.digest" }),
+      findings: match.arrayContaining([
+        match.objectContaining({ field: "evidence.quality.digest" }),
       ]),
     });
   });

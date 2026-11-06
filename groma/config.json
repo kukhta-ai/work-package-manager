@@ -1,0 +1,52 @@
+{
+  "scanners": [
+    {
+      "id": "typescript",
+      "source": "@groma/scanner-typescript@0.2.4",
+      "include": [
+        "**/*.ts",
+        "**/*.tsx",
+        "**/tsconfig*.json",
+        "**/package.json",
+        "**/*.html",
+        "**/angular.json",
+        "**/project.json",
+        "**/nx.json"
+      ],
+      "exclude": [
+        "*.test.ts",
+        "*.test.tsx",
+        "*.spec.ts",
+        "*.spec.tsx",
+        "/test/",
+        "node_modules/",
+        "dist/",
+        "build/",
+        "coverage/"
+      ]
+    }
+  ],
+  "workSources": [
+    {
+      "id": "backlog",
+      "version": "1.45.2"
+    }
+  ],
+  "exclude": [
+    "/test/",
+    "/scripts/",
+    "/distribution-preparation/",
+    "/quality/",
+    "/.agents/",
+    "/.claude/",
+    "/.bmad/",
+    "/research/",
+    "/templates/",
+    "/agent-skills/",
+    "/backlog/",
+    "/vitest.config.ts",
+    "/vitest.mutation.config.ts"
+  ],
+  "useGitignore": true,
+  "automaticUpdates": false
+}

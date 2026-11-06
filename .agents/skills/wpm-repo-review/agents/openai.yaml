@@ -1,0 +1,3 @@
+interface:
+  display_name: "WPM repository review"
+  short_description: "Develop WPM with repository quality checks"

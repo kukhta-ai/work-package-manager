@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { FakeEnvironment } from "../../../src/adapters/fake-env.js";
-import { MemoryFileSystem } from "../../../src/adapters/memory-fs.js";
 import { resolveContext, WORKSPACE_MARKER } from "../../../src/core/services/context.js";
+import { FakeEnvironment } from "../../doubles/fake-env.js";
+import { MemoryFileSystem } from "../../doubles/memory-fs.js";
 
 /**
  * Acceptance test for the context service (doc 13 §7; doc 10 "Project context resolution"): `resolveContext`

@@ -12,12 +12,12 @@ import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import pkg from "../../package.json" with { type: "json" };
-import { FakeBacklog } from "../../src/adapters/fake-backlog.js";
-import { FixedClock } from "../../src/adapters/fixed-clock.js";
 import { NodeFileSystem } from "../../src/adapters/node-fs.js";
 import { ProcessEnvironment } from "../../src/adapters/process-env.js";
 import { type CliDeps, run } from "../../src/cli.js";
 import type { CliIo, OutputSink } from "../../src/util/exit.js";
+import { FakeBacklog } from "../doubles/fake-backlog.js";
+import { FixedClock } from "../doubles/fixed-clock.js";
 import { withTempDir } from "../helpers/tmpdir.js";
 import { initWorkspace } from "../helpers/workspace.js";
 

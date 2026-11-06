@@ -87,7 +87,7 @@ function seedWorkspace(root: string): void {
 
 describeIfBuilt("built CLI template authoring-task inspection over a real filesystem", () => {
   it("shows valid/none/invalid contributions and leaves the entire workspace byte-identical", async () => {
-    await withTempDir(async (temporaryRoot) => {
+    await withTempDir((temporaryRoot) => {
       const workspace = join(temporaryRoot, "workspace");
       mkdirSync(workspace, { recursive: true });
       seedWorkspace(workspace);

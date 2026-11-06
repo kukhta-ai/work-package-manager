@@ -1,0 +1,13 @@
+{
+  "$schema": "https://unpkg.com/knip@6/schema.json",
+  "entry": ["src/cli.ts!", "scripts/*.mjs", "distribution-preparation/*.js", "test/**/*.test.ts"],
+  "project": [
+    "src/**/*.ts!",
+    "scripts/**/*.mjs",
+    "distribution-preparation/**/*.js",
+    "test/**/*.ts"
+  ],
+  "includeEntryExports": false,
+  "ignoreDependencies": [],
+  "ignoreBinaries": ["tar"]
+}

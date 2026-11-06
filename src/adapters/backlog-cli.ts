@@ -410,7 +410,7 @@ function toCliId(displayId: string): TaskId {
  * @param stdout - The create command's stdout.
  * @returns The parsed {@link TaskSummary}, or `undefined` if the expected lines were not found.
  */
-export function parseCreatedTask(stdout: string): TaskSummary | undefined {
+function parseCreatedTask(stdout: string): TaskSummary | undefined {
   const lines = stdout.split("\n");
   let id: TaskId | undefined;
   let title: string | undefined;
@@ -443,7 +443,7 @@ export function parseCreatedTask(stdout: string): TaskSummary | undefined {
  * @param stdout - The list command's stdout.
  * @returns The parsed tasks.
  */
-export function parseTaskList(stdout: string): TaskSummary[] {
+function parseTaskList(stdout: string): TaskSummary[] {
   const summaries: TaskSummary[] = [];
   let current: TaskStatus | undefined;
   for (const rawLine of stdout.split("\n")) {
@@ -467,7 +467,7 @@ export function parseTaskList(stdout: string): TaskSummary[] {
 }
 
 /** Parse one `backlog task <id> --plain` record with exact acceptance-criterion text/check state. */
-export function parseTaskRecord(stdout: string): TaskRecord | undefined {
+function parseTaskRecord(stdout: string): TaskRecord | undefined {
   const summary = parseCreatedTask(stdout);
   if (summary === undefined) return undefined;
   const lines = stdout.split(/\r?\n/);

@@ -47,26 +47,67 @@
     "package:prepare-candidate": "node distribution-preparation/prepare-candidate.js",
     "package:assess-github": "node distribution-preparation/assess-github.js",
     "package:assess-npm": "node distribution-preparation/assess-npm.js",
-    "package:classify-convergence": "node distribution-preparation/assess-convergence.js"
+    "package:classify-convergence": "node distribution-preparation/assess-convergence.js",
+    "agents:generate": "node scripts/agents.mjs generate",
+    "agents:check": "node scripts/agents.mjs check",
+    "agents:doctor": "node scripts/agents.mjs doctor",
+    "architecture:check": "node scripts/architecture.mjs",
+    "lint:types": "eslint . --max-warnings 0",
+    "quality:doctor": "node scripts/quality.mjs doctor",
+    "quality:fast": "node scripts/quality.mjs fast",
+    "quality:ci": "node scripts/quality.mjs ci",
+    "quality:release": "node scripts/quality.mjs release",
+    "quality:setup": "node scripts/quality-tools.mjs setup",
+    "mutation:critical": "node scripts/mutation.mjs",
+    "knip": "knip && knip --production",
+    "groma:scan": "node scripts/groma.mjs scan",
+    "groma:check": "node scripts/groma.mjs check",
+    "groma:view": "node scripts/groma.mjs view",
+    "groma:export": "node scripts/groma.mjs export",
+    "candidate:prepare": "node scripts/candidate.mjs prepare",
+    "candidate:verify": "node scripts/candidate.mjs verify",
+    "changeset": "changeset",
+    "qualify:apm": "node scripts/qualify-apm.mjs",
+    "wpm": "node dist/cli.js"
   },
   "lint-staged": {
-    "*.{ts,tsx,js,json,jsonc}": "biome check --write --no-errors-on-unmatched"
+    "*.{ts,tsx,js,mjs,cjs,mts,cts,json,jsonc}": "biome check --write --no-errors-on-unmatched"
   },
   "devDependencies": {
     "@biomejs/biome": "2.4.16",
+    "@changesets/cli": "2.30.0",
+    "@eslint/js": "10.0.1",
+    "@stryker-mutator/core": "10.1.1",
+    "@stryker-mutator/vitest-runner": "10.1.1",
     "@types/node": "25.9.1",
     "@types/semver": "7.7.1",
+    "backlog.md": "1.45.2",
+    "dependency-cruiser": "17.4.3",
+    "eslint": "10.14.0",
+    "fast-check": "4.5.3",
+    "groma.md": "0.7.8",
     "husky": "9.1.7",
+    "knip": "6.2.0",
     "lint-staged": "17.0.7",
+    "publint": "0.3.18",
     "typescript": "6.0.3",
-    "vitest": "4.1.7"
+    "typescript-eslint": "8.72.1",
+    "vitest": "4.1.12"
   },
   "dependencies": {
+    "ajv": "8.20.0",
     "commander": "14.0.3",
     "execa": "9.6.1",
     "omelette": "0.4.17",
     "semver": "7.8.1",
     "yaml": "2.9.0"
   },
-  "private": true
+  "private": true,
+  "overrides": {
+    "minimatch": "11.0.1",
+    "qs": "6.16.1",
+    "vite": "8.3.3",
+    "nanoid": "3.3.18",
+    "source-map-js": "1.2.2"
+  }
 }

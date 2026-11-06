@@ -7,6 +7,7 @@ import {
   evaluatePackageBoundary,
   normalizePackagePath,
 } from "../../../distribution-preparation/package-boundary.js";
+import { match } from "../../helpers/match.js";
 
 const sourceManifest = {
   name: "wpm",
@@ -137,42 +138,42 @@ describe("revision-scoped package-boundary contract", () => {
     expect(first.status).toBe("rejected");
     expect(second.violations).toEqual(first.violations);
     expect(first.violations).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ kind: "invalid-packed-path", path: "../escape" }),
-        expect.objectContaining({ kind: "duplicate-packed-path", path: "README.md" }),
-        expect.objectContaining({ kind: "missing-required-path", path: "LICENSE" }),
-        expect.objectContaining({
+      match.arrayContaining([
+        match.objectContaining({ kind: "invalid-packed-path", path: "../escape" }),
+        match.objectContaining({ kind: "duplicate-packed-path", path: "README.md" }),
+        match.objectContaining({ kind: "missing-required-path", path: "LICENSE" }),
+        match.objectContaining({
           kind: "missing-required-path",
           path: "agent-skills/installer-builder/SKILL.md",
         }),
-        expect.objectContaining({ kind: "prohibited-development", path: "src/leaked.ts" }),
-        expect.objectContaining({
+        match.objectContaining({ kind: "prohibited-development", path: "src/leaked.ts" }),
+        match.objectContaining({
           kind: "prohibited-credential",
           path: "agent-skills/leaked/.npmrc",
         }),
-        expect.objectContaining({
+        match.objectContaining({
           kind: "prohibited-backlog",
           path: "backlog/tasks/task.md",
         }),
-        expect.objectContaining({
+        match.objectContaining({
           kind: "prohibited-planning",
           path: "agent-skills/leaked/_bmad-output/plan.md",
         }),
-        expect.objectContaining({
+        match.objectContaining({
           kind: "prohibited-workspace-authoring",
           path: "AGENTS.md",
         }),
-        expect.objectContaining({
+        match.objectContaining({
           kind: "prohibited-preparation",
           path: "agent-skills/leaked/distribution-preparation/evidence.json",
         }),
-        expect.objectContaining({ kind: "unexpected-path", path: "extensions/unexpected.txt" }),
-        expect.objectContaining({ kind: "escaping-link", path: "docs/escape" }),
-        expect.objectContaining({ kind: "escaping-link", path: "docs/windows-escape" }),
-        expect.objectContaining({ kind: "metadata-mismatch", path: "package.json#name" }),
-        expect.objectContaining({ kind: "metadata-mismatch", path: "package.json#version" }),
-        expect.objectContaining({ kind: "metadata-mismatch", path: "package.json#bin" }),
-        expect.objectContaining({ kind: "missing-bin-target", path: "dist/missing.js" }),
+        match.objectContaining({ kind: "unexpected-path", path: "extensions/unexpected.txt" }),
+        match.objectContaining({ kind: "escaping-link", path: "docs/escape" }),
+        match.objectContaining({ kind: "escaping-link", path: "docs/windows-escape" }),
+        match.objectContaining({ kind: "metadata-mismatch", path: "package.json#name" }),
+        match.objectContaining({ kind: "metadata-mismatch", path: "package.json#version" }),
+        match.objectContaining({ kind: "metadata-mismatch", path: "package.json#bin" }),
+        match.objectContaining({ kind: "missing-bin-target", path: "dist/missing.js" }),
       ]),
     );
   });
@@ -214,11 +215,11 @@ describe("revision-scoped package-boundary contract", () => {
     });
 
     expect(result.violations).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ kind: "duplicate-declared-path", path: "README.md" }),
-        expect.objectContaining({ kind: "invalid-declared-path", path: "/absolute" }),
-        expect.objectContaining({ kind: "invalid-declared-path", path: "../escape" }),
-        expect.objectContaining({ kind: "invalid-declared-path", path: "C:\\escape" }),
+      match.arrayContaining([
+        match.objectContaining({ kind: "duplicate-declared-path", path: "README.md" }),
+        match.objectContaining({ kind: "invalid-declared-path", path: "/absolute" }),
+        match.objectContaining({ kind: "invalid-declared-path", path: "../escape" }),
+        match.objectContaining({ kind: "invalid-declared-path", path: "C:\\escape" }),
       ]),
     );
   });
@@ -265,8 +266,8 @@ describe("revision-scoped package-boundary contract", () => {
 
     expect(result.status).toBe("rejected");
     expect(result.violations).toEqual(
-      expect.arrayContaining(
-        links.map((path) => expect.objectContaining({ kind: "unresolvable-link", path })),
+      match.arrayContaining(
+        links.map((path) => match.objectContaining({ kind: "unresolvable-link", path })),
       ),
     );
   });
@@ -330,9 +331,9 @@ describe("revision-scoped package-boundary contract", () => {
     );
 
     expect(collectDeclaredShipSet(root).declarationViolations).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ kind: "missing-required-path", path: "LICENSE" }),
-        expect.objectContaining({ kind: "invalid-declared-path", path: "dist/**" }),
+      match.arrayContaining([
+        match.objectContaining({ kind: "missing-required-path", path: "LICENSE" }),
+        match.objectContaining({ kind: "invalid-declared-path", path: "dist/**" }),
       ]),
     );
   });

@@ -15,9 +15,6 @@ import { fileURLToPath } from "node:url";
 import { execaSync } from "execa";
 import { describe, expect, it } from "vitest";
 import { BacklogCli } from "../../src/adapters/backlog-cli.js";
-import { FakeBacklog } from "../../src/adapters/fake-backlog.js";
-import { FakeEnvironment } from "../../src/adapters/fake-env.js";
-import { FixedClock } from "../../src/adapters/fixed-clock.js";
 import { NodeFileSystem } from "../../src/adapters/node-fs.js";
 import { ProcessEnvironment } from "../../src/adapters/process-env.js";
 import { type CliDeps, run } from "../../src/cli.js";
@@ -29,6 +26,9 @@ import {
 } from "../../src/core/services/workspace-authoring-integration.js";
 import type { CliIo, OutputSink } from "../../src/util/exit.js";
 import { parseYaml } from "../../src/util/yaml.js";
+import { FakeBacklog } from "../doubles/fake-backlog.js";
+import { FakeEnvironment } from "../doubles/fake-env.js";
+import { FixedClock } from "../doubles/fixed-clock.js";
 import { withTempDir } from "../helpers/tmpdir.js";
 import { initWorkspace } from "../helpers/workspace.js";
 

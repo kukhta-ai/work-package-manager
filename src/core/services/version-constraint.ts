@@ -24,6 +24,7 @@ import type { BundleId, SemVer, VersionRange } from "../model/index.js";
  * @param version - The version to test.
  * @param range - The npm-style version range.
  * @returns `true` if `version` satisfies `range`.
+ * @internal Used by runtime within this module; exported for focused behavioral tests.
  */
 export function satisfies(version: SemVer, range: VersionRange): boolean {
   return semver.satisfies(version, range);
@@ -69,14 +70,14 @@ export interface BundleNode {
 }
 
 /** Why a constraint was not satisfied. */
-export type UnsatisfiedReason = "missing" | "version-mismatch";
+type UnsatisfiedReason = "missing" | "version-mismatch";
 
 /**
  * The result of checking one `requires` edge `(from) -> (to @ range)`: whether it is satisfied, the actual
  * version of `to` when it exists, and — when unsatisfied — the reason (`missing`: `to` is not an enabled
  * node; `version-mismatch`: `to` exists but its version does not satisfy `range`).
  */
-export interface ConstraintResult {
+interface ConstraintResult {
   /** The bundle that declares the dependency. */
   readonly from: BundleId;
   /** The depended-upon bundle id. */
@@ -96,7 +97,7 @@ export interface ConstraintResult {
  * entry per `requires` edge; `cycles` lists every detected dependency cycle as a path (e.g. `[a, b, a]`).
  * The task-20 `validate` service consumes this.
  */
-export interface ResolutionReport {
+interface ResolutionReport {
   /** One result per `requires` edge in the graph. */
   readonly constraints: ConstraintResult[];
   /**

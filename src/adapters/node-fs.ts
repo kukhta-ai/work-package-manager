@@ -167,7 +167,7 @@ export class NodeFileSystem implements FileSystem {
       } catch (error) {
         if ((error as NodeJS.ErrnoException).code === "ENOENT") {
           if (finalKind === "directory") {
-            throw new Error(`confined removal path is missing: ${current}`);
+            throw new Error(`confined removal path is missing: ${current}`, { cause: error });
           }
           return;
         }
@@ -563,8 +563,8 @@ export class NodeFileSystem implements FileSystem {
         );
       }
     }
-    let createdPrivate: string[] = [];
-    let createdPrivateIdentities: ReadonlyMap<string, NodePathIdentity> = new Map();
+    let createdPrivate: string[];
+    let createdPrivateIdentities: ReadonlyMap<string, NodePathIdentity>;
     let publicationParentIdentity: NodePathIdentity | undefined;
     let publicationParentHandle: ReturnType<typeof opendirSync> | undefined;
     try {
@@ -753,6 +753,7 @@ export class NodeFileSystem implements FileSystem {
           } catch (restoreError) {
             throw new Error(
               `confined public path raced during displacement; raced bytes retained at ${displacedPath}: ${restoreError instanceof Error ? restoreError.message : String(restoreError)}`,
+              { cause: restoreError },
             );
           }
           throw new Error(`confined public path raced during displacement: ${path}`);
@@ -1141,7 +1142,7 @@ export class NodeFileSystem implements FileSystem {
 
     let sourceHandle: ReturnType<typeof opendirSync> | undefined;
     let aliasHandle: ReturnType<typeof opendirSync> | undefined;
-    let created: string[] = [];
+    let created: string[];
     let sourceIdentity: NodePathIdentity;
     let aliasIdentity: NodePathIdentity;
     let sourceFingerprint: string;

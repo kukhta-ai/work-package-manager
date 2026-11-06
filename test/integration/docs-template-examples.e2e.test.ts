@@ -44,7 +44,7 @@ function backlog(workspace: string, args: readonly string[]): string {
     stdin: "ignore",
     stdout: "pipe",
     stderr: "pipe",
-  }).stdout as string;
+  }).stdout;
 }
 
 function wpm(workspace: string, args: readonly string[]) {

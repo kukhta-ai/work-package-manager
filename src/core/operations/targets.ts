@@ -26,7 +26,7 @@ import type { ApplyContext, ApplyOutcome, OperationSpec, ReadSpec } from "./life
 const MANIFEST_FILE = "manifest.yml";
 
 /** The input shared by `add`/`remove`: the (already kebab-validated) target agent. */
-export interface TargetInput {
+interface TargetInput {
   /** The target agent to add or remove. */
   readonly agent: AgentName;
 }

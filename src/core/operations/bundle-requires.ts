@@ -79,10 +79,10 @@ function bundleManifestPath(root: string, id: string): string {
  */
 function cycleWarnings(project: Project, id: string, dep: string, rangeStr: string): string[] {
   const nodes: BundleNode[] = [];
-  for (const bundle of (project.bundles as ReadonlyMap<BundleId, BundleManifest>).values()) {
+  for (const bundle of project.bundles.values()) {
     if ((bundle.id as string) === id) {
       // Overlay the new/updated edge onto the host node so the graph reflects the post-write state.
-      const requires = new Map(bundle.requires as ReadonlyMap<BundleId, VersionRange>);
+      const requires = new Map(bundle.requires);
       requires.set(dep as BundleId, rangeStr as VersionRange);
       nodes.push({ id: bundle.id, version: bundle.version, requires });
     } else {
@@ -100,7 +100,7 @@ function cycleWarnings(project: Project, id: string, dep: string, rangeStr: stri
 }
 
 /** The input to {@link addRequiresSpec}: the host id, the dependency id, and the (already-validated) range or default. */
-export interface AddRequiresInput {
+interface AddRequiresInput {
   /** The host bundle (selected + enabled-guarded by the `bundle <id>` routing). */
   readonly id: string;
   /** The dependency bundle id to depend on (a positional). */
@@ -116,7 +116,7 @@ export interface AddRequiresInput {
 }
 
 /** The input to {@link removeRequiresSpec}: the host id + the dependency id to drop. */
-export interface RemoveRequiresInput {
+interface RemoveRequiresInput {
   /** The host bundle (selected + enabled-guarded by the `bundle <id>` routing). */
   readonly id: string;
   /** The dependency bundle id to remove from the host's `requires` map. */
@@ -132,7 +132,7 @@ export interface RequiresEntry {
 }
 
 /** The input to {@link listRequiresSpec}: the host bundle id to read. */
-export interface RequiresListInput {
+interface RequiresListInput {
   /** The host bundle whose `requires` map to print (selected by the `bundle <id>` routing). */
   readonly id: string;
 }
@@ -200,7 +200,7 @@ export function removeRequiresSpec(): OperationSpec<RemoveRequiresInput> {
 
     check: (project, { id, dep }) => {
       const bundle = requireBundle(project, id);
-      if (!(bundle.requires as ReadonlyMap<BundleId, VersionRange>).has(dep as BundleId)) {
+      if (!bundle.requires.has(dep as BundleId)) {
         throw new NotFoundError(`bundle "${id}" does not require "${dep}" — nothing to remove`);
       }
     },
@@ -232,7 +232,7 @@ export function listRequiresSpec(): ReadSpec<RequiresListInput, readonly Require
       const bundle = requireBundle(project, id);
       const entries: RequiresEntry[] = [];
       for (const [depId, range] of bundle.requires) {
-        entries.push({ id: depId as string, range: range as string });
+        entries.push({ id: depId, range: range });
       }
       return entries;
     },

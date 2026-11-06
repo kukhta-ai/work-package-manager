@@ -47,7 +47,9 @@ import {
 const LEGACY_PROJECT_TEMPLATE = "minimal";
 const LEGACY_FRONT_DOOR_SNIPPET = "authoring-front-door.md";
 
-/** The existing four-port dependencies needed by workspace integration. */
+/** The existing four-port dependencies needed by workspace integration.
+ * @internal Runtime type exported for typed test fixtures; not a public SDK surface.
+ */
 export interface WorkspaceAuthoringIntegrationDeps {
   readonly fs: FileSystem;
   readonly backlog: BacklogMd;
@@ -56,7 +58,7 @@ export interface WorkspaceAuthoringIntegrationDeps {
 }
 
 /** Explicit operation input; client IDs never come from detection or the deliverable manifest. */
-export interface WorkspaceAuthoringIntegrationInput {
+interface WorkspaceAuthoringIntegrationInput {
   readonly workspaceRoot: string;
   readonly clientIds: readonly string[];
   readonly integrationVersion: string;
@@ -746,7 +748,7 @@ function inspectLegacy(
       ),
     );
   }
-  let agentsExact = false;
+  let agentsExact: boolean;
   try {
     agentsExact =
       expected !== undefined &&
@@ -2234,10 +2236,7 @@ export function planFreshWorkspaceAuthoringIntegration(
   const normalized = normalizeWorkspaceAuthoringClients(input.clientIds);
   const blockers: WorkspaceIntegrationBlocker[] = [...normalized.blockers];
   inspectIntegrationVersion(input.integrationVersion, blockers);
-  const sources = inspectSkillSources(
-    { ...deps, builtinTemplatesRoot: "" } as WorkspaceAuthoringIntegrationDeps,
-    blockers,
-  );
+  const sources = inspectSkillSources({ ...deps, builtinTemplatesRoot: "" }, blockers);
   try {
     const availability = deps.backlog.inspectAvailability();
     if (!availability.available) {

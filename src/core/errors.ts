@@ -1,4 +1,4 @@
-import type { PersonalSetupOutcome } from "./services/personal-authoring-setup.js";
+import type { PersonalSetupOutcome } from "./model/personal-setup.js";
 
 /**
  * The core's typed error model and the single exit-code mapping (doc 13 §7).
@@ -26,10 +26,14 @@ import type { PersonalSetupOutcome } from "./services/personal-authoring-setup.j
  * ({@link exitCodeFor}).
  */
 
-/** The distinct domain-failure categories (doc 13 §7). */
+/** The distinct domain-failure categories (doc 13 §7).
+ * @internal Runtime type exported for typed test fixtures; not a public SDK surface.
+ */
 export type ErrorCategory = "usage" | "not-found" | "conflict" | "constraint" | "validation";
 
-/** Optional structured detail attached to a {@link DomainError} (e.g. the offending field or id). */
+/** Optional structured detail attached to a {@link DomainError} (e.g. the offending field or id).
+ * @internal Runtime type exported for typed test fixtures; not a public SDK surface.
+ */
 export interface ErrorDetail {
   /** The input field the error is about, when applicable. */
   readonly field?: string;
@@ -131,6 +135,7 @@ export interface PersonalAuthoringSetupClientProgress {
  * subclass; the CLI boundary catches it (`instanceof DomainError`) and maps it to an exit code.
  *
  * Not constructed directly — use one of the five subclasses so the `category` is fixed.
+ * @internal Used by runtime within this module; exported for focused behavioral tests.
  */
 export class DomainError extends Error {
   /** The failure category. */
@@ -397,7 +402,9 @@ export function isMutationFailure(error: unknown): error is MutationFailure {
   return error instanceof MutationFailure;
 }
 
-/** A process exit code: `0` success, `2` usage error, `1` everything else (doc 13 §7). */
+/** A process exit code: `0` success, `2` usage error, `1` everything else (doc 13 §7).
+ * @internal Runtime type exported for typed test fixtures; not a public SDK surface.
+ */
 export type ExitCode = 0 | 1 | 2;
 
 /**

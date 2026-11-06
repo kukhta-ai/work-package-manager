@@ -19,7 +19,7 @@
  * @param input - The input stream to read the answer from (the real `process.stdin`, or a test `Readable`).
  * @returns A promise resolving `true` when the answer affirms, `false` otherwise.
  */
-export interface InputLineSession {
+interface InputLineSession {
   /** Read the next buffered line, or `undefined` after EOF/error with no line remaining. */
   readLine(): Promise<string | undefined>;
 }

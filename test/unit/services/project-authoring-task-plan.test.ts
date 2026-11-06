@@ -1,9 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Template, TemplateScope } from "../../../src/core/model/index.js";
-import {
-  perBundleAuthoringTaskCatalog,
-  perBundleAuthoringTasks,
-} from "../../../src/core/operations/create-bundle.js";
+import { perBundleAuthoringTaskCatalog } from "../../../src/core/operations/create-bundle.js";
 import {
   projectWideAuthoringTaskCatalog,
   projectWideAuthoringTasks,
@@ -16,6 +13,8 @@ import {
   inspectTemplateAuthoringTasks,
   type TemplateAuthoringTaskInspection,
 } from "../../../src/core/services/template-authoring-tasks.js";
+import { perBundleAuthoringTasks } from "../../helpers/legacy-create-bundle.js";
+import { match } from "../../helpers/match.js";
 
 function template(
   scope: TemplateScope,
@@ -171,12 +170,12 @@ describe("compileProjectAuthoringTaskPlan", () => {
     expect(alpha).toMatchObject({
       identity: "template:built-in:bundle:default@3:inspect-runtime#bundle:alpha",
       dependencyIdentities: ["wpm:bundle:plan#bundle:alpha"],
-      labels: expect.arrayContaining(["wpm:template-key:inspect-runtime", "wpm:bundle:alpha"]),
+      labels: match.arrayContaining(["wpm:template-key:inspect-runtime", "wpm:bundle:alpha"]),
     });
     expect(beta).toMatchObject({
       identity: "template:built-in:bundle:default@3:inspect-runtime#bundle:beta",
       dependencyIdentities: ["wpm:bundle:plan#bundle:beta"],
-      labels: expect.arrayContaining(["wpm:template-key:inspect-runtime", "wpm:bundle:beta"]),
+      labels: match.arrayContaining(["wpm:template-key:inspect-runtime", "wpm:bundle:beta"]),
     });
     expect(alpha?.identity).not.toBe(beta?.identity);
   });
@@ -255,16 +254,16 @@ describe("compileProjectAuthoringTaskPlan", () => {
     expect(result.ok).toBe(false);
     if (result.ok) return;
     expect(result.problems).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
+      match.arrayContaining([
+        match.objectContaining({
           code: "unavailable-context",
           contribution: "template:built-in:project:broken@1",
         }),
-        expect.objectContaining({
+        match.objectContaining({
           code: "unresolved-dependency",
           contribution: "template:built-in:project:broken@1",
         }),
-        expect.objectContaining({
+        match.objectContaining({
           code: "rendered-title-collision",
           contribution: "template:built-in:bundle:default@1#bundle:alpha",
         }),

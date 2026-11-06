@@ -11,17 +11,8 @@
  */
 
 export {
-  type BundleManifestData,
   parseBundleManifest,
   serializeBundleManifest,
 } from "./bundle.js";
-export {
-  type ManifestData,
-  parseManifest,
-  serializeManifest,
-} from "./manifest.js";
-export {
-  parseTemplateDescriptor,
-  serializeTemplateDescriptor,
-  type TemplateDescriptorData,
-} from "./template.js";
+export { parseManifest } from "./manifest.js";
+export { parseTemplateDescriptor } from "./template.js";

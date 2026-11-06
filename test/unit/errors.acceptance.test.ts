@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 import {
   ConflictError,
   ConstraintError,
-  DomainError,
   type ExitCode,
   exitCodeFor,
   isDomainError,

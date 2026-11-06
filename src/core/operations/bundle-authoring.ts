@@ -41,6 +41,7 @@ import {
 } from "../services/bundle-authoring-task-plan.js";
 import { type CurrentState, planChanges } from "../services/derived-artefacts.js";
 import { hashTextContent } from "../services/integrity.js";
+import type { PlannedProjectAuthoringTask } from "../services/project-authoring-task-plan.js";
 import { type RenderedFile, renderSnippet, renderTree } from "../services/render.js";
 import {
   parseBundleManifest,
@@ -66,14 +67,14 @@ const ADVISOR_SNIPPET_PATH = "advisor.SKILL.md.tmpl";
 const BUNDLE_AUTHORING_QUARANTINE_DIR = ".wpm-bundle-authoring-quarantine";
 
 /** Dependencies shared by the bounded create/enable complete-authoring operations. */
-export interface BundleAuthoringOperationDeps {
+interface BundleAuthoringOperationDeps {
   readonly fs: FileSystem;
   readonly backlog: BacklogMd;
   readonly builtinTemplatesRoot: string;
   readonly projectTemplateName?: string;
 }
 
-export interface CreateBundleWithAuthoringInput {
+interface CreateBundleWithAuthoringInput {
   readonly id: string;
   readonly version?: string;
   readonly disabled?: boolean;
@@ -81,16 +82,16 @@ export interface CreateBundleWithAuthoringInput {
   readonly templateName?: string;
 }
 
-export interface EnableBundleWithAuthoringInput {
+interface EnableBundleWithAuthoringInput {
   readonly id: string;
   readonly advisor?: boolean;
 }
 
-export interface SetDefaultBundleTemplateInput {
+interface SetDefaultBundleTemplateInput {
   readonly name: string;
 }
 
-export interface SetDefaultBundleTemplateResult extends OperationResult {
+interface SetDefaultBundleTemplateResult extends OperationResult {
   readonly fileCount: number;
 }
 
@@ -717,7 +718,9 @@ function scaffoldMatches(
   );
 }
 
-/** Exact deterministic fingerprint retained with a selected default scaffold. */
+/** Exact deterministic fingerprint retained with a selected default scaffold.
+ * @internal Used by runtime within this module; exported for focused behavioral tests.
+ */
 export function bundleScaffoldSha256(files: readonly TemplateFile[]): string {
   return bundleContributionScaffoldSha256(files);
 }
@@ -750,7 +753,7 @@ function inspectBacklog(
       recovery: "Restore the supported Backlog.md executable, then repeat the request.",
     });
   }
-  let taskPrefix = "";
+  let taskPrefix: string;
   try {
     const inspected = backlog.inspectRoot(root);
     if (!inspected.valid) {
@@ -1198,7 +1201,7 @@ function sameRecord(left: TaskRecord, right: TaskRecord): boolean {
 
 function createdRecordMatches(
   record: TaskRecord,
-  task: import("../services/project-authoring-task-plan.js").PlannedProjectAuthoringTask,
+  task: PlannedProjectAuthoringTask,
   dependencies: readonly string[],
 ): boolean {
   return (
@@ -1406,7 +1409,7 @@ function plannedTaskActions(input: {
   readonly taskPrefix: string;
   readonly preserved: readonly { readonly identity: string; readonly id: string }[];
   readonly missing: readonly {
-    readonly task: import("../services/project-authoring-task-plan.js").PlannedProjectAuthoringTask;
+    readonly task: PlannedProjectAuthoringTask;
   }[];
   readonly materialised: string[];
 }): {
@@ -1525,7 +1528,7 @@ function addPlanProblems(
 function addPriorBundleTitleConflicts(input: {
   readonly blockers: BundleAuthoringBlocker[];
   readonly currentId: string;
-  readonly currentTasks: readonly import("../services/project-authoring-task-plan.js").PlannedProjectAuthoringTask[];
+  readonly currentTasks: readonly PlannedProjectAuthoringTask[];
   readonly state: BundleAuthoringContributions | undefined;
   readonly enabledBundleIds: readonly string[];
 }): void {
@@ -1864,7 +1867,7 @@ export function createBundleWithAuthoring(
     blocker(blockers, {
       code: "inactive-task-ownership-ambiguous",
       surface: "backlog",
-      path: backlogObservation?.inactiveEntries?.join(", "),
+      path: backlogObservation?.inactiveEntries?.join(", ") ?? "",
       message: "inactive Backlog records may already own missing bundle authoring work",
       recovery:
         "Restore or inspect the inactive records before creating replacement authoring tasks.",
@@ -2608,7 +2611,7 @@ export function enableBundleWithAuthoring(
     blocker(blockers, {
       code: "inactive-task-ownership-ambiguous",
       surface: "backlog",
-      path: backlogObservation?.inactiveEntries?.join(", "),
+      path: backlogObservation?.inactiveEntries?.join(", ") ?? "",
       message: "inactive Backlog records may already own missing bundle authoring work",
       recovery:
         "Restore or inspect the inactive records before creating replacement authoring tasks.",

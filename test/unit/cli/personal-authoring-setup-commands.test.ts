@@ -1,12 +1,13 @@
 import { Readable } from "node:stream";
 import { describe, expect, it } from "vitest";
-import { FakeBacklog } from "../../../src/adapters/fake-backlog.js";
-import { FakeEnvironment } from "../../../src/adapters/fake-env.js";
-import { FixedClock } from "../../../src/adapters/fixed-clock.js";
-import { MemoryFileSystem } from "../../../src/adapters/memory-fs.js";
 import { type CliDeps, run } from "../../../src/cli.js";
 import { PERSONAL_AUTHORING_STATE_PATH } from "../../../src/core/services/personal-authoring-setup.js";
 import type { CliIo, OutputSink } from "../../../src/util/exit.js";
+import { FakeBacklog } from "../../doubles/fake-backlog.js";
+import { FakeEnvironment } from "../../doubles/fake-env.js";
+import { FixedClock } from "../../doubles/fixed-clock.js";
+import { MemoryFileSystem } from "../../doubles/memory-fs.js";
+import { match } from "../../helpers/match.js";
 
 const HOME = "/home/author";
 const PACKAGE = "/package/agent-skills";
@@ -159,9 +160,9 @@ describe("wpm authoring setup", () => {
     expect(JSON.parse(streams.err.text)).toMatchObject({
       status: "failed",
       setupApplied: false,
-      blockers: expect.arrayContaining([
-        expect.objectContaining({ code: "personal-client-unsupported" }),
-        expect.objectContaining({ code: "personal-source-invalid" }),
+      blockers: match.arrayContaining([
+        match.objectContaining({ code: "personal-client-unsupported" }),
+        match.objectContaining({ code: "personal-source-invalid" }),
       ]),
     });
     expect(fs.read("/workspace/wip/manifest.yml")).toBe("targets:\n  - hermes\n");
@@ -185,8 +186,8 @@ describe("wpm authoring setup", () => {
     };
     expect(result.setupApplied).toBe(true);
     expect(result.clients).toEqual([
-      expect.objectContaining({ id: "codex", outcome: "unchanged" }),
-      expect.objectContaining({ id: "claude-code", outcome: "installed" }),
+      match.objectContaining({ id: "codex", outcome: "unchanged" }),
+      match.objectContaining({ id: "claude-code", outcome: "installed" }),
     ]);
     expect(result.clients[0]).not.toHaveProperty("reloadGuidance");
     expect(result.clients[1]).toHaveProperty("reloadGuidance");
@@ -246,7 +247,7 @@ describe("wpm authoring setup typed partial and legacy route", () => {
       completedClients: [],
       failedClient: { id: "codex", outcome: "installed" },
       unattemptedClients: [],
-      recovery: expect.stringContaining("--client codex"),
+      recovery: match.stringContaining("--client codex"),
     });
   });
 

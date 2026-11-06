@@ -22,7 +22,7 @@ import { resolveTemplate } from "../services/template-resolver.js";
  */
 
 /** The default project template the snippets are resolved from (doc 10 §Templates: project `minimal`). */
-export const DEFAULT_PROJECT_TEMPLATE = "minimal";
+const DEFAULT_PROJECT_TEMPLATE = "minimal";
 
 /** The non-port dependencies {@link renderSkillStub} needs to resolve the project template's snippet. */
 export interface SkillStubDeps {

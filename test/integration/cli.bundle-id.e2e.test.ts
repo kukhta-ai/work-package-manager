@@ -297,7 +297,7 @@ function authoringTaskTitles(proj: string): string {
     cwd: join(proj, ".authoring-backlog"),
     stdout: "pipe",
     stderr: "pipe",
-  }).stdout as string;
+  }).stdout;
 }
 
 /**

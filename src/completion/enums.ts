@@ -19,11 +19,11 @@ export const BUILD_FORMATS = ["zip", "tarball", "git"] as const;
 /** Bundle confirmation levels (doc 10; `bundle <id> meta --confirmation-level`). */
 export const CONFIRMATION_LEVELS = ["safe", "dangerous"] as const;
 /** Recipe-task kinds (doc 08; the `kind:` label values an authoring agent applies). */
-export const TASK_KINDS = ["kind:state", "kind:migration"] as const;
+const TASK_KINDS = ["kind:state", "kind:migration"] as const;
 /** Template scopes (doc 10; `template list --scope`). */
-export const TEMPLATE_SCOPES = ["project", "bundle"] as const;
+const TEMPLATE_SCOPES = ["project", "bundle"] as const;
 /** The shells `completion install` supports (doc 12: "bash/zsh/fish completion scripts"). */
-export const SHELLS = ["bash", "zsh", "fish"] as const;
+const SHELLS = ["bash", "zsh", "fish"] as const;
 
 /**
  * The built-in fixed-enum sources, keyed by the name a command/option references them by. Registered into the

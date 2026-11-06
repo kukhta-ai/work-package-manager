@@ -1,3 +1,7 @@
+import type { PersonalSetupOutcome } from "../model/personal-setup.js";
+
+export type { PersonalSetupOutcome } from "../model/personal-setup.js";
+
 import { AUTHORING_CLIENT_IDS, type AuthoringClientId } from "./authoring-clients.js";
 import { hashTextContent } from "./integrity.js";
 import { isCanonicalIntegrationVersion } from "./workspace-authoring-integration.js";
@@ -13,9 +17,6 @@ export const LEGACY_PERSONAL_SKILL_NAME = "installer-builder";
 
 /** HOME-relative private residue root used only while one applying request is incomplete. */
 export const PERSONAL_AUTHORING_QUARANTINE_DIRECTORY = ".wpm/authoring-setup-quarantine";
-
-/** Per-client reconciliation outcome reported by setup. */
-export type PersonalSetupOutcome = "installed" | "unchanged" | "updated" | "migrated";
 
 /** Durable ownership evidence for one managed personal bootstrap destination. */
 export interface ManagedPersonalClient {
@@ -71,11 +72,9 @@ export interface ApplyingPersonalAuthoringState extends PersonalStateBase {
   };
 }
 
-export type PersonalAuthoringState =
-  | CompletePersonalAuthoringState
-  | ApplyingPersonalAuthoringState;
+type PersonalAuthoringState = CompletePersonalAuthoringState | ApplyingPersonalAuthoringState;
 
-export type PersonalAuthoringStateParseResult =
+type PersonalAuthoringStateParseResult =
   | { readonly ok: true; readonly value: PersonalAuthoringState }
   | { readonly ok: false; readonly reason: string };
 
@@ -245,7 +244,7 @@ function parseClientPlan(value: unknown): ApplyingPersonalClientPlan | undefined
     client: value.client,
     destination: value.destination,
     outcome: value.outcome,
-    beforeSha256: value.beforeSha256 as string | null,
+    beforeSha256: value.beforeSha256,
     afterSha256: value.afterSha256,
     legacy,
   };
@@ -276,8 +275,8 @@ function parseStateValue(value: unknown): PersonalAuthoringState | undefined {
   ) {
     return undefined;
   }
-  const home = value.home as string;
-  const defaults = value.defaults as AuthoringClientId[];
+  const home = value.home;
+  const defaults = value.defaults;
   if (!canonicalClients(defaults)) return undefined;
   const managed = value.managed.map(parseManaged);
   if (managed.some((entry) => entry === undefined)) return undefined;

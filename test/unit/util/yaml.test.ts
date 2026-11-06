@@ -1,11 +1,6 @@
 import { describe, expect, it } from "vitest";
-import {
-  editYaml,
-  parseDocument,
-  parseYaml,
-  stringifyDocument,
-  stringifyYaml,
-} from "../../../src/util/yaml.js";
+import { editYaml, parseDocument, parseYaml, stringifyYaml } from "../../../src/util/yaml.js";
+import { stringifyDocument } from "../../helpers/legacy-serialization.js";
 
 /** A realistic manifest.yml with comments, blank lines, quoted/unquoted values, and lists. */
 const MANIFEST = `# The project release identity and the bundles it ships.

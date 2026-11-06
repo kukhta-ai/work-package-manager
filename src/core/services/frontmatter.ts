@@ -18,7 +18,7 @@ import { ValidationError } from "../errors.js";
  */
 
 /** The required frontmatter fields a valid SKILL.md head carries (doc 05). */
-export interface SkillFrontmatter {
+interface SkillFrontmatter {
   /** The skill's `name` (lowercase-with-hyphens by convention; required, non-empty). */
   readonly name: string;
   /** The skill's `description` — the load-bearing "when to activate" field (required, non-empty). */

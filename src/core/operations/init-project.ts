@@ -40,12 +40,13 @@ import { parseBundleManifest, parseManifest } from "../services/schema/index.js"
 import { inspectTemplateAuthoringTasks } from "../services/template-authoring-tasks.js";
 import { resolveTemplate } from "../services/template-resolver.js";
 import { WORKSPACE_INTEGRATION_STATE_PATH } from "../services/workspace-authoring-integration.js";
+import type { PreparedWorkspaceHandoffResult } from "../services/workspace-handoff.js";
 import {
   createWorkspaceHandoffReceipt,
   serializeWorkspaceHandoffReceipt,
   WORKSPACE_HANDOFF_RECEIPT_PATH,
 } from "../services/workspace-handoff.js";
-import { perBundleAuthoringTaskCatalog, perBundleAuthoringTasks } from "./create-bundle.js";
+import { perBundleAuthoringTaskCatalog } from "./create-bundle.js";
 import { deriveArtefactsFromTemplateSnapshot } from "./derive-artefacts-capability.js";
 import { readPersonalAuthoringDefaults } from "./personal-authoring-setup.js";
 import {
@@ -55,7 +56,6 @@ import {
   planFreshWorkspaceAuthoringIntegration,
   type WorkspaceAuthoringIntegrationResult,
 } from "./workspace-authoring-integration.js";
-import type { PreparedWorkspaceHandoffResult } from "./workspace-handoff.js";
 
 function requiredCanonicalBundleTaskSource(template: import("../model/index.js").Template) {
   const source = canonicalBundleAuthoringTaskSource(template.authoringTaskSource);
@@ -133,7 +133,9 @@ const DERIVED_EXECUTOR_FRONT_DOOR_PATH = EXECUTOR_FRONT_DOOR_PATH;
  * root-mismatch bug that broke every materialising command.
  */
 
-/** The input to {@link initProject}: where to create the project, its name, the chosen template, and extra params. */
+/** The input to {@link initProject}: where to create the project, its name, the chosen template, and extra params.
+ * @internal Runtime type exported for typed test fixtures; not a public SDK surface.
+ */
 export interface InitProjectInput {
   /** The directory that becomes the **authoring workspace root** (the CLI resolves it from `--at`/cwd; doc 10). */
   readonly targetDir: string;
@@ -150,7 +152,9 @@ export interface InitProjectInput {
   readonly authoringClientIds?: readonly string[];
 }
 
-/** The dependencies {@link initProject} needs: the two ports + the built-in templates root. */
+/** The dependencies {@link initProject} needs: the two ports + the built-in templates root.
+ * @internal Runtime type exported for typed test fixtures; not a public SDK surface.
+ */
 export interface InitProjectDeps {
   /** The filesystem port (real `NodeFileSystem` in production). */
   readonly fs: FileSystem;
@@ -429,7 +433,7 @@ function executeInitPlan(actions: readonly PlannedInitAction[]): {
       planned.perform();
       const evidence = {
         id: planned.id,
-        path: planned.path,
+        ...(planned.path === undefined ? {} : { path: planned.path }),
         description: planned.description,
       } satisfies MutationBoundary;
       completed.push(evidence);
@@ -447,12 +451,12 @@ function executeInitPlan(actions: readonly PlannedInitAction[]): {
         completed,
         failed: {
           id: planned.id,
-          path: planned.path,
+          ...(planned.path === undefined ? {} : { path: planned.path }),
           description: planned.description,
         },
         unattempted: actions.slice(index + 1).map(({ id, path, description }) => ({
           id,
-          path,
+          ...(path === undefined ? {} : { path }),
           description,
         })),
         recovery:

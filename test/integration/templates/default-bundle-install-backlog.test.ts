@@ -3,9 +3,9 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { execaSync } from "execa";
 import { describe, expect, it } from "vitest";
-import { MemoryFileSystem } from "../../../src/adapters/memory-fs.js";
 import { renderTree } from "../../../src/core/services/render.js";
 import { resolveTemplate } from "../../../src/core/services/template-resolver.js";
+import { MemoryFileSystem } from "../../doubles/memory-fs.js";
 import { withTempDir } from "../../helpers/tmpdir.js";
 
 /**
@@ -123,7 +123,7 @@ describeIfBacklog(
           env,
           stdout: "pipe",
           stderr: "pipe",
-        }).stdout as string;
+        }).stdout;
 
         // All three tasks list, with the bundle-prefixed (upper-cased on display) ids:
         expect(list).toContain(`${SAMPLE_ID.toUpperCase()}-1`);
@@ -142,7 +142,7 @@ describeIfBacklog(
             env,
             stdout: "pipe",
             stderr: "pipe",
-          }).stdout as string;
+          }).stdout;
 
         // setup task: kind:state + step:setup label, an AC, a dependency on the detect task, and a DoD:
         const setup = detail(`${SAMPLE_ID}-2`);
@@ -176,7 +176,7 @@ describeIfBacklog(
           env,
           stdout: "pipe",
           stderr: "pipe",
-        }).stdout as string;
+        }).stdout;
         // DoD item #1 is now checked in the real file:
         expect(detail).toMatch(/\[x\]\s*#1/);
       });
@@ -198,7 +198,7 @@ describeIfBacklog(
           env,
           stdout: "pipe",
           stderr: "pipe",
-        }).stdout as string;
+        }).stdout;
         expect(list).toContain(`${SAMPLE_ID.toUpperCase()}-4`);
       });
     });

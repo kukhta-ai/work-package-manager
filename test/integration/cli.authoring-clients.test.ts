@@ -3,12 +3,12 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 
 import { join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { FakeBacklog } from "../../src/adapters/fake-backlog.js";
-import { FakeEnvironment } from "../../src/adapters/fake-env.js";
-import { FixedClock } from "../../src/adapters/fixed-clock.js";
 import { NodeFileSystem } from "../../src/adapters/node-fs.js";
 import { type CliDeps, run } from "../../src/cli.js";
 import type { CliIo, OutputSink } from "../../src/util/exit.js";
+import { FakeBacklog } from "../doubles/fake-backlog.js";
+import { FakeEnvironment } from "../doubles/fake-env.js";
+import { FixedClock } from "../doubles/fixed-clock.js";
 import { withTempDir } from "../helpers/tmpdir.js";
 
 const builtCli = fileURLToPath(new URL("../../dist/cli.js", import.meta.url));
@@ -141,7 +141,7 @@ describe("authoring-client inspection over real filesystem boundaries", () => {
   itIfBuilt(
     "drives the built CLI through JSON, text, and help without changing HOME or target state",
     async () => {
-      await withTempDir(async (root) => {
+      await withTempDir((root) => {
         const home = join(root, "home");
         const workspace = join(root, "workspace");
         mkdirSync(join(home, ".claude"), { recursive: true });

@@ -2,9 +2,6 @@ import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { FakeBacklog } from "../../../src/adapters/fake-backlog.js";
-import { FakeEnvironment } from "../../../src/adapters/fake-env.js";
-import { MemoryFileSystem } from "../../../src/adapters/memory-fs.js";
 import {
   HandoffPreparationPreflightError,
   HandoffVerificationError,
@@ -26,6 +23,10 @@ import {
   WORKSPACE_HANDOFF_RECEIPT_PATH,
 } from "../../../src/core/services/workspace-handoff.js";
 import { toPosix } from "../../../src/util/posix-path.js";
+import { FakeBacklog } from "../../doubles/fake-backlog.js";
+import { FakeEnvironment } from "../../doubles/fake-env.js";
+import { MemoryFileSystem } from "../../doubles/memory-fs.js";
+import { match } from "../../helpers/match.js";
 
 const REPO_ROOT = fileURLToPath(new URL("../../..", import.meta.url));
 const WORKSPACE = "/authoring/demo";
@@ -220,7 +221,7 @@ describe("workspace handoff preparation", () => {
 
     expect(caught).toBeInstanceOf(HandoffPreparationPreflightError);
     expect((caught as HandoffPreparationPreflightError).blockers).toEqual(
-      expect.arrayContaining([expect.objectContaining({ code: "handoff-receipt-invalid" })]),
+      match.arrayContaining([match.objectContaining({ code: "handoff-receipt-invalid" })]),
     );
     expect(harness.fs.read(receiptPath)).toBe(modified);
   });
@@ -294,7 +295,7 @@ describe("workspace handoff preparation", () => {
 
     expect(caught).toBeInstanceOf(HandoffPreparationPreflightError);
     expect((caught as HandoffPreparationPreflightError).blockers.map(({ code }) => code)).toEqual(
-      expect.arrayContaining(["managed-state-invalid", "handoff-receipt-invalid"]),
+      match.arrayContaining(["managed-state-invalid", "handoff-receipt-invalid"]),
     );
     expect((caught as HandoffPreparationPreflightError).handoffPrepared).toBe(false);
     expect(harness.fs.read(`${WORKSPACE}/${WORKSPACE_HANDOFF_RECEIPT_PATH}`)).toBe(receiptBefore);
@@ -318,7 +319,7 @@ describe("workspace handoff preparation", () => {
 
     expect(caught).toBeInstanceOf(HandoffPreparationPreflightError);
     expect((caught as HandoffPreparationPreflightError).blockers.map(({ code }) => code)).toEqual(
-      expect.arrayContaining([
+      match.arrayContaining([
         "workspace-marker-invalid",
         "managed-state-mismatch",
         "handoff-request-version-invalid",
@@ -345,7 +346,7 @@ describe("workspace handoff preparation", () => {
 
     expect(caught).toBeInstanceOf(HandoffPreparationPreflightError);
     expect((caught as HandoffPreparationPreflightError).blockers.map(({ code }) => code)).toEqual(
-      expect.arrayContaining(["handoff-request-version-invalid", "managed-state-invalid"]),
+      match.arrayContaining(["handoff-request-version-invalid", "managed-state-invalid"]),
     );
     expect(harness.fs.read(receiptPath)).toBe(receiptBefore);
   });
@@ -420,7 +421,7 @@ describe("workspace handoff verification", () => {
     expect(caught).toBeInstanceOf(HandoffVerificationError);
     const failure = caught as HandoffVerificationError;
     expect(failure.blockers.map(({ code }) => code)).toEqual(
-      expect.arrayContaining(["working-directory-mismatch", "workspace-skill-mismatch"]),
+      match.arrayContaining(["working-directory-mismatch", "workspace-skill-mismatch"]),
     );
     expect(failure.clients).toEqual([
       { id: "codex", status: "valid" },
@@ -455,7 +456,7 @@ describe("workspace handoff verification", () => {
     });
     expect(harness.backlog.readTask(backlogRoot, first.id)).toMatchObject({
       status: "In Progress",
-      acceptanceCriteria: [expect.objectContaining({ checked: true })],
+      acceptanceCriteria: [match.objectContaining({ checked: true })],
     });
   });
 
@@ -481,18 +482,18 @@ describe("workspace handoff verification", () => {
     const failure = caught as HandoffVerificationError;
     expect(failure.category).toBe("validation");
     expect(failure.blockers).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ code: "managed-state-invalid" }),
-        expect.objectContaining({
+      match.arrayContaining([
+        match.objectContaining({ code: "managed-state-invalid" }),
+        match.objectContaining({
           code: "workspace-skill-family-unverifiable",
           client: "claude-code",
         }),
-        expect.objectContaining({ code: "workspace-skill-mismatch", client: "claude-code" }),
-        expect.objectContaining({ code: "workspace-front-door-mismatch", client: "claude-code" }),
+        match.objectContaining({ code: "workspace-skill-mismatch", client: "claude-code" }),
+        match.objectContaining({ code: "workspace-front-door-mismatch", client: "claude-code" }),
       ]),
     );
     expect(failure.blockers).not.toEqual(
-      expect.arrayContaining([expect.objectContaining({ code: "handoff-client-not-configured" })]),
+      match.arrayContaining([match.objectContaining({ code: "handoff-client-not-configured" })]),
     );
     expect(failure.clients).toEqual([
       { id: "codex", status: "invalid" },
@@ -556,14 +557,14 @@ describe("workspace handoff verification", () => {
     const failure = caught as HandoffVerificationError;
     expect(failure.category).toBe("validation");
     expect(failure.blockers).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ code: "managed-state-mismatch" }),
-        expect.objectContaining({ code: "workspace-skill-mismatch", client: "codex" }),
-        expect.objectContaining({ code: "workspace-front-door-mismatch", client: "codex" }),
+      match.arrayContaining([
+        match.objectContaining({ code: "managed-state-mismatch" }),
+        match.objectContaining({ code: "workspace-skill-mismatch", client: "codex" }),
+        match.objectContaining({ code: "workspace-front-door-mismatch", client: "codex" }),
       ]),
     );
     expect(failure.blockers).not.toEqual(
-      expect.arrayContaining([expect.objectContaining({ code: "handoff-client-not-configured" })]),
+      match.arrayContaining([match.objectContaining({ code: "handoff-client-not-configured" })]),
     );
     expect(failure.clients).toEqual([
       { id: "codex", status: "invalid" },
@@ -610,8 +611,8 @@ describe("workspace handoff verification", () => {
 
     expect(caught).toBeInstanceOf(HandoffVerificationError);
     expect((caught as HandoffVerificationError).blockers).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ code: "workspace-skill-mismatch", client: "codex" }),
+      match.arrayContaining([
+        match.objectContaining({ code: "workspace-skill-mismatch", client: "codex" }),
       ]),
     );
   });
@@ -651,14 +652,14 @@ describe("workspace handoff verification", () => {
     expect(caught).toBeInstanceOf(HandoffVerificationError);
     const failure = caught as HandoffVerificationError;
     expect(failure.blockers).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ code: "managed-state-owned-paths-mismatch" }),
-        expect.objectContaining({ code: "workspace-skill-mismatch", client: "claude-code" }),
-        expect.objectContaining({ code: "workspace-front-door-mismatch", client: "claude-code" }),
+      match.arrayContaining([
+        match.objectContaining({ code: "managed-state-owned-paths-mismatch" }),
+        match.objectContaining({ code: "workspace-skill-mismatch", client: "claude-code" }),
+        match.objectContaining({ code: "workspace-front-door-mismatch", client: "claude-code" }),
       ]),
     );
     expect(failure.blockers).not.toEqual(
-      expect.arrayContaining([expect.objectContaining({ code: "handoff-client-not-configured" })]),
+      match.arrayContaining([match.objectContaining({ code: "handoff-client-not-configured" })]),
     );
   });
 });

@@ -24,7 +24,7 @@ import { resolveTemplate } from "../services/template-resolver.js";
 const DEFAULT_PROJECT_TEMPLATE = "minimal";
 
 /** The dependencies the deriver needs: the filesystem port + the template roots + the project template name. */
-export interface ArtefactDeriverDeps {
+interface ArtefactDeriverDeps {
   /** The filesystem port (real or fake). */
   readonly fs: FileSystem;
   /** The built-in templates root (shipped with the CLI). */
@@ -103,7 +103,9 @@ export function makeArtefactDeriver(
     const resolution = resolveTemplate(projectTemplateName, "project", {
       fs: deps.fs,
       builtinTemplatesRoot: deps.builtinTemplatesRoot,
-      projectTemplatesRoot: deps.projectTemplatesRoot,
+      ...(deps.projectTemplatesRoot === undefined
+        ? {}
+        : { projectTemplatesRoot: deps.projectTemplatesRoot }),
     });
     if (!resolution.found) {
       throw new NotFoundError(

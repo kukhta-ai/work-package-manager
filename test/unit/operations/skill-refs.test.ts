@@ -1,6 +1,4 @@
 import { describe, expect, it } from "vitest";
-import { FakeBacklog } from "../../../src/adapters/fake-backlog.js";
-import { MemoryFileSystem } from "../../../src/adapters/memory-fs.js";
 import { DomainError } from "../../../src/core/errors.js";
 import type { SkillRef } from "../../../src/core/model/index.js";
 import { makeArtefactDeriver } from "../../../src/core/operations/derive-artefacts-capability.js";
@@ -19,6 +17,8 @@ import {
 } from "../../../src/core/operations/skill-refs.js";
 import { parseBundleManifest } from "../../../src/core/services/schema/index.js";
 import { parseYaml } from "../../../src/util/yaml.js";
+import { FakeBacklog } from "../../doubles/fake-backlog.js";
+import { MemoryFileSystem } from "../../doubles/memory-fs.js";
 
 /**
  * Unit tests for the GENERIC descriptor-driven skill-reference operation core (`skill-refs.ts`) driven through

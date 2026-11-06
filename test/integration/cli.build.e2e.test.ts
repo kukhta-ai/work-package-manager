@@ -17,6 +17,7 @@ import { join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { toPosix } from "../../src/util/posix-path.js";
+import { match } from "../helpers/match.js";
 import { withTempDir } from "../helpers/tmpdir.js";
 import { initWorkspace } from "../helpers/workspace.js";
 
@@ -170,7 +171,7 @@ function initProject(dir: string): string {
 
 describeIfBuilt("`wpm build dry-run` E2E (task-82, through dist/cli.js)", () => {
   it("AC82#1/#4 — a fresh minimal project (no targets) FAILS validate ⇒ dry-run exits non-zero", async () => {
-    await withTempDir(async (dir) => {
+    await withTempDir((dir) => {
       const proj = initProject(dir);
       const r = cli(["build", "dry-run", "-C", proj], dir);
       expect(r.code).not.toBe(0); // validate fails: "no target agents declared"
@@ -179,7 +180,7 @@ describeIfBuilt("`wpm build dry-run` E2E (task-82, through dist/cli.js)", () => 
   });
 
   it("AC82#3/#4 — after adding a target: exit 0, prints the would-ship tree (no .authoring-backlog), NO artefact", async () => {
-    await withTempDir(async (dir) => {
+    await withTempDir((dir) => {
       const proj = initProject(dir);
       expect(cli(["project", "targets", "add", "claude-code", "-C", proj], dir).code).toBe(0);
 
@@ -201,7 +202,7 @@ describeIfBuilt("`wpm build dry-run` E2E (task-82, through dist/cli.js)", () => 
   });
 
   it("TASK-128 AC#1/#2/#6 — dry-run shows exact root/enabled-bundle scopes and no absent-target scope", async () => {
-    await withTempDir(async (dir) => {
+    await withTempDir((dir) => {
       const proj = initProject(dir);
       expect(cli(["project", "targets", "add", "claude-code", "-C", proj], dir).code).toBe(0);
       expect(cli(["bundle", "new", "web", "-C", proj], dir)).toMatchObject({ code: 0 });
@@ -217,7 +218,7 @@ describeIfBuilt("`wpm build dry-run` E2E (task-82, through dist/cli.js)", () => 
   });
 
   it("AC82#5 — run outside any project exits non-zero naming manifest.yml", async () => {
-    await withTempDir(async (dir) => {
+    await withTempDir((dir) => {
       // dir has no project; run dry-run from it without -C.
       const r = cli(["build", "dry-run"], dir);
       expect(r.code).not.toBe(0);
@@ -226,7 +227,7 @@ describeIfBuilt("`wpm build dry-run` E2E (task-82, through dist/cli.js)", () => 
   });
 
   it("AC82#6 — `build dry-run --help` exits 0 with Usage + an Example", async () => {
-    await withTempDir(async (dir) => {
+    await withTempDir((dir) => {
       const r = cli(["build", "dry-run", "--help"], dir);
       expect(r.code).toBe(0);
       expect(r.stdout).toMatch(/Usage:/);
@@ -237,7 +238,7 @@ describeIfBuilt("`wpm build dry-run` E2E (task-82, through dist/cli.js)", () => 
 
 describeIfBuilt("`wpm build package` E2E (task-83, through dist/cli.js)", () => {
   it("TASK-128 AC#3-#5/#8 — every format exposes portable root/bundle scopes after the authoring tree is unavailable", async () => {
-    await withTempDir(async (dir) => {
+    await withTempDir((dir) => {
       const proj = initProject(dir);
       expect(cli(["project", "targets", "add", "claude-code", "-C", proj], dir).code).toBe(0);
       expect(cli(["bundle", "new", "web", "-C", proj], dir)).toMatchObject({ code: 0 });
@@ -299,7 +300,7 @@ describeIfBuilt("`wpm build package` E2E (task-83, through dist/cli.js)", () => 
   });
 
   it("AC83#1/#2 + AC89#1/#2/#3 — `--format tarball`: exit 0, archive in <workspace>/builds/, un-nested root (manifest at root), no authoring surface", async () => {
-    await withTempDir(async (dir) => {
+    await withTempDir((dir) => {
       const proj = initProject(dir);
       expect(cli(["project", "targets", "add", "claude-code", "-C", proj], dir).code).toBe(0);
 
@@ -334,7 +335,7 @@ describeIfBuilt("`wpm build package` E2E (task-83, through dist/cli.js)", () => 
   });
 
   it("AC90#2/#5/#6 — `_AGENTS.md` (root + per bundle) ships as canonical `AGENTS.md` VERBATIM, with the `CLAUDE.md` alias, never `_AGENTS.md`", async () => {
-    await withTempDir(async (dir) => {
+    await withTempDir((dir) => {
       const proj = initProject(dir);
       // claude-code is a target ⇒ the build creates the CLAUDE.md alias front door beside each AGENTS.md (doc 05).
       expect(cli(["project", "targets", "add", "claude-code", "-C", proj], dir).code).toBe(0);
@@ -447,7 +448,7 @@ describeIfBuilt("`wpm build package` E2E (task-83, through dist/cli.js)", () => 
   });
 
   it("AC93#4 — REGRESSION GUARD: NO canonical executor front door (`AGENTS.md`/`CLAUDE.md`/`GEMINI.md`) appears ANYWHERE in the authoring deliverable tree — root or any bundle — only the reserved `_AGENTS.md` prefix", async () => {
-    await withTempDir(async (dir) => {
+    await withTempDir((dir) => {
       const proj = initProject(dir);
       expect(cli(["project", "targets", "add", "claude-code", "-C", proj], dir).code).toBe(0);
       // Two bundles ⇒ the guard covers MULTIPLE bundle subtrees, not just one.
@@ -483,7 +484,7 @@ describeIfBuilt("`wpm build package` E2E (task-83, through dist/cli.js)", () => 
   // bundle directory FAILS validation (validate.ts check 4), so `build package` exits before archiving.
 
   it("AC89#7 — re-packaging unchanged project state reproduces an identical archive layout", async () => {
-    await withTempDir(async (dir) => {
+    await withTempDir((dir) => {
       const proj = initProject(dir);
       expect(cli(["project", "targets", "add", "claude-code", "-C", proj], dir).code).toBe(0);
 
@@ -500,7 +501,7 @@ describeIfBuilt("`wpm build package` E2E (task-83, through dist/cli.js)", () => 
   });
 
   it("AC93#3 — REGRESSION GUARD: no builder-time region (authoring backlog, authoring front door, builds/) leaks into the archive — by PATH and by CONTENT", async () => {
-    await withTempDir(async (dir) => {
+    await withTempDir((dir) => {
       const proj = initProject(dir);
       expect(cli(["project", "targets", "add", "claude-code", "-C", proj], dir).code).toBe(0);
 
@@ -544,7 +545,7 @@ describeIfBuilt("`wpm build package` E2E (task-83, through dist/cli.js)", () => 
   });
 
   it("TASK-103 AC#3 — a bundle that ships NO payload skill packages with no placeholder skill in the archive", async () => {
-    await withTempDir(async (dir) => {
+    await withTempDir((dir) => {
       const proj = initProject(dir);
       expect(cli(["project", "targets", "add", "claude-code", "-C", proj], dir).code).toBe(0);
       // a config-only bundle: a fresh `bundle new` registers/ships no payload skill (TASK-103):
@@ -565,7 +566,7 @@ describeIfBuilt("`wpm build package` E2E (task-83, through dist/cli.js)", () => 
   });
 
   it("TASK-104 — every package format prunes builder templates but preserves registered runtime `.tmpl` files and symlinks", async () => {
-    await withTempDir(async (dir) => {
+    await withTempDir((dir) => {
       const proj = initProject(dir);
       const executorFrontDoor = join(proj, "wip", "_AGENTS.md");
       const assertRuntimeBundleMenu = (): void => {
@@ -670,7 +671,7 @@ describeIfBuilt("`wpm build package` E2E (task-83, through dist/cli.js)", () => 
   });
 
   it("TASK-105 — successive archives ship only registered payload-skill packages after real deregistration", async () => {
-    await withTempDir(async (dir) => {
+    await withTempDir((dir) => {
       const proj = initProject(dir);
       expect(cli(["project", "targets", "add", "claude-code", "-C", proj], dir).code).toBe(0);
       expect(cli(["bundle", "new", "web", "-C", proj], dir)).toMatchObject({ code: 0 });
@@ -878,7 +879,7 @@ describeIfBuilt("`wpm build package` E2E (task-83, through dist/cli.js)", () => 
 
   it("TASK-118 AC#5/#6/#8/#10 — fresh multi-format review builds use an equivalent Git-isolated copy while the original stays byte-for-byte unchanged", async () => {
     if (process.platform === "win32") return;
-    await withTempDir(async (dir) => {
+    await withTempDir((dir) => {
       const sourceRepo = join(dir, "source-repository");
       mkdirSync(sourceRepo);
       execFileSync("git", ["init", "--quiet"], { cwd: sourceRepo });
@@ -960,7 +961,7 @@ describeIfBuilt("`wpm build package` E2E (task-83, through dist/cli.js)", () => 
         layouts.push(layout);
         expect(layout.some((path) => path.includes("wpm-review-package"))).toBe(false);
         const declaredClaudeScopes = [".claude/skills", "bundles/web/.claude/skills"];
-        expect(layout).toEqual(expect.arrayContaining(declaredClaudeScopes));
+        expect(layout).toEqual(match.arrayContaining(declaredClaudeScopes));
         expect(
           layout.some((path) => {
             const inAgentsScope =
@@ -1001,7 +1002,7 @@ describeIfBuilt("`wpm build package` E2E (task-83, through dist/cli.js)", () => 
   });
 
   it("TASK-95 AC#1-4 — git packages the same un-nested, prefix-stripped layout as tarball (and zip when available)", async () => {
-    await withTempDir(async (dir) => {
+    await withTempDir((dir) => {
       const proj = initProject(dir);
       expect(cli(["project", "targets", "add", "claude-code", "-C", proj], dir).code).toBe(0);
       expect(cli(["bundle", "new", "web", "-C", proj], dir)).toMatchObject({ code: 0 });
@@ -1279,7 +1280,7 @@ describeIfBuilt("`wpm build package` E2E (task-83, through dist/cli.js)", () => 
   });
 
   it("AC83#3 — an unsupported --format value exits 2 (usage error)", async () => {
-    await withTempDir(async (dir) => {
+    await withTempDir((dir) => {
       const proj = initProject(dir);
       const r = cli(["build", "package", "--format", "bogus", "-C", proj], dir);
       expect(r.code).toBe(2);
@@ -1287,7 +1288,7 @@ describeIfBuilt("`wpm build package` E2E (task-83, through dist/cli.js)", () => 
   });
 
   it("AC83#1 — package FAILS before producing when validate fails (fresh project, no targets)", async () => {
-    await withTempDir(async (dir) => {
+    await withTempDir((dir) => {
       const proj = initProject(dir);
       const r = cli(["build", "package", "--format", "tarball", "-C", proj], dir);
       expect(r.code).not.toBe(0);
@@ -1298,7 +1299,7 @@ describeIfBuilt("`wpm build package` E2E (task-83, through dist/cli.js)", () => 
 
   it("AC83#2 — `--format zip` produces a real .zip in <workspace>/builds/ when zip is available (skipped otherwise)", async () => {
     if (!hasZip()) return; // headless CI commonly lacks `zip`; the missing-tool path is covered by the unit test.
-    await withTempDir(async (dir) => {
+    await withTempDir((dir) => {
       const proj = initProject(dir);
       expect(cli(["project", "targets", "add", "claude-code", "-C", proj], dir).code).toBe(0);
       const r = cli(["build", "package", "--format", "zip", "-C", proj], dir);
@@ -1308,7 +1309,7 @@ describeIfBuilt("`wpm build package` E2E (task-83, through dist/cli.js)", () => 
   });
 
   it("AC89#6 — package outside any workspace exits non-zero naming the missing workspace", async () => {
-    await withTempDir(async (dir) => {
+    await withTempDir((dir) => {
       const r = cli(["build", "package"], dir); // no -C, no workspace marker in dir
       expect(r.code).not.toBe(0);
       expect(`${r.stdout}${r.stderr}`).toMatch(/workspace/i);
@@ -1316,7 +1317,7 @@ describeIfBuilt("`wpm build package` E2E (task-83, through dist/cli.js)", () => 
   });
 
   it("AC83#5 — `build package --help` exits 0 with Usage, --format + its values, and an Example", async () => {
-    await withTempDir(async (dir) => {
+    await withTempDir((dir) => {
       const r = cli(["build", "package", "--help"], dir);
       expect(r.code).toBe(0);
       expect(r.stdout).toMatch(/Usage:/);
@@ -1331,7 +1332,7 @@ describeIfBuilt("`wpm build package` E2E (task-83, through dist/cli.js)", () => 
 
 describeIfBuilt("`wpm build publish` E2E (task-84, through dist/cli.js)", () => {
   it("AC84#1 — `publish <local-dir> --format tarball`: exit 0, the archive lands in the destination dir", async () => {
-    await withTempDir(async (dir) => {
+    await withTempDir((dir) => {
       const proj = initProject(dir);
       expect(cli(["project", "targets", "add", "claude-code", "-C", proj], dir).code).toBe(0);
 
@@ -1348,7 +1349,7 @@ describeIfBuilt("`wpm build publish` E2E (task-84, through dist/cli.js)", () => 
   });
 
   it("AC84#2 — a publish whose BUILD fails (no targets) does NOT push and exits non-zero", async () => {
-    await withTempDir(async (dir) => {
+    await withTempDir((dir) => {
       const proj = initProject(dir); // fresh minimal ⇒ no targets ⇒ validate fails
       const dest = join(dir, "published");
       mkdirSync(dest, { recursive: true });
@@ -1362,7 +1363,7 @@ describeIfBuilt("`wpm build publish` E2E (task-84, through dist/cli.js)", () => 
   });
 
   it("AC84#3 — run outside any project exits non-zero naming manifest.yml", async () => {
-    await withTempDir(async (dir) => {
+    await withTempDir((dir) => {
       const r = cli(["build", "publish", join(dir, "anywhere")], dir);
       expect(r.code).not.toBe(0);
       expect(`${r.stdout}${r.stderr}`).toContain("manifest.yml");
@@ -1370,7 +1371,7 @@ describeIfBuilt("`wpm build publish` E2E (task-84, through dist/cli.js)", () => 
   });
 
   it("AC84#4 — `build publish --help` exits 0 with Usage, the <destination> positional, and an Example", async () => {
-    await withTempDir(async (dir) => {
+    await withTempDir((dir) => {
       const r = cli(["build", "publish", "--help"], dir);
       expect(r.code).toBe(0);
       expect(r.stdout).toMatch(/Usage:/);
@@ -1382,7 +1383,7 @@ describeIfBuilt("`wpm build publish` E2E (task-84, through dist/cli.js)", () => 
 
 describeIfBuilt("FULL workspace lifecycle E2E (AC93#2, through dist/cli.js)", () => {
   it("init → bundle new → project meta → build: the workspace layout holds throughout and the archive is un-nested in builds/", async () => {
-    await withTempDir(async (dir) => {
+    await withTempDir((dir) => {
       // 1. init creates a WORKSPACE: deliverable nested under wip/, authoring backlog + front door at the root,
       //    builds/ created empty. The deliverable manifest is NOT at the workspace root.
       const proj = initProject(dir);

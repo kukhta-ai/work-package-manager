@@ -33,10 +33,10 @@ import type { Environment, FileSystem } from "../ports/index.js";
  */
 
 /** The deliverable subdirectory of an authoring workspace (docs 06/12): the workspace's `wip/` directory. */
-export const DELIVERABLE_DIR = "wip";
+const DELIVERABLE_DIR = "wip";
 
 /** The manifest filename inside the deliverable subdirectory — the leaf of the workspace marker (doc 10/06). */
-export const WORKSPACE_MANIFEST = "manifest.yml";
+const WORKSPACE_MANIFEST = "manifest.yml";
 
 /**
  * The workspace marker, relative to a candidate directory: a directory is a workspace root iff it directly
@@ -54,6 +54,7 @@ export const WORKSPACE_MARKER = posix.join(DELIVERABLE_DIR, WORKSPACE_MANIFEST);
  * inspectable value — **never a thrown error** (doc 13 §7): project-agnostic callers (`template list`/`show`)
  * proceed with built-ins, and project-bound callers turn it into a Not-found domain error (task-23) at the
  * command layer.
+ * @internal Runtime type exported for typed test fixtures; not a public SDK surface.
  */
 export type ProjectContext =
   | {
@@ -66,7 +67,7 @@ export type ProjectContext =
   | { readonly found: false };
 
 /** The injected dependencies a resolution needs: the environment and filesystem ports (doc 13 §3). */
-export interface ResolveDeps {
+interface ResolveDeps {
   /** The filesystem port (real or fake), used only to probe for the marker via {@link FileSystem.exists}. */
   readonly fs: FileSystem;
   /** The environment port (real or fake), used for the starting working directory via {@link Environment.cwd}. */
@@ -74,7 +75,7 @@ export interface ResolveDeps {
 }
 
 /** Options that steer a resolution. */
-export interface ResolveOptions {
+interface ResolveOptions {
   /**
    * The `-C/--project <path>` override (doc 10). When present it **replaces** the upward search: it points at a
    * workspace root directly, the marker `wip/manifest.yml` is checked at *that* directory only (no walk-up), and

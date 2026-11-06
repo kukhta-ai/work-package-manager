@@ -5,6 +5,7 @@ import {
   ACTIVATION_FACT_KEYS,
   assessInactiveDistribution,
 } from "../../../distribution-preparation/readiness.js";
+import { match } from "../../helpers/match.js";
 
 const REVISION = "a".repeat(40);
 const SHA256 = `sha256:${"1".repeat(64)}`;
@@ -172,9 +173,9 @@ describe("read-only npm publication assessment", () => {
     expect(result.required.authority).toEqual(policy.publication.authority);
     expect(result.unresolvedPolicyFacts).toHaveLength(8);
     expect(result.missing).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ object: "version", identity: "wpm@0.1.0" }),
-        expect.objectContaining({ object: "tag", identity: "wpm@latest" }),
+      match.arrayContaining([
+        match.objectContaining({ object: "version", identity: "wpm@0.1.0" }),
+        match.objectContaining({ object: "tag", identity: "wpm@latest" }),
       ]),
     );
     expect(result.prohibitedActions).toEqual([
@@ -224,7 +225,7 @@ describe("read-only npm publication assessment", () => {
     });
 
     expect(result.missing.map(({ object, field }) => `${object}.${field}`)).toEqual(
-      expect.arrayContaining(["policy.provenance", "policy.repository"]),
+      match.arrayContaining(["policy.provenance", "policy.repository"]),
     );
     expect(result.matches.some(({ object }) => object === "version")).toBe(false);
     expect(result.matches.some(({ object }) => object === "tag")).toBe(false);
@@ -239,8 +240,8 @@ describe("read-only npm publication assessment", () => {
     });
 
     expect(result.conflicts).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
+      match.arrayContaining([
+        match.objectContaining({
           object: "version",
           field: "candidateRepository",
           expected: REPOSITORY,
@@ -295,11 +296,11 @@ describe("read-only npm publication assessment", () => {
     });
 
     expect(result.matches).toEqual(
-      expect.arrayContaining([expect.objectContaining({ object: "version", state: "matching" })]),
+      match.arrayContaining([match.objectContaining({ object: "version", state: "matching" })]),
     );
     expect(result.conflicts).toEqual([]);
     expect(result.manualAuthority).toEqual([
-      expect.objectContaining({
+      match.objectContaining({
         object: "tag",
         identity: "wpm@latest",
         expected: "0.1.0",
@@ -350,17 +351,17 @@ describe("read-only npm publication assessment", () => {
     });
 
     expect(result.matches).toEqual(
-      expect.arrayContaining([expect.objectContaining({ object: "version", state: "matching" })]),
+      match.arrayContaining([match.objectContaining({ object: "version", state: "matching" })]),
     );
     expect(result.conflicts).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ object: "authority", field: "coordinateControl" }),
+      match.arrayContaining([
+        match.objectContaining({ object: "authority", field: "coordinateControl" }),
       ]),
     );
     expect(result.unverified).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ object: "authority", field: "bootstrap" }),
-        expect.objectContaining({ object: "authority", field: "trustedPublisher" }),
+      match.arrayContaining([
+        match.objectContaining({ object: "authority", field: "bootstrap" }),
+        match.objectContaining({ object: "authority", field: "trustedPublisher" }),
       ]),
     );
     expect(result.safeActions).toEqual([]);
@@ -381,7 +382,7 @@ describe("read-only npm publication assessment", () => {
     });
 
     expect(result.unverified).toEqual([
-      expect.objectContaining({
+      match.objectContaining({
         object: "version",
         field: "provenance",
         observed: "unknown",
@@ -404,7 +405,7 @@ describe("read-only npm publication assessment", () => {
     });
 
     expect(result.unverified).toEqual([
-      expect.objectContaining({
+      match.objectContaining({
         object: "authority",
         field: "coordinate",
         expected: "wpm",
@@ -431,8 +432,8 @@ describe("read-only npm publication assessment", () => {
     });
 
     expect(result.unverified).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ object: "authority", field: "trustedPublisher" }),
+      match.arrayContaining([
+        match.objectContaining({ object: "authority", field: "trustedPublisher" }),
       ]),
     );
     expect(result.conflicts).toEqual([]);
@@ -454,8 +455,8 @@ describe("read-only npm publication assessment", () => {
     });
 
     expect(result.unverified).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ object: "version", field: "repository", observed: "unknown" }),
+      match.arrayContaining([
+        match.objectContaining({ object: "version", field: "repository", observed: "unknown" }),
       ]),
     );
     expect(result.conflicts).toEqual([]);
@@ -488,8 +489,8 @@ describe("read-only npm publication assessment", () => {
     });
 
     expect(result.conflicts).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
+      match.arrayContaining([
+        match.objectContaining({
           object: "version",
           field: "coordinate",
           expected: "wpm",
@@ -518,8 +519,8 @@ describe("read-only npm publication assessment", () => {
     });
 
     expect(result.conflicts).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
+      match.arrayContaining([
+        match.objectContaining({
           object: "policy",
           field: "coordinate",
           expected: "wpm",
@@ -549,8 +550,8 @@ describe("read-only npm publication assessment", () => {
     });
 
     expect(result.conflicts).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
+      match.arrayContaining([
+        match.objectContaining({
           object: "authority",
           field: "coordinateAvailability",
           observed: "occupied-incompatible",
@@ -558,10 +559,10 @@ describe("read-only npm publication assessment", () => {
       ]),
     );
     expect(result.unresolvedPolicyFacts).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
+      match.arrayContaining([
+        match.objectContaining({
           key: "public-npm-coordinate",
-          reasons: expect.arrayContaining(["missing-authorization", "occupied-incompatible"]),
+          reasons: match.arrayContaining(["missing-authorization", "occupied-incompatible"]),
         }),
       ]),
     );

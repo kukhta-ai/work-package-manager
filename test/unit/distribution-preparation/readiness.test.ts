@@ -4,6 +4,7 @@ import {
   ACTIVATION_FACT_KEYS,
   assessInactiveDistribution,
 } from "../../../distribution-preparation/readiness.js";
+import { match } from "../../helpers/match.js";
 
 const approval = (reference = "WPM decision record") => ({
   decision: "authorized" as const,
@@ -263,7 +264,7 @@ describe("inactive distribution readiness contract", () => {
 
     expect(result.releaseEligibility).toBe("ineligible");
     expect(result.unresolvedFacts).toEqual([
-      expect.objectContaining({ key: "public-npm-coordinate", reasons }),
+      match.objectContaining({ key: "public-npm-coordinate", reasons }),
     ]);
   });
 
@@ -312,7 +313,7 @@ describe("inactive distribution readiness contract", () => {
     const result = assessInactiveDistribution(inventory);
 
     expect(result.unresolvedFacts).toEqual([
-      expect.objectContaining({
+      match.objectContaining({
         key: "github-authority-trust-evidence",
         reasons: ["unsupported-evidence"],
       }),

@@ -28,7 +28,7 @@ const BUNDLE_MANIFEST_FILE = "bundle.yml";
  * is optional and updated only when present (the omitted ones are left unchanged — AC#1). The version is the
  * already-parsed branded {@link SemVer} (the CLI validated `--version` at the boundary).
  */
-export interface EditBundleMetaInput {
+interface EditBundleMetaInput {
   /** The bundle id to edit (selected by the `bundle <id>` routing). */
   readonly id: string;
   /** When present, the new bundle version (already parsed; sets `bundle.yml.version`). */

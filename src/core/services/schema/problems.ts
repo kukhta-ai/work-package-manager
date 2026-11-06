@@ -27,7 +27,7 @@ export function isPlainObject(value: unknown): value is Record<string, unknown> 
  * @param parent - The parent path, or `undefined`/empty for a top-level key.
  * @param key - The key to append.
  */
-export function field(parent: string | undefined, key: string): string {
+function field(parent: string | undefined, key: string): string {
   return parent ? `${parent}.${key}` : key;
 }
 

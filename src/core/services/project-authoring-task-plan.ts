@@ -59,10 +59,10 @@ interface BundleContributionInput extends ProjectContributionInput {
 }
 
 /** Inputs for one concrete bundle operation using the same identity/provenance contract as fresh init. */
-export interface CompileBundleAuthoringTaskPlanInput extends BundleContributionInput {}
+type CompileBundleAuthoringTaskPlanInput = BundleContributionInput;
 
 /** Inputs already captured by init LOAD: one project contribution and each concrete pre-included bundle. */
-export interface CompileProjectAuthoringTaskPlanInput {
+interface CompileProjectAuthoringTaskPlanInput {
   readonly project: ProjectContributionInput;
   readonly bundles: readonly BundleContributionInput[];
 }

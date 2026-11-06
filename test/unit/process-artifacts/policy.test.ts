@@ -12,6 +12,7 @@ import {
   validateStateDocument,
   validateTrackedWorkingMemory,
 } from "../../../scripts/check-process-artifacts.mjs";
+import { match } from "../../helpers/match.js";
 
 const REPOSITORY_ROOT = fileURLToPath(new URL("../../..", import.meta.url));
 
@@ -90,9 +91,9 @@ describe("process-artifact policy primitives", () => {
     });
 
     expect(violations).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ code: "state-too-large" }),
-        expect.objectContaining({
+      match.arrayContaining([
+        match.objectContaining({ code: "state-too-large" }),
+        match.objectContaining({
           code: "unknown-state-key",
           detail: "completedStories is not allowed",
         }),
@@ -170,7 +171,7 @@ describe("process-artifact policy primitives", () => {
     );
 
     expect(violations.map(({ code }) => code)).toEqual(
-      expect.arrayContaining([
+      match.arrayContaining([
         "invalid-archive-disposition",
         "unsafe-archive-pointer",
         "invalid-archive-checksum",
@@ -218,10 +219,10 @@ describe("process-artifact policy primitives", () => {
 
     expect(result.policy).toBeUndefined();
     expect(result.problems).toEqual(
-      expect.arrayContaining([
+      match.arrayContaining([
         "workingMemory.roots must include _bmad-output",
         "workingMemory.roots must include Skills-Results",
-        expect.stringContaining("checksumPattern is invalid"),
+        match.stringContaining("checksumPattern is invalid"),
       ]),
     );
   });
