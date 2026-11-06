@@ -1,10 +1,10 @@
 ---
 id: TASK-136
 title: Deliver WPM vNext with native developer guidance and verifiable delivery
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-11-05 20:15'
-updated_date: '2026-11-06 00:29'
+updated_date: '2026-11-06 01:23'
 labels: []
 dependencies: []
 modified_files:
@@ -22,28 +22,32 @@ ordinal: 136000
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 A plain work package can be authored, checked, built and inspected through the installed CLI without APM.
-- [ ] #2 Repository-native Codex and Claude guidance routes development through executable quality and architecture checks.
-- [ ] #3 A release candidate is bound to source and artifact digests and public distribution remains inactive.
+- [x] #1 A plain work package can be authored, checked, built and inspected through the installed CLI without APM.
+- [x] #2 Repository-native Codex and Claude guidance routes development through executable quality and architecture checks.
+- [x] #3 A release candidate is bound to source and artifact digests and public distribution remains inactive.
 <!-- AC:END -->
 
 ## Implementation Notes
 
 <!-- SECTION:NOTES:BEGIN -->
-Approved vNext plan implemented on feat/wpm-vnext; legacy design preloaded at 6c33347330c225dac198272d2c574228b25bcb05. Canonical product/stack/process decisions: docs/vnext.md, docs/implementation-plan.md, docs/development.md, docs/delivery.md. The approved process retires BMAD and keeps publication inactive.
+The approved portable WPM vNext, technology/quality stack, native developer artifacts, Groma participation and private delivery plan are implemented on feat/wpm-vnext. The approved process retires the former BMAD loop. Legacy design was fully preloaded at 6c33347330c225dac198272d2c574228b25bcb05; canonical resulting contracts are docs/vnext.md, docs/implementation-plan.md, docs/development.md, docs/delivery.md and docs/groma.md. Independent specialist reviews closed concrete source/archive/native-task/scanner/candidate findings.
 
-Node 24.22.2 / npm 11.19.1: default clean npm ci passed. quality:ci -- --policy-only passed; product checkpoint unit band passed 1884 tests across 124 files. Actual full packed consumer journey passed in 129.83 s, including source deletion and native commands. Independent specialist reviews closed concrete archive-alias, native-task-symlink, scanner-policy and candidate-affinity findings.
+Qualified exact source f716aedbe4b4c586819a3169a3aeb7d5c8f35524 on Linux arm64, Node 24.22.2/npm 11.19.1. Mandatory npm run quality:release passed: 165 files, 2305 tests passed, one native Windows-only filesystem test skipped, 2734.54 s. TypeScript/Biome/typed ESLint, architecture, both Knip modes, native artifacts, security, Groma and reviewed mutation checks passed.
 
-Next: commit the frozen reviewed source, then prepare and verify an inactive exact-source candidate with the mandatory full quality:release band. The earlier serial integration attempt was superseded by the fully isolated bounded harness; no interrupted run is claimed as a pass. Remote CI/branch protection, other hosts/runtimes and an authenticated Claude model turn are separate environment qualifications, not claimed local passes.
+Exact-source candidate sha256:a78b267215722ea6107936829af2ba6b0396ae61abaaf57099faf2a885b16e06 is verified and inactive at /workspace/active/wpm-vnext-candidate-final. Archive wpm-0.1.0.tgz: SHA256 2e0b1cd0cec1d912ce98945a6ec7c31e0b676c760b2f106e64e7a315b9a8f8e4, 731345 bytes. Actual root producer preflight and final preparation produced the same archive digest; independent verification and same-request reuse left all seven persisted files unchanged. Installed plain vNext journey without APM and pinned native APM local fixtures passed. Tasks 137-140 provide bounded acceptance evidence.
 
-2026-11-06 checkpoint: exact source 1632e0410205f33b8631f7f1dbb1a48538867b43 passed the mandatory quality:release band on Node 24.22.2/npm 11.19.1 Linux arm64: 165 files, 2303 tests passed, one Windows-only filesystem test skipped, 2736.00 s. Security/architecture/Knip/Groma and reviewed mutation gates passed. Candidate preparation subsequently refused contributor-local ignored state because it invoked the strict package boundary against the root checkout after quality populated .quality. No candidate was persisted. The boundary is retained; an independently reviewed owned exact-revision producer clone with its own locked install is being implemented. Next: focused regression/review, commit the stable fix, then rerun mandatory exact-source candidate qualification.
-
-Producer fix ready: unchanged strict package boundary now runs in an owned full-tree Git clone at the captured commit with a fresh locked npm ci and isolated Git/npm environment. Independent review found no blocker; two real Git/npm fixture files passed 11 tests. Full quality:fast passed on the stable fix. Original ignored state/root dist/SDK stay intact; export-ignore tracked build inputs are retained and required ignored build inputs fail. Next: commit, real-repository producer preflight, then mandatory full candidate qualification on the new source revision.
+Limits: remote GitHub matrix/branch protection, other hosts/runtimes, authenticated Claude model behavior and remote APM dependencies require their environments; they are not claimed local passes. No public distribution, tag, remote write or global agent-setting change was made. Next: human review of the branch and exact candidate digest; any publication remains a separately authorized decision.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Implemented and locally qualified at f716aedbe4b4c586819a3169a3aeb7d5c8f35524; mandatory full release gate passed, exact inactive candidate verified. See implementation notes for scope and limitations.
+<!-- SECTION:FINAL_SUMMARY:END -->
 
 ## Definition of Done
 <!-- DOD:BEGIN -->
-- [ ] #1 Typechecks clean (tsc --noEmit) and Biome clean (biome ci)
-- [ ] #2 Tests added and green (vitest): unit for pure logic, integration where it touches ports
-- [ ] #3 Public functions documented; no dead code; the core import-boundary rule is not violated
+- [x] #1 Typechecks clean (tsc --noEmit) and Biome clean (biome ci)
+- [x] #2 Tests added and green (vitest): unit for pure logic, integration where it touches ports
+- [x] #3 Public functions documented; no dead code; the core import-boundary rule is not violated
 <!-- DOD:END -->

@@ -1,10 +1,10 @@
 ---
 id: TASK-140
 title: Enforce executable TypeScript quality and architecture contracts
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-11-05 20:21'
-updated_date: '2026-11-06 00:24'
+updated_date: '2026-11-06 01:23'
 labels: []
 dependencies: []
 modified_files:
@@ -225,26 +225,32 @@ ordinal: 140000
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Transitive architecture bypasses and missing quality analyzers fail an executable gate.
+- [x] #1 Transitive architecture bypasses and missing quality analyzers fail an executable gate.
 <!-- AC:END -->
 
 ## Implementation Notes
 
 <!-- SECTION:NOTES:BEGIN -->
-Source base 6c33347330c225dac198272d2c574228b25bcb05; strict/exact-optional TypeScript, Biome, typed ESLint(no inline disabling), dependency-cruiser/transitive ambient-effect gates and Knip default+production are enforced. Test doubles/fixture writers moved out of shipped source, cycles removed and unused exports eliminated. Actual policy band passed architecture (127 modules) and all mandatory analyzers; real negative fixtures cover aliases/re-exports/JS utilities/unresolved or empty graphs/layer bypasses.
+Strict/exact-optional TypeScript, Biome, type-aware ESLint without inline disabling, complete dependency-cruiser graph, transitive purity/ambient-effect gates and Knip default+production are executable. Tests prove direct/re-export/alias/JS/ambient-effect and missing/empty analyzer bypasses fail. The graph has 127 modules; cycles/dead exports were removed, test doubles/fixture writers moved outside shipped source. Integration uses four isolated forks, owned user state/SDKs and pinned local Backlog shims with fail-closed fallback guards; shared dist is read-only during tests.
 
-Critical Stryker gate accepted a 99.53% raw score: 413 Killed, 8 Timeout, 2 independently reviewed semantic equivalents, 0 NoCoverage, 0 unreviewed; one unscored invalid-schema initialization RuntimeError retained explicitly. Waivers bind exact source/validator versions and semantic fingerprints. Unit checkpoint (1884 tests) passed; final delivery focused suite (49 tests) independently passed.
+Qualified exact source f716aedbe4b4c586819a3169a3aeb7d5c8f35524 on Linux arm64, Node 24.22.2/npm 11.19.1. Mandatory npm run quality:release passed: 165 files, 2305 tests passed, one native Windows-only filesystem test skipped, 2734.54 s. TypeScript/Biome/typed ESLint, architecture, both Knip modes, native artifacts, security, Groma and reviewed mutation checks passed.
 
-OSV found eight affected development dependencies missed by npm audit; package-manager updates/temporary overrides fixed them. Final OSV: 552 packages, zero affected. Minimatch 11.0.1 major override preserves 385 captured cases through four actual parent APIs; actual lint/graph/mutation gates pass. Next: full frozen-source integration/release qualification and durable candidate evidence.
+Fresh critical mutation review accepted 424 mutants: 413 Killed, 8 Timeout, 2 individually reviewed semantic equivalents, zero NoCoverage/CompileError/Ignored/unreviewed, one explicitly retained unscored invalid-schema initialization RuntimeError. Raw score 99.52718676122932%; waivers bind exact source/validator identities and semantic fingerprints.
 
-Integration infrastructure now uses four isolated forks with unit group before integration, fresh HOME/XDG/AppData before imports, preserved verified npm archive cache, and mandatory exact local Backlog/shim checks with a fail-closed guard. The linked-bin test owns its source/dependencies/builds; all 448 shared dist identities stayed unchanged. Eleven environment and thirteen native/bin checks passed; mixed-project smoke passed 16 tests. Root TypeScript configs are now included in typed lint/typecheck. Final full release gate remains pending the clean source commit.
+Eight affected development dependencies missed by npm audit were fixed through package-manager updates/temporary exact overrides. Refreshed OSV matched all 552 packages with zero affected. Minimatch 11.0.1 compatibility preserves 385 captured cases through four actual parent APIs. Default clean npm ci passed with the locked dependency graph. Canonical process/stack rationale: docs/development.md and docs/implementation-plan.md.
 
-2026-11-06 checkpoint: exact source 1632e0410205f33b8631f7f1dbb1a48538867b43 passed the mandatory quality:release band on Node 24.22.2/npm 11.19.1 Linux arm64: 165 files, 2303 tests passed, one Windows-only filesystem test skipped, 2736.00 s. Security/architecture/Knip/Groma and reviewed mutation gates passed. Candidate preparation subsequently refused contributor-local ignored state because it invoked the strict package boundary against the root checkout after quality populated .quality. No candidate was persisted. The boundary is retained; an independently reviewed owned exact-revision producer clone with its own locked install is being implemented. Next: focused regression/review, commit the stable fix, then rerun mandatory exact-source candidate qualification.
+Limits: the local result covers Linux arm64/Node 24; other platform/runtime cells are declared CI qualifications. Next: review the qualified local candidate; no further implementation is pending for this task.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Implemented and locally qualified at f716aedbe4b4c586819a3169a3aeb7d5c8f35524; mandatory full release gate passed, exact inactive candidate verified. See implementation notes for scope and limitations.
+<!-- SECTION:FINAL_SUMMARY:END -->
 
 ## Definition of Done
 <!-- DOD:BEGIN -->
-- [ ] #1 Typechecks clean (tsc --noEmit) and Biome clean (biome ci)
-- [ ] #2 Tests added and green (vitest): unit for pure logic, integration where it touches ports
-- [ ] #3 Public functions documented; no dead code; the core import-boundary rule is not violated
+- [x] #1 Typechecks clean (tsc --noEmit) and Biome clean (biome ci)
+- [x] #2 Tests added and green (vitest): unit for pure logic, integration where it touches ports
+- [x] #3 Public functions documented; no dead code; the core import-boundary rule is not violated
 <!-- DOD:END -->
