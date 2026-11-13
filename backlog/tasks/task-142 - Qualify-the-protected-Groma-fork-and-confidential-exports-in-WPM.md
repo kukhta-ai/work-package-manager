@@ -4,7 +4,7 @@ title: Qualify the protected Groma fork and confidential exports in WPM
 status: In Progress
 assignee: []
 created_date: '2026-11-06 11:09'
-updated_date: '2026-11-13 16:13'
+updated_date: '2026-11-13 16:23'
 labels: []
 dependencies:
   - TASK-141
@@ -81,6 +81,8 @@ Storage prerequisite executed against WPM775b261 under /workspace/active/org-os/
 Remote Linux x64 CI775b261 successfully provisioned pinned analyzers and actual isolated Groma ad95fd4, passed groma:cli scanner check and Groma runtime doctor, then tsc/Biome/typed ESLint/127-module architecture/native-agent/process checks. Policy stopped specifically at Knip reporting obsolete groma.md as unused. Replacement executable provenance and native CLI are now actually observed on x64; no full policy pass or export qualification claimed. Removed the obsolete root groma.md dependency using npm11.19.1 package-lock-only uninstall with scripts disabled and removed its obsolete version check; the independent reviewed-fork doctor remains mandatory. Local Backlog latency probe is0.23s per native call; existing November6 dist init+bundle-new issues115 calls and takes27s on ARM64, so accumulated child invocations explain long journeys without justifying higher test timeouts. No new full-suite pass claimed.
 
 Post-removal working tree after775b261: both normal and production Knip now pass; focused quality-orchestration and Groma-contract tests pass8/8; complete quality:fast passes (tsc,351-file Biome,typed ESLint,127-module architecture,native agent/process checks). This fixes the observed remote policy blocker without suppressions or omitted tools. Full policy/consumer/candidate gates remain pending; local capacity prerequisite is still unsatisfied.
+
+Independent targeted runtime review of775b261..22d5f6a reports no findings: removed only obsolete groma.md and its five platform packages; no old-package executable imports/calls remain; mandatory isolated fork doctor, setup, wrapper and pins are unchanged. Review was static, without installs, and is not full-gate or candidate evidence. New fork dd9b613261449002ce6fa195dba5ef18dd558a96 adds Java build/fixture copy preservation; prospective archive inventory3120 entries has sourceSha2564016003189e5b4daea4af7575243e0457f678bb68dfc7705feb06e8addf79476 and unchanged lockSha256773fac363fa405175cc95479b554dc26ace6855ea0d7c5660bfff0bf328ef66a. These prospective inputs are retained privately in .quality/evidence/pending-groma-pin.json, not yet selected by quality/groma-runtime.json. Wait for full fork CI43462057578, inspect WPM consumer matrix43458531543, then batch final pin/dependency changes for a new stable CI revision. Local setup/export/final inactive candidate still require available capacity>=10GiB; current~3.9GiB. User capacity/owner-closure question remains pending. PR7 and historical candidate stay at their recorded sources until fresh qualification.
 <!-- SECTION:NOTES:END -->
 
 ## Definition of Done
