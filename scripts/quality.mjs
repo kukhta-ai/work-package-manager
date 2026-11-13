@@ -55,7 +55,6 @@ export function doctor() {
     "fast-check",
     "@stryker-mutator/core",
     "@stryker-mutator/vitest-runner",
-    "groma.md",
     "publint",
     "vitest",
   ]) {
