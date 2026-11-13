@@ -37,8 +37,8 @@ jobs:
           enable-cache: false
       - run: npm ci
       - run: npm run quality:setup
-      - name: Restore exact Groma plugin
-        run: node node_modules/groma.md/cli.cjs plugin install
+      - name: Verify restored approved Groma scanner
+        run: npm run groma:cli -- scanner check
       - name: Build once and verify the exact archive
         run: npm run candidate:prepare -- --output "$RUNNER_TEMP/wpm-candidate" --notes .changeset/wpm-vnext.md
       - name: Recheck persisted bytes without rebuilding

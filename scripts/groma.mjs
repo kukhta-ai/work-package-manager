@@ -15,10 +15,10 @@ import {
 import { tmpdir } from "node:os";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { exportPrivateGroma } from "./groma-export.mjs";
 
-import gromaPackage from "groma.md/package.json" with { type: "json" };
+import { gromaRuntimeInvocation } from "./groma-runtime.mjs";
 
-export const GROMA_VERSION = "0.7.8";
 export const TYPESCRIPT_SCANNER = "@groma/scanner-typescript@0.2.4";
 // Reviewed scope policy: changing scanner configuration cannot silently shrink source coverage.
 export const GROMA_SCAN_INCLUDE = Object.freeze([
@@ -100,26 +100,11 @@ export function validateGromaConfig(value) {
   }
 }
 
-/** Only execute the repository lockfile's wrapper; never resolve a global binary.
+/** Only execute the reviewed privately built fork; never resolve an upstream or global binary.
  * @param {string} root
  */
 export function gromaInvocation(root) {
-  if (gromaPackage.version !== GROMA_VERSION)
-    throw new Error("resolved Groma package differs from the pin");
-  const manifest = readObject(join(root, "package.json"));
-  if (!record(manifest.devDependencies) || manifest.devDependencies["groma.md"] !== GROMA_VERSION) {
-    throw new Error(`install exact development dependency groma.md@${GROMA_VERSION} with npm ci`);
-  }
-  const packageRoot = join(root, "node_modules", "groma.md");
-  const installed = readObject(join(packageRoot, "package.json"));
-  if (installed.version !== GROMA_VERSION)
-    throw new Error("installed Groma version differs from pin");
-  const entry = join(packageRoot, "cli.cjs");
-  const delta = relative(realpathSync(packageRoot), realpathSync(entry));
-  if (delta === ".." || delta.startsWith(`..${sep}`) || isAbsolute(delta)) {
-    throw new Error("Groma executable escapes its local package");
-  }
-  return { executable: process.execPath, args: [entry] };
+  return gromaRuntimeInvocation(root, SOURCE_ROOT);
 }
 
 /** The upstream CLI can print `ok` while retaining stale scanner data after failure.
@@ -141,6 +126,7 @@ function executeGroma(root, args) {
   const invocation = gromaInvocation(root);
   const result = spawnSync(invocation.executable, [...invocation.args, ...args], {
     cwd: root,
+    env: invocation.env,
     encoding: "utf8",
     timeout: 300_000,
     stdio: ["ignore", "pipe", "pipe"],
@@ -245,23 +231,21 @@ export function runGroma(args, root = SOURCE_ROOT) {
   if (command === "view") {
     validateGromaConfig(readObject(join(root, "groma", "config.json")));
     if (rest.length !== 1 || !rest[0]) throw new Error("usage: npm run groma:view -- <file-or-id>");
-    return executeGroma(root, ["view", rest[0], "--plain"]);
+    return executeGroma(root, ["view", "--plain", "--", rest[0]]);
   }
   if (command === "export") {
     validateGromaConfig(readObject(join(root, "groma", "config.json")));
-    const [output, revision, from] = rest;
-    if (!output || !revision || rest.length > 3) {
+    const [acknowledgement, output, revision, from] = rest;
+    if (acknowledgement !== "--ack-source-export" || !output || !revision || rest.length > 4) {
       throw new Error(
-        "usage: npm run groma:export -- <private-output-directory> <revision> [from]",
+        "usage: npm run groma:export -- --ack-source-export <private-output-directory> <revision> [from]",
       );
     }
-    return executeGroma(root, [
-      "export",
-      resolve(output),
-      "--revision",
-      revision,
-      ...(from ? ["--from", from] : []),
-    ]);
+    return exportPrivateGroma(
+      root,
+      { output, revision, ackSourceExport: true, ...(from ? { from } : {}) },
+      (args) => executeGroma(root, args),
+    );
   }
   if (command !== "scan" && command !== "check")
     throw new Error("expected scan, check, view or export");

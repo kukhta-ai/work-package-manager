@@ -1,0 +1,9 @@
+{
+  "name": "wpm-groma-sdk-backlog",
+  "version": "1.0.0",
+  "type": "commonjs",
+  "private": true,
+  "dependencies": {
+    "backlog.md": "1.55.3"
+  }
+}

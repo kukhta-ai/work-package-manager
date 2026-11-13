@@ -1,6 +1,6 @@
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { NodeFileSystem } from "../../src/adapters/node-fs.js";
 import type { CreateTaskInput } from "../../src/core/ports/backlog.js";
@@ -160,15 +160,19 @@ describe("vNext workspace effects", () => {
       expect(workspace.build()).toEqual(first);
       expect(readFileSync(join(root, "builds/brief-0.1.0.tgz")).equals(firstBytes)).toBe(true);
       expect(firstBytes[9]).toBe(255);
-      const listing = execFileSync("tar", ["-tzf", join(root, "builds/brief-0.1.0.tgz")], {
-        encoding: "utf8",
-      });
+      const listing = execFileSync(
+        "tar",
+        ["-tzf", `./${basename(join(root, "builds/brief-0.1.0.tgz"))}`],
+        { cwd: dirname(join(root, "builds/brief-0.1.0.tgz")), encoding: "utf8" },
+      );
       expect(listing).toContain("operations/brief.md");
       expect(listing).not.toMatch(/backlog|\.wpm-source|\.agents|wpm-repo/);
       const contract = JSON.parse(
-        execFileSync("tar", ["-xOzf", join(root, "builds/brief-0.1.0.tgz"), "contract.json"], {
-          encoding: "utf8",
-        }),
+        execFileSync(
+          "tar",
+          ["-xOzf", `./${basename(join(root, "builds/brief-0.1.0.tgz"))}`, "contract.json"],
+          { cwd: dirname(join(root, "builds/brief-0.1.0.tgz")), encoding: "utf8" },
+        ),
       ) as { operations: { id: string; prerequisites: string[]; setup: string | null }[] };
       expect(contract.operations).toEqual([
         { id: "brief", prerequisites: [], setup: "default" },

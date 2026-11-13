@@ -9,6 +9,7 @@ import { withTempDir } from "../helpers/tmpdir.js";
 
 // Captured during module import: an afterEach/beforeAll-only sandbox would be too late.
 const importedHome = process.env.HOME;
+const importedCache = process.env.NPM_CONFIG_CACHE ?? process.env.npm_config_cache;
 const stateVariables = [
   "HOME",
   "USERPROFILE",
@@ -53,6 +54,12 @@ describe("integration file user-state isolation", () => {
       vi.stubEnv("USERPROFILE", original);
       for (const key of ["GIT_CONFIG_GLOBAL", "NPM_CONFIG_USERCONFIG", "npm_config_userconfig"])
         vi.stubEnv(key, join(original, key));
+      const originalSelectors = Object.fromEntries(
+        ["GIT_CONFIG_GLOBAL", "NPM_CONFIG_USERCONFIG", "npm_config_userconfig"].map((key) => [
+          key,
+          process.env[key],
+        ]),
+      );
       const originalEnvironment = Object.fromEntries(
         [...stateVariables, "PATH"].map((key) => [key, process.env[key]]),
       );
@@ -75,7 +82,7 @@ describe("integration file user-state isolation", () => {
         Object.fromEntries([...stateVariables, "PATH"].map((key) => [key, process.env[key]])),
       ).toEqual(originalEnvironment);
       for (const key of ["GIT_CONFIG_GLOBAL", "NPM_CONFIG_USERCONFIG", "npm_config_userconfig"])
-        expect(process.env[key]).toBe(join(original, key));
+        expect(process.env[key]).toBe(originalSelectors[key]);
       if (!temporary) throw new Error("isolated HOME missing");
       expect(existsSync(temporary)).toBe(false);
       restore();
@@ -88,6 +95,10 @@ describe("integration file user-state isolation", () => {
     if (!cache) throw new Error("integration setup omitted its existing npm cache");
     vi.stubEnv("NPM_CONFIG_CACHE", undefined);
     vi.stubEnv("npm_config_cache", cache);
+    const originalCaches = {
+      upper: process.env.NPM_CONFIG_CACHE,
+      lower: process.env.npm_config_cache,
+    };
     const restoreFirst = isolateIntegrationEnvironment();
     const first = process.env.HOME;
     try {
@@ -103,8 +114,8 @@ describe("integration file user-state isolation", () => {
     } finally {
       restoreFirst();
     }
-    expect(process.env.NPM_CONFIG_CACHE).toBeUndefined();
-    expect(process.env.npm_config_cache).toBe(cache);
+    expect(process.env.NPM_CONFIG_CACHE).toBe(originalCaches.upper);
+    expect(process.env.npm_config_cache).toBe(originalCaches.lower);
   });
 
   it("captures a configured npm cache outside HOME before removing its userconfig selector", async () => {
@@ -144,6 +155,8 @@ describe("integration file user-state isolation", () => {
     kind,
     message,
   }) => {
+    if (!importedCache) throw new Error("integration setup omitted npm cache");
+    vi.stubEnv("NPM_CONFIG_CACHE", importedCache);
     const before = { home: process.env.HOME, path: process.env.PATH };
     const load = createRequire(import.meta.url);
     const native = load("node:child_process") as typeof import("node:child_process");

@@ -9,7 +9,7 @@ The approved vNext plan replaces the former BMAD development loop. Read `docs/vn
 - Inspect the working tree and current task before editing. Work on a short topic branch; submit a PR to `main`. Do not merge, tag, publish, or change global agent settings without authorization.
 - Operate `backlog/` only through the local Backlog.md CLI (`node node_modules/backlog.md/cli.js task list --plain`). Run upstream `backlog ...` examples with that local CLI. Read `docs/task-writing-conventions.md` before creating tasks or changing acceptance criteria. Criteria describe observable outcomes.
 - Route implementation through `$wpm-repo-dev` (Codex) or `/wpm-repo-dev` (Claude Code). The test, architecture, review, and release skills provide focused instructions. Missing tooling means an unverified check, never a successful one.
-- Use Groma to inspect ownership and dependencies before structural changes; update its map after moving modules. Run upstream `groma ...` examples as `node node_modules/groma.md/cli.cjs ...`. Preserve existing modified-file lists when updating Backlog task references.
+- Use Groma to inspect ownership and dependencies before structural changes; update its map after moving modules. Run every upstream `groma ...` example as `npm run groma:cli -- ...`, through the verified fork and its private environment. Preserve existing modified-file lists when updating Backlog task references.
 
 ## Implementation boundaries
 

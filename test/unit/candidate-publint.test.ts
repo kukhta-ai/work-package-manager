@@ -194,10 +194,12 @@ describe("isolated exact-revision candidate producer", () => {
         { cwd: owned, encoding: "utf8", env: producer.env },
       );
       expect(trust.status, trust.stderr).toBe(0);
-      expect(trust.stdout.trim().split(/\r?\n/)).toEqual([
-        realpathSync(source.root),
-        realpathSync(join(source.root, ".git")),
-      ]);
+      expect(
+        trust.stdout
+          .trim()
+          .split(/\r?\n/)
+          .map((path) => realpathSync.native(path)),
+      ).toEqual([realpathSync.native(source.root), realpathSync.native(join(source.root, ".git"))]);
       expect(readFileSync(join(producer.root, "tracked-build-input"), "utf8")).toBe(
         "committed-input",
       );

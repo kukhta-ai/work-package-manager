@@ -68,6 +68,7 @@ export function doctor() {
     if (installed.version !== expected) throw new Error(`${name} differs from its pin`);
   }
   doctorAnalyzers();
+  script("groma-runtime.mjs", ["doctor"]);
   script("agents.mjs", ["doctor"]);
 }
 /** Local feedback does not require network or the security analyzer toolchain. */
@@ -86,13 +87,18 @@ function security() {
 
 /** Run the declared band. Unknown/empty modes and missing analyzers fail closed. @param {string} mode @param {string[]} args */
 export function quality(mode, args = []) {
-  if (!["doctor", "fast", "ci", "release"].includes(mode))
+  if (!["setup", "doctor", "fast", "ci", "release"].includes(mode))
     throw new Error(`Unknown quality mode: ${mode}`);
   if (args.some((arg) => arg !== "--policy-only")) throw new Error("Unknown quality option");
   if (mode !== "ci" && args.length > 0)
     throw new Error(
       "Only CI may select the policy-only band; release qualification requires all checks",
     );
+  if (mode === "setup") {
+    script("quality-tools.mjs", ["setup"]);
+    script("groma-runtime.mjs", ["setup"]);
+    return;
+  }
   if (mode === "doctor") {
     doctor();
     return;

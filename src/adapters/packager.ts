@@ -91,8 +91,8 @@ interface PushResult {
  * Compute the absolute output path for a request: `<outDir>/<baseName>.<ext>`, as a POSIX path. This value is
  * both RETURNED to the CLI (which prints it in the `packaged …` / `published …` line) and a portable artefact
  * reference, so it must read with `/` on every OS — hence `toPosix` over the native `join`. The archive is
- * still WRITTEN through `tar`/`zip`/`git`, all of which accept a `/`-separated output path on Windows, so the
- * single POSIX form serves both the effect and the printed/returned value (no native variant is needed).
+ * written through `tar`/`zip`/`git`. Tar receives a filename relative to the output directory so Windows
+ * drive letters cannot be interpreted as remote hosts; the returned reference stays absolute.
  */
 function outputPath(req: PackageRequest): string {
   return toPosix(join(req.outDir, `${req.baseName}.${FORMAT_EXTENSION[req.format]}`));
@@ -316,7 +316,9 @@ function createTarball(req: PackageRequest, out: string): string {
   try {
     // One relative path per line; `tar -T` reads them and archives each, rooted at `-C <dir>`.
     writeFileSync(listFile, `${source.files.join("\n")}\n`, "utf8");
-    runArchiveTool("tar", ["-czf", out, "-C", source.dir, "-T", listFile], "tar");
+    runArchiveTool("tar", ["-czf", `./${basename(out)}`, "-C", source.dir, "-T", listFile], "tar", {
+      cwd: dirname(out),
+    });
   } finally {
     rmSync(listDir, { recursive: true, force: true });
     if (source.cleanup !== undefined) {

@@ -39,12 +39,12 @@ jobs:
           enable-cache: false
       - run: npm ci
       - run: npm run quality:setup
-      - name: Restore exact Groma plugin
-        run: node node_modules/groma.md/cli.cjs plugin install
+      - name: Verify restored approved Groma scanner
+        run: npm run groma:cli -- scanner check
       - run: npm run quality:ci -- --policy-only
       - name: Private architecture export
         if: github.event.repository.private == true
-        run: npm run groma:export -- "$RUNNER_TEMP/wpm-groma" HEAD
+        run: npm run groma:export -- --ack-source-export "$RUNNER_TEMP/wpm-groma" HEAD
       - name: Retain architecture evidence
         if: github.event.repository.private == true
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2

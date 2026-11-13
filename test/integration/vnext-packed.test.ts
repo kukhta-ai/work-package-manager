@@ -1,5 +1,5 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { execaSync } from "execa";
 import { describe, expect, it } from "vitest";
@@ -99,7 +99,9 @@ describe("installed vNext recipient journey", () => {
       );
       expect(result).toMatchObject({ passed: true });
       const archive = join(sourceRoot, "builds/installed-0.1.0.tgz");
-      const listing = execaSync("tar", ["-tzf", archive]).stdout;
+      const listing = execaSync("tar", ["-tzf", `./${basename(archive)}`], {
+        cwd: dirname(archive),
+      }).stdout;
       expect(listing).not.toMatch(/\.agents|wpm-repo-|\.wpm-source|backlog|apm/);
       expect(listing).toContain("worker-setup/default/WORKER.md");
     });

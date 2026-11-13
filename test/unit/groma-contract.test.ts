@@ -1,4 +1,14 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+
+// Isolated scanner fixtures exercise snapshot/freshness behavior, not runtime build authority.
+vi.mock("../../scripts/groma-runtime.mjs", () => ({
+  gromaRuntimeInvocation: (root: string) => ({
+    executable: process.execPath,
+    args: [join(root, "node_modules/fixture-groma/cli.cjs")],
+    env: { ...process.env },
+  }),
+}));
+
 import {
   changedGromaRecords,
   GROMA_PRODUCT_EXCLUDE,
@@ -92,22 +102,22 @@ describe("Groma non-mutating freshness check", () => {
   it("detects stale output including untracked input in an isolated snapshot", () => {
     const root = mkdtempSync(join(tmpdir(), "wpm-groma-fixture-"));
     try {
-      for (const path of ["groma", "src", "node_modules/groma.md"])
+      for (const path of ["groma", "src", "node_modules/fixture-groma"])
         mkdirSync(join(root, path), { recursive: true });
       writeFileSync(
         join(root, "package.json"),
-        JSON.stringify({ devDependencies: { "groma.md": "0.7.8" } }),
+        JSON.stringify({ name: "groma-source-fixture", private: true }),
       );
       writeFileSync(join(root, ".gitignore"), "node_modules/\n");
       writeFileSync(join(root, "groma/config.json"), JSON.stringify(config()));
       writeFileSync(join(root, "groma/owner.md"), "curated architecture\n");
       writeFileSync(join(root, "src/new-module.ts"), "export const added = true;\n");
       writeFileSync(
-        join(root, "node_modules/groma.md/package.json"),
+        join(root, "node_modules/fixture-groma/package.json"),
         JSON.stringify({ version: "0.7.8" }),
       );
       writeFileSync(
-        join(root, "node_modules/groma.md/cli.cjs"),
+        join(root, "node_modules/fixture-groma/cli.cjs"),
         `const fs = require('node:fs');
 if (process.argv[2] === 'scan') {
  if (fs.existsSync('src/new-module.ts')) fs.writeFileSync('groma/owner.md', 'new observed source');

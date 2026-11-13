@@ -31,6 +31,7 @@ function fixture() {
   mkdirSync(join(root, "docs"));
   writeFileSync(join(root, "AGENTS.md"), "# Fixture repository\n");
   writeFileSync(join(root, "CLAUDE.md"), "@AGENTS.md\n");
+  writeFileSync(join(root, ".gitattributes"), "* text=auto eol=lf\n");
   for (const file of ["development.md", "vnext.md", "task-writing-conventions.md"]) {
     writeFileSync(join(root, "docs", file), "# Fixture contract\n");
   }
@@ -56,6 +57,7 @@ describe("repository native agent artifacts", () => {
       return result.stdout;
     };
     git(["init", "--quiet"]);
+    git(["config", "core.autocrlf", "true"]);
     git(["add", "--", "."]);
     const file = join(root, ".claude/skills/wpm-repo-test/SKILL.md");
     const correct = readFileSync(file, "utf8");

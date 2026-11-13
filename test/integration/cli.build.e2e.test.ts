@@ -13,7 +13,7 @@ import {
   symlinkSync,
   writeFileSync,
 } from "node:fs";
-import { join, relative } from "node:path";
+import { basename, dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { toPosix } from "../../src/util/posix-path.js";
@@ -93,7 +93,10 @@ function hasUnzip(): boolean {
 function archiveLayout(archive: string): string[] {
   const listed = archive.endsWith(".zip")
     ? execFileSync("unzip", ["-Z1", archive], { encoding: "utf8" })
-    : execFileSync("tar", ["-tzf", archive], { encoding: "utf8" });
+    : execFileSync("tar", ["-tzf", `./${basename(archive)}`], {
+        cwd: dirname(archive),
+        encoding: "utf8",
+      });
   return listed
     .split("\n")
     .map((line) => line.replace(/^\.\//, "").trim())
@@ -276,7 +279,10 @@ describeIfBuilt("`wpm build package` E2E (task-83, through dist/cli.js)", () => 
         const extracted = join(dir, `task128-${format.name}-extracted`);
         mkdirSync(extracted, { recursive: true });
         if (format.ext === "zip") execFileSync("unzip", ["-q", path, "-d", extracted]);
-        else execFileSync("tar", ["-xzf", path, "-C", extracted]);
+        else
+          execFileSync("tar", ["-xzf", `./${basename(path)}`, "-C", extracted], {
+            cwd: dirname(path),
+          });
 
         const rootScope = join(extracted, ".claude", "skills");
         const bundleScope = join(extracted, "bundles", "web", ".claude", "skills");
@@ -317,7 +323,10 @@ describeIfBuilt("`wpm build package` E2E (task-83, through dist/cli.js)", () => 
       expect(existsSync(join(out, "demo-0.1.0.tgz"))).toBe(false);
       expect(r.stdout).toContain(toPosix(archive));
 
-      const listed = execFileSync("tar", ["-tzf", archive], { encoding: "utf8" });
+      const listed = execFileSync("tar", ["-tzf", `./${basename(archive)}`], {
+        cwd: dirname(archive),
+        encoding: "utf8",
+      });
       // AC89#2: the archive root is the un-nested deliverable — manifest.yml sits at the archive root (no wip/ prefix).
       expect(listed).toMatch(/^(\.\/)?manifest\.yml$/m);
       expect(listed).not.toMatch(/(^|\/)wip\//m);
@@ -358,7 +367,10 @@ describeIfBuilt("`wpm build package` E2E (task-83, through dist/cli.js)", () => 
 
       // AC90#5: no reserved-prefix front door (the `_AGENTS.md` basename) anywhere in the archive — never both
       // names. The authoring bundle-template scaffold is excluded from the archive entirely (TASK-104).
-      const listed = execFileSync("tar", ["-tzf", archive], { encoding: "utf8" });
+      const listed = execFileSync("tar", ["-tzf", `./${basename(archive)}`], {
+        cwd: dirname(archive),
+        encoding: "utf8",
+      });
       expect(listed).not.toMatch(/(^|\/)_AGENTS\.md$/m);
       // AC90#2: the canonical front door + the CLAUDE.md alias are present at the root AND in the bundle.
       expect(listed).toMatch(/^(\.\/)?AGENTS\.md$/m);
@@ -369,7 +381,7 @@ describeIfBuilt("`wpm build package` E2E (task-83, through dist/cli.js)", () => 
       // AC90#6: extract and assert the canonical front door carries the AUTHOR'S bytes verbatim (no regeneration).
       const ex = join(dir, "extracted");
       mkdirSync(ex, { recursive: true });
-      execFileSync("tar", ["-xzf", archive, "-C", ex]);
+      execFileSync("tar", ["-xzf", `./${basename(archive)}`, "-C", ex], { cwd: dirname(archive) });
       expect(readFileSync(join(ex, "AGENTS.md"), "utf8")).toBe(`# root\n${ROOT_SENTINEL}\n`);
       expect(readFileSync(join(ex, "bundles", "web", "AGENTS.md"), "utf8")).toBe(
         `# web\n${BUNDLE_SENTINEL}\n`,
@@ -398,7 +410,10 @@ describeIfBuilt("`wpm build package` E2E (task-83, through dist/cli.js)", () => 
       // The archive lists `bundles/web/backlog` (the link) AND the real install-backlog content. The recipe's
       // config.yml appears EXACTLY ONCE (it is NOT duplicated through the `backlog/` link), and nothing is
       // archived UNDER `bundles/web/backlog/` (the link is a leaf, never traversed):
-      const listed = execFileSync("tar", ["-tzf", archive], { encoding: "utf8" });
+      const listed = execFileSync("tar", ["-tzf", `./${basename(archive)}`], {
+        cwd: dirname(archive),
+        encoding: "utf8",
+      });
       expect(listed).toMatch(/^(\.\/)?bundles\/web\/backlog$/m);
       expect(
         listed
@@ -411,7 +426,7 @@ describeIfBuilt("`wpm build package` E2E (task-83, through dist/cli.js)", () => 
       // and the Backlog.md CLI resolves the recipe with the extracted bundle as cwd (AC#3).
       const ex = join(dir, "extracted");
       mkdirSync(ex, { recursive: true });
-      execFileSync("tar", ["-xzf", archive, "-C", ex]);
+      execFileSync("tar", ["-xzf", `./${basename(archive)}`, "-C", ex], { cwd: dirname(archive) });
       const exBacklog = join(ex, "bundles", "web", "backlog");
       expect(lstatSync(exBacklog).isSymbolicLink()).toBe(true);
       expect(readlinkSync(exBacklog)).toBe("install-backlog");
@@ -491,7 +506,10 @@ describeIfBuilt("`wpm build package` E2E (task-83, through dist/cli.js)", () => 
       const archive = join(proj, "builds", "demo-0.1.0.tgz");
       const layout = (): string[] => {
         expect(cli(["build", "package", "--format", "tarball", "-C", proj], dir).code).toBe(0);
-        return execFileSync("tar", ["-tzf", archive], { encoding: "utf8" })
+        return execFileSync("tar", ["-tzf", `./${basename(archive)}`], {
+          cwd: dirname(archive),
+          encoding: "utf8",
+        })
           .split("\n")
           .filter((l) => l.length > 0)
           .sort();
@@ -524,7 +542,10 @@ describeIfBuilt("`wpm build package` E2E (task-83, through dist/cli.js)", () => 
       expect(existsSync(archive)).toBe(true);
 
       // PATH-level: none of the three region paths (nor the planted probe files) appear in the archive listing.
-      const listed = execFileSync("tar", ["-tzf", archive], { encoding: "utf8" });
+      const listed = execFileSync("tar", ["-tzf", `./${basename(archive)}`], {
+        cwd: dirname(archive),
+        encoding: "utf8",
+      });
       expect(listed).not.toContain(".authoring-backlog");
       expect(listed).not.toMatch(/(^|\/)builds\//m);
       expect(listed).not.toContain("leak-probe.md");
@@ -533,7 +554,7 @@ describeIfBuilt("`wpm build package` E2E (task-83, through dist/cli.js)", () => 
       // CONTENT-level: extract and prove NONE of the sentinels appear in ANY archived file's bytes.
       const ex = join(dir, "extracted");
       mkdirSync(ex, { recursive: true });
-      execFileSync("tar", ["-xzf", archive, "-C", ex]);
+      execFileSync("tar", ["-xzf", `./${basename(archive)}`, "-C", ex], { cwd: dirname(archive) });
       const blob = concatAllFiles(ex);
       expect(blob).not.toContain(BACKLOG_SENTINEL);
       expect(blob).not.toContain(FRONTDOOR_SENTINEL); // the authoring front door's bytes never reach the archive
@@ -556,7 +577,10 @@ describeIfBuilt("`wpm build package` E2E (task-83, through dist/cli.js)", () => 
       const archive = join(proj, "builds", "demo-0.1.0.tgz");
       expect(existsSync(archive)).toBe(true);
 
-      const listed = execFileSync("tar", ["-tzf", archive], { encoding: "utf8" });
+      const listed = execFileSync("tar", ["-tzf", `./${basename(archive)}`], {
+        cwd: dirname(archive),
+        encoding: "utf8",
+      });
       // NO payload SKILL.md under any bundle's payload/agent-skills/<name>/ — the build ships no placeholder skill.
       // (The `.keep` slot file sits directly under agent-skills/, not in a `<name>/` subdir, so it is not matched.)
       expect(listed).not.toMatch(/bundles\/[^/]+\/payload\/agent-skills\/[^/]+\/SKILL\.md/);
@@ -636,7 +660,9 @@ describeIfBuilt("`wpm build package` E2E (task-83, through dist/cli.js)", () => 
         if (format === "zip") {
           execFileSync("unzip", ["-q", archive, "-d", extracted]);
         } else {
-          execFileSync("tar", ["-xzf", archive, "-C", extracted]);
+          execFileSync("tar", ["-xzf", `./${basename(archive)}`, "-C", extracted], {
+            cwd: dirname(archive),
+          });
         }
         expect(readFileSync(join(extracted, runtimeTemplate), "utf8")).toBe("port={{port}}\n");
         if (process.platform !== "win32") {
@@ -832,7 +858,10 @@ describeIfBuilt("`wpm build package` E2E (task-83, through dist/cli.js)", () => 
           const extracted = join(dir, `task105-${phase}-${format.name}`);
           mkdirSync(extracted, { recursive: true });
           if (format.ext === "zip") execFileSync("unzip", ["-q", archive, "-d", extracted]);
-          else execFileSync("tar", ["-xzf", archive, "-C", extracted]);
+          else
+            execFileSync("tar", ["-xzf", `./${basename(archive)}`, "-C", extracted], {
+              cwd: dirname(archive),
+            });
           if (shouldContainRegistered) {
             expect(readFileSync(join(extracted, `${kept}/references/guide.md`), "utf8")).toBe(
               "registered guide\n",
@@ -979,7 +1008,10 @@ describeIfBuilt("`wpm build package` E2E (task-83, through dist/cli.js)", () => 
         const extracted = join(dir, `task118-review-copy-${format.name}-extracted`);
         mkdirSync(extracted);
         if (format.ext === "zip") execFileSync("unzip", ["-q", copyArchive, "-d", extracted]);
-        else execFileSync("tar", ["-xzf", copyArchive, "-C", extracted]);
+        else
+          execFileSync("tar", ["-xzf", `./${basename(copyArchive)}`, "-C", extracted], {
+            cwd: dirname(copyArchive),
+          });
         const extractedBytes = concatAllFiles(extracted);
         expect(extractedBytes).not.toContain(marker);
         expect(extractedBytes).not.toContain(sourceAscentMarker);
@@ -1202,7 +1234,9 @@ describeIfBuilt("`wpm build package` E2E (task-83, through dist/cli.js)", () => 
       const tarballLayout = archiveLayout(tgz);
       const tarballExtracted = join(dir, "task95-tarball-extracted");
       mkdirSync(tarballExtracted);
-      execFileSync("tar", ["-xzf", tgz, "-C", tarballExtracted]);
+      execFileSync("tar", ["-xzf", `./${basename(tgz)}`, "-C", tarballExtracted], {
+        cwd: dirname(tgz),
+      });
       assertNoWorkspaceIntegration(tarballLayout, tarballExtracted);
 
       // The workspace created by init is intentionally NOT initialized as its own Git repository. Git format
@@ -1231,7 +1265,7 @@ describeIfBuilt("`wpm build package` E2E (task-83, through dist/cli.js)", () => 
 
       const extracted = join(dir, "task95-git-extracted");
       mkdirSync(extracted, { recursive: true });
-      execFileSync("tar", ["-xzf", tgz, "-C", extracted]);
+      execFileSync("tar", ["-xzf", `./${basename(tgz)}`, "-C", extracted], { cwd: dirname(tgz) });
       expect(readFileSync(join(extracted, "AGENTS.md"), "utf8")).toBe(`# root\n${ROOT_SENTINEL}\n`);
       expect(readFileSync(join(extracted, "bundles", "web", "AGENTS.md"), "utf8")).toBe(
         `# web\n${BUNDLE_SENTINEL}\n`,
@@ -1420,7 +1454,10 @@ describeIfBuilt("FULL workspace lifecycle E2E (AC93#2, through dist/cli.js)", ()
       expect(r.code).toBe(0);
       const archive = join(proj, "builds", "demo-0.1.0.tgz");
       expect(existsSync(archive)).toBe(true);
-      const listed = execFileSync("tar", ["-tzf", archive], { encoding: "utf8" });
+      const listed = execFileSync("tar", ["-tzf", `./${basename(archive)}`], {
+        cwd: dirname(archive),
+        encoding: "utf8",
+      });
       expect(listed).toMatch(/^(\.\/)?manifest\.yml$/m);
       expect(listed).not.toMatch(/(^|\/)wip\//m); // un-nested: no wip/ prefix in the archive
       expect(listed).toMatch(/^(\.\/)?AGENTS\.md$/m); // executor front door, prefix-stripped

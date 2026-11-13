@@ -16,7 +16,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, isAbsolute, join, relative, resolve } from "node:path";
+import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { gzipSync } from "node:zlib";
 import { execaSync } from "execa";
 import { parse, stringify } from "yaml";
@@ -753,7 +753,10 @@ export class VnextWorkspace {
       const recipient = join(directory, "recipient");
       mkdirSync(recipient);
       writeFileSync(archive, bytes);
-      execaSync("tar", ["-xzf", archive, "-C", recipient], { reject: true });
+      execaSync("tar", ["-xzf", `./${basename(archive)}`, "-C", recipient], {
+        cwd: dirname(archive),
+        reject: true,
+      });
       for (const file of capture.files) {
         if (!readFileSync(join(recipient, file.path)).equals(file.bytes))
           throw new Error(`recipient content mismatch: ${file.path}`);

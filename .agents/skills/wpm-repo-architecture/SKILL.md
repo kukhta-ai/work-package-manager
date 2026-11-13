@@ -7,6 +7,8 @@ description: Inspect and change WPM dependency boundaries, domain contracts, and
 
 Read [the vNext contract](../../../docs/vnext.md) and [development boundaries](../../../docs/development.md). Legacy architecture remains in docs/12 and docs/13. Inspect the affected owner with `npm run groma:view -- <file>`; a missing or stale map is unverified evidence.
 
+Run native governance commands and upstream examples through `npm run groma:cli -- ...`. Read `npm run groma:cli -- agent-instructions` and the guide for the current job before curation. The wrapper verifies the reviewed fork and confines its environment; missing provenance is a failed prerequisite.
+
 Keep domain core independent of CLI frameworks, filesystem, subprocesses, environment, network, clocks, randomness, and output. Pure path and URL transformations are allowed. Effects enter through injected ports; adapters implement them; composition roots wire dependencies. Check transitive imports, utility detours, re-exports, aliases, dynamic imports, ambient effects, and production imports of test or tooling code.
 
 Use graph checks and negative fixtures to prove constraints. Review changes to architecture policy independently; a broad exception or ignored directory must not conceal a violating dependency.

@@ -188,8 +188,8 @@ research/
 Node 24 is the default development line (`.node-version`); the product retains its Node >=20 runtime contract. Run `npm ci` to restore exact dependencies and the local development Backlog.md CLI. Full analyzer setup also requires uv 0.11.9 and Go 1.27.3 available to the setup command; their pins live in `quality/toolchain.json`. See [native agent guidance](./docs/development.md), [Groma](./docs/groma.md), and [private delivery](./docs/delivery.md).
 
 ```bash
-npm run quality:setup   # explicitly provision pinned local analyzers
-node node_modules/groma.md/cli.cjs plugin install  # restore the configured exact scanner
+npm run quality:setup   # provision pinned analyzers, fork and approved plugin SDKs
+npm run groma:cli -- plugin install  # restore the configured approved content
 npm run quality:doctor
 npm run quality:fast    # focused feedback; full consumer tests run in quality:ci
 npm run quality:ci

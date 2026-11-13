@@ -1,0 +1,15 @@
+{
+  "lockfileVersion": 2,
+  "configVersion": 1,
+  "workspaces": {
+    "": {
+      "name": "wpm-groma-sdk-typescript",
+      "dependencies": {
+        "@groma/scanner-typescript": "0.2.4",
+      },
+    },
+  },
+  "packages": {
+    "@groma/scanner-typescript": ["@groma/scanner-typescript@0.2.4", "", { "os": [ "linux", "win32", "darwin", ], "cpu": [ "x64", "arm64", ] }, "sha512-rBpDHoh8cAMBfnPNgSnDileyD2HCa2kris8JiOnkjpkX0cCs1ZvAuk1340LI+mJaQfHCJQZ6rGKp+kZ2V8skew=="],
+  }
+}

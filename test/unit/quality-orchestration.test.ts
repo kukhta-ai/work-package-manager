@@ -8,6 +8,10 @@ vi.mock("node:child_process", () => ({
   },
 }));
 vi.mock("../../scripts/quality-tools.mjs", () => ({ doctorAnalyzers: () => ({ ready: true }) }));
+vi.mock("node:fs", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("node:fs")>()),
+  mkdirSync: vi.fn(),
+}));
 vi.mock("../../distribution-preparation/prepare-package.js", () => ({
   resolveNpmInvocation: () => ({ executable: "verified-npm", argumentPrefix: [] }),
 }));
@@ -16,6 +20,13 @@ import { quality } from "../../scripts/quality.mjs";
 
 beforeEach(() => calls.splice(0));
 describe("cold quality gate prerequisites", () => {
+  it("provisions the isolated analyzers and reviewed fork before doctor is required", () => {
+    quality("setup");
+    expect(calls).toHaveLength(2);
+    expect(calls[0]?.[0]).toMatch(/scripts\/quality-tools\.mjs$/);
+    expect(calls[1]?.[0]).toMatch(/scripts\/groma-runtime\.mjs$/);
+    expect(calls.every((args) => args[1] === "setup")).toBe(true);
+  });
   it("builds before running installed-binary acceptance tests during release qualification", () => {
     quality("release");
     const build = calls.findIndex((args) => args.join(" ") === "run build");

@@ -57,7 +57,7 @@
     "quality:fast": "node scripts/quality.mjs fast",
     "quality:ci": "node scripts/quality.mjs ci",
     "quality:release": "node scripts/quality.mjs release",
-    "quality:setup": "node scripts/quality-tools.mjs setup",
+    "quality:setup": "node scripts/quality.mjs setup",
     "mutation:critical": "node scripts/mutation.mjs",
     "knip": "knip && knip --production",
     "groma:scan": "node scripts/groma.mjs scan",
@@ -68,7 +68,8 @@
     "candidate:verify": "node scripts/candidate.mjs verify",
     "changeset": "changeset",
     "qualify:apm": "node scripts/qualify-apm.mjs",
-    "wpm": "node dist/cli.js"
+    "wpm": "node dist/cli.js",
+    "groma:cli": "node scripts/groma-runtime.mjs cli"
   },
   "lint-staged": {
     "*.{ts,tsx,js,mjs,cjs,mts,cts,json,jsonc}": "biome check --write --no-errors-on-unmatched"

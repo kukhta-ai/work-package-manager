@@ -17,7 +17,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { delimiter, dirname, isAbsolute, join, resolve, sep } from "node:path";
+import { basename, delimiter, dirname, isAbsolute, join, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 import {
@@ -260,7 +260,10 @@ function archiveLayout(archive: string): string[] {
       .filter((entry) => entry !== "" && !entry.endsWith("/"))
       .sort();
   }
-  return execFileSync("tar", ["-tzf", archive], { encoding: "utf8" })
+  return execFileSync("tar", ["-tzf", `./${basename(archive)}`], {
+    cwd: dirname(archive),
+    encoding: "utf8",
+  })
     .split(/\r?\n/)
     .map((entry) => entry.replace(/^\.\//, ""))
     .filter((entry) => entry !== "" && !entry.endsWith("/"))
@@ -1935,7 +1938,9 @@ describe("fresh local packed-install and inactive-candidate journey", () => {
       });
       const tarExtracted = join(consumer, "cold-journey-tar-extracted");
       mkdirSync(tarExtracted, { recursive: true });
-      execFileSync("tar", ["-xzf", projectArchive, "-C", tarExtracted]);
+      execFileSync("tar", ["-xzf", `./${basename(projectArchive)}`, "-C", tarExtracted], {
+        cwd: dirname(projectArchive),
+      });
       const tarLayout = assertColdJourneyArchive(projectArchive, tarExtracted);
       expect(lstatSync(join(tarExtracted, "CLAUDE.md")).isSymbolicLink()).toBe(true);
 
@@ -1950,7 +1955,9 @@ describe("fresh local packed-install and inactive-candidate journey", () => {
       });
       const gitExtracted = join(consumer, "cold-journey-git-extracted");
       mkdirSync(gitExtracted, { recursive: true });
-      execFileSync("tar", ["-xzf", projectArchive, "-C", gitExtracted]);
+      execFileSync("tar", ["-xzf", `./${basename(projectArchive)}`, "-C", gitExtracted], {
+        cwd: dirname(projectArchive),
+      });
       expect(assertColdJourneyArchive(projectArchive, gitExtracted)).toEqual(tarLayout);
       expect(lstatSync(join(gitExtracted, "CLAUDE.md")).isSymbolicLink()).toBe(true);
 

@@ -124,6 +124,11 @@ describe("Git-selected scanner source", () => {
       } finally {
         snapshot.cleanup();
       }
+      mkdirSync(join(root, "escape"));
+      writeFileSync(join(root, "escape/selected.ts"), "export const selected = true;\n");
+      expect(spawnSync("git", ["add", "--", "escape/selected.ts"], { cwd: root }).status).toBe(0);
+      rmSync(join(root, "escape"), { recursive: true });
+      writeFileSync(join(output, "selected.ts"), "external source\n");
       symlinkSync(output, join(root, "escape"), process.platform === "win32" ? "junction" : "dir");
       expect(() => createSecuritySnapshot(root, output)).toThrow(/escapes checkout/);
     } finally {
