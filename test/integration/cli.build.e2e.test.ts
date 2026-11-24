@@ -280,8 +280,8 @@ describeIfBuilt("`wpm build package` E2E (task-83, through dist/cli.js)", () => 
         mkdirSync(extracted, { recursive: true });
         if (format.ext === "zip") execFileSync("unzip", ["-q", path, "-d", extracted]);
         else
-          execFileSync("tar", ["-xzf", `./${basename(path)}`, "-C", extracted], {
-            cwd: dirname(path),
+          execFileSync("tar", ["-xzf", relative(extracted, path).replaceAll("\\", "/")], {
+            cwd: extracted,
           });
 
         const rootScope = join(extracted, ".claude", "skills");
@@ -381,7 +381,7 @@ describeIfBuilt("`wpm build package` E2E (task-83, through dist/cli.js)", () => 
       // AC90#6: extract and assert the canonical front door carries the AUTHOR'S bytes verbatim (no regeneration).
       const ex = join(dir, "extracted");
       mkdirSync(ex, { recursive: true });
-      execFileSync("tar", ["-xzf", `./${basename(archive)}`, "-C", ex], { cwd: dirname(archive) });
+      execFileSync("tar", ["-xzf", relative(ex, archive).replaceAll("\\", "/")], { cwd: ex });
       expect(readFileSync(join(ex, "AGENTS.md"), "utf8")).toBe(`# root\n${ROOT_SENTINEL}\n`);
       expect(readFileSync(join(ex, "bundles", "web", "AGENTS.md"), "utf8")).toBe(
         `# web\n${BUNDLE_SENTINEL}\n`,
@@ -426,7 +426,7 @@ describeIfBuilt("`wpm build package` E2E (task-83, through dist/cli.js)", () => 
       // and the Backlog.md CLI resolves the recipe with the extracted bundle as cwd (AC#3).
       const ex = join(dir, "extracted");
       mkdirSync(ex, { recursive: true });
-      execFileSync("tar", ["-xzf", `./${basename(archive)}`, "-C", ex], { cwd: dirname(archive) });
+      execFileSync("tar", ["-xzf", relative(ex, archive).replaceAll("\\", "/")], { cwd: ex });
       const exBacklog = join(ex, "bundles", "web", "backlog");
       expect(lstatSync(exBacklog).isSymbolicLink()).toBe(true);
       expect(readlinkSync(exBacklog)).toBe("install-backlog");
@@ -554,7 +554,7 @@ describeIfBuilt("`wpm build package` E2E (task-83, through dist/cli.js)", () => 
       // CONTENT-level: extract and prove NONE of the sentinels appear in ANY archived file's bytes.
       const ex = join(dir, "extracted");
       mkdirSync(ex, { recursive: true });
-      execFileSync("tar", ["-xzf", `./${basename(archive)}`, "-C", ex], { cwd: dirname(archive) });
+      execFileSync("tar", ["-xzf", relative(ex, archive).replaceAll("\\", "/")], { cwd: ex });
       const blob = concatAllFiles(ex);
       expect(blob).not.toContain(BACKLOG_SENTINEL);
       expect(blob).not.toContain(FRONTDOOR_SENTINEL); // the authoring front door's bytes never reach the archive
@@ -660,8 +660,8 @@ describeIfBuilt("`wpm build package` E2E (task-83, through dist/cli.js)", () => 
         if (format === "zip") {
           execFileSync("unzip", ["-q", archive, "-d", extracted]);
         } else {
-          execFileSync("tar", ["-xzf", `./${basename(archive)}`, "-C", extracted], {
-            cwd: dirname(archive),
+          execFileSync("tar", ["-xzf", relative(extracted, archive).replaceAll("\\", "/")], {
+            cwd: extracted,
           });
         }
         expect(readFileSync(join(extracted, runtimeTemplate), "utf8")).toBe("port={{port}}\n");
@@ -724,16 +724,17 @@ describeIfBuilt("`wpm build package` E2E (task-83, through dist/cli.js)", () => 
       writeFileSync(join(movedRoot, "two.md"), skillMd("moved"), "utf8");
       writeFileSync(join(movedRoot, "assets", "moved.txt"), "registered custom path\n", "utf8");
 
-      // A registered custom symlink package uses an arbitrary marker basename too. NodeFileSystem reports the
-      // directory link as file-like, while add/read follows it to validate the referenced document.
-      const linkedTarget = join(dir, "registered-linked-target");
+      // A registered custom symlink package uses an arbitrary marker basename too. Keep its relative target
+      // inside the archived registered package so native unzip can safely restore it on macOS as well.
+      // NodeFileSystem reports the directory link as file-like; add/read follows it to validate the document.
+      const linkedTarget = keptRoot;
       const linkedRoot = join(web, "payload", "custom-skills", "linked");
       if (process.platform !== "win32") {
         mkdirSync(linkedTarget, { recursive: true });
         mkdirSync(join(web, "payload", "custom-skills"), { recursive: true });
         writeFileSync(join(linkedTarget, "linked-entry.md"), skillMd("linked"), "utf8");
         writeFileSync(join(linkedTarget, "asset.txt"), "linked package asset\n", "utf8");
-        symlinkSync(linkedTarget, linkedRoot, "dir");
+        symlinkSync("../agent-skills/kept", linkedRoot, "dir");
       }
 
       // Exact-boundary and bundle-isolation negatives. None is registered in its host bundle.
@@ -823,6 +824,7 @@ describeIfBuilt("`wpm build package` E2E (task-83, through dist/cli.js)", () => 
       ];
       if (process.platform !== "win32") {
         registeredPaths.push(`${kept}/assets/guide-link.md`);
+        registeredPaths.push(`${kept}/linked-entry.md`, `${kept}/asset.txt`);
         registeredPaths.push("bundles/web/payload/custom-skills/linked");
       }
 
@@ -859,8 +861,8 @@ describeIfBuilt("`wpm build package` E2E (task-83, through dist/cli.js)", () => 
           mkdirSync(extracted, { recursive: true });
           if (format.ext === "zip") execFileSync("unzip", ["-q", archive, "-d", extracted]);
           else
-            execFileSync("tar", ["-xzf", `./${basename(archive)}`, "-C", extracted], {
-              cwd: dirname(archive),
+            execFileSync("tar", ["-xzf", relative(extracted, archive).replaceAll("\\", "/")], {
+              cwd: extracted,
             });
           if (shouldContainRegistered) {
             expect(readFileSync(join(extracted, `${kept}/references/guide.md`), "utf8")).toBe(
@@ -878,6 +880,21 @@ describeIfBuilt("`wpm build package` E2E (task-83, through dist/cli.js)", () => 
                   join(extracted, "bundles/web/payload/custom-skills/linked"),
                 ).isSymbolicLink(),
               ).toBe(true);
+              expect(
+                readlinkSync(join(extracted, "bundles/web/payload/custom-skills/linked")),
+              ).toBe("../agent-skills/kept");
+              expect(
+                readFileSync(
+                  join(extracted, "bundles/web/payload/custom-skills/linked/linked-entry.md"),
+                  "utf8",
+                ),
+              ).toBe(skillMd("linked"));
+              expect(
+                readFileSync(
+                  join(extracted, "bundles/web/payload/custom-skills/linked/asset.txt"),
+                  "utf8",
+                ),
+              ).toBe("linked package asset\n");
             }
           }
         }
@@ -1009,8 +1026,8 @@ describeIfBuilt("`wpm build package` E2E (task-83, through dist/cli.js)", () => 
         mkdirSync(extracted);
         if (format.ext === "zip") execFileSync("unzip", ["-q", copyArchive, "-d", extracted]);
         else
-          execFileSync("tar", ["-xzf", `./${basename(copyArchive)}`, "-C", extracted], {
-            cwd: dirname(copyArchive),
+          execFileSync("tar", ["-xzf", relative(extracted, copyArchive).replaceAll("\\", "/")], {
+            cwd: extracted,
           });
         const extractedBytes = concatAllFiles(extracted);
         expect(extractedBytes).not.toContain(marker);
@@ -1234,8 +1251,8 @@ describeIfBuilt("`wpm build package` E2E (task-83, through dist/cli.js)", () => 
       const tarballLayout = archiveLayout(tgz);
       const tarballExtracted = join(dir, "task95-tarball-extracted");
       mkdirSync(tarballExtracted);
-      execFileSync("tar", ["-xzf", `./${basename(tgz)}`, "-C", tarballExtracted], {
-        cwd: dirname(tgz),
+      execFileSync("tar", ["-xzf", relative(tarballExtracted, tgz).replaceAll("\\", "/")], {
+        cwd: tarballExtracted,
       });
       assertNoWorkspaceIntegration(tarballLayout, tarballExtracted);
 
@@ -1265,7 +1282,9 @@ describeIfBuilt("`wpm build package` E2E (task-83, through dist/cli.js)", () => 
 
       const extracted = join(dir, "task95-git-extracted");
       mkdirSync(extracted, { recursive: true });
-      execFileSync("tar", ["-xzf", `./${basename(tgz)}`, "-C", extracted], { cwd: dirname(tgz) });
+      execFileSync("tar", ["-xzf", relative(extracted, tgz).replaceAll("\\", "/")], {
+        cwd: extracted,
+      });
       expect(readFileSync(join(extracted, "AGENTS.md"), "utf8")).toBe(`# root\n${ROOT_SENTINEL}\n`);
       expect(readFileSync(join(extracted, "bundles", "web", "AGENTS.md"), "utf8")).toBe(
         `# web\n${BUNDLE_SENTINEL}\n`,

@@ -17,7 +17,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { basename, delimiter, dirname, isAbsolute, join, resolve, sep } from "node:path";
+import { basename, delimiter, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 import {
@@ -1938,8 +1938,8 @@ describe("fresh local packed-install and inactive-candidate journey", () => {
       });
       const tarExtracted = join(consumer, "cold-journey-tar-extracted");
       mkdirSync(tarExtracted, { recursive: true });
-      execFileSync("tar", ["-xzf", `./${basename(projectArchive)}`, "-C", tarExtracted], {
-        cwd: dirname(projectArchive),
+      execFileSync("tar", ["-xzf", relative(tarExtracted, projectArchive).replaceAll("\\", "/")], {
+        cwd: tarExtracted,
       });
       const tarLayout = assertColdJourneyArchive(projectArchive, tarExtracted);
       expect(lstatSync(join(tarExtracted, "CLAUDE.md")).isSymbolicLink()).toBe(true);
@@ -1955,8 +1955,8 @@ describe("fresh local packed-install and inactive-candidate journey", () => {
       });
       const gitExtracted = join(consumer, "cold-journey-git-extracted");
       mkdirSync(gitExtracted, { recursive: true });
-      execFileSync("tar", ["-xzf", `./${basename(projectArchive)}`, "-C", gitExtracted], {
-        cwd: dirname(projectArchive),
+      execFileSync("tar", ["-xzf", relative(gitExtracted, projectArchive).replaceAll("\\", "/")], {
+        cwd: gitExtracted,
       });
       expect(assertColdJourneyArchive(projectArchive, gitExtracted)).toEqual(tarLayout);
       expect(lstatSync(join(gitExtracted, "CLAUDE.md")).isSymbolicLink()).toBe(true);

@@ -16,7 +16,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
+import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { gzipSync } from "node:zlib";
 import { execaSync } from "execa";
 import { parse, stringify } from "yaml";
@@ -753,8 +753,8 @@ export class VnextWorkspace {
       const recipient = join(directory, "recipient");
       mkdirSync(recipient);
       writeFileSync(archive, bytes);
-      execaSync("tar", ["-xzf", `./${basename(archive)}`, "-C", recipient], {
-        cwd: dirname(archive),
+      execaSync("tar", ["-xzf", relative(recipient, archive).replaceAll("\\", "/")], {
+        cwd: recipient,
         reject: true,
       });
       for (const file of capture.files) {

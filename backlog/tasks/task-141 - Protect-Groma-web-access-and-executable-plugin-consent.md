@@ -4,7 +4,7 @@ title: Protect Groma web access and executable plugin consent
 status: In Progress
 assignee: []
 created_date: '2026-11-06 11:09'
-updated_date: '2026-11-13 16:23'
+updated_date: '2026-11-24 22:53'
 labels: []
 dependencies: []
 ordinal: 141000
@@ -35,6 +35,8 @@ Resume qualification on WPM775b261: immutable security fork ad95fd42e65f0d3e159c
 Full fork Linux CIad95fd4:1005 passed24 conditional skips2 failures, both existing Java registration scenarios. Root cause is the Java maintainer copy rewriting jlink internal relative links into absolute links outside the scanner package. Fixed only the copy option, leaving plugin confinement unchanged. Native Bun1.4.4 synthetic probe reproduces rejection before and exact content-digest preservation after, and detects target-byte mutation. Fork cd73635dd75704fe40c3868705e91032728c7241 is pushed to PR1; full three-platform CI https://github.com/kukhta-ai/Groma.md/actions/runs/43459679762 is running. Obsolete ad95fd4 run cancelled after preserving Linux failure evidence. Inherited Groma architecture deployment workflow was disabled in the fork because public distribution remains unapproved; it failed configure-pages and never deployed. Native CI remains enabled. WPM still pins immutable ad95fd4 until revised fork qualification is complete.
 
 Follow-up fork CIcd73635 still reports1005 passed24 conditional skips2 Java registration failures. The tests themselves copied GROMA_TEST_JAVA_PACKAGE with default cp and rewrote the internal links before consent. Both existing fixture copies now preserve verbatim links; assertions and integrity enforcement are unchanged. Final current fork source is dd9b613261449002ce6fa195dba5ef18dd558a96, with unchanged frozen dependency lock; new full CI https://github.com/kukhta-ai/Groma.md/actions/runs/43462057578 is queued/running. The obsolete failed cd73635 run was cancelled after retaining its Linux evidence. The actual new Java end-to-end result is still pending; do not treat the synthetic cp probe as that qualification.
+
+Fork7f4be049cf2be16d4a4f12167f5dc3e0fda0097a contains minimal Windows retained-cache EPERM handling with mandatory full digest verification, bounded owned-fixture filesystem cleanup, and relative tar fixture output. Frozen lock unchanged, full tsc/scoped lint pass;42 focused Bun tests pass. Independent targeted review reports no weakened consent/Restore or swallowed persistent errors. Full native CI https://github.com/kukhta-ai/Groma.md/actions/runs/45504496115 is in progress on all three platforms. No full-gate pass claimed.
 <!-- SECTION:NOTES:END -->
 
 ## Definition of Done

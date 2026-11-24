@@ -5,6 +5,7 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  realpathSync,
   rmSync,
   symlinkSync,
   writeFileSync,
@@ -143,9 +144,9 @@ describe("reviewed Groma fork runtime", () => {
   it.skipIf(process.platform === "win32")(
     "rechecks a selected private runtime and rejects changed execution closures without fallback",
     async () => {
-      const root = mkdtempSync(join(tmpdir(), "wpm-groma-doctor-"));
-      const authority = mkdtempSync(join(tmpdir(), "wpm-groma-approvals-"));
-      const accountHome = mkdtempSync(join(tmpdir(), "wpm-groma-account-"));
+      const root = realpathSync.native(mkdtempSync(join(tmpdir(), "wpm-groma-doctor-")));
+      const authority = realpathSync.native(mkdtempSync(join(tmpdir(), "wpm-groma-approvals-")));
+      const accountHome = realpathSync.native(mkdtempSync(join(tmpdir(), "wpm-groma-account-")));
       account.home = accountHome;
       const base = join(root, ".quality/groma-runtime");
       const build = join(base, "builds/build-fixture");

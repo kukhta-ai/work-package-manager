@@ -10,7 +10,7 @@ import {
   symlinkSync,
   writeFileSync,
 } from "node:fs";
-import { basename, delimiter, dirname, join } from "node:path";
+import { basename, delimiter, dirname, join, relative } from "node:path";
 import { describe, expect, it } from "vitest";
 import { NodeFileSystem } from "../../../src/adapters/node-fs.js";
 import { createArchive, pushArchive } from "../../../src/adapters/packager.js";
@@ -221,7 +221,7 @@ describe("createArchive — front-door transforms (task-90, staging)", () => {
       // still a symlink to installer-skills/ (symlink preservation).
       const ex = join(dir, "ex");
       mkdirSync(ex, { recursive: true });
-      execFileSync("tar", ["-xzf", `./${basename(archive)}`, "-C", ex], { cwd: dirname(archive) });
+      execFileSync("tar", ["-xzf", relative(ex, archive).replaceAll("\\", "/")], { cwd: ex });
       expect(readFileSync(join(ex, "AGENTS.md"), "utf8")).toBe(ROOT_BYTES);
       expect(readFileSync(join(ex, "bundles", "core", "AGENTS.md"), "utf8")).toBe(BUNDLE_BYTES);
       expect(lstatSync(join(ex, "CLAUDE.md")).isSymbolicLink()).toBe(true);
@@ -296,8 +296,8 @@ describe("createArchive — portable scope aliases (TASK-128)", () => {
       mkdirSync(extracted, { recursive: true });
       if (format === "zip") execFileSync("unzip", ["-q", archive, "-d", extracted]);
       else
-        execFileSync("tar", ["-xzf", `./${basename(archive)}`, "-C", extracted], {
-          cwd: dirname(archive),
+        execFileSync("tar", ["-xzf", relative(extracted, archive).replaceAll("\\", "/")], {
+          cwd: extracted,
         });
 
       for (const alias of scopeAliases) {
@@ -360,8 +360,8 @@ describe("createArchive — portable scope aliases (TASK-128)", () => {
       });
       const extracted = join(dir, "fallback-extracted");
       mkdirSync(extracted, { recursive: true });
-      execFileSync("tar", ["-xzf", `./${basename(archive)}`, "-C", extracted], {
-        cwd: dirname(archive),
+      execFileSync("tar", ["-xzf", relative(extracted, archive).replaceAll("\\", "/")], {
+        cwd: extracted,
       });
       expect(lstatSync(join(extracted, ".claude", "skills")).isDirectory()).toBe(true);
       expect(
@@ -407,8 +407,8 @@ describe("createArchive — portable scope aliases (TASK-128)", () => {
         mkdirSync(extracted, { recursive: true });
         if (format === "zip") execFileSync("unzip", ["-q", archive, "-d", extracted]);
         else
-          execFileSync("tar", ["-xzf", `./${basename(archive)}`, "-C", extracted], {
-            cwd: dirname(archive),
+          execFileSync("tar", ["-xzf", relative(extracted, archive).replaceAll("\\", "/")], {
+            cwd: extracted,
           });
 
         for (const alias of scopeAliases) {
@@ -453,8 +453,8 @@ describe("createArchive — portable scope aliases (TASK-128)", () => {
       });
       const extracted = join(dir, "empty-targets-fallback-extracted");
       mkdirSync(extracted, { recursive: true });
-      execFileSync("tar", ["-xzf", `./${basename(archive)}`, "-C", extracted], {
-        cwd: dirname(archive),
+      execFileSync("tar", ["-xzf", relative(extracted, archive).replaceAll("\\", "/")], {
+        cwd: extracted,
       });
 
       for (const alias of scopeAliases) {
@@ -643,8 +643,8 @@ describe("createArchive — git (TASK-95 prepared-tree parity)", () => {
       // transcoded by attributes carried in the deliverable itself.
       const extracted = join(dir, "git-extracted");
       mkdirSync(extracted, { recursive: true });
-      execFileSync("tar", ["-xzf", `./${basename(archive)}`, "-C", extracted], {
-        cwd: dirname(archive),
+      execFileSync("tar", ["-xzf", relative(extracted, archive).replaceAll("\\", "/")], {
+        cwd: extracted,
       });
       expect(readFileSync(join(extracted, "ident.txt"))).toEqual(
         readFileSync(join(root, "ident.txt")),

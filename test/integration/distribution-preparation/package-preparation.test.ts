@@ -13,7 +13,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { basename, dirname, join } from "node:path";
+import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 import { resolveNpmInvocation } from "../../../distribution-preparation/prepare-package.js";
@@ -313,8 +313,8 @@ describe("clean revision package preparation", () => {
 
     const extracted = join(root, "extracted");
     mkdirSync(extracted);
-    execFileSync("tar", ["-xzf", `./${basename(report.artifact.path)}`, "-C", extracted], {
-      cwd: dirname(report.artifact.path),
+    execFileSync("tar", ["-xzf", relative(extracted, report.artifact.path).replaceAll("\\", "/")], {
+      cwd: extracted,
     });
     const extractedRouterSkillRoot = join(extracted, "package", "agent-skills", "wpm-author");
     const extractedRouterSkillPath = join(extractedRouterSkillRoot, "SKILL.md");
