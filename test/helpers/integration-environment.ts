@@ -30,6 +30,17 @@ export function isolateIntegrationEnvironment(): () => void {
   const environment = {
     ...directories,
     NPM_CONFIG_CACHE: cache,
+    // MSYS tools otherwise extract archive symlinks as copies, hiding the archive's actual link behavior.
+    ...(process.platform === "win32"
+      ? {
+          MSYS: [
+            ...(process.env.MSYS ?? "")
+              .split(/\s+/)
+              .filter((option) => option && !option.startsWith("winsymlinks:")),
+            "winsymlinks:nativestrict",
+          ].join(" "),
+        }
+      : {}),
     PATH: `${fileURLToPath(new URL("../../node_modules/.bin", import.meta.url))}${delimiter}${process.env.PATH ?? ""}`,
   };
   const unset = ["GIT_CONFIG_GLOBAL", "NPM_CONFIG_USERCONFIG", "npm_config_userconfig"];

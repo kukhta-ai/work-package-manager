@@ -4,7 +4,7 @@ title: Qualify the protected Groma fork and confidential exports in WPM
 status: In Progress
 assignee: []
 created_date: '2026-11-06 11:09'
-updated_date: '2026-11-24 23:51'
+updated_date: '2026-11-24 23:59'
 labels: []
 dependencies:
   - TASK-141
@@ -43,6 +43,7 @@ modified_files:
   - package-lock.json
   - scripts/quality-tools.mjs
   - test/unit/quality.test.ts
+  - test/helpers/integration-environment.ts
 ordinal: 142000
 ---
 
@@ -97,6 +98,12 @@ Active goal continuation: WPM8c97044 policy/architecture CI45505862989 is green;
 Storage-bounded setup follow-up on ec020e1dc78bca7eafb5fc13cb63d995229c8b20: independent policy review found that native Go clean can follow cache-root or child directory aliases outside .quality. The opt-in cleanGoCaches mode now requires Linux and validates canonical ordinary ancestors/boundary, recursive cache directory/link/device confinement, and readable complete /proc/self/mountinfo before setup, each install and each cleanup; cache bind mounts are rejected even when device IDs match. Default setup and pinned install/Python/final provenance contracts are unchanged. Actual-FS negative fixtures preserve external sentinels for linked boundaries, roots, nested cache directories and project ancestors; synthetic mount records cover escaped paths and unavailable/malformed coverage. Node24 tsc, scoped ESLint/Biome and 26 focused quality/security/orchestration tests pass; one non-Linux rejection case is explicitly not applicable on this Linux host. No provisioning or real bind-mount manipulation was performed. This is preflight for a stable serialized workspace, not isolation against concurrent adversarial filesystem/remount changes. Next: one targeted independent policy re-review, then actual native storage profile before claiming qualification.
 
 Bounded-cache provisioning on ec020e1 plus the reviewed tooling diff completed successfully from source on2026-11-24: all pinned Go analyzers and fresh Python qualification passed; doctorAnalyzers independently accepted full provenance. Started with3999911936 free bytes, minimum sampled free266096640, maximum sampled owned Go caches3733663744; shared backing-pool changes are included in free-space observations. Cache mode cleans scoped Go caches between builds without weakening compiler/module/inventory bindings. Independent targeted re-review passed after the link/mount confinement fix. Focused quality.test18 passed/1 non-Linux case inapplicable; quality:fast passed. The previous10GiB request was conservative headroom, not a measured prerequisite. Native Groma is being restored after owned old-runtime retirement; its missing receipt remains explicitly unverified until setup completes. New fork Windows fixture lifecycle fix and full exact-revision CI/candidate qualification remain next.
+
+Checkpoint d54a93f: normal frozen protected-runtime restore completed using the unchanged approved ad95fd4 pin; native groma:cli agent-instructions backlog and full quality:doctor pass again. Focused tooling/runtime/security-orchestration unit band38 passed/1 host-specific inapplicable. This restored runtime is temporary qualification tooling until the revised fork passes its full matrix; no final fork or candidate pass is claimed. WPM8c97044 Node26 Linux/macOS and Node24 macOS consumer jobs pass; Node24/Linux completes with2308 passed/11 existing legacy CLI120s timeout failures, now under measured investigation. Windows jobs remain active. Final source pin, full gates, same-byte candidate verification and PR7 refresh remain pending.
+
+Windows Node24 CI adds4 failures where native Node creates real CLAUDE.md symlinks but MSYS tar extraction returns regular files. MSYS2 documents its default winsymlinks:deepcopy extraction mode and native strict override (https://www.msys2.org/docs/symlinks/). Preserve the exact symlink assertions and archive behavior; select winsymlinks:nativestrict only inside each Windows integration worker, preserving other MSYS options and restoring inherited values at fixture teardown. Existing archive/cold-install cases supply the actual Windows regression; extend existing isolation-restoration coverage. This does not change product packaging, scope, timeouts or user/global configuration.
+
+Windows isolated-worker MSYS correction passes quality:fast and the existing environment-isolation11 cases on Linux. Bounded independent read-only review found no blocking issue: native strict replaces only winsymlinks selectors, preserves unrelated options, restores exact inherited state, and leaves non-Windows workers unchanged. Existing archive/link assertions remain strict. Actual Windows native CI is still pending; no portability pass claimed from Linux evidence.
 <!-- SECTION:NOTES:END -->
 
 ## Definition of Done

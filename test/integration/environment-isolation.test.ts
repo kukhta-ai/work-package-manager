@@ -52,6 +52,7 @@ describe("integration file user-state isolation", () => {
       writeFileSync(settings, contents);
       vi.stubEnv("HOME", original);
       vi.stubEnv("USERPROFILE", original);
+      vi.stubEnv("MSYS", "winsymlinks:deepcopy glob");
       for (const key of ["GIT_CONFIG_GLOBAL", "NPM_CONFIG_USERCONFIG", "npm_config_userconfig"])
         vi.stubEnv(key, join(original, key));
       const originalSelectors = Object.fromEntries(
@@ -61,7 +62,7 @@ describe("integration file user-state isolation", () => {
         ]),
       );
       const originalEnvironment = Object.fromEntries(
-        [...stateVariables, "PATH"].map((key) => [key, process.env[key]]),
+        [...stateVariables, "PATH", "MSYS"].map((key) => [key, process.env[key]]),
       );
       const cache = process.env.NPM_CONFIG_CACHE;
       const restore = isolateIntegrationEnvironment();
@@ -74,12 +75,16 @@ describe("integration file user-state isolation", () => {
         expect(process.env.NPM_CONFIG_USERCONFIG).toBeUndefined();
         expect(process.env.npm_config_userconfig).toBeUndefined();
         expect(process.env.NPM_CONFIG_CACHE).toBe(cache);
+        if (process.platform === "win32")
+          expect(process.env.MSYS).toBe("glob winsymlinks:nativestrict");
         expect(readFileSync(settings, "utf8")).toBe(contents);
       } finally {
         restore();
       }
       expect(
-        Object.fromEntries([...stateVariables, "PATH"].map((key) => [key, process.env[key]])),
+        Object.fromEntries(
+          [...stateVariables, "PATH", "MSYS"].map((key) => [key, process.env[key]]),
+        ),
       ).toEqual(originalEnvironment);
       for (const key of ["GIT_CONFIG_GLOBAL", "NPM_CONFIG_USERCONFIG", "npm_config_userconfig"])
         expect(process.env[key]).toBe(originalSelectors[key]);
