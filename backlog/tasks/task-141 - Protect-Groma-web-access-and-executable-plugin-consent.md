@@ -4,7 +4,7 @@ title: Protect Groma web access and executable plugin consent
 status: In Progress
 assignee: []
 created_date: '2026-11-06 11:09'
-updated_date: '2026-11-24 23:03'
+updated_date: '2026-11-24 23:18'
 labels: []
 dependencies: []
 ordinal: 141000
@@ -39,6 +39,8 @@ Follow-up fork CIcd73635 still reports1005 passed24 conditional skips2 Java regi
 Fork7f4be049cf2be16d4a4f12167f5dc3e0fda0097a contains minimal Windows retained-cache EPERM handling with mandatory full digest verification, bounded owned-fixture filesystem cleanup, and relative tar fixture output. Frozen lock unchanged, full tsc/scoped lint pass;42 focused Bun tests pass. Independent targeted review reports no weakened consent/Restore or swallowed persistent errors. Full native CI https://github.com/kukhta-ai/Groma.md/actions/runs/45504496115 is in progress on all three platforms. No full-gate pass claimed.
 
 Linux full CI7f4be04 passes; macOS only fails canonical-path fixture expectation (/var alias versus /private/var ledger), fixed by canonicalizing existing fixture base with all security assertions retained.13 focused approval tests pass after fix. New source1b9848717ca8db9bbeb43f19d806ab526c3e9fea pushed to draft PR1; full three-platform CI https://github.com/kukhta-ai/Groma.md/actions/runs/45506453764 is queued. Prior7f4be04 Windows run remains active for useful native evidence. No full final fork qualification claimed yet.
+
+Latest fork1b9848717ca8db9bbeb43f19d806ab526c3e9fea full CI45506453764 now passes Linux and macOS; Windows job138842800134 remains live building Swift. Earlier7f4be04 Windows job138836059622 remains live running repository checks. These are verified live jobs, not completed qualification. Next poll same handles; do not restart simply because observation times out.
 <!-- SECTION:NOTES:END -->
 
 ## Definition of Done

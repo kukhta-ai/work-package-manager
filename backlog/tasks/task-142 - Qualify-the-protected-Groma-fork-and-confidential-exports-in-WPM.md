@@ -4,7 +4,7 @@ title: Qualify the protected Groma fork and confidential exports in WPM
 status: In Progress
 assignee: []
 created_date: '2026-11-06 11:09'
-updated_date: '2026-11-24 23:03'
+updated_date: '2026-11-24 23:18'
 labels: []
 dependencies:
   - TASK-141
@@ -89,6 +89,8 @@ Approved completion plan resumed2026-11-24 on3dc9991. Current storage policy rem
 Follow-up after owned cache cleanup: frozen fork dependency restore succeeds; TASK105 now passes with all three actual archive backends (tarball/Git/ZIP) in52.16s using scoped zip/unzip tools, without changed timeout. Four previously slow native scenarios pass together with four integration workers (~56-59s each); CLI --maxWorkers=2 did not override the explicit project setting, so that second probe is NOT evidence of a two-worker configuration. No concurrency-policy change made. Root independently inspected six-file portability diff; exact directory-link and linked-byte assertions are preserved/strengthened, and production runtime authority checks are unchanged. Full quality:fast passes. Native Groma-only setup is running separately; full analyzer setup remains unqualified after actual ENOSPC.
 
 Measured-capacity correction after user question:10GiB was conservative headroom, not a measured requirement or current policy floor. Failed OSV provisioning retained~2.5GiB modules+642MiB build cache before ENOSPC; temporary peak was not measured. Provision stages are now sequential. Current available~1.74GiB; current ignored storage-current.json supersedes old floor-based storage report. Actual isolated reviewed ad95fd4 Groma setup now succeeds on ARM64 with supplied verified tools/SDKs; runtime doctor and native scanner check pass. Read native agent inspect/backlog guides; actual groma:check completes nonempty scan(created0/refreshed77/matched0) and87-record map freshness passes without tracked map drift. Both Knip bands pass. WPM8c97044 is pushed only to qualification branch; full CI https://github.com/kukhta-ai/work-package-manager/actions/runs/45505862989 runs. Actual two-worker diagnostic runs same four cases in two waves,48-50s each versus56-59s with four workers, but increases total wall time; default4-worker policy/timeout remains unchanged pending full native CI. Analyzer receipts, native export controls and final candidate remain unqualified. Next: inspect both native CI runs, freeze final fork pin, restore remaining analyzers within actual capacity, verify native export and prepare private candidate with full mandatory release band. PR7 remains on4632931.
+
+Active goal continuation: WPM8c97044 policy/architecture CI45505862989 is green; six native consumers still running. Investigated lower-storage official OSVv2.7.0 release binary: verified upstream SHA2564061ef4c021ed3c47f203b818f337e351336cc5cd67c0274fc36bd1dfc728dd7, inspected via pinned go version -m without execution. It was built with Go1.27.0, so it cannot satisfy current strict Go1.27.3 provenance contract; binary was removed and no enforcement/pin changes made. Ignored osv-upstream-inspection.json retains compact evidence. Previously inventoried large legacy worktree paths are absent now; do not use Nov13 size/ownership report to authorize cleanup. Current local free~1.8GiB; remaining analyzer source build still needs space beyond its already measured cache footprint. Next: poll live fork Windows and WPM consumer jobs, fix any reproduced defects; when final fork CI passes freeze its pin and requalify; retain full private candidate objective.
 <!-- SECTION:NOTES:END -->
 
 ## Definition of Done
