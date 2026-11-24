@@ -1,7 +1,16 @@
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { resolve } from "node:path";
+import {
+  existsSync,
+  lstatSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
+import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { isDeepStrictEqual } from "node:util";
 import { decodeJson } from "./json.mjs";
@@ -204,8 +213,86 @@ export function doctorAnalyzers() {
   };
   return validateAnalyzerReceipt(decodeJson(readFileSync(receiptPath, "utf8")), observed);
 }
-/** Provision exact Python hashes and Go modules locally. Runtime prerequisites are explicit and pinned. */
-export function setupAnalyzers() {
+/** Refuse aliases or mounted directory trees before the opt-in Go cache cleaner can follow them.
+ * Missing caches are allowed; this check never creates or removes files.
+ * @param {string} repository
+ */
+export function assertGoCacheBoundaries(repository = root) {
+  if (process.platform !== "linux")
+    throw new Error("Go cache cleanup qualification currently requires Linux");
+  const owner = resolve(repository);
+  let ancestor = owner;
+  for (;;) {
+    const stat = lstatSync(ancestor);
+    if (!stat.isDirectory() || stat.isSymbolicLink() || realpathSync.native(ancestor) !== ancestor)
+      throw new Error("Go cache owner requires ordinary canonical directory ancestors");
+    const parent = dirname(ancestor);
+    if (parent === ancestor) break;
+    ancestor = parent;
+  }
+  const device = lstatSync(owner).dev;
+  /** @param {string} directory */
+  function directoryState(directory) {
+    const stat = lstatSync(directory, { throwIfNoEntry: false });
+    if (stat === undefined) return undefined;
+    if (
+      !stat.isDirectory() ||
+      stat.isSymbolicLink() ||
+      realpathSync.native(directory) !== directory
+    )
+      throw new Error("Go cache requires ordinary canonical directory boundaries");
+    if (stat.dev !== device) throw new Error("Go cache crosses a filesystem boundary");
+    return stat;
+  }
+  /** @param {string} directory */
+  function inspect(directory) {
+    if (directoryState(directory) === undefined) return;
+    for (const entry of readdirSync(directory, { withFileTypes: true })) {
+      if (entry.isSymbolicLink() || (!entry.isDirectory() && !entry.isFile()))
+        throw new Error("Go cache contains a link or non-regular entry");
+      if (entry.isDirectory()) inspect(resolve(directory, entry.name));
+    }
+  }
+  const boundary = resolve(owner, ".quality");
+  const caches = ["go-build", "go-mod"].map((name) => resolve(boundary, name));
+  const mountpoints = readFileSync("/proc/self/mountinfo", "utf8")
+    .trim()
+    .split("\n")
+    .map((line) => {
+      const fields = line.split(" ");
+      const separator = fields.indexOf("-");
+      const encoded = fields[4];
+      if (
+        separator < 6 ||
+        fields.length !== separator + 4 ||
+        !/^\d+$/.test(fields[0] ?? "") ||
+        !/^\d+$/.test(fields[1] ?? "") ||
+        !/^\d+:\d+$/.test(fields[2] ?? "") ||
+        !encoded?.startsWith("/") ||
+        /\\(?![0-7]{3})/.test(encoded)
+      )
+        throw new Error("Cannot establish Go cache mount coverage");
+      return encoded.replace(/\\([0-7]{3})/g, (_match, digits) =>
+        String.fromCharCode(Number.parseInt(String(digits), 8)),
+      );
+    });
+  if (!mountpoints.includes("/")) throw new Error("Cannot establish Go cache mount coverage");
+  if (
+    mountpoints.some(
+      (path) =>
+        path === boundary || caches.some((cache) => path === cache || path.startsWith(`${cache}/`)),
+    )
+  )
+    throw new Error("Go cache cleanup cannot cross a mounted cache boundary");
+  directoryState(boundary);
+  for (const cache of caches) inspect(cache);
+}
+
+/** Provision exact Python hashes and Go modules locally. Runtime prerequisites are explicit and pinned.
+ * @param {{cleanGoCaches?: boolean}} options
+ */
+export function setupAnalyzers(options = {}) {
+  if (options.cleanGoCaches) assertGoCacheBoundaries();
   if (process.platform === "win32")
     throw new Error(
       "Full analyzer qualification currently requires a Linux/macOS host; the product Windows consumer gate is separate",
@@ -240,7 +327,34 @@ export function setupAnalyzers() {
     env,
     run,
   });
-  for (const module of Object.values(pins.go)) run(go(), ["install", "-trimpath", module], env);
+  const modules = Object.entries(pins.go);
+  const orderedModules = options.cleanGoCaches
+    ? [
+        ...modules.filter(([name]) => name === "osv-scanner"),
+        ...modules.filter(([name]) => name !== "osv-scanner"),
+      ]
+    : modules;
+  for (const [name, module] of orderedModules) {
+    if (options.cleanGoCaches) assertGoCacheBoundaries();
+    const compiler = go();
+    /** @type {{error: unknown}|undefined} */
+    let failure;
+    try {
+      run(compiler, ["install", "-trimpath", module], env);
+    } catch (error) {
+      failure = { error };
+    }
+    if (options.cleanGoCaches) {
+      try {
+        assertGoCacheBoundaries();
+        run(compiler, ["clean", "-cache", "-modcache"], env);
+      } catch (cleanupError) {
+        if (failure === undefined) throw cleanupError;
+        console.error(`Go cache cleanup also failed after installing ${name}:`, cleanupError);
+      }
+    }
+    if (failure !== undefined) throw failure.error;
+  }
   const inventory = pythonInventory();
   for (const [name, module] of Object.entries(pins.go)) {
     const at = module.lastIndexOf("@");

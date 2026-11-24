@@ -4,7 +4,7 @@ title: Qualify the protected Groma fork and confidential exports in WPM
 status: In Progress
 assignee: []
 created_date: '2026-11-06 11:09'
-updated_date: '2026-11-24 23:18'
+updated_date: '2026-11-24 23:51'
 labels: []
 dependencies:
   - TASK-141
@@ -41,6 +41,8 @@ modified_files:
   - test/integration/distribution-preparation/package-preparation.test.ts
   - test/integration/distribution-preparation/packed-install.test.ts
   - package-lock.json
+  - scripts/quality-tools.mjs
+  - test/unit/quality.test.ts
 ordinal: 142000
 ---
 
@@ -91,6 +93,10 @@ Follow-up after owned cache cleanup: frozen fork dependency restore succeeds; TA
 Measured-capacity correction after user question:10GiB was conservative headroom, not a measured requirement or current policy floor. Failed OSV provisioning retained~2.5GiB modules+642MiB build cache before ENOSPC; temporary peak was not measured. Provision stages are now sequential. Current available~1.74GiB; current ignored storage-current.json supersedes old floor-based storage report. Actual isolated reviewed ad95fd4 Groma setup now succeeds on ARM64 with supplied verified tools/SDKs; runtime doctor and native scanner check pass. Read native agent inspect/backlog guides; actual groma:check completes nonempty scan(created0/refreshed77/matched0) and87-record map freshness passes without tracked map drift. Both Knip bands pass. WPM8c97044 is pushed only to qualification branch; full CI https://github.com/kukhta-ai/work-package-manager/actions/runs/45505862989 runs. Actual two-worker diagnostic runs same four cases in two waves,48-50s each versus56-59s with four workers, but increases total wall time; default4-worker policy/timeout remains unchanged pending full native CI. Analyzer receipts, native export controls and final candidate remain unqualified. Next: inspect both native CI runs, freeze final fork pin, restore remaining analyzers within actual capacity, verify native export and prepare private candidate with full mandatory release band. PR7 remains on4632931.
 
 Active goal continuation: WPM8c97044 policy/architecture CI45505862989 is green; six native consumers still running. Investigated lower-storage official OSVv2.7.0 release binary: verified upstream SHA2564061ef4c021ed3c47f203b818f337e351336cc5cd67c0274fc36bd1dfc728dd7, inspected via pinned go version -m without execution. It was built with Go1.27.0, so it cannot satisfy current strict Go1.27.3 provenance contract; binary was removed and no enforcement/pin changes made. Ignored osv-upstream-inspection.json retains compact evidence. Previously inventoried large legacy worktree paths are absent now; do not use Nov13 size/ownership report to authorize cleanup. Current local free~1.8GiB; remaining analyzer source build still needs space beyond its already measured cache footprint. Next: poll live fork Windows and WPM consumer jobs, fix any reproduced defects; when final fork CI passes freeze its pin and requalify; retain full private candidate objective.
+
+Storage-bounded setup follow-up on ec020e1dc78bca7eafb5fc13cb63d995229c8b20: independent policy review found that native Go clean can follow cache-root or child directory aliases outside .quality. The opt-in cleanGoCaches mode now requires Linux and validates canonical ordinary ancestors/boundary, recursive cache directory/link/device confinement, and readable complete /proc/self/mountinfo before setup, each install and each cleanup; cache bind mounts are rejected even when device IDs match. Default setup and pinned install/Python/final provenance contracts are unchanged. Actual-FS negative fixtures preserve external sentinels for linked boundaries, roots, nested cache directories and project ancestors; synthetic mount records cover escaped paths and unavailable/malformed coverage. Node24 tsc, scoped ESLint/Biome and 26 focused quality/security/orchestration tests pass; one non-Linux rejection case is explicitly not applicable on this Linux host. No provisioning or real bind-mount manipulation was performed. This is preflight for a stable serialized workspace, not isolation against concurrent adversarial filesystem/remount changes. Next: one targeted independent policy re-review, then actual native storage profile before claiming qualification.
+
+Bounded-cache provisioning on ec020e1 plus the reviewed tooling diff completed successfully from source on2026-11-24: all pinned Go analyzers and fresh Python qualification passed; doctorAnalyzers independently accepted full provenance. Started with3999911936 free bytes, minimum sampled free266096640, maximum sampled owned Go caches3733663744; shared backing-pool changes are included in free-space observations. Cache mode cleans scoped Go caches between builds without weakening compiler/module/inventory bindings. Independent targeted re-review passed after the link/mount confinement fix. Focused quality.test18 passed/1 non-Linux case inapplicable; quality:fast passed. The previous10GiB request was conservative headroom, not a measured prerequisite. Native Groma is being restored after owned old-runtime retirement; its missing receipt remains explicitly unverified until setup completes. New fork Windows fixture lifecycle fix and full exact-revision CI/candidate qualification remain next.
 <!-- SECTION:NOTES:END -->
 
 ## Definition of Done
