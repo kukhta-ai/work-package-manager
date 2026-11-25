@@ -1,0 +1,92 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://work-package-manager.local/schemas/gate-receipt.schema.json",
+  "title": "WPM candidate gate receipt",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "id",
+    "episodeId",
+    "candidate",
+    "verdict",
+    "checks",
+    "waivers",
+    "residualRisks",
+    "preCleanupRevision",
+    "updatedAt"
+  ],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "id": { "type": "string", "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$" },
+    "episodeId": { "type": "string", "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$" },
+    "candidate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["revision", "baselineRevision", "branch", "pullRequest"],
+      "properties": {
+        "revision": { "type": ["string", "null"], "pattern": "^[a-f0-9]{40}$" },
+        "baselineRevision": { "type": "string", "pattern": "^[a-f0-9]{40}$" },
+        "branch": { "type": "string", "minLength": 1 },
+        "pullRequest": { "type": ["string", "null"], "pattern": "^https://" }
+      }
+    },
+    "verdict": { "enum": ["pending", "pass", "concerns", "fail", "waived"] },
+    "checks": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "status", "evidence"],
+        "properties": {
+          "name": { "type": "string", "minLength": 1 },
+          "status": { "enum": ["pending", "passed", "failed", "waived"] },
+          "waiverId": { "type": "string", "minLength": 1 },
+          "evidence": {
+            "type": "array",
+            "items": { "type": "string", "minLength": 1 }
+          }
+        }
+      }
+    },
+    "waivers": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/waiver" }
+    },
+    "residualRisks": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "preCleanupRevision": { "type": "string", "pattern": "^[a-f0-9]{40}$" },
+    "updatedAt": { "type": "string", "format": "date-time" }
+  },
+  "$defs": {
+    "waiver": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "scope",
+        "authority",
+        "approvedBy",
+        "approvedAt",
+        "limitation",
+        "evidence"
+      ],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "scope": { "type": "string", "minLength": 1 },
+        "authority": { "const": "human" },
+        "approvedBy": { "type": "string", "minLength": 1 },
+        "approvedAt": { "type": "string", "format": "date" },
+        "limitation": { "type": "string", "minLength": 1 },
+        "evidence": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "minLength": 1 }
+        }
+      }
+    }
+  }
+}

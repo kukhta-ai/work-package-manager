@@ -1,0 +1,70 @@
+schemaVersion: 1
+
+workingMemory:
+  roots:
+    - _bmad-output
+    - Skills-Results
+    - .bmad/archive-staging
+    - .bmad/local
+    - .serena
+
+governanceDocument: PROCESS-ARTIFACTS.md
+
+state:
+  path: .bmad/sdlc-state.yaml
+  maxBytes: 8192
+  maxLines: 100
+  requiredKeys:
+    - schemaVersion
+    - phase
+    - phaseName
+    - branch
+    - epic
+    - activeStory
+    - reviewCycle
+    - specialists
+    - gatesPending
+    - waivers
+    - lastUpdated
+  allowedKeys:
+    - schemaVersion
+    - phase
+    - phaseName
+    - branch
+    - epic
+    - activeStory
+    - reviewCycle
+    - activeChange
+    - specialists
+    - gatesPending
+    - waivers
+    - workingMemory
+    - designRevisionLoaded
+    - lastUpdated
+
+durableEvidence:
+  evolutionRecords:
+    root: research/evolution/records
+    extension: .yaml
+    schema: research/evolution/schemas/evolution-record.schema.json
+    minCount: 1
+    maxBytes: 32768
+  gateReceipts:
+    root: research/evolution/gates
+    extension: .json
+    schema: research/evolution/schemas/gate-receipt.schema.json
+    minCount: 1
+    maxBytes: 32768
+
+archivePointers:
+  allowedSchemes:
+    - https
+    - s3
+    - gs
+    - azure
+  checksumPattern: "^sha256:[a-f0-9]{64}$"
+  privacyClasses:
+    - public
+    - internal
+    - confidential
+    - restricted

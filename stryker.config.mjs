@@ -1,0 +1,30 @@
+export default {
+  ignorePatterns: [
+    ".quality",
+    ".quality/**",
+    "groma/**",
+    ".claude/**",
+    ".agents/**",
+    ".bmad/**",
+    "_bmad/**",
+    "_bmad-output/**",
+    "Skills-Results/**",
+    ".remember/**",
+    ".omc/**",
+    ".serena/**",
+    "test-results/**",
+    "dist/**",
+  ],
+  testRunner: "vitest",
+  vitest: { configFile: "vitest.mutation.config.ts", related: false },
+  mutate: ["src/vnext/core/**/*.ts", "src/core/services/integrity.ts"],
+  reporters: ["clear-text", "json", "html"],
+  coverageAnalysis: "perTest",
+  // Raw collection retains equivalent mutants. scripts/mutation.mjs is the mandatory reviewed gate:
+  // it rejects every uncovered/unreviewed survivor and binds the two exact equivalence dispositions.
+  thresholds: { high: 100, low: 100, break: 0 },
+  tempDirName: ".quality/stryker-tmp",
+  htmlReporter: { fileName: ".quality/mutation/index.html" },
+  jsonReporter: { fileName: ".quality/mutation/report.json" },
+  incremental: false,
+};
