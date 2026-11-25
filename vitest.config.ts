@@ -17,7 +17,7 @@ import { defineConfig } from "vitest/config";
  * from "vitest" explicitly. Type-checking is a separate command (`npm run typecheck` = `tsc`), not part of
  * this run (AC#3).
  *
- * Integration files use at most four isolated fork processes. Their setup allocates fresh user state before
+ * Integration files use at most two isolated fork processes. Their setup allocates fresh user state before
  * test imports; source and architecture fixtures live in temporary trees, and the linked-bin test owns its
  * complete producer checkout and dependencies. The shared dist/ is built before the suite and read only.
  * Tests within each file remain sequential, preserving scoped PATH/editor changes and native filesystem
@@ -45,7 +45,7 @@ export default defineConfig({
           include: ["test/integration/**/*.test.ts"],
           pool: "forks",
           isolate: true,
-          maxWorkers: 4,
+          maxWorkers: 2,
           fileParallelism: true,
           setupFiles: ["test/integration/setup.ts"],
           // Each integration test drives the REAL `backlog` CLI (and the built binary) over multiple

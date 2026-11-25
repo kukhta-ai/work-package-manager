@@ -4,7 +4,7 @@ title: Qualify the protected Groma fork and confidential exports in WPM
 status: In Progress
 assignee: []
 created_date: '2026-11-06 11:09'
-updated_date: '2026-11-24 23:59'
+updated_date: '2026-11-25 00:09'
 labels: []
 dependencies:
   - TASK-141
@@ -44,6 +44,7 @@ modified_files:
   - scripts/quality-tools.mjs
   - test/unit/quality.test.ts
   - test/helpers/integration-environment.ts
+  - vitest.config.ts
 ordinal: 142000
 ---
 
@@ -104,6 +105,10 @@ Checkpoint d54a93f: normal frozen protected-runtime restore completed using the 
 Windows Node24 CI adds4 failures where native Node creates real CLAUDE.md symlinks but MSYS tar extraction returns regular files. MSYS2 documents its default winsymlinks:deepcopy extraction mode and native strict override (https://www.msys2.org/docs/symlinks/). Preserve the exact symlink assertions and archive behavior; select winsymlinks:nativestrict only inside each Windows integration worker, preserving other MSYS options and restoring inherited values at fixture teardown. Existing archive/cold-install cases supply the actual Windows regression; extend existing isolation-restoration coverage. This does not change product packaging, scope, timeouts or user/global configuration.
 
 Windows isolated-worker MSYS correction passes quality:fast and the existing environment-isolation11 cases on Linux. Bounded independent read-only review found no blocking issue: native strict replaces only winsymlinks selectors, preserves unrelated options, restores exact inherited state, and leaves non-Windows workers unchanged. Existing archive/link assertions remain strict. Actual Windows native CI is still pending; no portability pass claimed from Linux evidence.
+
+Native11 Node24/Linux timeouts justify qualifying the measured2-worker integration profile: actual4-worker cases56.00–59.17s versus2-worker47.74–50.49s, with wall59.18s versus98.76s. Independent policy review found no scope/threshold relaxation: keep all files/cases, forks/isolation, within-file sequence,120s case budgets and90m CI deadline. Set only integration maxWorkers2; the full exact-source OS/Node matrix must prove both latency and total deadline. Read-only profiling attributes98.6% of representative scenario time to mandated Backlog1.45.2 calls; no equivalent full-record batch CLI exists. A fresh NODE_COMPILE_CACHE trial showed no meaningful benefit and is not adopted. Preimage/recheck guarantees and native authoring scenarios remain unchanged.
+
+Final tracked2-worker configuration plus069181f passes the same4 previously slow native CLI cases on Node24; case seconds: 48.848, 47.198, 46.765, 48.474. quality:fast also passes. This focused result does not substitute for the full OS/Node matrix or90m deadline. Fork cedf271baf7ff6e3eb069059ef7627d894bbed65 is under full native CI45515317232 after successful TypeScript/Biome/scanner-exclusions checks and fail-closed child-lifetime probes; local full fork check939/64skips/28 missing-tool failures remains explicitly unverified.
 <!-- SECTION:NOTES:END -->
 
 ## Definition of Done
