@@ -1,10 +1,10 @@
 ---
 id: TASK-143
 title: Protect confidential Groma source exports
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-11-06 11:24'
-updated_date: '2026-11-25 00:20'
+updated_date: '2026-11-25 01:41'
 labels: []
 dependencies:
   - TASK-141
@@ -26,9 +26,9 @@ Source-bearing architecture exports can disclose current or historical repositor
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Source-bearing exports require explicit acknowledgement and omit live session and plugin approval credentials.
-- [ ] #2 A detected secret in either selected revision prevents final export delivery.
-- [ ] #3 Unsafe destinations and failed export checks leave existing user content unchanged.
+- [x] #1 Source-bearing exports require explicit acknowledgement and omit live session and plugin approval credentials.
+- [x] #2 A detected secret in either selected revision prevents final export delivery.
+- [x] #3 Unsafe destinations and failed export checks leave existing user content unchanged.
 <!-- AC:END -->
 
 ## Implementation Plan
@@ -40,16 +40,16 @@ Preserve complete fork exports with explicit acknowledgement and a raw per-revis
 ## Implementation Notes
 
 <!-- SECTION:NOTES:BEGIN -->
-Independent review reproduced two export defects and both are fixed: caller must now pass --ack-source-export before effects; original vendor paths could bypass default Gitleaks filtering, so captured raw sources are scanned under neutral ordinal .txt paths with original provenance retained in the captured manifest. Production native qualifier and independent random generic-key control both reject historical node_modules-only secrets, accept clean output and remove staging. Five focused unit tests, whole WPM TypeScript and scoped typed ESLint pass. Actual final compiled-fork export and final candidate remain pending; no release qualification claimed yet.
+Source WPM e88c2ba103504ede0cafe0ec596be609d7cf4950; protected fork cedf271baf7ff6e3eb069059ef7627d894bbed65. All acceptance criteria and DoD are satisfied. Full local quality:release passes on clean e88c2ba (167 files;2332 passed;2 host-specific skips). Independent review corrected final directory mode to0700 and confirmed rejection paths.
 
-Resume review reproduced final source export root being0755 under umask022 after leaving private staging. Enforced chmod0700 before rename and extended delivered-permissions regression. Independent verification passes; actual final fork/native scanner/export qualification remains pending disk capacity. Source manifest and old-revision detector behavior retained.
+Actual compiled final fork plus pinned native Gitleaks passes explicit acknowledgement before effects, a clean vendor-path source export, delivered0700 mode, rejection of a synthetic generic secret present only in the older selected node_modules/fixture source, failed-staging removal, existing user-content preservation and checkout/alias destination rejection. The native web export also excludes live session credentials. Disposable repositories/exports and server processes were removed. Evidence remains private under .quality/evidence/export-native-e88c2ba-cedf271.json and web-native-e88c2ba-cedf271.json; compact gate facts persist in research/evolution/gates/wpm-vnext-e88c2ba-local.json.
 
-Native prequalification on WPM33536d4 with the currently approved compiled fork ad95fd4 and freshly source-built pinned Gitleaks passes: explicit acknowledgement before effects; actual clean vendor-path source export; delivered0700 permissions; a synthetic secret present only in the older selected node_modules/fixture source blocks delivery; private staging is removed; existing user content and checkout/alias destinations are preserved/rejected. Disposable Git fixture and exports were removed after success; compact provenance report is .quality/evidence/export-native-33536d4-ad95fd4.json. This is actual compiled-runtime behavior, not an injected exporter/scanner stub. Final qualification will repeat on the revised immutable fork after its Windows CI completes; no candidate or final gate pass is claimed.
+No full WPM remote matrix pass is claimed while Node24/Windows remains running. Next delivery action: qualify final evidence-only source and PR7 checks. Public distribution remains inactive.
 <!-- SECTION:NOTES:END -->
 
 ## Definition of Done
 <!-- DOD:BEGIN -->
-- [ ] #1 Typechecks clean (tsc --noEmit) and Biome clean (biome ci)
-- [ ] #2 Tests added and green (vitest): unit for pure logic, integration where it touches ports
-- [ ] #3 Public functions documented; no dead code; the core import-boundary rule is not violated
+- [x] #1 Typechecks clean (tsc --noEmit) and Biome clean (biome ci)
+- [x] #2 Tests added and green (vitest): unit for pure logic, integration where it touches ports
+- [x] #3 Public functions documented; no dead code; the core import-boundary rule is not violated
 <!-- DOD:END -->

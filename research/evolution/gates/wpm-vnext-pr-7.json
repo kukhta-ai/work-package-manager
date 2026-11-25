@@ -1,0 +1,43 @@
+{
+  "schemaVersion": 1,
+  "episodeId": "wpm-vnext-protected-tooling",
+  "waivers": [],
+  "preCleanupRevision": "e88c2ba103504ede0cafe0ec596be609d7cf4950",
+  "updatedAt": "2026-11-25T01:41:15Z",
+  "id": "wpm-vnext-pr-7",
+  "candidate": {
+    "revision": null,
+    "baselineRevision": "e88c2ba103504ede0cafe0ec596be609d7cf4950",
+    "branch": "feat/wpm-vnext",
+    "pullRequest": "https://github.com/kukhta-ai/work-package-manager/pull/7"
+  },
+  "verdict": "pending",
+  "checks": [
+    {
+      "name": "final-source-candidate",
+      "status": "pending",
+      "evidence": [
+        "After this task/evidence closeout commit, run candidate:prepare from its clean exact revision, candidate:verify and an actual plain journey using its saved archive bytes. Bind final source and archive identity in PR7."
+      ]
+    },
+    {
+      "name": "final-required-ci",
+      "status": "pending",
+      "evidence": [
+        "Bind the final exact revision to its own verified candidate and PR7 head; require policy plus every Linux/macOS/Windows and Node 24/26 cell for that same final source before delivery completion."
+      ]
+    },
+    {
+      "name": "human-review",
+      "status": "pending",
+      "evidence": [
+        "Independent code/artifact reviews are recorded separately. This handoff does not authorize human approval, merging, tagging or publication."
+      ]
+    }
+  ],
+  "residualRisks": [
+    "Final closeout revision still requires its own candidate:prepare, same-byte verification and full PR7 CI. Evidence below binds e88c2ba, never an automatically substituted later revision.",
+    "Human PR review and merge remain pending; public distribution is inactive.",
+    "Fresh Claude model behavior remains unqualified without authentication; remote APM dependencies and recipient-agent execution are separate qualifications."
+  ]
+}
