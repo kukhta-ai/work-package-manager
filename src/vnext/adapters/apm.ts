@@ -177,6 +177,15 @@ function sourceInventory(source: string): InventoryFile[] {
 function readReceipt(path: string): PhaseReceipt {
   const value: unknown = JSON.parse(readFileSync(path, "utf8"));
   if (
+    value !== null &&
+    typeof value === "object" &&
+    "version" in value &&
+    value.version === "0.35.0"
+  )
+    throw new Error(
+      "APM 0.35.0 receipt requires explicit migration: preserve old state, reference the same authored source under a new setup name, then lock/install/compile with APM 0.39.0 and update work associations",
+    );
+  if (
     value === null ||
     typeof value !== "object" ||
     !("schemaVersion" in value) ||
@@ -1215,6 +1224,21 @@ export function validateApmMcpFiles(
     return;
   }
   const manifest: unknown = JSON.parse(metadata.bytes.toString("utf8"));
+  if (
+    manifest === null ||
+    typeof manifest !== "object" ||
+    Array.isArray(manifest) ||
+    !("dependencies" in manifest) ||
+    manifest.dependencies === null ||
+    typeof manifest.dependencies !== "object" ||
+    Array.isArray(manifest.dependencies) ||
+    !("mcp" in manifest.dependencies) ||
+    !Array.isArray(manifest.dependencies.mcp)
+  )
+    throw new Error("invalid canonical MCP metadata");
+  const canonical = { dependencies: { mcp: manifest.dependencies.mcp } };
+  if (!metadata.bytes.equals(Buffer.from(stableJson(canonical))))
+    throw new Error("MCP metadata must contain only canonical declaration bytes");
   projectMcp(manifest, "codex");
   projectMcp(manifest, "claude");
   const projection = projectMcp(manifest, target);

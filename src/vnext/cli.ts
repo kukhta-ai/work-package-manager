@@ -106,6 +106,9 @@ export function registerVnextCommands(
         : workspace.view();
     }),
   );
+  withExamples(view, [
+    { command: "wpm vnext --root ./brief view --agent-support --target codex --opening project" },
+  ]);
   const check = vnext
     .command("check")
     .alias("validate")
@@ -394,7 +397,7 @@ export function registerVnextCommands(
   );
   const setupAdd = setups
     .command("add")
-    .argument("<source>", "existing confined local setup directory")
+    .argument("<source>", "local setup directory or explicit APM remote reference")
     .description("Reference existing local source without copying or fetching")
     .requiredOption("--as <name>", "stable setup name")
     .option("--backend <backend>", "explicit plain or apm; otherwise detect known local source");
@@ -454,6 +457,9 @@ export function registerVnextCommands(
       }),
     );
   });
+  withExamples(inspectTool, [
+    { command: "wpm vnext worker-setup apm inspect-tool --executable /approved/apm" },
+  ]);
   for (const phase of ["lock", "install", "compile", "check"] as const) {
     const command = apm
       .command(phase)
@@ -502,7 +508,7 @@ export function registerVnextCommands(
     );
     withExamples(command, [
       {
-        command: `wpm vnext --root ./brief worker-setup apm ${phase} research --executable /approved/apm --sha256 <approved-executable-digest>${phase === "lock" ? "" : " --target codex"}`,
+        command: `wpm vnext --root ./brief worker-setup apm ${phase} research --executable /approved/apm --sha256 <approved-executable-digest> --distribution-sha256 <approved-distribution-digest>${phase === "lock" ? "" : " --target codex"}`,
         note: "Obtain and verify the pinned CLI distribution separately; this command never downloads an executable.",
       },
     ]);

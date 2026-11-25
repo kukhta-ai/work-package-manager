@@ -11,6 +11,7 @@ import {
   validateApmMcpFiles,
 } from "../../src/vnext/adapters/apm.js";
 import { VnextWorkspace } from "../../src/vnext/adapters/workspace.js";
+import { stableJson } from "../../src/vnext/core/model.js";
 import { projectMcp } from "../../src/vnext/core/worker-context.js";
 import { FakeBacklog } from "../doubles/fake-backlog.js";
 import { withTempDir } from "../helpers/tmpdir.js";
@@ -190,7 +191,7 @@ const manifest = {
 };
 function mcpFiles(target: Target) {
   return [
-    { path: "MCP.json", bytes: Buffer.from(JSON.stringify(manifest)) },
+    { path: "MCP.json", bytes: Buffer.from(stableJson(manifest)) },
     ...projectMcp(manifest, target).files.map((file) => ({
       path: file.path,
       bytes: Buffer.from(file.contents),
@@ -320,6 +321,34 @@ describe("APM worker executable, closure and replay boundaries", () => {
 });
 
 describe("portable APM MCP configuration validation", () => {
+  for (const target of ["codex", "claude"] as const)
+    it.each([
+      "root extra",
+      "duplicate root key",
+      "duplicate Authorization",
+    ] as const)(`rejects %s metadata bytes for ${target} without rewriting them`, (mode) => {
+      const credential = "hidden-literal-credential";
+      const encoded = JSON.stringify(manifest);
+      const raw =
+        mode === "root extra"
+          ? stableJson({ ...manifest, authorSecret: credential })
+          : mode === "duplicate root key"
+            ? `{"dependencies":{"authorSecret":"${credential}"},"dependencies":${JSON.stringify(manifest.dependencies)}}`
+            : encoded.replace(
+                `"Authorization":"Bearer ${variableReference}"`,
+                `"Authorization":"${credential}","Authorization":"Bearer ${variableReference}"`,
+              );
+      const files = mcpFiles(target);
+      const metadata = files.find((file) => file.path === "MCP.json");
+      if (!metadata) throw new Error("missing canonical metadata fixture");
+      metadata.bytes = Buffer.from(raw);
+      const before = files.map((file) => ({ ...file, bytes: Buffer.from(file.bytes) }));
+      expect(metadata.bytes.includes(credential)).toBe(true);
+      expect(() => validateApmMcpFiles(files, target)).toThrow(/canonical|metadata/);
+      expect(files).toEqual(before);
+      expect(metadata.bytes.includes(credential)).toBe(true);
+    });
+
   it.each(["codex", "claude"] as const)("accepts the exact canonical %s projection", (target) => {
     expect(() => validateApmMcpFiles(mcpFiles(target), target)).not.toThrow();
   });
@@ -354,7 +383,7 @@ describe("portable APM MCP configuration validation", () => {
         ],
       },
     };
-    files[0] = { path: "MCP.json", bytes: Buffer.from(JSON.stringify(literal)) };
+    files[0] = { path: "MCP.json", bytes: Buffer.from(stableJson(literal)) };
     expect(() => validateApmMcpFiles(files, target)).toThrow(
       /environment variable|literal|credentials/,
     );

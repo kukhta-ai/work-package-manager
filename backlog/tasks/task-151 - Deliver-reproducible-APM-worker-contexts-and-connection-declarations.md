@@ -4,7 +4,7 @@ title: Deliver reproducible APM worker contexts and connection declarations
 status: In Progress
 assignee: []
 created_date: '2026-11-25T19:23:17Z'
-updated_date: '2026-11-25T19:57:47Z'
+updated_date: '2026-11-25T20:17:34Z'
 labels: []
 dependencies: []
 references:
@@ -39,6 +39,7 @@ modified_files:
   - quality/mutation-waivers.json
   - groma/systems/wpm/containers/wpm-cli/components/vnext-contract.md
   - groma/systems/wpm/containers/wpm-cli/components/package-workspace.md
+  - groma/externals/apm-cli.md
 ordinal: 151000
 ---
 
@@ -66,5 +67,5 @@ Implement the approved APM worker plan: pin0.39.0, local/remote source resolutio
 ## Implementation Notes
 
 <!-- SECTION:NOTES:BEGIN -->
-Base2504a7483b39ce20c15a74be16307eac9edc2d83; branch feat/vnext-apm-workers. Implemented APM0.39.0 local/remote resolution and staging, approved distribution pins, secret-free MCP, project/session support, offline prepared-image recovery and canonical graph-import checks. quality:doctor PASS; quality:fast PASS135modules; focused6files238tests PASS; real live6 qualifier PASS local/transitive/public exact remote, both native client parsers, network-denied replay and relocation/reprepare. Latest directory delta focused67tests PASS. Independent review accepted material fixes; existing Ajv equivalence renewed10556comparisons, waiver count2 unchanged. Frozen critical1333mutants accepted1317killed9timeout2reviewed5staticerrors, unreviewed0. Next: stable full quality:ci, clean committed candidate:prepare(fullquality:release), same saved SDK APM/graph journeys and exact digest review. Final candidate/hosted qualification not yet claimed.
+Base2504a748; branch feat/vnext-apm-workers. Skills:wpm-repo-dev/test/architecture/review. APM0.39 implementation and actual shared-dist native/graph probes pass; focused6files238tests and fast135modules pass. Full quality:ci on2402bded completed178files:2637passed,1help-contract failure,2existinghostskips; NOT a passed full gate. Closed that missing-example defect and independently reproduced canonical metadata import gap with strict closed-byte validation+6regressions; closeout3files45tests PASS and fast135modules PASS. Existing Ajv equivalence renewal independently approved10556comparisons, unchanged2waivers; frozen1333mutants accepted, unreviewed0. Next: full quality:ci on committed fixes, isolated actual saved-SDK native APM+multigraph journeys, then task closeout and final clean-source candidate(fullquality:release). Candidate source/artifact and hosted results must be bound separately; public distribution inactive.
 <!-- SECTION:NOTES:END -->
