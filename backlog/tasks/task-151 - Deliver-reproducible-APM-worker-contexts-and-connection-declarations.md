@@ -4,7 +4,7 @@ title: Deliver reproducible APM worker contexts and connection declarations
 status: In Progress
 assignee: []
 created_date: '2026-11-25T19:23:17Z'
-updated_date: '2026-11-25T20:35:41Z'
+updated_date: '2026-11-25T20:42:21Z'
 labels: []
 dependencies: []
 references:
@@ -70,4 +70,6 @@ Implement the approved APM worker plan: pin0.39.0, local/remote source resolutio
 Base2504a748; branch feat/vnext-apm-workers. Skills:wpm-repo-dev/test/architecture/review. Source1a1135e8bfecbf4600d7c56550638324909121f2 full quality:ci PASS178files2644passed2existinghostconditional skips. Its isolated savedSDK SHA256d060b65e3f884c317c991d0395b3313d80780545a7ec9e2e469701fb698b5847 passes native0.39 local/transitive/pinned-remote, bothnativeconfigparsers, network-deniedoffline, relocation, graph2/import3; independently verified artifact/source affinity. Closeout review then found stale MCP after removing all declarations: minimal adapter fix preflights exact prior hashes and regularfiles for BOTH managedpaths before any MCP effects, retires owned outputs or replaces complete projection; explicitretry preserves foreignfiles. New14regressions: red8fail/6pass, fixed4files87PASS; purecore unchanged. Existing1333mutants disposition unchanged2waivers, Ajv equivalence independently approved10556comparisons. Next: independent bounded lifecyclefixreview, fresh stable-source quality:ci, updated actualsavedSDK native/graph/remote-wrapper/retirement proofs, then finalcleancommitted private candidate(fullquality:release) and exact-byte review. PriorSDK is baselineonly afterfix; no model/authentication or work-operation execution claimed. PR10draft/publicdistributioninactive.
 
 Lifecycle fix independent bounded review PASS; independent14regressions PASS, quality:fast PASS135modules. Top-level remote setup source actual saved-SDK baseline probe PASS with add-only declaration delta, exact commit and both targets. Refresh all SDK evidence after the adapter fix; old SDK digest is baseline only.
+
+Additional real native empty-graph probe confirmed APM0.39 emits format1 with dependencies[]; both targets retain those exact bytes across install/frozen/compile. Narrow adapter compatibility fix accepts only this exact empty case and compares empty1/4 graphs equally while retaining raw native SHA bindings. Seven positive/negative regressions PASS; combined focused4files94PASS and independent7cases/review ACCEPTED. quality:ci on0f450ea was intentionally stopped(exit130), never a passed full gate. MCP-only without native instruction/skill context remains explicitly unprepared on native compile failure; canonical docs now state that limit. Next: full gates and new SDK proof on this committed compatibility fix.
 <!-- SECTION:NOTES:END -->

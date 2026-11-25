@@ -231,16 +231,20 @@ function resolvedGraph(text: string): string {
     typeof value !== "object" ||
     Array.isArray(value) ||
     !("lockfile_version" in value) ||
-    String(value.lockfile_version) !== "4" ||
     !("apm_version" in value) ||
     value.apm_version !== APM_VERSION ||
     !("dependencies" in value) ||
-    !Array.isArray(value.dependencies)
+    !Array.isArray(value.dependencies) ||
+    (String(value.lockfile_version) !== "4" &&
+      !(String(value.lockfile_version) === "1" && value.dependencies.length === 0))
   )
     throw new Error(
       "unsupported native APM lock format; explicitly lock and prepare with APM 0.39.0",
     );
   const result: Record<string, unknown> = { ...value };
+  // APM 0.39 emits format 1 for an empty graph; root deployment hashes may raise it to 4.
+  // Compare those empty graphs equally while receipts still bind the exact native lock bytes.
+  if (value.dependencies.length === 0) result.lockfile_version = "4";
   // Native target deployment drops manifest_targets; the authored manifest and receipt bind target support separately.
   delete result.manifest_targets;
   delete result.deployments;

@@ -65,6 +65,104 @@ function commandStub(
 
 describe("optional pinned APM integration contract", () => {
   it.each([
+    "1",
+    "4",
+  ])("prepares a native format-1 empty graph with target format %s while preserving lock bytes", async (targetFormat) =>
+    withTempDir((root) => {
+      const { source, tool } = fixture(root);
+      const calls: { args: string[]; env: Record<string, string> }[] = [];
+      const native = commandStub(source, calls);
+      const emptyLock = stringify({
+        lockfile_version: "1",
+        apm_version: "0.39.0",
+        manifest_targets: ["claude", "codex"],
+        dependencies: [],
+        deployments: [],
+      });
+      const backend = new ApmBackend(
+        root,
+        "composed",
+        "worker-setup/composed",
+        tool,
+        (executable, args, options) => {
+          const result = native(executable, args, options);
+          if (args[0] === "lock") writeFileSync(join(options.cwd, "apm.lock.yaml"), emptyLock);
+          if (args[0] === "install" && targetFormat === "4") {
+            const destination = args[args.indexOf("--root") + 1];
+            if (!destination) throw new Error("missing target");
+            writeFileSync(join(destination, "apm.lock.yaml"), emptyLock.replace("'1'", "'4'"));
+          }
+          return result;
+        },
+      );
+      backend.lock();
+      const count = calls.length;
+      expect(backend.lock({ check: true })).toMatchObject({ checked: true });
+      expect(calls).toHaveLength(count);
+      backend.install("codex");
+      backend.compile("codex");
+      expect(backend.check("codex")).toMatchObject({ checked: true });
+      expect(readFileSync(join(source, "apm.lock.yaml"), "utf8")).toBe(emptyLock);
+      expect(
+        readFileSync(join(root, ".wpm-apm/composed/targets/codex/apm.lock.yaml"), "utf8"),
+      ).toBe(targetFormat === "4" ? emptyLock.replace("'1'", "'4'") : emptyLock);
+      expect(
+        preparedApmSetup(root, "composed", "worker-setup/composed").some((file) =>
+          file.path.endsWith("AGENTS.md"),
+        ),
+      ).toBe(true);
+    }));
+
+  it.each([
+    [
+      "format-1 nonempty graph",
+      {
+        lockfile_version: "1",
+        dependencies: [
+          { repo_url: "https://github.com/owner/repo", resolved_commit: "a".repeat(40) },
+        ],
+      },
+    ],
+    ["unsupported format", { lockfile_version: "2" }],
+    ["old APM version", { lockfile_version: "1", apm_version: "0.35.0" }],
+    ["missing dependencies", { lockfile_version: "1", dependencies: undefined }],
+    ["other empty format", { lockfile_version: "1.0" }],
+  ])("rejects %s before replacing accepted lock evidence", async (_label, overrides) =>
+    withTempDir((root) => {
+      const { source, tool } = fixture(root);
+      const native = commandStub(source, []);
+      let rejectNext = false;
+      const backend = new ApmBackend(
+        root,
+        "composed",
+        "worker-setup/composed",
+        tool,
+        (executable, args, options) => {
+          const result = native(executable, args, options);
+          if (rejectNext && args[0] === "lock")
+            writeFileSync(
+              join(options.cwd, "apm.lock.yaml"),
+              stringify({
+                apm_version: "0.39.0",
+                dependencies: [],
+                ...overrides,
+              }),
+            );
+          return result;
+        },
+      );
+      backend.lock();
+      const lockPath = join(source, "apm.lock.yaml");
+      const receiptPath = join(root, ".wpm-apm/composed/resolution.json");
+      const beforeLock = readFileSync(lockPath);
+      const beforeReceipt = readFileSync(receiptPath);
+      rejectNext = true;
+      expect(() => backend.lock({ upgrade: true })).toThrow("unsupported native APM lock format");
+      expect(readFileSync(lockPath)).toEqual(beforeLock);
+      expect(readFileSync(receiptPath)).toEqual(beforeReceipt);
+    }));
+
+  it.each([
     [".agents/skills/brief/docs/Guide.md", ".agents/skills/brief/docs/guide.md"],
     [".agents/skills/brief/caf\u00e9.md", ".agents/skills/brief/cafe\u0301.md"],
     [".agents/skills/brief/Doc", ".agents/skills/brief/doc/chapter.md"],
