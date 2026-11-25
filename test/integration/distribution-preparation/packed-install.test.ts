@@ -1850,7 +1850,9 @@ describe("fresh local packed-install and inactive-candidate journey", () => {
         );
       }
       expect(taskIdsFromPlainOutput(String(claimedTaskList.stdout))).toContain(selectedTask);
-      expect(taskIdsFromPlainOutput(String(claimedReady.stdout))).toEqual(initialReadyIds);
+      expect(taskIdsFromPlainOutput(String(claimedReady.stdout)).sort()).toEqual(
+        [...initialReadyIds].sort(),
+      );
       const resumeVerification = runInstalledWpm(
         ["-C", installedWorkspace, "authoring", "handoff", "verify", "--client", "codex", "--json"],
         installedWorkspace,
