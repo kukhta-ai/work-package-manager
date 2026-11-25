@@ -61,6 +61,26 @@ function taskDetail(root: string, id: string): string {
 describeIfBacklog(
   "BacklogCli (the real shell-out adapter, against real Backlog.md in a tmpdir)",
   () => {
+    it("binds every native call to its explicit root despite a foreign BACKLOG_CWD", async () => {
+      await withTempDir((dir) => {
+        const expected = join(dir, "expected");
+        const foreign = join(dir, "foreign");
+        mkdirSync(expected);
+        mkdirSync(foreign);
+        const native = new BacklogCli("backlog", isolatedEnv(dir));
+        native.init(expected, { taskPrefix: "authoring" });
+        native.init(foreign, { taskPrefix: "authoring" });
+        const redirected = new BacklogCli("backlog", { ...isolatedEnv(dir), BACKLOG_CWD: foreign });
+        const task = redirected.createTask(expected, {
+          title: "Explicit root",
+          acceptanceCriteria: ["Only expected source changes"],
+        });
+        expect(redirected.readTask(expected, task.id).title).toBe("Explicit root");
+        expect(native.inspectTaskInventory(expected).activeEntries).toEqual([task.id]);
+        expect(native.inspectTaskInventory(foreign).activeEntries).toEqual([]);
+      });
+    });
+
     it("initializes the exact defaults when EDITOR and VISUAL are absent", async () => {
       await withTempDir((dir) => {
         withoutEditorEnvironment(() => {

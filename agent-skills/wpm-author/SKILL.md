@@ -216,3 +216,5 @@ Use selection `claimed` only after the single CLI edit and all verifying reads s
 separately so a run that both claims and routes, or resumes and handles directly, preserves both observable
 facts. Never let a partial orientation, readable task title, or available unrelated specialist erase an
 independent blocker.
+
+For every native Backlog invocation, bind the per-process `BACKLOG_CWD` to the resolved scoped Backlog root. In 1.57.4 an ambient override can redirect even a command with the correct working directory. Never change global environment or agent configuration to establish this boundary.

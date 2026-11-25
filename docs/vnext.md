@@ -18,7 +18,7 @@ wpm vnext --root ./brief build
 wpm vnext --root ./brief test
 ```
 
-Backlog.md is an explicit author-side prerequisite. Source tasks live in `.wpm-source/backlog/`, managed exclusively through the Backlog.md CLI. For richer descriptions, comments and acceptance criteria, run that CLI with `.wpm-source` as its working directory. The package records each task's identity plus a `wpm-operation:<slug>` label. WPM creates native tasks; it does not maintain a parallel task-content store.
+Backlog.md is an explicit author-side prerequisite. Source tasks live in `.wpm-source/backlog/`, managed exclusively through the Backlog.md CLI. For richer descriptions, comments and acceptance criteria, run that CLI with `.wpm-source` as its working directory and bind per-process `BACKLOG_CWD` to the same absolute directory. Working directory alone is insufficient when an ambient override exists. The package records each task's identity plus a `wpm-operation:<slug>` label. WPM creates native tasks; it does not maintain a parallel task-content store.
 
 ```yaml
 schemaVersion: 1
@@ -49,11 +49,12 @@ An operation's prerequisites come from its native Backlog task dependencies. Gro
 
 ## Complete single-package authoring
 
-Backlog.md **1.57.4** is the pinned authoring CLI. It replaces the former native sequence command with `task list --ready`; shipped author guidance reads the complete list separately and obtains exact direct dependencies from versioned JSON task views. Ready-list order is native ordering, never group-defined execution order. WPM keeps all task content native:
+Backlog.md **1.57.4** is the pinned authoring CLI. Each adapter call pins per-process `BACKLOG_CWD` to its explicit root; an ambient override cannot redirect it to another workspace. Native edit references include both cwd and that environment binding. It replaces the former native sequence command with `task list --ready`; shipped author guidance reads the complete list separately and obtains exact direct dependencies from versioned JSON task views. Ready-list order is native ordering, never group-defined execution order. WPM keeps all task content native:
 
 ```sh
 wpm vnext --root ./brief operation create brief "Produce a brief"
-# Run the local Backlog.md CLI with ./brief/.wpm-source as cwd:
+# Invoke the local Backlog.md CLI with both cwd and per-process BACKLOG_CWD
+# bound to the absolute ./brief/.wpm-source directory:
 # backlog task edit operation-1 --description "Produce a readable brief" --ac "The brief addresses the selected problem"
 wpm vnext --root ./brief operation view brief
 wpm vnext --root ./brief operation finalize brief

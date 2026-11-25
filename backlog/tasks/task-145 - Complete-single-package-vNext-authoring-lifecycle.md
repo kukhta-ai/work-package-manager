@@ -4,7 +4,7 @@ title: Complete single-package vNext authoring lifecycle
 status: In Progress
 assignee: []
 created_date: '2026-11-25T13:26:00Z'
-updated_date: '2026-11-25T14:20:36Z'
+updated_date: '2026-11-25T14:26:37Z'
 labels: []
 dependencies: []
 references:
@@ -37,6 +37,7 @@ modified_files:
   - agent-skills/wpm-author/SKILL.md
   - test/unit/agent-skills/wpm-author-router-skill.test.ts
   - test/unit/agent-skills/wpm-author-recipe-skill.test.ts
+  - test/integration/adapters/backlog-cli.test.ts
 ordinal: 145000
 ---
 
@@ -71,4 +72,6 @@ Implementation uses user-approved task-backed drafts with wpm-authoring:draft an
 Current validation: quality:fast PASS (128 product modules); all unit files PASS (128 files, 1949 passed, 1 existing host-conditional skip); focused vNext integration including installed archive PASS (3 files,26 tests); real legacy bundle-ID E2E PASS (79 tests); legacy bundle lifecycle PASS (7 tests); help and author-skill structural suites PASS. Backlog1.57.4 removes sequence; shipped guidance now uses full list plus native --ready subset, exact JSON dependency snapshots and pre/post-claim edge freshness. Native display graphs are derived, so consumer preservation checks bind unchanged source bytes. Last full CI hit ENOSPC, report truncated at40960bytes; no successful full CI/release/candidate claim. Retired obsolete unreferenced Node24/Bun distributions and npm cache; doctor PASS with active Groma approvals intact. About400MB free; async request for1–2GB or alternate scratch pending. TASK remains In Progress until full gates and private candidate qualify. Source base fdc059814c311283c0b3d4ae8ba51074c627cd56 plus this worktree.
 
 Final compatibility review accepted by authoring_review: ready subset/full snapshot distinction, exact JSON dependencies at freshness and post-claim boundaries, unchanged native source-byte assertions. 3 focused review files/27 tests PASS. Latest complete-band attempt again exhausted disk as npm cache grew~400MB; log40960bytes truncated and gate exit1, not a pass. npm cache cleaned, ~400MB restored; active SDK intact. User confirmed additional space within30min. Draft PR may be opened while full qualification/candidate remain pending; no publication/merge/tag authorization.
+
+Additional exact-root defect reproduced in1.57.4: foreign BACKLOG_CWD redirected createTask despite explicit cwd. Adapter now pins per-process BACKLOG_CWD=resolve(root); view edit reference carries env and docs/skills require scoped binding. Two-root native regression PASS; independent review of adapter delta2files/15tests PASS, installed-vNext plus adapter/wire3files/16tests PASS. User space arrived (~2.3GiB), removing resource blocker; retain active SDK. Final full CI/release/candidate will use new committed revision; prior source qualification is not reused as a pass.
 <!-- SECTION:NOTES:END -->

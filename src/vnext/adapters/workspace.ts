@@ -621,7 +621,11 @@ export class VnextWorkspace {
       groups: Object.keys(source.groups).filter((name) =>
         selectOperations(source, name).includes(id),
       ),
-      nativeEdit: { cwd: authoring, argv: ["backlog", "task", "edit", task.id] },
+      nativeEdit: {
+        cwd: authoring,
+        env: { BACKLOG_CWD: authoring },
+        argv: ["backlog", "task", "edit", task.id],
+      },
     };
   }
 

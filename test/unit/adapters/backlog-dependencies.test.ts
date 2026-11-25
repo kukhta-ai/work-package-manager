@@ -40,6 +40,7 @@ describe("native JSON dependency boundary", () => {
     ]);
     expect(run).toHaveBeenLastCalledWith("backlog", ["task", "view", "operation-2", "--json"], {
       cwd: "/project",
+      env: { BACKLOG_CWD: "/project" },
     });
   });
   it("rejects mismatched native JSON identities", () => {

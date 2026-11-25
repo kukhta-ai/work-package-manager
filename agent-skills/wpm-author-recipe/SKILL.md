@@ -187,3 +187,5 @@ Return an inspectable result:
 Use `ready` only when detect/setup/verify, current state, applicable immutable migrations, observable acceptance
 outcomes, receipt gates, and the dependency graph are all coherent. Otherwise state exactly what remains and
 never claim the recipe or package is complete.
+
+For every native Backlog invocation, bind the per-process `BACKLOG_CWD` to the resolved scoped Backlog root. In 1.57.4 an ambient override can redirect even a command with the correct working directory. Never change global environment or agent configuration to establish this boundary.

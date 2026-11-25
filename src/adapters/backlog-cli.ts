@@ -1,5 +1,5 @@
 import { lstatSync, readdirSync, readFileSync } from "node:fs";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import type {
   BacklogAvailability,
   BacklogMd,
@@ -147,9 +147,9 @@ export class BacklogCli implements BacklogMd {
     }
   }
 
-  /** Build the {@link runSync} options for a call in this backlog `root`, including any env overlay. */
+  /** Bind native cwd overrides to the explicit root, preserving other per-process environment inputs. */
   private opts(root: string): { cwd: string; env?: Readonly<Record<string, string>> } {
-    return this.env !== undefined ? { cwd: root, env: this.env } : { cwd: root };
+    return { cwd: root, env: { ...this.env, BACKLOG_CWD: resolve(root) } };
   }
 
   /** @inheritdoc */
