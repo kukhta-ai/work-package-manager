@@ -1,10 +1,10 @@
 ---
 id: TASK-151
 title: Deliver reproducible APM worker contexts and connection declarations
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-11-25T19:23:17Z'
-updated_date: '2026-11-25T20:42:21Z'
+updated_date: '2026-11-25T20:58:34Z'
 labels: []
 dependencies: []
 references:
@@ -54,22 +54,24 @@ Implement the approved APM worker plan: pin0.39.0, local/remote source resolutio
 - [x] #1 Authors can resolve, preserve, upgrade and replay local and remote APM setup dependencies using exact content evidence.
 - [x] #2 Codex and Claude Code receive isolated instructions, skills and MCP declarations without embedded secrets, with explicit project/session loading requirements.
 - [x] #3 Interrupted operations recover without adopting foreign files; stale or changed contexts cannot enter package graph releases.
-- [ ] #4 The saved SDK archive passes real APM0.39.0 local and remote qualification, native configuration checks and the required full quality band.
+- [x] #4 The saved SDK archive passes real APM0.39.0 local and remote qualification, native configuration checks and the required full quality band.
 <!-- AC:END -->
 
 ## Definition of Done
 <!-- DOD:BEGIN -->
-- [ ] #1 Typechecks clean (tsc --noEmit) and Biome clean (biome ci)
-- [ ] #2 Tests added and green (vitest): unit for pure logic, integration where it touches ports
-- [ ] #3 Public functions documented; no dead code; the core import-boundary rule is not violated
+- [x] #1 Typechecks clean (tsc --noEmit) and Biome clean (biome ci)
+- [x] #2 Tests added and green (vitest): unit for pure logic, integration where it touches ports
+- [x] #3 Public functions documented; no dead code; the core import-boundary rule is not violated
 <!-- DOD:END -->
 
 ## Implementation Notes
 
 <!-- SECTION:NOTES:BEGIN -->
-Base2504a748; branch feat/vnext-apm-workers. Skills:wpm-repo-dev/test/architecture/review. Source1a1135e8bfecbf4600d7c56550638324909121f2 full quality:ci PASS178files2644passed2existinghostconditional skips. Its isolated savedSDK SHA256d060b65e3f884c317c991d0395b3313d80780545a7ec9e2e469701fb698b5847 passes native0.39 local/transitive/pinned-remote, bothnativeconfigparsers, network-deniedoffline, relocation, graph2/import3; independently verified artifact/source affinity. Closeout review then found stale MCP after removing all declarations: minimal adapter fix preflights exact prior hashes and regularfiles for BOTH managedpaths before any MCP effects, retires owned outputs or replaces complete projection; explicitretry preserves foreignfiles. New14regressions: red8fail/6pass, fixed4files87PASS; purecore unchanged. Existing1333mutants disposition unchanged2waivers, Ajv equivalence independently approved10556comparisons. Next: independent bounded lifecyclefixreview, fresh stable-source quality:ci, updated actualsavedSDK native/graph/remote-wrapper/retirement proofs, then finalcleancommitted private candidate(fullquality:release) and exact-byte review. PriorSDK is baselineonly afterfix; no model/authentication or work-operation execution claimed. PR10draft/publicdistributioninactive.
-
-Lifecycle fix independent bounded review PASS; independent14regressions PASS, quality:fast PASS135modules. Top-level remote setup source actual saved-SDK baseline probe PASS with add-only declaration delta, exact commit and both targets. Refresh all SDK evidence after the adapter fix; old SDK digest is baseline only.
-
-Additional real native empty-graph probe confirmed APM0.39 emits format1 with dependencies[]; both targets retain those exact bytes across install/frozen/compile. Narrow adapter compatibility fix accepts only this exact empty case and compares empty1/4 graphs equally while retaining raw native SHA bindings. Seven positive/negative regressions PASS; combined focused4files94PASS and independent7cases/review ACCEPTED. quality:ci on0f450ea was intentionally stopped(exit130), never a passed full gate. MCP-only without native instruction/skill context remains explicitly unprepared on native compile failure; canonical docs now state that limit. Next: full gates and new SDK proof on this committed compatibility fix.
+Implementation source: 5847ccb3d02a91419dbe019f99b5de73cdb70403; base2504a748, branch feat/vnext-apm-workers, PR10. Skills: wpm-repo-dev/test/architecture/review. npm run quality:ci PASS:178files,2665passed,2existinghost-conditional skips (Go cleanup host and native Windows no-replace publication). quality:fast/agents/135-module architecture PASS; critical1333mutants accepted,unreviewed0, unchanged2existing dispositions. Existing exact Ajv equivalence independently reviewed with10556comparisons. Isolated committed producer saved SDK SHA2560edd1905e08854856ec3448c0cae67203fef05c836689b8960d9bcfc37d11e1d (809762bytes) installed normally with explicit Backlog.md1.57.4. Actual APM0.39 local/transitive/exactremote, top-level remote setup declaration+prepare, both native MCP configuration parsers, network-denied offline replay, relocation, graph2/frozenimport3 and41-command remote+MCPretirement journey PASS. Independent code and exact artifact/evidence audits ACCEPTED;14ownership/retry regressions and7empty-lock regressions PASS. Native empty-graph format1 is accepted narrowly with exact original byte bindings; MCP removal retires only owned outputs. Limitations: no model/session instruction execution or production authentication; graph recipient proof is static(workOperations0); standalone MCP-only without compilable native context stays unprepared, registry-only unresolved MCP/plugins/LSP/managed agents outside scope. Raw reports are local private working memory in /workspace/active/wpm-apm-preflight-5847ccb-20261125 and ignored .quality. Prior2402 gate failed help example (fixed),0f450 gate stopped130 for interoperability fix, neither substitutes for the passed5847 gate. Next action: metadata-only closeout commit, final clean-source candidate:prepare(full quality:release), verify SDK byte affinity and independent candidate envelope review; retain private receipt and update PR10. Public distribution remains inactive; no merge/tag/publish.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Delivered reproducible APM0.39 worker contexts and secret-free MCP declarations for both hosts, with owned retirement/recovery and native empty-lock interoperability. Stable implementation full CI and actual saved-SDK native/graph/remote/retirement qualification passed; final private candidate envelope follows the clean metadata-only closeout.
+<!-- SECTION:FINAL_SUMMARY:END -->
