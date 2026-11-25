@@ -1,3 +1,4 @@
+import { resolve } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { BacklogCli } from "../../../src/adapters/backlog-cli.js";
 import * as shell from "../../../src/util/shell.js";
@@ -5,6 +6,7 @@ import * as shell from "../../../src/util/shell.js";
 afterEach(() => vi.restoreAllMocks());
 describe("native JSON dependency boundary", () => {
   it.each(["\n", "\r\n"])("reads exact direct dependencies with %j line endings", (newline) => {
+    const root = resolve("/project");
     const text = [
       "Task OPERATION-2 - Review",
       "Status: To Do",
@@ -35,12 +37,10 @@ describe("native JSON dependency boundary", () => {
         stderr: "",
         exitCode: 0,
       });
-    expect(new BacklogCli().readTask("/project", "operation-2").dependencies).toEqual([
-      "operation-1",
-    ]);
+    expect(new BacklogCli().readTask(root, "operation-2").dependencies).toEqual(["operation-1"]);
     expect(run).toHaveBeenLastCalledWith("backlog", ["task", "view", "operation-2", "--json"], {
-      cwd: "/project",
-      env: { BACKLOG_CWD: "/project" },
+      cwd: root,
+      env: { BACKLOG_CWD: root },
     });
   });
   it("rejects mismatched native JSON identities", () => {
