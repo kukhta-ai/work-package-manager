@@ -1,0 +1,9 @@
+{
+  "name": "wpm-groma-sdk-typescript",
+  "version": "1.0.0",
+  "type": "commonjs",
+  "private": true,
+  "dependencies": {
+    "@groma/scanner-typescript": "0.2.4"
+  }
+}

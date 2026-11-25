@@ -1,0 +1,166 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://work-package-manager.local/schemas/evolution-record.schema.json",
+  "title": "WPM evolution record",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "id",
+    "title",
+    "episodeStatus",
+    "maturity",
+    "architectureStatus",
+    "purpose",
+    "baselineRevision",
+    "preCleanupRevision",
+    "canonicalTruth",
+    "observations",
+    "decisions",
+    "waivers",
+    "residualRisks",
+    "candidateDestinations",
+    "archive",
+    "updatedAt"
+  ],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "id": { "type": "string", "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$" },
+    "title": { "type": "string", "minLength": 1 },
+    "episodeStatus": { "enum": ["active", "closed"] },
+    "maturity": { "enum": ["make-it-exist-first", "research-pilot", "productized"] },
+    "architectureStatus": { "enum": ["provisional", "evolving", "accepted"] },
+    "purpose": { "type": "string", "minLength": 1 },
+    "baselineRevision": { "type": "string", "pattern": "^[a-f0-9]{40}$" },
+    "preCleanupRevision": { "type": "string", "pattern": "^[a-f0-9]{40}$" },
+    "pullRequest": { "type": "string", "pattern": "^https://" },
+    "canonicalTruth": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "observations": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/evidencedStatement" }
+    },
+    "decisions": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/decision" }
+    },
+    "waivers": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/waiver" }
+    },
+    "residualRisks": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "candidateDestinations": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/hypothesis" }
+    },
+    "archive": { "$ref": "#/$defs/archive" },
+    "updatedAt": { "type": "string", "format": "date-time" }
+  },
+  "$defs": {
+    "evidencedStatement": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["statement", "evidence"],
+      "properties": {
+        "statement": { "type": "string", "minLength": 1 },
+        "evidence": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "decision": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["decision", "rationale", "evidence"],
+      "properties": {
+        "decision": { "type": "string", "minLength": 1 },
+        "rationale": { "type": "string", "minLength": 1 },
+        "evidence": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "waiver": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "scope",
+        "authority",
+        "approvedBy",
+        "approvedAt",
+        "limitation",
+        "evidence"
+      ],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "scope": { "type": "string", "minLength": 1 },
+        "authority": { "const": "human" },
+        "approvedBy": { "type": "string", "minLength": 1 },
+        "approvedAt": { "type": "string", "format": "date" },
+        "limitation": { "type": "string", "minLength": 1 },
+        "evidence": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "hypothesis": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "hypothesis", "evidenceNeeded"],
+      "properties": {
+        "status": { "const": "hypothesis" },
+        "hypothesis": { "type": "string", "minLength": 1 },
+        "evidenceNeeded": { "type": "string", "minLength": 1 }
+      }
+    },
+    "archive": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "rawEvidenceDisposition"],
+      "properties": {
+        "status": { "enum": ["not-configured", "external"] },
+        "rawEvidenceDisposition": {
+          "enum": ["local-ignored-until-cleanup", "cleaned-after-distillation", "external-archive"]
+        },
+        "pointer": { "$ref": "#/$defs/archivePointer" }
+      }
+    },
+    "archivePointer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "uri",
+        "checksum",
+        "expiresOn",
+        "privacyClass",
+        "approvalAuthority",
+        "approvedBy",
+        "approvedAt"
+      ],
+      "properties": {
+        "uri": { "type": "string", "minLength": 1 },
+        "checksum": { "type": "string", "minLength": 1 },
+        "expiresOn": { "type": "string", "format": "date" },
+        "privacyClass": { "type": "string", "minLength": 1 },
+        "approvalAuthority": { "const": "human" },
+        "approvedBy": { "type": "string", "minLength": 1 },
+        "approvedAt": { "type": "string", "format": "date-time" }
+      }
+    }
+  }
+}

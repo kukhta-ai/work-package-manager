@@ -1,0 +1,188 @@
+rules:
+  - id: no-shell-interpolation
+    languages:
+      - typescript
+      - javascript
+    severity: ERROR
+    message: Use execFile/spawn and an argv array; raw shell execution is forbidden.
+    pattern-either:
+      - pattern: exec($COMMAND, ...)
+      - patterns:
+          - pattern-inside: |-
+              import { exec as $CALL } from "node:child_process";
+              ...
+          - pattern: $CALL($COMMAND, ...)
+      - patterns:
+          - pattern-inside: |-
+              import * as $CP from "node:child_process";
+              ...
+          - pattern: $CP.exec($COMMAND, ...)
+      - patterns:
+          - pattern-inside: |-
+              import $CP from "node:child_process";
+              ...
+          - pattern: $CP.exec($COMMAND, ...)
+      - patterns:
+          - pattern-inside: |-
+              const $CP = require("node:child_process");
+              ...
+          - pattern: $CP.exec($COMMAND, ...)
+      - patterns:
+          - pattern-inside: |-
+              import { exec as $CALL } from "child_process";
+              ...
+          - pattern: $CALL($COMMAND, ...)
+      - patterns:
+          - pattern-inside: |-
+              import * as $CP from "child_process";
+              ...
+          - pattern: $CP.exec($COMMAND, ...)
+      - patterns:
+          - pattern-inside: |-
+              import $CP from "child_process";
+              ...
+          - pattern: $CP.exec($COMMAND, ...)
+      - patterns:
+          - pattern-inside: |-
+              const $CP = require("child_process");
+              ...
+          - pattern: $CP.exec($COMMAND, ...)
+      - pattern: execSync($COMMAND, ...)
+      - patterns:
+          - pattern-inside: |-
+              import { execSync as $CALL } from "node:child_process";
+              ...
+          - pattern: $CALL($COMMAND, ...)
+      - patterns:
+          - pattern-inside: |-
+              import * as $CP from "node:child_process";
+              ...
+          - pattern: $CP.execSync($COMMAND, ...)
+      - patterns:
+          - pattern-inside: |-
+              import $CP from "node:child_process";
+              ...
+          - pattern: $CP.execSync($COMMAND, ...)
+      - patterns:
+          - pattern-inside: |-
+              const $CP = require("node:child_process");
+              ...
+          - pattern: $CP.execSync($COMMAND, ...)
+      - patterns:
+          - pattern-inside: |-
+              import { execSync as $CALL } from "child_process";
+              ...
+          - pattern: $CALL($COMMAND, ...)
+      - patterns:
+          - pattern-inside: |-
+              import * as $CP from "child_process";
+              ...
+          - pattern: $CP.execSync($COMMAND, ...)
+      - patterns:
+          - pattern-inside: |-
+              import $CP from "child_process";
+              ...
+          - pattern: $CP.execSync($COMMAND, ...)
+      - patterns:
+          - pattern-inside: |-
+              const $CP = require("child_process");
+              ...
+          - pattern: $CP.execSync($COMMAND, ...)
+  - id: no-spawn-shell
+    languages:
+      - typescript
+      - javascript
+    severity: ERROR
+    message: Keep shell:false and pass an executable with an argv array.
+    pattern-either:
+      - pattern: "spawn($COMMAND, ..., { ..., shell: true, ... })"
+      - patterns:
+          - pattern-inside: |-
+              import { spawn as $CALL } from "node:child_process";
+              ...
+          - pattern: "$CALL($COMMAND, ..., { ..., shell: true, ... })"
+      - patterns:
+          - pattern-inside: |-
+              import * as $CP from "node:child_process";
+              ...
+          - pattern: "$CP.spawn($COMMAND, ..., { ..., shell: true, ... })"
+      - patterns:
+          - pattern-inside: |-
+              import $CP from "node:child_process";
+              ...
+          - pattern: "$CP.spawn($COMMAND, ..., { ..., shell: true, ... })"
+      - patterns:
+          - pattern-inside: |-
+              const $CP = require("node:child_process");
+              ...
+          - pattern: "$CP.spawn($COMMAND, ..., { ..., shell: true, ... })"
+      - patterns:
+          - pattern-inside: |-
+              import { spawn as $CALL } from "child_process";
+              ...
+          - pattern: "$CALL($COMMAND, ..., { ..., shell: true, ... })"
+      - patterns:
+          - pattern-inside: |-
+              import * as $CP from "child_process";
+              ...
+          - pattern: "$CP.spawn($COMMAND, ..., { ..., shell: true, ... })"
+      - patterns:
+          - pattern-inside: |-
+              import $CP from "child_process";
+              ...
+          - pattern: "$CP.spawn($COMMAND, ..., { ..., shell: true, ... })"
+      - patterns:
+          - pattern-inside: |-
+              const $CP = require("child_process");
+              ...
+          - pattern: "$CP.spawn($COMMAND, ..., { ..., shell: true, ... })"
+      - pattern: "spawnSync($COMMAND, ..., { ..., shell: true, ... })"
+      - patterns:
+          - pattern-inside: |-
+              import { spawnSync as $CALL } from "node:child_process";
+              ...
+          - pattern: "$CALL($COMMAND, ..., { ..., shell: true, ... })"
+      - patterns:
+          - pattern-inside: |-
+              import * as $CP from "node:child_process";
+              ...
+          - pattern: "$CP.spawnSync($COMMAND, ..., { ..., shell: true, ... })"
+      - patterns:
+          - pattern-inside: |-
+              import $CP from "node:child_process";
+              ...
+          - pattern: "$CP.spawnSync($COMMAND, ..., { ..., shell: true, ... })"
+      - patterns:
+          - pattern-inside: |-
+              const $CP = require("node:child_process");
+              ...
+          - pattern: "$CP.spawnSync($COMMAND, ..., { ..., shell: true, ... })"
+      - patterns:
+          - pattern-inside: |-
+              import { spawnSync as $CALL } from "child_process";
+              ...
+          - pattern: "$CALL($COMMAND, ..., { ..., shell: true, ... })"
+      - patterns:
+          - pattern-inside: |-
+              import * as $CP from "child_process";
+              ...
+          - pattern: "$CP.spawnSync($COMMAND, ..., { ..., shell: true, ... })"
+      - patterns:
+          - pattern-inside: |-
+              import $CP from "child_process";
+              ...
+          - pattern: "$CP.spawnSync($COMMAND, ..., { ..., shell: true, ... })"
+      - patterns:
+          - pattern-inside: |-
+              const $CP = require("child_process");
+              ...
+          - pattern: "$CP.spawnSync($COMMAND, ..., { ..., shell: true, ... })"
+  - id: no-tls-bypass
+    languages:
+      - typescript
+      - javascript
+    severity: ERROR
+    message: Never disable TLS certificate verification.
+    pattern-either:
+      - pattern: process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0"
+      - pattern: "{ ..., rejectUnauthorized: false, ... }"
