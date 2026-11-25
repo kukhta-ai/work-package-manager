@@ -1,5 +1,6 @@
 import { Ajv } from "ajv";
 import { parse as parseVersion } from "semver";
+import { type DependencyDeclarations, validateDependencies } from "./dependencies.js";
 
 /** A source definition for the recipient's existing agent; never an installed agent. */
 export interface SetupDefinition {
@@ -16,8 +17,8 @@ export interface OperationGroup {
   groups: string[];
 }
 /** Independent vNext source contract; legacy manifest.yml remains unchanged. */
-export interface PackageSource {
-  schemaVersion: 1;
+export interface PackageSource extends DependencyDeclarations {
+  schemaVersion: 1 | 2;
   name: string;
   version: string;
   work: WorkOperation[];
@@ -27,13 +28,27 @@ export interface PackageSource {
 }
 
 const slug = { type: "string", pattern: "^[a-z][a-z0-9-]*$" };
+const dependencyFields = { source: { type: "string" }, range: { type: "string" } };
+const dependencyMapSchema = {
+  type: "object",
+  propertyNames: slug,
+  additionalProperties: {
+    type: "object",
+    additionalProperties: false,
+    required: Object.keys(dependencyFields),
+    properties: dependencyFields,
+  },
+};
 export const packageSchema = {
-  $id: "https://wpm.local/schema/package-vnext-1",
+  $id: "https://wpm.local/schema/package-vnext-2",
   type: "object",
   additionalProperties: false,
   required: ["schemaVersion", "name", "version", "work", "groups", "workerSetup", "files"],
   properties: {
-    schemaVersion: { const: 1 },
+    schemaVersion: { enum: [1, 2] },
+    dependencies: dependencyMapSchema,
+    devDependencies: dependencyMapSchema,
+    optionalDependencies: dependencyMapSchema,
     name: slug,
     version: {
       type: "string",
@@ -163,6 +178,12 @@ export function assertSlug(value: string): void {
 export function parsePackage(value: unknown): PackageSource {
   if (!validateSchema(value))
     throw new Error(`invalid package.yml: ${new Ajv().errorsText(validateSchema.errors)}`);
+  if (
+    value.schemaVersion === 1 &&
+    (value.dependencies || value.devDependencies || value.optionalDependencies)
+  )
+    throw new Error("dependency declarations require schemaVersion 2");
+  validateDependencies(value);
   const version = parseVersion(value.version);
   if (
     !version ||

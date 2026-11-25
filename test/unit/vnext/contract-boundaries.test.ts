@@ -90,7 +90,7 @@ describe("portable recipient boundary cases", () => {
 
 describe("source cross references and setup removal outcomes", () => {
   it("keeps the public schema identity and reports multiple malformed fields", () => {
-    expect(packageSchema.$id).toBe("https://wpm.local/schema/package-vnext-1");
+    expect(packageSchema.$id).toBe("https://wpm.local/schema/package-vnext-2");
     expect(() => parsePackage({})).toThrow(/schemaVersion.*name/);
     for (const field of ["groups", "setups"]) {
       const source = emptyPackage("demo");

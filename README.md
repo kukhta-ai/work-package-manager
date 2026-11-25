@@ -210,7 +210,7 @@ npm run package:prepare-candidate -- --inspection ../wpm-package-report.json --i
 npm run package:assess-github -- --candidate ../wpm-candidate --policy ../github-policy.json --observation ../github-observation.json
 ```
 
-For the prototype-aligned operations, groups and optional worker setup, use the additive vNext surface:
+For operations, groups, optional worker setup and [local multi-package dependency graphs](docs/vnext-dependencies.md), use the additive vNext surface:
 
 ```bash
 npm run build

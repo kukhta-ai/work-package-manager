@@ -47,6 +47,10 @@ files: []
 
 An operation's prerequisites come from its native Backlog task dependencies. Group membership only selects work, including nested groups; selecting `review` never silently adds `brief` to the group. The recipient contract separately records the prerequisite. External unregistered tasks and prerequisite cycles block building. Every operation needs observable acceptance criteria.
 
+## Multi-package workspaces
+
+The additive [local package graph contract](vnext-dependencies.md) extends this surface with workspace registration, package selection, ordinary/dev/optional dependencies, multiple versions, finite package cycles, graph locks and namespaced release composition. Existing single-package source remains supported. See the [prototype coverage map](vnext-coverage.md) for remaining gaps.
+
 ## Complete single-package authoring
 
 Backlog.md **1.57.4** is the pinned authoring CLI. Each adapter call pins per-process `BACKLOG_CWD` to its explicit root; an ambient override cannot redirect it to another workspace. Native edit references include both cwd and that environment binding. It replaces the former native sequence command with `task list --ready`; shipped author guidance reads the complete list separately and obtains exact direct dependencies from versioned JSON task views. Ready-list order is native ordering, never group-defined execution order. WPM keeps all task content native:

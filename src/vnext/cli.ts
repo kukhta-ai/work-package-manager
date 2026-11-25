@@ -2,12 +2,16 @@ import type { Command } from "commander";
 import { ValidationError } from "../core/errors.js";
 import { withExamples } from "../help/examples.js";
 import type { ApmTarget } from "./adapters/apm.js";
+import { PackageWorkspace } from "./adapters/package-workspace.js";
 import { VnextWorkspace } from "./adapters/workspace.js";
 import { packageSchema, stableJson } from "./core/model.js";
+import { registerPackageCommands } from "./package-cli.js";
 
 interface CommonOptions {
   root: string;
   dryRun: boolean;
+  package?: string;
+  packageVersion?: string;
 }
 interface OperationOptions extends CommonOptions {
   prerequisite: string[];
@@ -42,6 +46,9 @@ export function registerVnextCommands(
     .action(() => {
       output.write(stableJson(packageSchema));
     });
+  vnext.option("--package <name>", "select a registered workspace package");
+  vnext.option("--package-version <version>", "disambiguate multiple workspace versions");
+  registerPackageCommands(vnext, output);
   vnext.option("--root <directory>", "package source directory", ".");
   vnext.option("--dry-run", "report intended effects without changing files or tasks", false);
   const execute = (
@@ -50,7 +57,22 @@ export function registerVnextCommands(
   ): void => {
     const options = command.optsWithGlobals<CommonOptions>();
     try {
-      output.write(stableJson(operation(new VnextWorkspace(options.root), options)));
+      output.write(
+        stableJson(
+          operation(
+            new VnextWorkspace(
+              command.name() === "init"
+                ? options.root
+                : new PackageWorkspace(options.root).select(
+                    options.root,
+                    options.package,
+                    options.packageVersion,
+                  ),
+            ),
+            options,
+          ),
+        ),
+      );
     } catch (error) {
       throw new ValidationError(error instanceof Error ? error.message : String(error));
     }
@@ -70,19 +92,48 @@ export function registerVnextCommands(
     .command("check")
     .alias("validate")
     .description("Validate source, native tasks, paths and release content");
-  check.action(() => execute(check, (workspace) => workspace.check()));
+  check.action(() =>
+    execute(check, (workspace) =>
+      new PackageWorkspace(workspace.root).checkPackage(workspace.root),
+    ),
+  );
   const lock = vnext
     .command("lock")
     .description("Intentionally capture local source integrity (plain source needs no APM)");
-  lock.action(() => execute(lock, (workspace, options) => workspace.lock(options.dryRun)));
+  lock
+    .option("--check", "check the dependency lock without writing", false)
+    .option("--upgrade", "allow newer versions matching declarations", false);
+  lock.action(() =>
+    execute(lock, (workspace, options) => {
+      const flags = lock.opts<{ check: boolean; upgrade: boolean }>();
+      if (flags.check && flags.upgrade) throw new Error("--check conflicts with --upgrade");
+      return workspace.view().schemaVersion === 2 || flags.check || flags.upgrade
+        ? new PackageWorkspace(options.root).lock(
+            workspace.root,
+            flags.check,
+            flags.upgrade,
+            options.dryRun,
+          )
+        : workspace.lock(options.dryRun);
+    }),
+  );
+  withExamples(lock, [{ command: "wpm vnext --root ./suite --package app lock --check" }]);
   const build = vnext
     .command("build")
     .description("Build a deterministic portable .tgz; no agent launch or publication");
-  build.action(() => execute(build, (workspace, options) => workspace.build(options.dryRun)));
+  build.action(() =>
+    execute(build, (workspace, options) =>
+      new PackageWorkspace(options.root).build(workspace.root, options.dryRun),
+    ),
+  );
   const test = vnext
     .command("test")
     .description("Rehearse static recipient archive extraction in an owned temporary directory");
-  test.action(() => execute(test, (workspace, options) => workspace.test(options.dryRun)));
+  test.action(() =>
+    execute(test, (workspace, options) =>
+      new PackageWorkspace(options.root).test(workspace.root, options.dryRun),
+    ),
+  );
   const operations = vnext
     .command("operation")
     .description("Native authoring tasks with stable package operation identities");
@@ -191,7 +242,12 @@ export function registerVnextCommands(
     .description("Read, set or increment package version without tagging or publishing");
   version.action((value?: string) =>
     execute(version, (workspace, options) =>
-      workspace.version(value, version.opts<{ preid?: string }>().preid, options.dryRun),
+      new PackageWorkspace(options.root).version(
+        workspace.root,
+        value,
+        version.opts<{ preid?: string }>().preid,
+        options.dryRun,
+      ),
     ),
   );
   const groups = vnext

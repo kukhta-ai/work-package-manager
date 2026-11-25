@@ -139,6 +139,47 @@ describe("installed vNext recipient journey", () => {
       }).stdout;
       expect(listing).not.toMatch(/\.agents|wpm-repo-|\.wpm-source|backlog|apm/);
       expect(listing).toContain("worker-setup/default/WORKER.md");
+      const suite = join(consumer, "suite");
+      const graphCommand = (...args: string[]): unknown => command("--root", suite, ...args);
+      graphCommand("workspace", "init");
+      for (const name of ["app", "left", "right", "shared"])
+        graphCommand("package", "create", name);
+      graphCommand("--package", "shared", "package", "version", "1.0.0");
+      graphCommand("package", "create", "shared", "--directory", "packages/shared-two");
+      graphCommand(
+        "--package",
+        "shared",
+        "--package-version",
+        "0.1.0",
+        "package",
+        "version",
+        "2.0.0",
+      );
+      const dependency = (name: string, spec: string, version?: string): unknown =>
+        graphCommand(
+          "--package",
+          name,
+          ...(version ? ["--package-version", version] : []),
+          "package",
+          "deps",
+          "add",
+          spec,
+          "--manifest-only",
+        );
+      dependency("app", "left@*");
+      dependency("app", "right@*");
+      dependency("left", "shared@^1");
+      dependency("right", "shared@^2");
+      dependency("shared", "app@*", "1.0.0");
+      const app = (...args: string[]): unknown => graphCommand("--package", "app", ...args);
+      app("lock");
+      expect(app("lock", "--check")).toMatchObject({ checked: true });
+      expect(app("package", "deps", "list", "--tree")).toHaveProperty("tree");
+      expect(app("build")).toMatchObject({ instances: 5 });
+      expect(app("test")).toMatchObject({ passed: true, agentExecution: false });
+      const graphArchive = readFileSync(join(suite, "packages/app/builds/app-0.1.0.tgz"));
+      app("build");
+      expect(readFileSync(join(suite, "packages/app/builds/app-0.1.0.tgz"))).toEqual(graphArchive);
     });
   });
 });

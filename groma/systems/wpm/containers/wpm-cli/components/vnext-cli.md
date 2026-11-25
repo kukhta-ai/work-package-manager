@@ -24,3 +24,4 @@ description: Registers the isolated vNext authoring command surface.
 | Source | Target | Description | Technology |
 | --- | --- | --- | --- |
 | [src/vnext/cli.ts](../../../../../../src/vnext/cli.ts) | [src/vnext/adapters/workspace.ts](../../../../../../src/vnext/adapters/workspace.ts) | Persists authored work | Explicit workspace adapter |
+| [src/vnext/cli.ts](../../../../../../src/vnext/cli.ts) | [src/vnext/adapters/package-workspace.ts](../../../../../../src/vnext/adapters/package-workspace.ts) | Selects and builds package graphs | Adapter calls |

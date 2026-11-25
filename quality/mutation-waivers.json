@@ -3,16 +3,16 @@
   "waivers": [
     {
       "file": "src/vnext/core/model.ts",
-      "sourceSha256": "49dcee78c32306d8b2d8afd7d458b48bba927a538d7271b3231645169159c950",
+      "sourceSha256": "8856ad5c894c004153451e7875bc568e755cee633e9c12b5fb5c14b59b3df52c",
       "mutatorName": "BooleanLiteral",
       "location": {
         "end": {
           "column": 63,
-          "line": 92
+          "line": 107
         },
         "start": {
           "column": 59,
-          "line": 92
+          "line": 107
         }
       },
       "original": "true",
@@ -23,11 +23,11 @@
         "ajv": "8.20.0"
       },
       "review": {
-        "reviewedBy": "/root/native_agents",
+        "reviewedBy": "/root/authoring_review",
         "disposition": "equivalent",
-        "rationale": "For this exact fixed schema, Ajv 8.20.0 generates byte-identical validation functions for strict true and strict false; independently compiled functions also agreed on 10,000 seeded generated JSON values. All keywords/types are known and there are no numeric type validators whose strictNumbers behavior could differ. A source edit or Ajv upgrade invalidates this review."
+        "rationale": "For these exact schema vNext2 source bytes, Ajv 8.20.0 produces byte-identical strict true/false validator functions (SHA256 1df2dfde37492dfceb76f10a33e9aaae96c98b94ade7784de9a4e949e3fb287f). Independent review compared decisions and errors on 10556 schema-boundary and seeded JSON values (seed146148). All keywords/types are known and there are no numeric type validators whose strictNumbers behavior differs. Any source or Ajv change requires renewed review."
       },
-      "fingerprint": "60a95de057affe9df5fa4d05433c4d8eaf0799db1d0885f47e12ab771c6ef08d"
+      "fingerprint": "81686b6da52f3fb13f89eb4311fed3d3cdc7331e432bac3bde38731fc600b37f"
     },
     {
       "file": "src/vnext/core/source-text.ts",

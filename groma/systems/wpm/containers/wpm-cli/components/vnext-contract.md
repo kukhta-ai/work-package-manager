@@ -13,3 +13,9 @@ description: Validates vNext operations, groups and optional worker setup declar
 ---
 
 Operations retain stable IDs and prerequisites; groups select work independently from prerequisites. A missing setup association inherits the declared default, while null means no setup. Worker setup prepares a recipient agent that already exists, rather than provisioning an execution worker.
+
+## Relationships
+
+| Source | Target | Description | Technology |
+| --- | --- | --- | --- |
+| [src/vnext/core/model.ts](../../../../../../src/vnext/core/model.ts) | [src/vnext/core/dependencies.ts](../../../../../../src/vnext/core/dependencies.ts) | Validates dependency declarations | Pure function calls |

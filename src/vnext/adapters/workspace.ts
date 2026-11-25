@@ -137,7 +137,9 @@ export class VnextWorkspace {
   }
 
   /** Serialize WPM writers. An interrupted reservation is preserved for deliberate inspection. */
-  private reserve<T>(action: () => T, retirement = false): T {
+  private reserve<T>(action: () => T, retirement = false, graph = false): T {
+    if (!graph && existsSync(this.confined(".wpm-pending-dependencies.json")))
+      throw new Error("interrupted dependency edit must be resumed before another mutation");
     if (!retirement && existsSync(this.confined(".wpm-pending-retirement.json")))
       throw new Error("interrupted retirement must be resumed before another mutation");
     const path = this.confined(".wpm-mutation.lock");
@@ -1000,13 +1002,46 @@ export class VnextWorkspace {
     return result;
   }
 
-  private capture(authoring = false): {
+  /** Capture this package alone for graph composition; dependencies are resolved by the graph adapter. */
+  captureForGraph(authorizedEdit = false, authorizedReservation = false) {
+    if (
+      !authorizedEdit &&
+      !authorizedReservation &&
+      existsSync(this.confined(".wpm-mutation.lock"))
+    )
+      throw new Error("another package writer owns source");
+    return this.capture(false, authorizedEdit);
+  }
+
+  /** Reuse confined IO and reservation semantics for multi-package transactions. */
+  readForGraph(path: string): Buffer {
+    return this.readBytes(path);
+  }
+  pathForGraph(path: string): string {
+    return this.confined(path);
+  }
+  writeForGraph(path: string, text: string, expected?: string): void {
+    this.writeText(path, text, expected);
+  }
+  removeForGraph(path: string, expected: string): void {
+    this.clearPending(path, expected);
+  }
+  reserveForGraph<T>(action: () => T): T {
+    return this.reserve(action, false, true);
+  }
+
+  private capture(
+    authoring = false,
+    graph = false,
+  ): {
     files: CapturedFile[];
     source: PackageSource;
     operations: CompiledOperation[];
   } {
     if (existsSync(this.confined(".wpm-pending-retirement.json")))
       throw new Error("interrupted retirement must be resumed before capture");
+    if (!graph && existsSync(this.confined(".wpm-pending-dependencies.json")))
+      throw new Error("resume interrupted dependency edit first");
     const snapshot = this.snapshot();
     const source = snapshot.source;
     const operations = this.compileOperations(source, authoring);
@@ -1199,7 +1234,7 @@ function renderTask(task: TaskRecord, id: string): string {
 }
 
 /** Minimal portable USTAR writer: regular files only, no shell, symlinks, wall-clock metadata or owner data. */
-function createDeterministicTarball(files: CapturedFile[]): Buffer {
+export function createDeterministicTarball(files: CapturedFile[]): Buffer {
   assertPortableTree(files.map(({ path }) => ({ path, kind: "file" })));
   const chunks: Buffer[] = [];
   for (const { path, bytes } of files) {
