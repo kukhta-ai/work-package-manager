@@ -1,11 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
-  buildLockfile,
   parseLockfile,
-  serializeLockfile,
   type VendoredArtifact,
   verifyLockfile,
 } from "../../../src/core/services/integrity.js";
+import { buildLockfile, serializeLockfile } from "../../helpers/legacy-lockfile.js";
 
 /**
  * Acceptance test for the integrity service: the full build -> persist -> verify lifecycle — the

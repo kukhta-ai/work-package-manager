@@ -5,6 +5,8 @@ import { describe, expect, it } from "vitest";
 import { runNpmAssessment } from "../../../distribution-preparation/assess-npm.js";
 import { createCandidateIdentity } from "../../../distribution-preparation/candidate.js";
 import { assessInactiveDistribution } from "../../../distribution-preparation/readiness.js";
+import { match } from "../../helpers/match.js";
+import { findingRecords } from "./json-fixtures.js";
 
 const REVISION = "a".repeat(40);
 
@@ -159,7 +161,7 @@ describe("local npm publication assessment command", () => {
         }),
       }),
     ).toBe(1);
-    expect(JSON.parse(out.text).findings.map(({ field }: { field: string }) => field)).toEqual([
+    expect(findingRecords(out.text).map(({ field }: { field: string }) => field)).toEqual([
       "artifact.digests.sha512",
       "observation",
       "policy.file",
@@ -178,7 +180,7 @@ describe("local npm publication assessment command", () => {
         loadCandidate: () => ({ record: candidate(), archive: exactArchive(), findings: [] }),
       }),
     ).toBe(1);
-    expect(JSON.parse(out.text).findings.map(({ field }: { field: string }) => field)).toEqual([
+    expect(findingRecords(out.text).map(({ field }: { field: string }) => field)).toEqual([
       "observation",
       "policy",
     ]);
@@ -196,7 +198,7 @@ describe("local npm publication assessment command", () => {
     expect(JSON.parse(out.text)).toMatchObject({
       status: "rejected",
       findings: [
-        expect.objectContaining({ field: "candidate", detail: expect.stringMatching(/archive/) }),
+        match.objectContaining({ field: "candidate", detail: match.stringMatching(/archive/) }),
       ],
     });
   });
@@ -220,9 +222,9 @@ describe("local npm publication assessment command", () => {
       expect(JSON.parse(out.text)).toMatchObject({
         status: "rejected",
         findings: [
-          expect.objectContaining({
+          match.objectContaining({
             field: "observation.file",
-            detail: expect.stringMatching(/symbolic link/i),
+            detail: match.stringMatching(/symbolic link/i),
           }),
         ],
       });

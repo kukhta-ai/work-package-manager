@@ -2,9 +2,6 @@ import { cpSync, existsSync, mkdirSync, readFileSync, symlinkSync, writeFileSync
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { FakeBacklog } from "../../src/adapters/fake-backlog.js";
-import { FakeEnvironment } from "../../src/adapters/fake-env.js";
-import { FixedClock } from "../../src/adapters/fixed-clock.js";
 import { NodeFileSystem } from "../../src/adapters/node-fs.js";
 import { type CliDeps, run } from "../../src/cli.js";
 import type {
@@ -14,6 +11,9 @@ import type {
 import { PERSONAL_AUTHORING_STATE_PATH } from "../../src/core/services/personal-authoring-setup.js";
 import type { CliIo, OutputSink } from "../../src/util/exit.js";
 import { toPosix } from "../../src/util/posix-path.js";
+import { FakeBacklog } from "../doubles/fake-backlog.js";
+import { FakeEnvironment } from "../doubles/fake-env.js";
+import { FixedClock } from "../doubles/fixed-clock.js";
 import { withTempDir } from "../helpers/tmpdir.js";
 
 /**

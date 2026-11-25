@@ -13,7 +13,11 @@
       "scripts/**",
       "research/evolution/**/*.json",
       "*.json",
-      "*.ts"
+      "*.ts",
+      "*.mjs",
+      "*.cjs",
+      "quality/**/*.mjs",
+      "quality/**/*.json"
     ]
   },
   "formatter": {

@@ -1,9 +1,6 @@
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { FakeBacklog } from "../../src/adapters/fake-backlog.js";
-import { FakeEnvironment } from "../../src/adapters/fake-env.js";
-import { FixedClock } from "../../src/adapters/fixed-clock.js";
 import { NodeFileSystem } from "../../src/adapters/node-fs.js";
 import { type CliDeps, run } from "../../src/cli.js";
 import {
@@ -12,10 +9,43 @@ import {
 } from "../../src/core/services/workspace-handoff.js";
 import type { CliIo, OutputSink } from "../../src/util/exit.js";
 import { toPosix } from "../../src/util/posix-path.js";
+import { FakeBacklog } from "../doubles/fake-backlog.js";
+import { FakeEnvironment } from "../doubles/fake-env.js";
+import { FixedClock } from "../doubles/fixed-clock.js";
+import { match } from "../helpers/match.js";
 import { withTempDir } from "../helpers/tmpdir.js";
 
 const TEMPLATES = fileURLToPath(new URL("../../templates", import.meta.url));
 const SKILLS = fileURLToPath(new URL("../../agent-skills", import.meta.url));
+
+function jsonObject(contents: string): Record<string, unknown> {
+  const value: unknown = JSON.parse(contents);
+  if (typeof value !== "object" || value === null || Array.isArray(value))
+    throw new Error("handoff fixture must contain a JSON object");
+  return value as Record<string, unknown>;
+}
+
+function diagnosticBlockers(contents: string) {
+  const blockers = jsonObject(contents).blockers;
+  if (!Array.isArray(blockers)) throw new Error("handoff diagnostic must contain blockers");
+  return blockers.map((entry: unknown) => {
+    if (typeof entry !== "object" || entry === null || Array.isArray(entry))
+      throw new Error("handoff blocker must be an object");
+    const blocker = entry as Record<string, unknown>;
+    if (
+      typeof blocker.code !== "string" ||
+      typeof blocker.recovery !== "string" ||
+      (blocker.client !== undefined && typeof blocker.client !== "string")
+    )
+      throw new Error("handoff blocker must contain code, recovery and optional client text");
+    return {
+      ...blocker,
+      code: blocker.code,
+      recovery: blocker.recovery,
+      ...(blocker.client === undefined ? {} : { client: blocker.client }),
+    };
+  });
+}
 
 function collector(): OutputSink & { text: string } {
   return {
@@ -56,7 +86,7 @@ class FailPreparedReceiptOnceFileSystem extends NodeFileSystem {
     if (
       this.armed &&
       path.endsWith(WORKSPACE_HANDOFF_RECEIPT_PATH) &&
-      JSON.parse(content).status === "prepared"
+      jsonObject(content).status === "prepared"
     ) {
       this.armed = false;
       throw new Error("injected prepared receipt publication failure");
@@ -98,7 +128,7 @@ describe("workspace handoff through source CLI and real filesystem", () => {
         completed: [{ id: "handoff-receipt:preparing" }],
         failed: { id: "handoff-receipt:prepared" },
         unattempted: [],
-        recovery: expect.stringContaining("identical handoff preparation request"),
+        recovery: match.stringContaining("identical handoff preparation request"),
       });
       expect(
         parseWorkspaceHandoffReceipt(fs.read(join(workspace, WORKSPACE_HANDOFF_RECEIPT_PATH))),
@@ -304,20 +334,20 @@ describe("workspace handoff through source CLI and real filesystem", () => {
           { id: "codex", status: "valid" },
           { id: "claude-code", status: "invalid" },
         ],
-        blockers: expect.arrayContaining([
-          expect.objectContaining({
+        blockers: match.arrayContaining([
+          match.objectContaining({
             code: "working-directory-mismatch",
-            recovery: expect.stringContaining("change the process working directory"),
+            recovery: match.stringContaining("change the process working directory"),
           }),
-          expect.objectContaining({ code: "workspace-skill-mismatch", client: "claude-code" }),
+          match.objectContaining({ code: "workspace-skill-mismatch", client: "claude-code" }),
         ]),
       });
-      const cwdRecovery = JSON.parse(structuredFailure.err.text).blockers.find(
+      const cwdRecovery = diagnosticBlockers(structuredFailure.err.text).find(
         (blocker: { code: string; recovery: string }) =>
           blocker.code === "working-directory-mismatch",
       )?.recovery;
       expect(cwdRecovery).not.toContain("invoke WPM with -C");
-      const claudeRecovery = JSON.parse(structuredFailure.err.text).blockers.find(
+      const claudeRecovery = diagnosticBlockers(structuredFailure.err.text).find(
         (blocker: { code: string; client?: string; recovery: string }) =>
           blocker.code === "workspace-skill-mismatch" && blocker.client === "claude-code",
       )?.recovery;
@@ -335,12 +365,12 @@ describe("workspace handoff through source CLI and real filesystem", () => {
         ),
       ).toBe(1);
       expect(JSON.parse(missingMarker.err.text)).toMatchObject({
-        blockers: expect.arrayContaining([
-          expect.objectContaining({ code: "workspace-marker-invalid" }),
+        blockers: match.arrayContaining([
+          match.objectContaining({ code: "workspace-marker-invalid" }),
         ]),
       });
-      expect(JSON.parse(missingMarker.err.text).blockers).not.toEqual(
-        expect.arrayContaining([expect.objectContaining({ code: "working-directory-mismatch" })]),
+      expect(diagnosticBlockers(missingMarker.err.text)).not.toEqual(
+        match.arrayContaining([match.objectContaining({ code: "working-directory-mismatch" })]),
       );
 
       shared.fs.write(manifestPath, manifestText);
@@ -405,10 +435,10 @@ describe("workspace handoff through source CLI and real filesystem", () => {
         status: "failed",
         operation: "workspace-handoff-preparation",
         handoffPrepared: false,
-        blockers: expect.arrayContaining([
-          expect.objectContaining({
+        blockers: match.arrayContaining([
+          match.objectContaining({
             code: "handoff-receipt-invalid",
-            recovery: expect.any(String),
+            recovery: match.any(String),
           }),
         ]),
       });
@@ -434,8 +464,8 @@ describe("workspace handoff through source CLI and real filesystem", () => {
       expect(JSON.parse(failed.err.text)).toMatchObject({
         status: "failed",
         selectedClient: "openclaw",
-        blockers: expect.arrayContaining([
-          expect.objectContaining({ code: "handoff-client-unsupported" }),
+        blockers: match.arrayContaining([
+          match.objectContaining({ code: "handoff-client-unsupported" }),
         ]),
       });
 
@@ -453,12 +483,10 @@ describe("workspace handoff through source CLI and real filesystem", () => {
         clients: Array<{ id: string; status: string }>;
       };
       expect(missingStateResult.blockers).toEqual(
-        expect.arrayContaining([expect.objectContaining({ code: "managed-state-invalid" })]),
+        match.arrayContaining([match.objectContaining({ code: "managed-state-invalid" })]),
       );
       expect(missingStateResult.blockers).not.toEqual(
-        expect.arrayContaining([
-          expect.objectContaining({ code: "handoff-client-not-configured" }),
-        ]),
+        match.arrayContaining([match.objectContaining({ code: "handoff-client-not-configured" })]),
       );
       expect(missingStateResult.clients).toEqual([{ id: "codex", status: "invalid" }]);
 

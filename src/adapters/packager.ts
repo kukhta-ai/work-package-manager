@@ -13,7 +13,7 @@ import { tmpdir } from "node:os";
 import { basename, dirname, join, posix } from "node:path";
 import { BUILD_FORMATS } from "../completion/enums.js";
 import { ValidationError } from "../core/errors.js";
-import type { FrontDoorTransform, ScopeAliasTransform } from "../core/operations/build.js";
+import type { FrontDoorTransform, ScopeAliasTransform } from "../core/model/archive.js";
 import type { FileSystem } from "../core/ports/index.js";
 import { toPosix } from "../util/posix-path.js";
 import { runSync } from "../util/shell.js";
@@ -45,7 +45,7 @@ const FORMAT_EXTENSION: Readonly<Record<BuildFormat, string>> = {
 };
 
 /** A request to produce an archive of a project's shippable file set. */
-export interface PackageRequest {
+interface PackageRequest {
   /** The project root the shippable paths are relative to. */
   readonly root: string;
   /** The directory the archive is written into (the CLI passes the workspace's `builds/` output directory). */
@@ -72,7 +72,7 @@ export interface PackageRequest {
 }
 
 /** A request to push a built archive to a destination (doc 10 `build publish <destination>`). */
-export interface PushRequest {
+interface PushRequest {
   /** The project root (the cwd for a git-remote push). */
   readonly root: string;
   /** The path of the already-built archive to push. */
@@ -82,7 +82,7 @@ export interface PushRequest {
 }
 
 /** The outcome of a push: a human-readable description of where the archive landed (for the success line). */
-export interface PushResult {
+interface PushResult {
   /** Where the archive was placed/pushed (a directory path, or `git remote <destination>`). */
   readonly where: string;
 }
@@ -91,8 +91,8 @@ export interface PushResult {
  * Compute the absolute output path for a request: `<outDir>/<baseName>.<ext>`, as a POSIX path. This value is
  * both RETURNED to the CLI (which prints it in the `packaged …` / `published …` line) and a portable artefact
  * reference, so it must read with `/` on every OS — hence `toPosix` over the native `join`. The archive is
- * still WRITTEN through `tar`/`zip`/`git`, all of which accept a `/`-separated output path on Windows, so the
- * single POSIX form serves both the effect and the printed/returned value (no native variant is needed).
+ * written through `tar`/`zip`/`git`. Tar receives a filename relative to the output directory so Windows
+ * drive letters cannot be interpreted as remote hosts; the returned reference stays absolute.
  */
 function outputPath(req: PackageRequest): string {
   return toPosix(join(req.outDir, `${req.baseName}.${FORMAT_EXTENSION[req.format]}`));
@@ -316,7 +316,9 @@ function createTarball(req: PackageRequest, out: string): string {
   try {
     // One relative path per line; `tar -T` reads them and archives each, rooted at `-C <dir>`.
     writeFileSync(listFile, `${source.files.join("\n")}\n`, "utf8");
-    runArchiveTool("tar", ["-czf", out, "-C", source.dir, "-T", listFile], "tar");
+    runArchiveTool("tar", ["-czf", `./${basename(out)}`, "-C", source.dir, "-T", listFile], "tar", {
+      cwd: dirname(out),
+    });
   } finally {
     rmSync(listDir, { recursive: true, force: true });
     if (source.cleanup !== undefined) {

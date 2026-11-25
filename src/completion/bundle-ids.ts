@@ -28,5 +28,5 @@ export function bundleIds(ctx: CompletionContext): string[] {
   if (!manifest.ok) {
     return [];
   }
-  return prefixFilter(manifest.value.bundles as readonly string[], ctx.partial);
+  return prefixFilter(manifest.value.bundles, ctx.partial);
 }

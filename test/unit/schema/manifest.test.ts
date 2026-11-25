@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { parseManifest, serializeManifest } from "../../../src/core/services/schema/index.js";
+import { parseManifest } from "../../../src/core/services/schema/index.js";
+import { serializeManifest } from "../../helpers/legacy-serialization.js";
 
 /** A well-formed manifest data object (the plain shape the YAML layer would hand us). */
 function wellFormed() {

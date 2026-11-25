@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { MemoryFileSystem } from "../../../src/adapters/memory-fs.js";
 import { type RenderParams, renderTree } from "../../../src/core/services/render.js";
 import {
   listTemplates,
   type ResolverDeps,
   resolveTemplate,
 } from "../../../src/core/services/template-resolver.js";
+import { MemoryFileSystem } from "../../doubles/memory-fs.js";
 
 /**
  * Acceptance test for the template resolver: the resolve -> render end-to-end thread, which is the

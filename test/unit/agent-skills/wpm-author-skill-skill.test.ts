@@ -4,6 +4,7 @@ import { basename, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { parseYaml } from "../../../src/util/yaml.js";
+import { match } from "../../helpers/match.js";
 
 const SKILL_MD = fileURLToPath(
   new URL("../../../agent-skills/wpm-author-skill/SKILL.md", import.meta.url),
@@ -33,7 +34,7 @@ describe("wpm-author-skill workspace skill", () => {
 
     expect(metadata).toEqual({
       name: "wpm-author-skill",
-      description: expect.any(String),
+      description: match.any(String),
     });
     const description = String(metadata.description).toLowerCase();
     expect(description).toMatch(/author|create|revise|change/);

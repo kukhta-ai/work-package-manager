@@ -2,13 +2,13 @@ import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { MemoryFileSystem } from "../../../src/adapters/memory-fs.js";
 import type { Project } from "../../../src/core/model/index.js";
 import { makeArtefactDeriver } from "../../../src/core/operations/derive-artefacts-capability.js";
 import { renderSnippet, renderTree } from "../../../src/core/services/render.js";
 import { parseManifest } from "../../../src/core/services/schema/index.js";
 import { resolveTemplate } from "../../../src/core/services/template-resolver.js";
 import { parseYaml } from "../../../src/util/yaml.js";
+import { MemoryFileSystem } from "../../doubles/memory-fs.js";
 
 /**
  * Unit test for the REAL shipped `templates/project/minimal/` template — the one `init` instantiates and the

@@ -1,13 +1,8 @@
-import type { SkillRef } from "./bundle.js";
 import type { AgentName, BundleId } from "./ids.js";
+import type { SkillRef } from "./skill-ref.js";
 import type { SemVer } from "./version.js";
 
-/**
- * How much consent a bundle step needs, decided by the author and respected at run time (doc 00
- * "Vocabulary"; doc 10 `bundle <id> meta`). `"safe"` proceeds with minimal ceremony; `"dangerous"` requires
- * explicit confirmation.
- */
-export type ConfirmationLevel = "safe" | "dangerous";
+export type { ConfirmationLevel } from "./confirmation.js";
 
 /**
  * The project's release identity (doc 06; doc 10 `project meta`). The name and version are required; the

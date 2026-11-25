@@ -1,6 +1,4 @@
 import { describe, expect, it } from "vitest";
-import { FakeEnvironment } from "../../../src/adapters/fake-env.js";
-import { MemoryFileSystem } from "../../../src/adapters/memory-fs.js";
 import {
   PersonalAuthoringSetupMutationFailure,
   PersonalAuthoringSetupPreflightError,
@@ -17,6 +15,9 @@ import {
   personalSetupRequestKey,
   serializePersonalAuthoringState,
 } from "../../../src/core/services/personal-authoring-setup.js";
+import { FakeEnvironment } from "../../doubles/fake-env.js";
+import { MemoryFileSystem } from "../../doubles/memory-fs.js";
+import { match } from "../../helpers/match.js";
 
 const HOME = "/home/author";
 const PACKAGE = "/package/agent-skills";
@@ -60,7 +61,7 @@ describe("setupPersonalAuthoring", () => {
     const result = run(fs, env, ["codex"]);
 
     expect(result.clients).toEqual([
-      expect.objectContaining({
+      match.objectContaining({
         id: "codex",
         destination: CODEX,
         outcome: "installed",
@@ -98,7 +99,7 @@ describe("setupPersonalAuthoring", () => {
     }
     expect(error).toBeInstanceOf(PersonalAuthoringSetupPreflightError);
     expect((error as PersonalAuthoringSetupPreflightError).blockers).toEqual([
-      expect.objectContaining({
+      match.objectContaining({
         code: "personal-quarantine-invalid",
         path: generation,
       }),
@@ -261,7 +262,7 @@ describe("setupPersonalAuthoring", () => {
     expect(error).toBeInstanceOf(PersonalAuthoringSetupPreflightError);
     const codes = (error as PersonalAuthoringSetupPreflightError).blockers.map(({ code }) => code);
     expect(codes).toEqual(
-      expect.arrayContaining([
+      match.arrayContaining([
         "personal-client-unsupported",
         "personal-source-invalid",
         "personal-state-invalid",
@@ -343,7 +344,7 @@ describe("setupPersonalAuthoring", () => {
     expect(
       (error as PersonalAuthoringSetupPreflightError).blockers.map(({ code }) => code),
     ).toEqual(
-      expect.arrayContaining([
+      match.arrayContaining([
         "personal-source-invalid",
         "personal-state-invalid",
         "personal-destination-ambiguous",
@@ -551,10 +552,10 @@ describe("personal setup ordered failure and retry", () => {
 
     expect(error).toBeInstanceOf(PersonalAuthoringSetupMutationFailure);
     expect(error).toMatchObject({
-      completedClients: [expect.objectContaining({ id: "codex", destination: CODEX })],
-      failedClient: expect.objectContaining({ id: "claude-code", destination: CLAUDE }),
+      completedClients: [match.objectContaining({ id: "codex", destination: CODEX })],
+      failedClient: match.objectContaining({ id: "claude-code", destination: CLAUDE }),
       unattemptedClients: [],
-      recovery: expect.stringMatching(/identical.*--client codex.*--client claude-code/i),
+      recovery: match.stringMatching(/identical.*--client codex.*--client claude-code/i),
     });
     expect(parsePersonalAuthoringState(fs.read(STATE))).toMatchObject({
       ok: true,
@@ -601,8 +602,8 @@ describe("personal setup ordered failure and retry", () => {
       ({ code }) => code.startsWith("personal-quarantine") || code.includes("applying-quarantine"),
     );
     expect((error as PersonalAuthoringSetupPreflightError).blockers).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ code: "personal-applying-request-mismatch" }),
+      match.arrayContaining([
+        match.objectContaining({ code: "personal-applying-request-mismatch" }),
       ]),
     );
     expect(
@@ -683,7 +684,7 @@ describe("personal setup ordered failure and retry", () => {
 
     expect(error).toBeInstanceOf(PersonalAuthoringSetupMutationFailure);
     expect(error).toMatchObject({
-      completedClients: [expect.objectContaining({ id: "codex", outcome: "unchanged" })],
+      completedClients: [match.objectContaining({ id: "codex", outcome: "unchanged" })],
       failedClient: null,
       unattemptedClients: [],
     });
@@ -707,17 +708,17 @@ describe("personal setup capability preflight", () => {
       }
       expect(error).toBeInstanceOf(PersonalAuthoringSetupPreflightError);
       expect((error as PersonalAuthoringSetupPreflightError).blockers).toEqual(
-        expect.arrayContaining([
-          expect.objectContaining({
+        match.arrayContaining([
+          match.objectContaining({
             code: "personal-destination-not-writable",
             surface: "managed-state",
-            path: expect.stringMatching(/\/\.wpm\/authoring-setup-quarantine\/[^/]+$/),
+            path: match.stringMatching(/\/\.wpm\/authoring-setup-quarantine\/[^/]+$/),
           }),
         ]),
       );
       if (!sourceAvailable) {
         expect((error as PersonalAuthoringSetupPreflightError).blockers).toEqual(
-          expect.arrayContaining([expect.objectContaining({ code: "personal-source-invalid" })]),
+          match.arrayContaining([match.objectContaining({ code: "personal-source-invalid" })]),
         );
       }
       expect(fs.inspectPath(STATE).kind).toBe("missing");
@@ -745,10 +746,10 @@ describe("personal setup capability preflight", () => {
       )
       .map(({ path }) => path);
     expect(quarantinePaths).toEqual(
-      expect.arrayContaining([
-        expect.stringMatching(/\/state-applying\.preimage$/),
-        expect.stringMatching(/\/state-complete\.preimage$/),
-        expect.stringMatching(/\/codex\/current\.preimage$/),
+      match.arrayContaining([
+        match.stringMatching(/\/state-applying\.preimage$/),
+        match.stringMatching(/\/state-complete\.preimage$/),
+        match.stringMatching(/\/codex\/current\.preimage$/),
       ]),
     );
     expect(fs.inspectPath(STATE).kind).toBe("missing");
@@ -769,9 +770,9 @@ describe("personal setup capability preflight", () => {
     }
     expect(error).toBeInstanceOf(PersonalAuthoringSetupPreflightError);
     expect((error as PersonalAuthoringSetupPreflightError).blockers).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ code: "personal-client-unsupported" }),
-        expect.objectContaining({
+      match.arrayContaining([
+        match.objectContaining({ code: "personal-client-unsupported" }),
+        match.objectContaining({
           code: "personal-quarantine-unreadable",
           path: `${HOME}/.wpm/authoring-setup-quarantine`,
         }),
@@ -794,8 +795,8 @@ describe("personal setup capability preflight", () => {
     }
     expect(error).toBeInstanceOf(PersonalAuthoringSetupPreflightError);
     expect((error as PersonalAuthoringSetupPreflightError).blockers).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
+      match.arrayContaining([
+        match.objectContaining({
           code: "personal-quarantine-device-incompatible",
           client: "codex",
           surface: "destination",
@@ -821,14 +822,14 @@ describe("personal setup capability preflight", () => {
     }
     expect(error).toBeInstanceOf(PersonalAuthoringSetupPreflightError);
     expect((error as PersonalAuthoringSetupPreflightError).blockers).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ code: "personal-source-invalid" }),
-        expect.objectContaining({
+      match.arrayContaining([
+        match.objectContaining({ code: "personal-source-invalid" }),
+        match.objectContaining({
           code: "personal-quarantine-device-incompatible",
           client: "codex",
           surface: "destination",
         }),
-        expect.objectContaining({
+        match.objectContaining({
           code: "personal-quarantine-device-incompatible",
           client: "codex",
           surface: "ownership",
@@ -861,7 +862,7 @@ describe("personal setup capability preflight", () => {
     }
     expect(error).toBeInstanceOf(PersonalAuthoringSetupPreflightError);
     expect((error as PersonalAuthoringSetupPreflightError).blockers).toEqual(
-      expect.arrayContaining([expect.objectContaining({ code: "personal-source-invalid" })]),
+      match.arrayContaining([match.objectContaining({ code: "personal-source-invalid" })]),
     );
     expect(
       (error as PersonalAuthoringSetupPreflightError).blockers.filter(
@@ -893,8 +894,8 @@ describe("personal setup capability preflight", () => {
 
     expect(error).toBeInstanceOf(PersonalAuthoringSetupPreflightError);
     expect((error as PersonalAuthoringSetupPreflightError).blockers).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
+      match.arrayContaining([
+        match.objectContaining({
           code: "personal-destination-not-writable",
           client: "claude-code",
           path: `${CLAUDE}/SKILL.md`,
@@ -922,14 +923,14 @@ describe("personal setup capability preflight", () => {
 
     expect(error).toBeInstanceOf(PersonalAuthoringSetupPreflightError);
     expect((error as PersonalAuthoringSetupPreflightError).blockers).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ code: "personal-legacy-source-invalid" }),
-        expect.objectContaining({ code: "personal-destination-ambiguous", client: "codex" }),
-        expect.objectContaining({
+      match.arrayContaining([
+        match.objectContaining({ code: "personal-legacy-source-invalid" }),
+        match.objectContaining({ code: "personal-destination-ambiguous", client: "codex" }),
+        match.objectContaining({
           code: "personal-destination-not-writable",
           client: "claude-code",
         }),
-        expect.objectContaining({
+        match.objectContaining({
           code: "personal-destination-not-writable",
           surface: "managed-state",
         }),
@@ -956,17 +957,17 @@ describe("personal setup capability preflight", () => {
 
     expect(error).toBeInstanceOf(PersonalAuthoringSetupPreflightError);
     expect((error as PersonalAuthoringSetupPreflightError).blockers).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ code: "personal-source-invalid" }),
-        expect.objectContaining({
+      match.arrayContaining([
+        match.objectContaining({ code: "personal-source-invalid" }),
+        match.objectContaining({
           code: "personal-destination-not-writable",
           surface: "managed-state",
         }),
-        expect.objectContaining({
+        match.objectContaining({
           code: "personal-destination-not-writable",
           client: "claude-code",
         }),
-        expect.objectContaining({
+        match.objectContaining({
           code: "personal-destination-not-writable",
           client: "claude-code",
           surface: "ownership",
@@ -995,13 +996,13 @@ describe("personal setup capability preflight", () => {
 
     expect(error).toBeInstanceOf(PersonalAuthoringSetupPreflightError);
     expect((error as PersonalAuthoringSetupPreflightError).blockers).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ code: "personal-source-invalid" }),
-        expect.objectContaining({
+      match.arrayContaining([
+        match.objectContaining({ code: "personal-source-invalid" }),
+        match.objectContaining({
           code: "personal-destination-not-writable",
           surface: "managed-state",
         }),
-        expect.objectContaining({
+        match.objectContaining({
           code: "personal-destination-not-writable",
           client: "claude-code",
         }),
@@ -1045,13 +1046,13 @@ describe("personal setup capability preflight", () => {
     }
     expect(capabilityError).toBeInstanceOf(PersonalAuthoringSetupPreflightError);
     expect((capabilityError as PersonalAuthoringSetupPreflightError).blockers).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ code: "personal-source-invalid" }),
-        expect.objectContaining({
+      match.arrayContaining([
+        match.objectContaining({ code: "personal-source-invalid" }),
+        match.objectContaining({
           code: "personal-destination-not-writable",
           surface: "managed-state",
         }),
-        expect.objectContaining({
+        match.objectContaining({
           code: "personal-destination-not-writable",
           client: "codex",
           surface: "destination",
@@ -1075,13 +1076,13 @@ describe("personal setup capability preflight", () => {
     }
     expect(driftError).toBeInstanceOf(PersonalAuthoringSetupPreflightError);
     expect((driftError as PersonalAuthoringSetupPreflightError).blockers).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ code: "personal-source-invalid" }),
-        expect.objectContaining({
+      match.arrayContaining([
+        match.objectContaining({ code: "personal-source-invalid" }),
+        match.objectContaining({
           code: "personal-applying-quarantine-mismatch",
           client: "codex",
         }),
-        expect.objectContaining({
+        match.objectContaining({
           code: "personal-applying-legacy-mismatch",
           client: "codex",
         }),
@@ -1121,15 +1122,15 @@ describe("personal setup capability preflight", () => {
     }
     expect(error).toBeInstanceOf(PersonalAuthoringSetupPreflightError);
     expect((error as PersonalAuthoringSetupPreflightError).blockers).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ code: "personal-source-invalid" }),
-        expect.objectContaining({ code: "personal-applying-request-mismatch" }),
-        expect.objectContaining({
+      match.arrayContaining([
+        match.objectContaining({ code: "personal-source-invalid" }),
+        match.objectContaining({ code: "personal-applying-request-mismatch" }),
+        match.objectContaining({
           code: "personal-applying-destination-mismatch",
           client: "codex",
           path: CODEX,
         }),
-        expect.objectContaining({
+        match.objectContaining({
           code: "personal-quarantine-invalid",
           path: unexpected,
         }),
@@ -1164,9 +1165,9 @@ describe("personal setup capability preflight", () => {
     }
     expect(error).toBeInstanceOf(PersonalAuthoringSetupPreflightError);
     expect((error as PersonalAuthoringSetupPreflightError).blockers).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ code: "personal-source-invalid" }),
-        expect.objectContaining({
+      match.arrayContaining([
+        match.objectContaining({ code: "personal-source-invalid" }),
+        match.objectContaining({
           code: "personal-quarantine-invalid",
           path: unexpected,
         }),
@@ -1191,9 +1192,9 @@ describe("personal setup capability preflight", () => {
     }
     expect(error).toBeInstanceOf(PersonalAuthoringSetupPreflightError);
     expect((error as PersonalAuthoringSetupPreflightError).blockers).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ code: "personal-source-invalid" }),
-        expect.objectContaining({
+      match.arrayContaining([
+        match.objectContaining({ code: "personal-source-invalid" }),
+        match.objectContaining({
           code: "personal-quarantine-invalid",
           path: `${HOME}/.wpm/authoring-setup-quarantine/unbound`,
         }),
@@ -1527,8 +1528,8 @@ describe("personal setup immediate preimage protection", () => {
     }
     expect(error).toBeInstanceOf(PersonalAuthoringSetupPreflightError);
     expect((error as PersonalAuthoringSetupPreflightError).blockers).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
+      match.arrayContaining([
+        match.objectContaining({
           code: "personal-quarantine-invalid",
           path: displaced,
         }),
@@ -1590,8 +1591,8 @@ describe("personal setup immediate preimage protection", () => {
     }
     expect(error).toBeInstanceOf(PersonalAuthoringSetupPreflightError);
     expect((error as PersonalAuthoringSetupPreflightError).blockers).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
+      match.arrayContaining([
+        match.objectContaining({
           code: "personal-applying-quarantine-mismatch",
           client: "codex",
           path: displaced,
@@ -1692,7 +1693,7 @@ describe("personal setup immediate preimage protection", () => {
       error = caught;
     }
     expect(error).toBeInstanceOf(PersonalAuthoringSetupMutationFailure);
-    expect(error).toMatchObject({ failedClient: expect.objectContaining({ id: "codex" }) });
+    expect(error).toMatchObject({ failedClient: match.objectContaining({ id: "codex" }) });
     expect(fs.read(`${CODEX}/SKILL.md`)).toBe("USER CHANGED DURING COMPLETE PUBLICATION\n");
     expect(parsePersonalAuthoringState(fs.read(STATE))).toMatchObject({
       ok: true,
@@ -1767,8 +1768,8 @@ describe("personal setup immediate preimage protection", () => {
     }
     expect(error).toBeInstanceOf(PersonalAuthoringSetupPreflightError);
     expect((error as PersonalAuthoringSetupPreflightError).blockers).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
+      match.arrayContaining([
+        match.objectContaining({
           code: "personal-applying-destination-mismatch",
           client: "codex",
         }),
@@ -1803,8 +1804,8 @@ describe("personal setup immediate preimage protection", () => {
     }
     expect(error).toBeInstanceOf(PersonalAuthoringSetupPreflightError);
     expect((error as PersonalAuthoringSetupPreflightError).blockers).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
+      match.arrayContaining([
+        match.objectContaining({
           code: "personal-quarantine-invalid",
           path: `${retained}.displaced`,
         }),
@@ -1860,7 +1861,7 @@ describe("personal setup immediate preimage protection", () => {
 
     expect(error).toBeInstanceOf(PersonalAuthoringSetupMutationFailure);
     expect(error).toMatchObject({
-      failedClient: expect.objectContaining({ id: "codex", destination: CODEX }),
+      failedClient: match.objectContaining({ id: "codex", destination: CODEX }),
     });
     expect(fs.read(`${CODEX}/SKILL.md`)).toBe("USER ARRIVED AFTER PREFLIGHT\n");
   });
@@ -1880,12 +1881,12 @@ describe("personal setup immediate preimage protection", () => {
     expect(error).toBeInstanceOf(PersonalAuthoringSetupMutationFailure);
     expect(error).toMatchObject({
       completedClients: [],
-      failedClient: expect.objectContaining({ id: "codex", outcome: "migrated" }),
+      failedClient: match.objectContaining({ id: "codex", outcome: "migrated" }),
       unattemptedClients: [],
-      completed: expect.arrayContaining([
-        expect.objectContaining({ id: "personal-client:codex:bootstrap", path: CODEX }),
+      completed: match.arrayContaining([
+        match.objectContaining({ id: "personal-client:codex:bootstrap", path: CODEX }),
       ]),
-      failed: expect.objectContaining({
+      failed: match.objectContaining({
         id: "personal-client:codex:legacy",
         path: `${HOME}/.agents/skills/installer-builder`,
       }),
@@ -1899,7 +1900,7 @@ describe("personal setup immediate preimage protection", () => {
       outcome: "migrated",
       legacy: "migrated",
       changed: true,
-      reloadGuidance: expect.any(String),
+      reloadGuidance: match.any(String),
     });
     expect(fs.inspectPath(`${HOME}/.agents/skills/installer-builder`).kind).toBe("missing");
   });
@@ -2003,7 +2004,7 @@ describe("personal setup immediate preimage protection", () => {
     }
 
     expect(error).toBeInstanceOf(PersonalAuthoringSetupMutationFailure);
-    expect(error).toMatchObject({ failedClient: expect.objectContaining({ id: "codex" }) });
+    expect(error).toMatchObject({ failedClient: match.objectContaining({ id: "codex" }) });
     expect(fs.read(`${CODEX}/SKILL.md`)).toBe("USER CHANGED CODEX BEFORE COMPLETE\n");
     expect(parsePersonalAuthoringState(fs.read(STATE))).toMatchObject({
       ok: true,

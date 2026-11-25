@@ -10,6 +10,7 @@ import {
   validateInspectedPackageReport,
 } from "../../../distribution-preparation/packed-install.js";
 import { createIsolatedEnvironment } from "../../../distribution-preparation/verify-packed-install.js";
+import { match } from "../../helpers/match.js";
 
 const manifest = {
   name: "wpm",
@@ -112,24 +113,24 @@ describe("packed-install prerequisites", () => {
 
   it("identifies unsupported Node with an actionable recovery", () => {
     expect(() => assertNodePrerequisite(manifest, "18.20.0")).toThrowError(
-      expect.objectContaining({
+      match.objectContaining({
         prerequisite: "Node.js",
-        recovery: expect.stringMatching(/matching >=20.*rerun/i),
+        recovery: match.stringMatching(/matching >=20.*rerun/i),
       }),
     );
     expect(() => assertInstallPrerequisites(manifest, "18.20.0", "10.9.4")).toThrowError(
-      expect.objectContaining({
+      match.objectContaining({
         prerequisite: "Node.js",
-        recovery: expect.stringMatching(/matching >=20.*rerun/i),
+        recovery: match.stringMatching(/matching >=20.*rerun/i),
       }),
     );
   });
 
   it("identifies missing npm with an actionable recovery", () => {
     expect(() => assertInstallPrerequisites(manifest, "22.22.1", undefined)).toThrowError(
-      expect.objectContaining({
+      match.objectContaining({
         prerequisite: "npm",
-        recovery: expect.stringMatching(/install.*npm.*rerun/i),
+        recovery: match.stringMatching(/install.*npm.*rerun/i),
       }),
     );
   });
@@ -192,9 +193,9 @@ describe("portable global package layout and generated shims", () => {
         "C:\\Windows\\System32\\cmd.exe",
       ),
     ).toThrowError(
-      expect.objectContaining({
+      match.objectContaining({
         prerequisite: "Windows executable shim path",
-        recovery: expect.stringMatching(/output path.*without.*%/i),
+        recovery: match.stringMatching(/output path.*without.*%/i),
       }),
     );
   });
@@ -208,9 +209,9 @@ describe("portable global package layout and generated shims", () => {
         expectedVersion: "0.1.0",
       }),
     ).toThrowError(
-      expect.objectContaining({
+      match.objectContaining({
         prerequisite: "npm-generated executable wpm",
-        recovery: expect.stringMatching(/reinstall the exact accepted archive.*rerun/i),
+        recovery: match.stringMatching(/reinstall the exact accepted archive.*rerun/i),
       }),
     );
     expect(() =>
@@ -223,9 +224,9 @@ describe("portable global package layout and generated shims", () => {
         expectedVersion: "0.1.0",
       }),
     ).toThrowError(
-      expect.objectContaining({
+      match.objectContaining({
         prerequisite: "installed executable wpm",
-        recovery: expect.stringMatching(/restore.*wpm.*rerun.*--version/i),
+        recovery: match.stringMatching(/restore.*wpm.*rerun.*--version/i),
       }),
     );
   });
@@ -251,12 +252,12 @@ describe("portable global package layout and generated shims", () => {
         expectedVersion: "0.1.0",
       }),
     ).toThrowError(
-      expect.objectContaining({
+      match.objectContaining({
         prerequisite: "installed executable wpm version",
-        message: expect.stringMatching(
+        message: match.stringMatching(
           /reported version 0\.2\.0.*expected installed version 0\.1\.0/i,
         ),
-        recovery: expect.stringMatching(/reinstall the exact accepted archive.*rerun.*--version/i),
+        recovery: match.stringMatching(/reinstall the exact accepted archive.*rerun.*--version/i),
       }),
     );
   });

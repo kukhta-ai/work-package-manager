@@ -36,13 +36,13 @@ import {
 import { isCanonicalIntegrationVersion } from "../services/workspace-authoring-integration.js";
 
 /** The two existing ports used by projectless personal setup. */
-export interface PersonalAuthoringSetupDeps {
+interface PersonalAuthoringSetupDeps {
   readonly fs: FileSystem;
   readonly env: Environment;
 }
 
 /** One explicit, complete personal-setup request. */
-export interface PersonalAuthoringSetupInput {
+interface PersonalAuthoringSetupInput {
   readonly bundledSkillsRoot: string;
   readonly clientIds: readonly string[];
   readonly setupVersion: string;
@@ -74,7 +74,7 @@ export interface PersonalAuthoringSetupResult {
 }
 
 /** Read-only, fully preflighted selection used only to show one combined interactive confirmation. */
-export interface PersonalAuthoringSetupPreview {
+interface PersonalAuthoringSetupPreview {
   readonly status: "ready";
   readonly selectedClients: readonly AuthoringClientId[];
   readonly statePath: string;
@@ -88,7 +88,7 @@ export interface PersonalAuthoringSetupPreview {
 }
 
 /** One immutable setup plan held across an interactive confirmation boundary. */
-export interface PreparedPersonalAuthoringSetup {
+interface PreparedPersonalAuthoringSetup {
   readonly preview: PersonalAuthoringSetupPreview;
   /** Apply only the captured plan; every effect preimage is checked again immediately. */
   apply(): PersonalAuthoringSetupResult;
@@ -170,7 +170,7 @@ interface SetupPlan {
 }
 
 function clientQuarantinePath(
-  api: typeof posix | typeof win32,
+  api: typeof posix,
   quarantineRoot: string,
   client: AuthoringClientId,
   kind: "current.preimage" | "legacy",
@@ -213,7 +213,7 @@ function addBlocker(
   }
 }
 
-function pathApi(env: Environment): typeof posix | typeof win32 {
+function pathApi(env: Environment): typeof posix {
   return env.platform() === "win32" ? win32 : posix;
 }
 
@@ -587,7 +587,10 @@ function inspectPackagedSources(
       });
     }
   }
-  return { current, legacy };
+  return {
+    ...(current === undefined ? {} : { current }),
+    ...(legacy === undefined ? {} : { legacy }),
+  };
 }
 
 function inspectSkillDestination(
@@ -981,7 +984,7 @@ function assertQuarantineClean(deps: PersonalAuthoringSetupDeps, plan: SetupPlan
 }
 
 function stateDestination(
-  api: typeof posix | typeof win32,
+  api: typeof posix,
   home: string,
   definition: AuthoringClientDefinition,
 ): string {
@@ -989,7 +992,7 @@ function stateDestination(
 }
 
 function legacyDestination(
-  api: typeof posix | typeof win32,
+  api: typeof posix,
   home: string,
   definition: AuthoringClientDefinition,
 ): string {
@@ -1000,7 +1003,7 @@ function validateCompleteStateRelations(
   state: CompletePersonalAuthoringState,
   portableHome: string,
   definitions: ReadonlyMap<AuthoringClientId, AuthoringClientDefinition>,
-  api: typeof posix | typeof win32,
+  api: typeof posix,
   nativeHome: string,
   blockers: PersonalAuthoringSetupBlocker[],
 ): void {
@@ -1178,10 +1181,8 @@ function discoverQuarantinedApplyingState(
       });
     }
   }
-  if (found.length === 0) return undefined;
-  const selected =
-    found.find(({ resumeStage }) => resumeStage === "complete") ??
-    (found[0] as (typeof found)[number]);
+  const selected = found.find(({ resumeStage }) => resumeStage === "complete") ?? found[0];
+  if (selected === undefined) return undefined;
   if (found.some(({ text }) => text !== selected.text)) {
     addBlocker(blockers, {
       code: "personal-quarantine-conflict",
@@ -1198,7 +1199,7 @@ function canonicalManaged(
   previous: CompletePersonalAuthoringState | null,
   selected: readonly AuthoringClientId[],
   definitions: ReadonlyMap<AuthoringClientId, AuthoringClientDefinition>,
-  api: typeof posix | typeof win32,
+  api: typeof posix,
   home: string,
   version: string,
   sourceSha256: string,
@@ -1357,7 +1358,7 @@ function validateApplyingRelations(input: {
   readonly version: string;
   readonly portableHome: string;
   readonly definitions: ReadonlyMap<AuthoringClientId, AuthoringClientDefinition>;
-  readonly api: typeof posix | typeof win32;
+  readonly api: typeof posix;
   readonly nativeHome: string;
   readonly blockers: PersonalAuthoringSetupBlocker[];
 }): CompletePersonalAuthoringState | undefined {
@@ -2090,17 +2091,17 @@ function planSetup(
     throw new PersonalAuthoringSetupPreflightError(blockers);
   }
 
-  let previous: CompletePersonalAuthoringState | null = null;
-  let plannedClients: readonly PlannedClient[] = [];
+  let previous: CompletePersonalAuthoringState | null;
+  let plannedClients: readonly PlannedClient[];
   let completeState: CompletePersonalAuthoringState;
   let applyingState: ApplyingPersonalAuthoringState;
-  let retrying = false;
-  let quarantineRoot = "";
+  let retrying: boolean;
+  let quarantineRoot: string;
 
   if (observedState.state?.status === "applying") {
     retrying = true;
     applyingState = observedState.state;
-    previous = observedState.state.pending.previous;
+
     quarantineRoot = api.normalize(observedState.state.pending.quarantineRoot);
     const projectedComplete: CompletePersonalAuthoringState = {
       schemaVersion: 1,
@@ -2792,14 +2793,6 @@ export function preparePersonalAuthoringSetup(
       return resultFor(plan, executePlan(deps, plan));
     },
   };
-}
-
-/** Complete read-only setup preflight for callers that do not retain the immutable plan. */
-export function previewPersonalAuthoringSetup(
-  deps: PersonalAuthoringSetupDeps,
-  input: PersonalAuthoringSetupInput,
-): PersonalAuthoringSetupPreview {
-  return previewForPlan(planSetup(deps, input));
 }
 
 /**

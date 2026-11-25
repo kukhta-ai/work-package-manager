@@ -34,7 +34,7 @@ import type { ApplyContext, ApplyOutcome, OperationSpec, ReadSpec } from "./life
  *
  * @typeParam none.
  */
-export interface PayloadRefDescriptor {
+interface PayloadRefDescriptor {
   /** The bundle-relative on-disk directory the referenced file must exist under (e.g. `payload/files`). */
   readonly onDiskDir: string;
   /** The `bundle.yml` key path whose sequence holds the references (e.g. `["payload", "files"]`). */
@@ -113,7 +113,7 @@ function bundleManifestPath(root: string, id: string): string {
 }
 
 /** The input to {@link addPayloadRefSpec}: the host id + the (already existence-checked) reference path. */
-export interface AddPayloadRefInput {
+interface AddPayloadRefInput {
   /** The host bundle (selected + enabled-guarded by the `bundle <id>` routing). */
   readonly id: string;
   /** The reference path to register, relative to the descriptor's on-disk directory (existence checked by the CLI). */
@@ -121,7 +121,7 @@ export interface AddPayloadRefInput {
 }
 
 /** The input to {@link removePayloadRefSpec}: the host id + the reference path to deregister. */
-export interface RemovePayloadRefInput {
+interface RemovePayloadRefInput {
   /** The host bundle (selected + enabled-guarded by the `bundle <id>` routing). */
   readonly id: string;
   /** The registered reference path to deregister (the file is left on disk). */
@@ -129,7 +129,7 @@ export interface RemovePayloadRefInput {
 }
 
 /** The input to {@link listPayloadRefsSpec}: the host bundle id to read. */
-export interface PayloadListInput {
+interface PayloadListInput {
   /** The host bundle whose registered references to print (selected by the `bundle <id>` routing). */
   readonly id: string;
 }

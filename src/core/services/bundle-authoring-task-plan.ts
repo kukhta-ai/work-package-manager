@@ -3,41 +3,24 @@ import type { TaskRecord } from "../ports/index.js";
 import type { RecordedConcreteBundleContribution } from "./bundle-authoring-contributions.js";
 import {
   type BundleAuthoringTaskPlanResult,
-  type CompileBundleAuthoringTaskPlanInput,
   compileBundleAuthoringTaskPlan,
   type PlannedProjectAuthoringTask,
   type ProjectAuthoringTaskPlanProblem,
   TEMPLATE_TASK_LABEL,
 } from "./project-authoring-task-plan.js";
 
-export type { BundleAuthoringTaskPlanResult, CompileBundleAuthoringTaskPlanInput };
 export { compileBundleAuthoringTaskPlan };
 
-/**
- * Stable bundle references a template contribution may depend on regardless of command options.
- *
- * The advisor task is deliberately absent: it is conditional (`--no-advisor`) and therefore cannot be a
- * durable producer dependency even when one particular materialisation happens to include it.
- */
-export const UNCONDITIONAL_BUNDLE_MANDATORY_REFERENCES = [
-  "wpm:bundle:plan",
-  "wpm:bundle:fill-install-backlog",
-  "wpm:bundle:author-payload",
-  "wpm:bundle:scaffold-payload-skill",
-  "wpm:bundle:verify-step-slugs",
-  "wpm:bundle:verify-dod",
-  "wpm:bundle:verify-payload-references",
-  "wpm:bundle:verify-skill-registration",
-  "wpm:bundle:verify-version-constraints",
-  "wpm:bundle:review-install-backlog-independence",
-  "wpm:bundle:simulate-fresh-install",
-] as const;
+import { UNCONDITIONAL_BUNDLE_MANDATORY_REFERENCES } from "./bundle-mandatory-references.js";
+
+/** @internal Used by runtime within this module; exported for focused behavioral tests. */
+export { UNCONDITIONAL_BUNDLE_MANDATORY_REFERENCES } from "./bundle-mandatory-references.js";
 
 const UNCONDITIONAL_BUNDLE_MANDATORY_REFERENCE_SET = new Set<string>(
   UNCONDITIONAL_BUNDLE_MANDATORY_REFERENCES,
 );
 
-export type BundleAuthoringReconciliationProblemCode =
+type BundleAuthoringReconciliationProblemCode =
   | "duplicate-existing-ownership"
   | "existing-definition-mismatch"
   | "existing-dependency-mismatch"
@@ -45,24 +28,24 @@ export type BundleAuthoringReconciliationProblemCode =
   | "foreign-title-ownership"
   | "malformed-template-ownership";
 
-export interface BundleAuthoringReconciliationProblem {
+interface BundleAuthoringReconciliationProblem {
   readonly code: BundleAuthoringReconciliationProblemCode;
   readonly taskId: string;
   readonly message: string;
 }
 
-export interface PreservedBundleAuthoringTask {
+interface PreservedBundleAuthoringTask {
   readonly identity: string;
   readonly id: string;
   readonly task: PlannedProjectAuthoringTask;
   readonly record: TaskRecord;
 }
 
-export interface MissingBundleAuthoringTask {
+interface MissingBundleAuthoringTask {
   readonly task: PlannedProjectAuthoringTask;
 }
 
-export type BundleAuthoringReconciliationResult =
+type BundleAuthoringReconciliationResult =
   | {
       readonly ok: true;
       readonly preserved: readonly PreservedBundleAuthoringTask[];
@@ -299,13 +282,6 @@ export function reconcileBundleAuthoringTaskPlan(input: {
   return problems.length > 0
     ? { ok: false, preserved, missing, problems }
     : { ok: true, preserved, missing, problems: [] };
-}
-
-/** Convert compiler findings into the same deterministic contribution-aware shape for operation preflight. */
-export function bundlePlanProblems(
-  result: BundleAuthoringTaskPlanResult,
-): readonly ProjectAuthoringTaskPlanProblem[] {
-  return result.ok ? [] : result.problems;
 }
 
 /** Rehydrate a strictly parsed concrete contribution without consulting its original template source. */

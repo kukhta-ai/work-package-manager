@@ -2,18 +2,15 @@ import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { FakeBacklog } from "../../../src/adapters/fake-backlog.js";
-import { MemoryFileSystem } from "../../../src/adapters/memory-fs.js";
-import {
-  createBundleSpec,
-  perBundleAuthoringTasks,
-} from "../../../src/core/operations/create-bundle.js";
 import { makeArtefactDeriver } from "../../../src/core/operations/derive-artefacts-capability.js";
 import { type LifecycleDeps, runMutation } from "../../../src/core/operations/lifecycle.js";
 import { renderTree } from "../../../src/core/services/render.js";
 import { parseBundleManifest, parseManifest } from "../../../src/core/services/schema/index.js";
 import { resolveTemplate } from "../../../src/core/services/template-resolver.js";
 import { parseYaml } from "../../../src/util/yaml.js";
+import { FakeBacklog } from "../../doubles/fake-backlog.js";
+import { MemoryFileSystem } from "../../doubles/memory-fs.js";
+import { createBundleSpec, perBundleAuthoringTasks } from "../../helpers/legacy-create-bundle.js";
 
 /**
  * Unit test for the REAL shipped `templates/bundle/default/` template — the one the task-26 `createBundle`

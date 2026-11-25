@@ -1,15 +1,15 @@
 import { Readable } from "node:stream";
 import { describe, expect, it } from "vitest";
-import { FakeBacklog } from "../../../src/adapters/fake-backlog.js";
-import { FakeEnvironment } from "../../../src/adapters/fake-env.js";
-import { FixedClock } from "../../../src/adapters/fixed-clock.js";
-import { MemoryFileSystem } from "../../../src/adapters/memory-fs.js";
 import { buildProgram, type CliDeps, COMPLETION_SPECS, run } from "../../../src/cli.js";
 import { completeArgv } from "../../../src/completion/complete.js";
 import { defaultRegistry } from "../../../src/completion/registry.js";
 import { parseManifest } from "../../../src/core/services/schema/index.js";
 import type { CliIo, OutputSink } from "../../../src/util/exit.js";
 import { parseYaml } from "../../../src/util/yaml.js";
+import { FakeBacklog } from "../../doubles/fake-backlog.js";
+import { FakeEnvironment } from "../../doubles/fake-env.js";
+import { FixedClock } from "../../doubles/fixed-clock.js";
+import { MemoryFileSystem } from "../../doubles/memory-fs.js";
 
 /**
  * Acceptance tests for `bundle remove <id>` (task-53), driven through `run()` in-process over in-memory ports.
@@ -234,7 +234,7 @@ describe("bundle remove (task-53)", () => {
     expect(i.err.text).toContain("init");
   });
 
-  it("AC#5 — the id positional completes from current (enabled) bundles", async () => {
+  it("AC#5 — the id positional completes from current (enabled) bundles", () => {
     const { fs, backlog } = seed({ enabled: ["web", "doc"] });
     const out = complete(fs, backlog, ["bundle", "remove", ""]);
     expect(out).toContain("web");

@@ -28,13 +28,13 @@ import type { ApplyContext, ApplyOutcome, OperationSpec, ReadSpec } from "./life
 const MANIFEST_FILE = "manifest.yml";
 
 /** The input to {@link bumpVersionSpec}: the (commander-validated) release level to advance. */
-export interface BumpVersionInput {
+interface BumpVersionInput {
   /** The semver level to advance — `major`, `minor`, or `patch`. */
   readonly level: BumpLevel;
 }
 
 /** The input to {@link setVersionSpec}: the (already-parsed) explicit version to set. */
-export interface SetVersionInput {
+interface SetVersionInput {
   /** The explicit semver to write (already validated by `parseSemVer` at the CLI boundary). */
   readonly version: SemVer;
 }

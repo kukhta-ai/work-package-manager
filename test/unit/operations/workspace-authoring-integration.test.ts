@@ -2,8 +2,6 @@ import { readdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { FakeBacklog } from "../../../src/adapters/fake-backlog.js";
-import { MemoryFileSystem } from "../../../src/adapters/memory-fs.js";
 import { MutationFailure, WorkspaceIntegrationPreflightError } from "../../../src/core/errors.js";
 import {
   integrateWorkspaceAuthoring,
@@ -16,6 +14,9 @@ import {
   WORKSPACE_SKILL_NAMES,
 } from "../../../src/core/services/workspace-authoring-integration.js";
 import { toPosix } from "../../../src/util/posix-path.js";
+import { FakeBacklog } from "../../doubles/fake-backlog.js";
+import { MemoryFileSystem } from "../../doubles/memory-fs.js";
+import { match } from "../../helpers/match.js";
 
 const REPO_ROOT = fileURLToPath(new URL("../../..", import.meta.url));
 const WORKSPACE = "/authoring/demo";
@@ -129,7 +130,7 @@ describe("workspace authoring integration", () => {
 
       expect(caught).toBeInstanceOf(WorkspaceIntegrationPreflightError);
       expect((caught as WorkspaceIntegrationPreflightError).blockers).toEqual(
-        expect.arrayContaining([expect.objectContaining({ code })]),
+        match.arrayContaining([match.objectContaining({ code })]),
       );
       expect((caught as WorkspaceIntegrationPreflightError).handoffPrepared).toBe(false);
       expect(snapshot(harness.fs)).toEqual(before);
@@ -150,7 +151,7 @@ describe("workspace authoring integration", () => {
 
       expect(caught).toBeInstanceOf(WorkspaceIntegrationPreflightError);
       expect((caught as WorkspaceIntegrationPreflightError).blockers).toEqual(
-        expect.arrayContaining([expect.objectContaining({ code: "integration-version-invalid" })]),
+        match.arrayContaining([match.objectContaining({ code: "integration-version-invalid" })]),
       );
       expect(snapshot(harness.fs)).toEqual(before);
     }
@@ -309,7 +310,7 @@ describe("workspace authoring integration", () => {
 
     expect(caught).toBeInstanceOf(WorkspaceIntegrationPreflightError);
     expect((caught as WorkspaceIntegrationPreflightError).blockers.map(({ code }) => code)).toEqual(
-      expect.arrayContaining(["owned-skill-modified", "front-door-markers-ambiguous"]),
+      match.arrayContaining(["owned-skill-modified", "front-door-markers-ambiguous"]),
     );
     expect(snapshot(harness.fs)).toEqual(before);
   });
@@ -336,7 +337,7 @@ describe("workspace authoring integration", () => {
 
     expect(caught).toBeInstanceOf(WorkspaceIntegrationPreflightError);
     expect((caught as WorkspaceIntegrationPreflightError).blockers.map(({ code }) => code)).toEqual(
-      expect.arrayContaining(["owned-skill-modified", "owned-front-door-modified"]),
+      match.arrayContaining(["owned-skill-modified", "owned-front-door-modified"]),
     );
     expect(snapshot(harness.fs)).toEqual(before);
   });
@@ -369,7 +370,7 @@ describe("workspace authoring integration", () => {
 
     expect(caught).toBeInstanceOf(WorkspaceIntegrationPreflightError);
     expect((caught as WorkspaceIntegrationPreflightError).blockers).toEqual(
-      expect.arrayContaining([expect.objectContaining({ code: "skill-destination-unowned" })]),
+      match.arrayContaining([match.objectContaining({ code: "skill-destination-unowned" })]),
     );
     expect(snapshot(harness.fs)).toEqual(before);
   });
@@ -406,7 +407,7 @@ describe("workspace authoring integration", () => {
     }
     expect(caught).toBeInstanceOf(WorkspaceIntegrationPreflightError);
     expect((caught as WorkspaceIntegrationPreflightError).blockers.map(({ code }) => code)).toEqual(
-      expect.arrayContaining(["owned-skill-missing", "owned-front-door-missing"]),
+      match.arrayContaining(["owned-skill-missing", "owned-front-door-missing"]),
     );
     expect(snapshot(harness.fs)).toEqual(before);
   });
@@ -428,7 +429,7 @@ describe("workspace authoring integration", () => {
 
     expect(caught).toBeInstanceOf(WorkspaceIntegrationPreflightError);
     expect((caught as WorkspaceIntegrationPreflightError).blockers.map(({ code }) => code)).toEqual(
-      expect.arrayContaining([
+      match.arrayContaining([
         "unselected-skill-ancestor-ambiguous",
         "unselected-front-door-ambiguous",
       ]),
@@ -659,7 +660,7 @@ describe("workspace integration partial-write evidence", () => {
     }
     expect(caught).toBeInstanceOf(WorkspaceIntegrationPreflightError);
     expect((caught as WorkspaceIntegrationPreflightError).blockers).toEqual(
-      expect.arrayContaining([expect.objectContaining({ code: "partial-front-door-conflict" })]),
+      match.arrayContaining([match.objectContaining({ code: "partial-front-door-conflict" })]),
     );
     expect(fs.read(`${WORKSPACE}/CLAUDE.md`)).toBe("user replacement\n");
   });
@@ -737,7 +738,7 @@ describe("workspace integration partial-write evidence", () => {
     }
     expect(caught).toBeInstanceOf(WorkspaceIntegrationPreflightError);
     expect((caught as WorkspaceIntegrationPreflightError).blockers).toEqual(
-      expect.arrayContaining([expect.objectContaining({ code: "partial-front-door-conflict" })]),
+      match.arrayContaining([match.objectContaining({ code: "partial-front-door-conflict" })]),
     );
     expect(fs.inspectPath(`${WORKSPACE}/CLAUDE.md`).kind).toBe("missing");
   });
@@ -770,7 +771,7 @@ describe("workspace integration partial-write evidence", () => {
     }
     expect(caught).toBeInstanceOf(WorkspaceIntegrationPreflightError);
     expect((caught as WorkspaceIntegrationPreflightError).blockers).toEqual(
-      expect.arrayContaining([expect.objectContaining({ code: "partial-front-door-conflict" })]),
+      match.arrayContaining([match.objectContaining({ code: "partial-front-door-conflict" })]),
     );
     expect(fs.read(`${WORKSPACE}/CLAUDE.md`)).toBe("DIFFERENT USER BYTES\n");
   });

@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
@@ -12,6 +12,7 @@ import {
   validateStateDocument,
   validateTrackedWorkingMemory,
 } from "../../../scripts/check-process-artifacts.mjs";
+import { match } from "../../helpers/match.js";
 
 const REPOSITORY_ROOT = fileURLToPath(new URL("../../..", import.meta.url));
 
@@ -90,9 +91,9 @@ describe("process-artifact policy primitives", () => {
     });
 
     expect(violations).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ code: "state-too-large" }),
-        expect.objectContaining({
+      match.arrayContaining([
+        match.objectContaining({ code: "state-too-large" }),
+        match.objectContaining({
           code: "unknown-state-key",
           detail: "completedStories is not allowed",
         }),
@@ -170,7 +171,7 @@ describe("process-artifact policy primitives", () => {
     );
 
     expect(violations.map(({ code }) => code)).toEqual(
-      expect.arrayContaining([
+      match.arrayContaining([
         "invalid-archive-disposition",
         "unsafe-archive-pointer",
         "invalid-archive-checksum",
@@ -218,10 +219,10 @@ describe("process-artifact policy primitives", () => {
 
     expect(result.policy).toBeUndefined();
     expect(result.problems).toEqual(
-      expect.arrayContaining([
+      match.arrayContaining([
         "workingMemory.roots must include _bmad-output",
         "workingMemory.roots must include Skills-Results",
-        expect.stringContaining("checksumPattern is invalid"),
+        match.stringContaining("checksumPattern is invalid"),
       ]),
     );
   });
@@ -242,10 +243,23 @@ describe("process-artifact policy primitives", () => {
     ).toContain("$: must be an ISO date-time with timezone");
   });
 
-  it("validates the committed state and pilot records independently of the migration index step", () => {
+  it("validates the committed state and every maintained record independently of the migration index step", () => {
+    const records = readdirSync(join(REPOSITORY_ROOT, "research/evolution/records")).filter(
+      (name) => name.endsWith(".yaml"),
+    );
+    const gates = readdirSync(join(REPOSITORY_ROOT, "research/evolution/gates")).filter((name) =>
+      name.endsWith(".json"),
+    );
     const result = checkProcessArtifacts({ repositoryRoot: REPOSITORY_ROOT, trackedPaths: [] });
     expect(result.violations).toEqual([]);
-    expect(result.evolutionRecordCount).toBe(1);
-    expect(result.gateReceiptCount).toBe(2);
+    expect(records).toContain("authoring-agent-onboarding.yaml");
+    expect(gates).toEqual(
+      match.arrayContaining([
+        "authoring-agent-onboarding-phase-6.json",
+        "authoring-agent-onboarding-pr-5.json",
+      ]),
+    );
+    expect(result.evolutionRecordCount).toBe(records.length);
+    expect(result.gateReceiptCount).toBe(gates.length);
   });
 });

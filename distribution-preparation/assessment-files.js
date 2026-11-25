@@ -55,6 +55,7 @@ function readOrdinaryFile(path, field) {
 export function readAssessmentJson(path, field, findings) {
   try {
     const decoded = UTF8_DECODER.decode(readOrdinaryFile(path, field));
+    /** @type {unknown} */
     const value = JSON.parse(decoded);
     if (typeof value !== "object" || value === null || Array.isArray(value)) {
       throw new TypeError(`${field} must contain a JSON object`);

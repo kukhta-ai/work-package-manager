@@ -5,10 +5,7 @@ import type {
   TemplateScope,
 } from "../../../src/core/model/index.js";
 import type { MandatoryAuthoringTask } from "../../../src/core/model/operation.js";
-import {
-  perBundleAuthoringTaskCatalog,
-  perBundleAuthoringTasks,
-} from "../../../src/core/operations/create-bundle.js";
+import { perBundleAuthoringTaskCatalog } from "../../../src/core/operations/create-bundle.js";
 import {
   projectWideAuthoringTaskCatalog,
   projectWideAuthoringTasks,
@@ -17,6 +14,8 @@ import {
   inspectTemplateAuthoringTasks,
   type TemplateProducer,
 } from "../../../src/core/services/template-authoring-tasks.js";
+import { perBundleAuthoringTasks } from "../../helpers/legacy-create-bundle.js";
+import { match } from "../../helpers/match.js";
 
 const PROJECT_MANDATORY: readonly MandatoryAuthoringTask[] = [
   {
@@ -87,7 +86,7 @@ describe("inspectTemplateAuthoringTasks — valid inert contributions", () => {
     expect(result.mode).toBe("additional");
     expect(result.problems).toEqual([]);
     expect(result.tasks).toEqual([
-      expect.objectContaining({
+      match.objectContaining({
         key: "collect-license",
         identity: "template:built-in:project:minimal-plus@rev-7:collect-license",
         title: "Collect license for <project-name>",
@@ -95,7 +94,7 @@ describe("inspectTemplateAuthoringTasks — valid inert contributions", () => {
         dependencies: [],
         contextKeys: ["wpm.project.name"],
       }),
-      expect.objectContaining({
+      match.objectContaining({
         key: "verify-license",
         dependencies: [
           {
@@ -177,7 +176,7 @@ describe("inspectTemplateAuthoringTasks — valid inert contributions", () => {
 
     expect(result.status).toBe("invalid");
     expect(result.problems).toContainEqual(
-      expect.objectContaining({ code: "producer-identity-mismatch" }),
+      match.objectContaining({ code: "producer-identity-mismatch" }),
     );
     expect(result.tasks).toEqual([]);
   });
@@ -279,9 +278,9 @@ describe("inspectTemplateAuthoringTasks — aggregate invalid contribution", () 
 
     expect(result.status).toBe("invalid");
     expect(result.problems).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ code: "title-invalid", path: "authoring-tasks[0].title" }),
-        expect.objectContaining({
+      match.arrayContaining([
+        match.objectContaining({ code: "title-invalid", path: "authoring-tasks[0].title" }),
+        match.objectContaining({
           code: "acceptance-criterion-invalid",
           path: "authoring-tasks[1].acceptance-criteria[0]",
         }),
@@ -305,7 +304,7 @@ describe("inspectTemplateAuthoringTasks — aggregate invalid contribution", () 
     );
     expect(result.status).toBe("invalid");
     expect(result.problems).toContainEqual(
-      expect.objectContaining({ code: "mandatory-title-collision" }),
+      match.objectContaining({ code: "mandatory-title-collision" }),
     );
   });
 
@@ -379,7 +378,7 @@ describe("inspectTemplateAuthoringTasks — aggregate invalid contribution", () 
     expect(result.status).toBe("invalid");
     expect(result.tasks).toEqual([]);
     expect(result.problems.map(({ code }) => code)).toEqual(
-      expect.arrayContaining([
+      match.arrayContaining([
         projectName.trim().length === 0 ? "unavailable-context" : "unsafe-text",
       ]),
     );
@@ -410,7 +409,7 @@ describe("inspectTemplateAuthoringTasks — aggregate invalid contribution", () 
     });
     expect(concrete.status).toBe("invalid");
     expect(concrete.problems).toContainEqual(
-      expect.objectContaining({ code: "rendered-title-collision" }),
+      match.objectContaining({ code: "rendered-title-collision" }),
     );
   });
 

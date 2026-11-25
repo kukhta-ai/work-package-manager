@@ -1,14 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { FakeBacklog } from "../../../src/adapters/fake-backlog.js";
-import { FakeEnvironment } from "../../../src/adapters/fake-env.js";
-import { FixedClock } from "../../../src/adapters/fixed-clock.js";
-import { MemoryFileSystem } from "../../../src/adapters/memory-fs.js";
 import { buildProgram, type CliDeps, COMPLETION_SPECS, run } from "../../../src/cli.js";
 import { completeArgv } from "../../../src/completion/complete.js";
 import { defaultRegistry } from "../../../src/completion/registry.js";
 import { parseBundleManifest } from "../../../src/core/services/schema/index.js";
 import type { CliIo, OutputSink } from "../../../src/util/exit.js";
 import { parseYaml } from "../../../src/util/yaml.js";
+import { FakeBacklog } from "../../doubles/fake-backlog.js";
+import { FakeEnvironment } from "../../doubles/fake-env.js";
+import { FixedClock } from "../../doubles/fixed-clock.js";
+import { MemoryFileSystem } from "../../doubles/memory-fs.js";
 
 /**
  * Acceptance tests for the per-bundle subcommand family — `bundle <id> show` / `bundle <id> meta` (tasks
@@ -214,7 +214,7 @@ describe("bundle <id> show (task-57)", () => {
     expect(i.err.text).toContain("init");
   });
 
-  it("AC#4 — the id position completes from enabled bundles", async () => {
+  it("AC#4 — the id position completes from enabled bundles", () => {
     const { fs, backlog } = seed({ enabled: ["web", "doc"] });
     const out = complete(fs, backlog, ["bundle", ""]);
     expect(out).toContain("web");
@@ -225,7 +225,7 @@ describe("bundle <id> show (task-57)", () => {
     expect(out).not.toContain("*");
   });
 
-  it("the id position resolves from a LEADING -C value (the -C value is not mistaken for an operand) — S1 fix", async () => {
+  it("the id position resolves from a LEADING -C value (the -C value is not mistaken for an operand) — S1 fix", () => {
     const { fs, backlog } = seed({ enabled: ["web", "doc"] });
     // cwd is OUTSIDE the project (the `complete` helper's default), and the project is named only via -C — the
     // `descend` global-value-skip means the -C value isn't consumed as an operand, so `bundle <tab>` still

@@ -1,14 +1,15 @@
 import { describe, expect, it } from "vitest";
-import { FakeBacklog } from "../../../src/adapters/fake-backlog.js";
-import { FakeEnvironment } from "../../../src/adapters/fake-env.js";
-import { FixedClock } from "../../../src/adapters/fixed-clock.js";
-import { MemoryFileSystem } from "../../../src/adapters/memory-fs.js";
 import { buildProgram, type CliDeps, run } from "../../../src/cli.js";
 import { completeArgv } from "../../../src/completion/complete.js";
 import { defaultRegistry } from "../../../src/completion/registry.js";
 import { parseManifest } from "../../../src/core/services/schema/index.js";
 import type { CliIo, OutputSink } from "../../../src/util/exit.js";
 import { parseYaml } from "../../../src/util/yaml.js";
+import { FakeBacklog } from "../../doubles/fake-backlog.js";
+import { FakeEnvironment } from "../../doubles/fake-env.js";
+import { FixedClock } from "../../doubles/fixed-clock.js";
+import { MemoryFileSystem } from "../../doubles/memory-fs.js";
+import { match } from "../../helpers/match.js";
 
 /**
  * Acceptance tests for the `project targets` add/list/remove family (tasks 42/43/44 — the list-management
@@ -320,7 +321,7 @@ describe("targets completion (task-42/44 AC#6 — the completion half)", () => {
   it("AC#6 add — `project targets add <tab>` completes from the built-in well-known agents", () => {
     const { fs, backlog } = seed(["claude-code"]);
     expect(complete(fs, backlog, ["project", "targets", "add", ""])).toEqual(
-      expect.arrayContaining(["claude-code", "codex", "hermes", "openclaw"]),
+      match.arrayContaining(["claude-code", "codex", "hermes", "openclaw"]),
     );
   });
 

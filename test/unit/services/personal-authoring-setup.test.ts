@@ -9,6 +9,7 @@ import {
   personalSetupRequestKey,
   serializePersonalAuthoringState,
 } from "../../../src/core/services/personal-authoring-setup.js";
+import { match } from "../../helpers/match.js";
 
 const COMPLETE: CompletePersonalAuthoringState = {
   schemaVersion: 1,
@@ -99,7 +100,7 @@ describe("personal authoring setup state", () => {
   it("rejects noncanonical JSON bytes even when their value is valid", () => {
     expect(parsePersonalAuthoringState(JSON.stringify(COMPLETE))).toMatchObject({
       ok: false,
-      reason: expect.stringContaining("canonical"),
+      reason: match.stringContaining("canonical"),
     });
   });
 

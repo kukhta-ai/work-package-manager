@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { FakeBacklog } from "../../../src/adapters/fake-backlog.js";
+import { FakeBacklog } from "../../doubles/fake-backlog.js";
 
 const ROOT = "/proj/.authoring-backlog";
 

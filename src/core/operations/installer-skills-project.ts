@@ -66,7 +66,7 @@ export function conventionalProjectSkillPath(name: string): string {
  * @param manifest - The loaded project manifest.
  * @returns The `<project>-installer` skill name.
  */
-export function mainInstallerSkillName(manifest: Manifest): string {
+function mainInstallerSkillName(manifest: Manifest): string {
   return `${manifest.meta.name}${INSTALLER_SUFFIX}`;
 }
 
@@ -126,7 +126,7 @@ function registerProjectSkill(
 }
 
 /** The input to {@link attachProjectInstallerSkillSpec}: the skill name + the root-relative SKILL.md path. */
-export interface AttachProjectSkillInput {
+interface AttachProjectSkillInput {
   /** The installer-skill name to register (the registry key). */
   readonly name: string;
   /** The project-root-relative path to the existing SKILL.md (the conventional path, or a `--path` location). */
@@ -134,13 +134,13 @@ export interface AttachProjectSkillInput {
 }
 
 /** The input to {@link scaffoldProjectInstallerSkillSpec}: the new skill name (scaffolded at the conventional path). */
-export interface ScaffoldProjectSkillInput {
+interface ScaffoldProjectSkillInput {
   /** The new installer-skill name to scaffold + register. */
   readonly name: string;
 }
 
 /** The input to {@link removeProjectInstallerSkillSpec}: the registered skill name to deregister. */
-export interface RemoveProjectSkillInput {
+interface RemoveProjectSkillInput {
   /** The registered installer-skill name to deregister (the SKILL.md is left on disk). */
   readonly name: string;
 }

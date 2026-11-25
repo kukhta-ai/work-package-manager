@@ -6,6 +6,7 @@ import {
   ACTIVATION_FACT_KEYS,
   assessInactiveDistribution,
 } from "../../../distribution-preparation/readiness.js";
+import { match } from "../../helpers/match.js";
 
 const REVISION = "a".repeat(40);
 const SHA256 = `sha256:${"1".repeat(64)}`;
@@ -138,12 +139,12 @@ describe("read-only GitHub staging assessment", () => {
       },
     });
     expect(result.required.evidence).toEqual(
-      expect.objectContaining({
+      match.objectContaining({
         candidateId: candidate().candidateId,
         releaseNotes: NOTES_DIGEST,
-        inspection: expect.objectContaining({ rawDigest: `sha256:${"5".repeat(64)}` }),
-        quality: expect.objectContaining({ rawDigest: `sha256:${"7".repeat(64)}` }),
-        packedInstall: expect.objectContaining({ rawDigest: `sha256:${"9".repeat(64)}` }),
+        inspection: match.objectContaining({ rawDigest: `sha256:${"5".repeat(64)}` }),
+        quality: match.objectContaining({ rawDigest: `sha256:${"7".repeat(64)}` }),
+        packedInstall: match.objectContaining({ rawDigest: `sha256:${"9".repeat(64)}` }),
       }),
     );
     expect(result.unresolvedPolicyFacts).toHaveLength(8);
@@ -211,7 +212,7 @@ describe("read-only GitHub staging assessment", () => {
 
     expect(result.matches.map(({ object }) => object)).toEqual(["tag", "release"]);
     expect(result.missing).toEqual([
-      expect.objectContaining({ object: "asset", identity: "wpm-0.1.0.tgz" }),
+      match.objectContaining({ object: "asset", identity: "wpm-0.1.0.tgz" }),
     ]);
     expect(result.conflicts).toEqual([]);
   });
@@ -258,7 +259,7 @@ describe("read-only GitHub staging assessment", () => {
     const result = assessGitHubStaging({ candidate: candidate(), policy, observation });
 
     expect(result.unverified).toEqual([
-      expect.objectContaining({ object: "asset", field: "digest", identity: "wpm-0.1.0.tgz" }),
+      match.objectContaining({ object: "asset", field: "digest", identity: "wpm-0.1.0.tgz" }),
     ]);
     expect(result.matches.map(({ object }) => object)).toEqual(["tag", "release"]);
     expect(result.missing).toEqual([]);
@@ -287,9 +288,7 @@ describe("read-only GitHub staging assessment", () => {
 
     const rejectedEvidence = candidate();
     (rejectedEvidence.binding.evidence.quality as { status: string }).status = "rejected";
-    rejectedEvidence.candidateId = createCandidateIdentity(
-      rejectedEvidence.binding as unknown as Parameters<typeof createCandidateIdentity>[0],
-    );
+    rejectedEvidence.candidateId = createCandidateIdentity(rejectedEvidence.binding);
     expect(() =>
       assessGitHubStaging({
         candidate: rejectedEvidence,
@@ -394,7 +393,7 @@ describe("read-only GitHub staging assessment", () => {
     duplicateTag.tags.push({ ...firstTag });
     expect(
       assessGitHubStaging({ candidate: candidate(), policy, observation: duplicateTag }).conflicts,
-    ).toContainEqual(expect.objectContaining({ object: "tag", field: "identity" }));
+    ).toContainEqual(match.objectContaining({ object: "tag", field: "identity" }));
 
     const duplicateRelease = matchingObservation();
     const firstRelease = duplicateRelease.releases[0];
@@ -403,14 +402,14 @@ describe("read-only GitHub staging assessment", () => {
     expect(
       assessGitHubStaging({ candidate: candidate(), policy, observation: duplicateRelease })
         .conflicts,
-    ).toContainEqual(expect.objectContaining({ object: "release", field: "identity" }));
+    ).toContainEqual(match.objectContaining({ object: "release", field: "identity" }));
 
     const duplicateAsset = matchingObservation();
     duplicateAsset.releases[0]?.assets.push({ ...matchingAsset(), id: 32 });
     expect(
       assessGitHubStaging({ candidate: candidate(), policy, observation: duplicateAsset })
         .conflicts,
-    ).toContainEqual(expect.objectContaining({ object: "asset", field: "identity" }));
+    ).toContainEqual(match.objectContaining({ object: "asset", field: "identity" }));
   });
 
   it("is stable across caller object and unrelated observation order", () => {

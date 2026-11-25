@@ -1,6 +1,4 @@
 import { describe, expect, it } from "vitest";
-import { FakeEnvironment } from "../../../src/adapters/fake-env.js";
-import { MemoryFileSystem } from "../../../src/adapters/memory-fs.js";
 import {
   inspectAuthoringClient,
   inspectAuthoringClients,
@@ -10,6 +8,8 @@ import {
   evaluateAuthoringClientId,
   listAuthoringClientDefinitions,
 } from "../../../src/core/services/authoring-clients.js";
+import { FakeEnvironment } from "../../doubles/fake-env.js";
+import { MemoryFileSystem } from "../../doubles/memory-fs.js";
 
 const HOME = "/home/author";
 

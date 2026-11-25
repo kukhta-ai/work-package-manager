@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { FixedClock } from "../../../src/adapters/fixed-clock.js";
 import type { Clock } from "../../../src/core/ports/clock.js";
+import { FixedClock } from "../../doubles/fixed-clock.js";
 
 describe("FixedClock (the Clock fake — pins time, AC#2)", () => {
   it("now() returns the pinned instant (Date construction)", () => {

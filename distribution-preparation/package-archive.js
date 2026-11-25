@@ -3,6 +3,11 @@ import { gunzipSync } from "node:zlib";
 
 const BLOCK_SIZE = 512;
 
+/** @param {unknown} value @returns {value is Record<string, unknown>} */
+function isRecord(value) {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
 /**
  * @typedef ArchiveEntry
  * @property {string} path
@@ -185,8 +190,9 @@ export function inspectPackageArchiveBytes(archiveBytes) {
     entries.push(entry);
 
     if (path === "package.json" && entry.type === "file") {
+      /** @type {unknown} */
       const parsed = JSON.parse(body.toString("utf8"));
-      if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+      if (!isRecord(parsed)) {
         throw new Error("packed package.json must contain an object");
       }
       packedManifest = parsed;

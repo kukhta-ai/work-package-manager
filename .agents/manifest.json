@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "skills": [
+    "wpm-repo-dev",
+    "wpm-repo-test",
+    "wpm-repo-architecture",
+    "wpm-repo-review",
+    "wpm-repo-release"
+  ],
+  "clients": {
+    "codex": {
+      "version": "0.166.0"
+    },
+    "claude": {
+      "version": "2.1.158"
+    }
+  },
+  "source": ".agents/skills",
+  "projection": ".claude/skills",
+  "releaseSkill": "wpm-repo-release"
+}

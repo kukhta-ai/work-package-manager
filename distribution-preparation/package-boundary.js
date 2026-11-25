@@ -120,6 +120,7 @@ function addLeafPaths(sourceRoot, packagePath, paths) {
  */
 export function collectDeclaredShipSet(sourceRoot) {
   const manifestPath = join(sourceRoot, "package.json");
+  /** @type {unknown} */
   const parsedManifest = JSON.parse(readFileSync(manifestPath, "utf8"));
   if (!isRecord(parsedManifest)) throw new TypeError("package.json must contain an object");
   /** @type {PackageManifest} */
@@ -127,6 +128,7 @@ export function collectDeclaredShipSet(sourceRoot) {
   /** @type {PackageBoundaryViolation[]} */
   const declarationViolations = [];
   const expected = new Set(["package.json"]);
+  /** @type {Map<string, number>} */
   const declarationCounts = new Map();
 
   const declaredRoots = manifest.files;

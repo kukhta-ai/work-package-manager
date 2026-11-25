@@ -27,7 +27,7 @@ const BLOCK_BEGIN = `# begin ${PROGRAM} completion`;
 const BLOCK_END = `# end ${PROGRAM} completion`;
 
 /** The result of an install: which script file was written and which init file got the loader block. */
-export interface InstallResult {
+interface InstallResult {
   /** The shell the completion was installed for. */
   readonly shell: Shell;
   /** The path of the completion script written (the file the init file sources). */
@@ -38,7 +38,9 @@ export interface InstallResult {
   readonly added: boolean;
 }
 
-/** Generate the completion-script text for a shell, using omelette's pure (no-exit) generators. */
+/** Generate the completion-script text for a shell, using omelette's pure (no-exit) generators.
+ * @internal Used by runtime within this module; exported for focused behavioral tests.
+ */
 export function generateScript(shell: Shell): string {
   // Construct omelette with a plain template (NO `--completion*` in argv) so its constructor does not exit.
   const instance = omelette(`${PROGRAM} <command>`);

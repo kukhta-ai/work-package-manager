@@ -127,6 +127,7 @@ export function formatHumanValue(value: string): string {
  * @param error - The thrown value.
  * @param debug - Whether to append the stack for an unexpected error.
  * @returns The formatted message, newline-terminated.
+ * @internal Used by runtime within this module; exported for focused behavioral tests.
  */
 export function formatError(error: unknown, debug: boolean): string {
   if (error instanceof BundleAuthoringPreflightError) {
@@ -276,7 +277,7 @@ export function formatError(error: unknown, debug: boolean): string {
  * @param body - The CLI work (parse + dispatch), which may throw.
  * @returns The process exit code.
  */
-export async function runWithExit(io: CliIo, body: () => Promise<void>): Promise<number> {
+export async function runWithExit(io: CliIo, body: () => void | Promise<void>): Promise<number> {
   try {
     await body();
     return 0;

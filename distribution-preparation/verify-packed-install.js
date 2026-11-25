@@ -1,11 +1,16 @@
 #!/usr/bin/env node
 
 import { spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import {
+  closeSync,
+  constants,
   existsSync,
+  fstatSync,
   lstatSync,
   mkdirSync,
   mkdtempSync,
+  openSync,
   readdirSync,
   readFileSync,
   readlinkSync,
@@ -15,6 +20,7 @@ import {
 import { tmpdir } from "node:os";
 import { basename, delimiter, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import semver from "semver";
 import { inspectPackageArchiveBytes } from "./package-archive.js";
 import {
   assertInstalledExecutableObservation,
@@ -40,11 +46,15 @@ class UsageError extends Error {}
 
 /**
  * @param {readonly string[]} args
- * @returns {{reportPath: string, outputDirectory: string | undefined}}
+ * @returns {{reportPath: string, outputDirectory: string | undefined, npmCacheArchives: string[], peerArchives: string[]}}
  */
 function parseArguments(args) {
   let reportPath;
   let outputDirectory;
+  /** @type {string[]} */
+  const npmCacheArchives = [];
+  /** @type {string[]} */
+  const peerArchives = [];
   for (let index = 0; index < args.length; index += 1) {
     const option = args[index];
     const value = args[index + 1];
@@ -59,18 +69,145 @@ function parseArguments(args) {
     ) {
       outputDirectory = value;
       index += 1;
+    } else if (option === "--npm-cache-archive" && value !== undefined && value !== "") {
+      npmCacheArchives.push(resolve(value));
+      index += 1;
+    } else if (option === "--peer-archive" && value !== undefined && value !== "") {
+      peerArchives.push(resolve(value));
+      index += 1;
     } else {
       throw new UsageError(
-        "usage: node distribution-preparation/verify-packed-install.js --report <accepted-report.json> [--output <consumer-directory>]",
+        "usage: node distribution-preparation/verify-packed-install.js --report <accepted-report.json> [--output <consumer-directory>] [--npm-cache-archive <locked-upstream.tgz>]... [--peer-archive <locked-peer.tgz>]...",
       );
     }
   }
   if (reportPath === undefined) {
     throw new UsageError(
-      "usage: node distribution-preparation/verify-packed-install.js --report <accepted-report.json> [--output <consumer-directory>]",
+      "usage: node distribution-preparation/verify-packed-install.js --report <accepted-report.json> [--output <consumer-directory>] [--npm-cache-archive <locked-upstream.tgz>]... [--peer-archive <locked-peer.tgz>]...",
     );
   }
-  return { reportPath, outputDirectory };
+  return { reportPath, outputDirectory, npmCacheArchives, peerArchives };
+}
+
+/** @param {unknown} value @returns {value is Record<string, unknown>} */
+function record(value) {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+/** Validate captured upstream bytes before decompressing or creating consumer state.
+ * @param {Buffer} bytes @param {unknown} lock
+ */
+export function validateNpmCacheArchive(bytes, lock) {
+  const integrity = `sha512-${createHash("sha512").update(bytes).digest("base64")}`;
+  if (!record(lock) || !record(lock.packages))
+    throw new Error("npm cache bootstrap requires the current source package-lock.json");
+  const matches = Object.entries(lock.packages).filter(([path, entry]) => {
+    if (
+      !path.includes("node_modules/") ||
+      !record(entry) ||
+      entry.integrity !== integrity ||
+      typeof entry.version !== "string" ||
+      typeof entry.resolved !== "string"
+    )
+      return false;
+    try {
+      const url = new URL(entry.resolved);
+      return (
+        url.origin === "https://registry.npmjs.org" &&
+        !url.username &&
+        !url.password &&
+        !url.search &&
+        !url.hash
+      );
+    } catch {
+      return false;
+    }
+  });
+  if (!matches.length)
+    throw new Error(
+      "npm cache archive SHA512 does not match an exact registry entry in the current root lockfile",
+    );
+  const { packedManifest } = inspectPackageArchiveBytes(bytes);
+  for (const [lockPath, entry] of matches) {
+    if (!record(entry)) continue;
+    const name =
+      entry.name ?? lockPath.slice(lockPath.lastIndexOf("node_modules/") + "node_modules/".length);
+    if (
+      typeof name === "string" &&
+      /^(?:@[a-z0-9][a-z0-9._-]*\/)?[a-z0-9][a-z0-9._-]*$/i.test(name) &&
+      typeof entry.version === "string" &&
+      packedManifest.name === name &&
+      packedManifest.version === entry.version &&
+      typeof entry.resolved === "string"
+    )
+      return {
+        name,
+        version: entry.version,
+        lockPath,
+        resolved: entry.resolved,
+        integrity,
+        size: bytes.length,
+      };
+  }
+  throw new Error("npm cache archive package identity differs from its exact root lockfile entry");
+}
+
+/** The explicit qualification environment may select only compatible declared peers.
+ * @param {ReadonlyArray<ReturnType<typeof validateNpmCacheArchive>>} peers
+ * @param {Record<string, unknown>} manifest
+ */
+export function validateQualificationPeers(peers, manifest) {
+  const names = new Set();
+  for (const peer of peers) {
+    const range = record(manifest.peerDependencies)
+      ? manifest.peerDependencies[peer.name]
+      : undefined;
+    if (
+      names.has(peer.name) ||
+      typeof range !== "string" ||
+      !semver.validRange(range) ||
+      !semver.valid(peer.version) ||
+      !semver.satisfies(peer.version, range)
+    )
+      throw new Error(
+        `explicit peer archive is undeclared, duplicated or incompatible: ${peer.name}`,
+      );
+    names.add(peer.name);
+  }
+}
+
+/** Capture an ordinary file once; later bootstrap uses only the verified captured bytes.
+ * @param {string} path
+ */
+export function captureOrdinaryArchive(path) {
+  const before = lstatSync(path);
+  if (!before.isFile() || before.isSymbolicLink() || before.nlink !== 1)
+    throw new Error("npm cache archive must be an ordinary single-link file");
+  const descriptor = openSync(path, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0));
+  try {
+    const opened = fstatSync(descriptor);
+    const bytes = readFileSync(descriptor);
+    const after = fstatSync(descriptor);
+    const current = lstatSync(path);
+    if (
+      !opened.isFile() ||
+      !current.isFile() ||
+      current.isSymbolicLink() ||
+      [opened, after, current].some(
+        (stat) =>
+          stat.nlink !== 1 ||
+          stat.ino !== before.ino ||
+          stat.dev !== before.dev ||
+          stat.size !== before.size ||
+          stat.mtimeMs !== before.mtimeMs ||
+          stat.ctimeMs !== before.ctimeMs,
+      )
+    )
+      throw new Error("npm cache archive changed while capturing its bytes");
+    return bytes;
+  } finally {
+    closeSync(descriptor);
+  }
 }
 
 /** @param {string} path @param {string} recovery */
@@ -79,7 +216,7 @@ function readRequiredFile(path, recovery) {
     return readFileSync(path);
   } catch (error) {
     const reason = error instanceof Error ? error.message : String(error);
-    throw new Error(`${recovery}: ${path} (${reason})`);
+    throw new Error(`${recovery}: ${path} (${reason})`, { cause: error });
   }
 }
 
@@ -289,12 +426,36 @@ function assertSafeCommandName(name) {
  * @param {readonly string[]} args
  * @param {OutputSink} stdout
  * @param {OutputSink} stderr
+ * @param {string} lockRoot
  * @returns {0 | 1 | 2}
  */
-export function runPackedInstallVerification(args, stdout, stderr) {
+export function runPackedInstallVerification(args, stdout, stderr, lockRoot = SOURCE_ROOT) {
   try {
     const options = parseArguments(args);
+    const lockBytes =
+      options.npmCacheArchives.length || options.peerArchives.length
+        ? readRequiredFile(
+            join(lockRoot, "package-lock.json"),
+            "cache bootstrap lockfile is unavailable",
+          )
+        : undefined;
+    const lock = lockBytes
+      ? /** @type {unknown} */ (JSON.parse(lockBytes.toString("utf8")))
+      : undefined;
+    const cacheArchives = options.npmCacheArchives.map((path) => {
+      const bytes = captureOrdinaryArchive(path);
+      return { bytes, evidence: validateNpmCacheArchive(bytes, lock) };
+    });
+    const peerArchives = options.peerArchives.map((path) => {
+      const bytes = captureOrdinaryArchive(path);
+      return { bytes, evidence: validateNpmCacheArchive(bytes, lock) };
+    });
+    if (
+      new Set(cacheArchives.map(({ evidence }) => evidence.integrity)).size !== cacheArchives.length
+    )
+      throw new Error("duplicate npm cache archive bytes were supplied");
     const reportPath = resolve(options.reportPath);
+    /** @type {unknown} */
     let report;
     try {
       report = JSON.parse(
@@ -305,7 +466,9 @@ export function runPackedInstallVerification(args, stdout, stderr) {
       );
     } catch (error) {
       if (error instanceof SyntaxError) {
-        throw new Error(`package inspection report is not valid JSON: ${error.message}`);
+        throw new Error(`package inspection report is not valid JSON: ${error.message}`, {
+          cause: error,
+        });
       }
       throw error;
     }
@@ -329,6 +492,10 @@ export function runPackedInstallVerification(args, stdout, stderr) {
     const archive = inspectPackageArchiveBytes(archiveBytes);
     const evidence = validateInspectedPackageReport(report, archive);
     assertNodePrerequisite(archive.packedManifest, process.versions.node);
+    validateQualificationPeers(
+      peerArchives.map(({ evidence: peer }) => peer),
+      archive.packedManifest,
+    );
 
     const root =
       options.outputDirectory === undefined
@@ -381,6 +548,39 @@ export function runPackedInstallVerification(args, stdout, stderr) {
       npm.version,
     );
 
+    if (cacheArchives.length) {
+      const bootstrap = join(input, "npm-cache-bootstrap");
+      mkdirSync(bootstrap);
+      for (const [index, captured] of cacheArchives.entries()) {
+        const staged = join(bootstrap, `${index}.tgz`);
+        writeFileSync(staged, captured.bytes, { flag: "wx" });
+        const seeded = execute(
+          {
+            executable: npm.invocation.executable,
+            args: [
+              ...npm.invocation.argumentPrefix,
+              "cache",
+              "add",
+              staged,
+              "--offline",
+              "--ignore-scripts",
+            ],
+          },
+          { cwd: workspace, env, timeout: 60_000 },
+        );
+        if (seeded.status !== 0 || seeded.error)
+          throw new Error(
+            `could not seed verified upstream archive into isolated npm cache: ${processDetail(seeded)}`,
+          );
+      }
+    }
+
+    const stagedPeers = peerArchives.map((captured, index) => {
+      const path = join(input, `peer-${index}.tgz`);
+      writeFileSync(path, captured.bytes, { flag: "wx" });
+      return path;
+    });
+
     const install = execute(
       {
         executable: npm.invocation.executable,
@@ -393,6 +593,7 @@ export function runPackedInstallVerification(args, stdout, stderr) {
           "--no-audit",
           "--no-fund",
           frozenPath,
+          ...stagedPeers,
         ],
       },
       { cwd: workspace, env, timeout: COLD_PACKAGE_INSTALL_TIMEOUT_MS },
@@ -422,6 +623,21 @@ export function runPackedInstallVerification(args, stdout, stderr) {
         `installed package root escaped the source-free consumer boundary: ${installedPackageRoot}; reinstall the exact accepted archive in a fresh prefix outside the source checkout`,
       );
     }
+    const observedPeers = peerArchives.map(({ evidence: peer }) => {
+      const peerRoot = realpathSync(resolveGlobalInstallLayout(prefix, peer.name).packageRoot);
+      if (!isPathWithin(realRoot, peerRoot) || isPathWithin(SOURCE_ROOT, peerRoot))
+        throw new Error(
+          `installed explicit qualification peer escaped consumer boundary: ${peer.name}`,
+        );
+      const observed = /** @type {unknown} */ (
+        JSON.parse(readFileSync(join(peerRoot, "package.json"), "utf8"))
+      );
+      if (!record(observed) || observed.name !== peer.name || observed.version !== peer.version)
+        throw new Error(
+          `installed explicit qualification peer differs from pinned archive: ${peer.name}`,
+        );
+      return { ...peer, packageRoot: peerRoot, observedVersion: observed.version };
+    });
     const observedPaths = [];
     const escapedPaths = [];
     for (const path of evidence.expectedPaths) {
@@ -541,7 +757,26 @@ export function runPackedInstallVerification(args, stdout, stderr) {
             packageRoot: installedPackageRoot,
           },
           prerequisites,
-          installation: { status: "installed", npmVersion: npm.version },
+          installation: {
+            status: "installed",
+            npmVersion: npm.version,
+            ...(lockBytes && cacheArchives.length
+              ? {
+                  cacheBootstrap: {
+                    lockfileDigest: `sha256:${createHash("sha256").update(lockBytes).digest("hex")}`,
+                    archives: cacheArchives.map(({ evidence }) => evidence),
+                  },
+                }
+              : {}),
+            ...(lockBytes && observedPeers.length
+              ? {
+                  explicitPeers: {
+                    lockfileDigest: `sha256:${createHash("sha256").update(lockBytes).digest("hex")}`,
+                    packages: observedPeers,
+                  },
+                }
+              : {}),
+          },
           executables,
           resources: {
             ...resources,

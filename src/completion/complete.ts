@@ -31,7 +31,7 @@ export interface CompletionSpec {
 export type CompletionSpecs = Readonly<Record<string, CompletionSpec>>;
 
 /** The dependencies the dispatch needs beyond the registry + specs: the ports + the built-in templates root. */
-export interface CompleteDeps {
+interface CompleteDeps {
   /** The filesystem port. */
   readonly fs: FileSystem;
   /** The environment port. */

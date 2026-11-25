@@ -119,7 +119,7 @@ function normalizedStringRecord(value, field, findings) {
  * @param {CandidateFinding[]} findings
  */
 function normalizedStringArray(value, field, findings) {
-  if (!Array.isArray(value) || value.some((entry) => !hasText(entry))) {
+  if (!Array.isArray(value) || !value.every(hasText)) {
     addFinding(findings, "invalid", field, `${field} must be an array of non-empty strings`);
     return undefined;
   }

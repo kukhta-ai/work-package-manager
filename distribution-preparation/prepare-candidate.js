@@ -134,6 +134,7 @@ export function hashCandidateFile(path) {
 
 /** @param {readonly string[]} args */
 function parseArguments(args) {
+  /** @type {Map<string, string>} */
   const values = new Map();
   const supported = new Set([
     "--inspection",
@@ -158,13 +159,19 @@ function parseArguments(args) {
       "usage: node distribution-preparation/prepare-candidate.js --inspection <accepted-report.json> --install <packed-install-report.json> --quality <quality-report.json> --tag <proposed-tag> --notes <release-notes.md> --output <candidate-directory>",
     );
   }
+  /** @param {string} option */
+  const requiredValue = (option) => {
+    const value = values.get(option);
+    if (value === undefined) throw new UsageError(`missing required option ${option}`);
+    return value;
+  };
   return {
-    inspectionPath: resolve(values.get("--inspection")),
-    installPath: resolve(values.get("--install")),
-    qualityPath: resolve(values.get("--quality")),
-    proposedTag: values.get("--tag"),
-    notesPath: resolve(values.get("--notes")),
-    outputDirectory: resolve(values.get("--output")),
+    inspectionPath: resolve(requiredValue("--inspection")),
+    installPath: resolve(requiredValue("--install")),
+    qualityPath: resolve(requiredValue("--quality")),
+    proposedTag: requiredValue("--tag"),
+    notesPath: resolve(requiredValue("--notes")),
+    outputDirectory: resolve(requiredValue("--output")),
   };
 }
 
@@ -176,6 +183,7 @@ function parseArguments(args) {
 function readJsonEvidence(path, field, findings) {
   try {
     const bytes = readFileSync(path);
+    /** @type {unknown} */
     const report = JSON.parse(decodeUtf8(bytes, field));
     if (!isRecord(report)) throw new TypeError(`${field} must contain a JSON object`);
     return { bytes, report, rawDigest: digestBytes(bytes, "sha256") };
@@ -224,6 +232,8 @@ function candidatePath(root, path) {
  */
 function readCandidateOwnedFile(root, path) {
   const absolute = candidatePath(root, path);
+  if (typeof path !== "string")
+    throw new TypeError("candidate-owned path must be a non-empty string");
   const rootStat = lstatSync(root);
   if (!rootStat.isDirectory() || rootStat.isSymbolicLink()) {
     throw new Error("candidate root must be an ordinary directory");
@@ -419,6 +429,7 @@ export function validatePersistedCandidate(root, record) {
             `persisted ${name} evidence digest differs`,
           );
         }
+        /** @type {unknown} */
         const report = JSON.parse(decodeUtf8(bytes, `evidence.${name}`));
         if (!isRecord(report)) throw new TypeError("evidence must contain a JSON object");
         observedEvidence[name] = { bytes, report, rawDigest };
@@ -602,7 +613,7 @@ function loadExactArchiveProjection(root, record, findings) {
   }
 }
 
-/** @param {string} outputDirectory */
+/** @param {string} outputDirectory @returns {unknown} */
 function loadExistingRecord(outputDirectory) {
   const output = lstatSync(outputDirectory);
   if (!output.isDirectory() || output.isSymbolicLink()) {
@@ -629,7 +640,7 @@ export function loadPersistedCandidate(outputDirectory) {
   const archive =
     findings.length === 0 ? loadExactArchiveProjection(root, record, findings) : undefined;
   findings.sort(({ field: left }, { field: right }) => compareText(left, right));
-  return { record, archive, findings };
+  return { record, ...(archive === undefined ? {} : { archive }), findings };
 }
 
 /**

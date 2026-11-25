@@ -15,7 +15,7 @@ import type { Command } from "commander";
  */
 
 /** A worked invocation shown in a command's `--help` (doc 10: "a worked usage example"). */
-export interface HelpExample {
+interface HelpExample {
   /**
    * The example command line WITHOUT the leading `$ ` prompt — e.g.
    * `wpm bundle new web-handoff --version 0.2.0`.
@@ -32,6 +32,7 @@ export interface HelpExample {
  * block) — NOT `helpInformation()`, which does NOT include `addHelpText` content. A guard checking
  * `helpInformation()` for this heading would be a false guard. Kept as an exported constant so the test and the
  * renderer agree on one token.
+ * @internal Used by runtime within this module; exported for focused behavioral tests.
  */
 export const EXAMPLE_HEADING = "Example:";
 
@@ -44,6 +45,7 @@ const EXAMPLES_HEADING = "Examples:";
  *
  * @param examples - The worked examples to render (must be non-empty).
  * @returns The block text, leading with a blank line then the heading and one `$ …` line per example.
+ * @internal Used by runtime within this module; exported for focused behavioral tests.
  */
 export function renderExamples(examples: readonly HelpExample[]): string {
   const heading = examples.length === 1 ? EXAMPLE_HEADING : EXAMPLES_HEADING;

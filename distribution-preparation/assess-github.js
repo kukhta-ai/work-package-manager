@@ -19,6 +19,7 @@ function hasText(value) {
 /** @param {readonly string[]} args */
 function parseArguments(args) {
   const supported = new Set(["--candidate", "--policy", "--observation"]);
+  /** @type {Map<string, string>} */
   const values = new Map();
   for (let index = 0; index < args.length; index += 2) {
     const option = args[index];
@@ -35,10 +36,16 @@ function parseArguments(args) {
       "usage: node distribution-preparation/assess-github.js --candidate <candidate-directory> --policy <github-policy.json> --observation <github-observation.json>",
     );
   }
+  /** @param {string} option */
+  const requiredValue = (option) => {
+    const value = values.get(option);
+    if (value === undefined) throw new UsageError(`missing required option ${option}`);
+    return value;
+  };
   return {
-    candidateDirectory: resolve(values.get("--candidate")),
-    policyPath: resolve(values.get("--policy")),
-    observationPath: resolve(values.get("--observation")),
+    candidateDirectory: resolve(requiredValue("--candidate")),
+    policyPath: resolve(requiredValue("--policy")),
+    observationPath: resolve(requiredValue("--observation")),
   };
 }
 

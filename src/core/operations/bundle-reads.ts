@@ -44,7 +44,7 @@ export interface BundleView {
 }
 
 /** The input to {@link showBundleSpec}: the target bundle id and its directory tree (read by the CLI shell). */
-export interface ShowBundleInput {
+interface ShowBundleInput {
   /** The bundle id to show (selected by the `bundle <id>` routing). */
   readonly id: string;
   /** The relative paths under `bundles/<id>/`, read by the CLI through the FileSystem port and threaded in. */
@@ -73,11 +73,11 @@ export function showBundleSpec(): ReadSpec<ShowBundleInput, BundleView> {
       }
       const requires: BundleRequirement[] = [];
       for (const [depId, range] of bundle.requires) {
-        requires.push({ id: depId as string, range: range as string });
+        requires.push({ id: depId, range: range });
       }
       return {
-        id: bundle.id as string,
-        version: bundle.version as string,
+        id: bundle.id,
+        version: bundle.version,
         summary: bundle.summary,
         confirmation: bundle.confirmation,
         requires,

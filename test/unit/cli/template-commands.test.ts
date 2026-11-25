@@ -1,12 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { FakeEnvironment } from "../../../src/adapters/fake-env.js";
-import { FixedClock } from "../../../src/adapters/fixed-clock.js";
-import { MemoryFileSystem } from "../../../src/adapters/memory-fs.js";
 import { buildProgram, type CliDeps, run } from "../../../src/cli.js";
 import { completeArgv } from "../../../src/completion/complete.js";
 import { defaultRegistry } from "../../../src/completion/registry.js";
 import type { BacklogMd } from "../../../src/core/ports/index.js";
 import type { CliIo, OutputSink } from "../../../src/util/exit.js";
+import { FakeEnvironment } from "../../doubles/fake-env.js";
+import { FixedClock } from "../../doubles/fixed-clock.js";
+import { MemoryFileSystem } from "../../doubles/memory-fs.js";
+import { match } from "../../helpers/match.js";
 
 /**
  * Acceptance tests for the `template` command family (tasks 35 `template list` + 36 `template show`), driven
@@ -428,6 +429,6 @@ describe("template completion (task-35/36 AC#5 — the completion half)", () => 
     // The minimal-project fixture seeds project/minimal etc.; the names come from template-names.
     const names = complete(seed(), ["template", "show", ""]).sort();
     // built-in + project template names (de-duplicated by the source); a representative subset:
-    expect(names).toEqual(expect.arrayContaining(["minimal", "default", "adopts-tool"]));
+    expect(names).toEqual(match.arrayContaining(["minimal", "default", "adopts-tool"]));
   });
 });

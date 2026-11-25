@@ -1,6 +1,11 @@
+import { createHash } from "node:crypto";
 import { gzipSync } from "node:zlib";
 import { describe, expect, it } from "vitest";
 import { inspectPackageArchiveBytes } from "../../../distribution-preparation/package-archive.js";
+import {
+  validateNpmCacheArchive,
+  validateQualificationPeers,
+} from "../../../distribution-preparation/verify-packed-install.js";
 
 const BLOCK_SIZE = 512;
 
@@ -36,6 +41,54 @@ function tarEntry(
 function tarball(...entries: Buffer[]): Buffer {
   return gzipSync(Buffer.concat([...entries, Buffer.alloc(BLOCK_SIZE * 2)]));
 }
+
+describe("explicit upstream npm cache bootstrap", () => {
+  const bytes = tarball(
+    tarEntry("package/package.json", JSON.stringify({ name: "fixture", version: "1.2.3" })),
+  );
+  const integrity = `sha512-${createHash("sha512").update(bytes).digest("base64")}`;
+  const entry = {
+    version: "1.2.3",
+    resolved: "https://registry.npmjs.org/fixture/-/fixture-1.2.3.tgz",
+    integrity,
+  };
+  const lock = { packages: { "node_modules/fixture": entry } };
+  it("binds actual archive bytes and package identity to an exact registry lock entry", () => {
+    expect(validateNpmCacheArchive(bytes, lock)).toEqual({
+      name: "fixture",
+      ...entry,
+      lockPath: "node_modules/fixture",
+      size: bytes.length,
+    });
+  });
+  it("rejects unpinned bytes before interpreting their archive contents", () => {
+    expect(() => validateNpmCacheArchive(Buffer.from("untrusted non-archive bytes"), lock)).toThrow(
+      /SHA512/,
+    );
+  });
+  it("rejects a matching hash bound to another package or unreviewed registry", () => {
+    expect(() =>
+      validateNpmCacheArchive(bytes, { packages: { "node_modules/another": entry } }),
+    ).toThrow(/identity/);
+    expect(() =>
+      validateNpmCacheArchive(bytes, {
+        packages: {
+          "node_modules/fixture": { ...entry, resolved: "https://unreviewed.invalid/fixture.tgz" },
+        },
+      }),
+    ).toThrow(/registry entry/);
+  });
+  it("accepts only declared compatible qualification peers without duplicate identities", () => {
+    const peer = validateNpmCacheArchive(bytes, lock);
+    const manifest = { peerDependencies: { fixture: ">=1.0.0" } };
+    expect(() => validateQualificationPeers([peer], manifest)).not.toThrow();
+    expect(() => validateQualificationPeers([peer, peer], manifest)).toThrow(/duplicated/);
+    expect(() => validateQualificationPeers([peer], {})).toThrow(/undeclared/);
+    expect(() =>
+      validateQualificationPeers([peer], { peerDependencies: { fixture: ">=2.0.0" } }),
+    ).toThrow(/incompatible/);
+  });
+});
 
 describe("package archive inspection", () => {
   it("reads manifest bytes, ordinary paths, and links from the actual gzip archive", () => {

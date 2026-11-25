@@ -9,6 +9,7 @@
 
     /* Strict type-checking (docs/13 §2 — illegal states unrepresentable starts at the compiler). */
     "strict": true,
+    "exactOptionalPropertyTypes": true,
     "noUncheckedIndexedAccess": true,
     "noImplicitOverride": true,
     "verbatimModuleSyntax": true,
@@ -31,7 +32,11 @@
     "test/**/*.ts",
     "distribution-preparation/**/*.js",
     "scripts/**/*.mjs",
-    "vitest.config.ts"
+    "quality/**/*.mjs",
+    "*.mjs",
+    "*.cjs",
+    ".dependency-cruiser.cjs",
+    "*.ts"
   ],
   "exclude": ["node_modules", "dist"]
 }

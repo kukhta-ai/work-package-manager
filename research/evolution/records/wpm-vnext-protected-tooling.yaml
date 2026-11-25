@@ -1,0 +1,61 @@
+{
+  "schemaVersion": 1,
+  "id": "wpm-vnext-protected-tooling",
+  "title": "WPM vNext protected tooling qualification",
+  "episodeStatus": "active",
+  "maturity": "research-pilot",
+  "architectureStatus": "evolving",
+  "purpose": "Retain compact evidence for reviewed Groma execution, confidential exports and inactive candidate delivery.",
+  "baselineRevision": "46329318b1c599df8f6983a6546423ba91d4d973",
+  "preCleanupRevision": "e88c2ba103504ede0cafe0ec596be609d7cf4950",
+  "pullRequest": "https://github.com/kukhta-ai/work-package-manager/pull/7",
+  "canonicalTruth": [
+    "docs/vnext.md",
+    "docs/development.md",
+    "docs/groma.md",
+    "docs/delivery.md",
+    "quality/groma-runtime.json"
+  ],
+  "observations": [
+    {
+      "statement": "Sequential measured provisioning succeeded below the former conservative 10GiB estimate.",
+      "evidence": [
+        "Pinned analyzers: initial3999911936/minimum266096640 free bytes; Groma final setup: initial2182660096/minimum669106176; candidate B: initial2551062528/minimum1509974016. Samples include shared backing-pool changes."
+      ]
+    },
+    {
+      "statement": "Bounding integration workers at two improves native Backlog journeys without changing scope or case budgets.",
+      "evidence": [
+        "Four measured cases: four-worker56-59s versus two-worker47-50s. Full e88c2ba release:167 files,2332 passed,2 host-specific skips."
+      ]
+    }
+  ],
+  "decisions": [
+    {
+      "decision": "Use the reviewed exact fork and external private build authority; preserve executable consent.",
+      "rationale": "A mutable cache receipt must not authorize replacement code or tools.",
+      "evidence": [
+        "quality/groma-runtime.json:cedf271baf7ff6e3eb069059ef7627d894bbed65; full fork CI45515317232 all three OSs success; native authenticated edit and export probes passed."
+      ]
+    },
+    {
+      "decision": "Retain source-bound immutable candidate evidence and a separate pending PR handoff.",
+      "rationale": "Task/evidence-only commits change source identity and require fresh final qualification.",
+      "evidence": [
+        "Candidate B independently verified; final candidate and CI remain separate checks."
+      ]
+    }
+  ],
+  "waivers": [],
+  "residualRisks": [
+    "Final closeout revision still requires its own candidate:prepare, same-byte verification and full PR7 CI. Evidence below binds e88c2ba, never an automatically substituted later revision.",
+    "Human PR review and merge remain pending; public distribution is inactive.",
+    "Fresh Claude model behavior remains unqualified without authentication; remote APM dependencies and recipient-agent execution are separate qualifications."
+  ],
+  "candidateDestinations": [],
+  "archive": {
+    "status": "not-configured",
+    "rawEvidenceDisposition": "local-ignored-until-cleanup"
+  },
+  "updatedAt": "2026-11-25T01:41:15Z"
+}

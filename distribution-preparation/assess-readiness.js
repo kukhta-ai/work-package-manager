@@ -75,6 +75,7 @@ function assertActivationFactShape(key, fact) {
  * @returns {Parameters<typeof assessInactiveDistribution>[0]}
  */
 function parseActivationRecord(source) {
+  /** @type {unknown} */
   const record = JSON.parse(source);
   if (!isObjectRecord(record)) {
     throw new TypeError("activation record must be a JSON object");

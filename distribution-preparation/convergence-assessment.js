@@ -728,6 +728,7 @@ function expectedFindingIdentity(channel, candidate, required, finding, category
 
 /** @param {"github" | "npm"} channel @param {{required: ReturnType<typeof normalizeChannelRequired>, matches: ReturnType<typeof normalizeFindings>, missing: ReturnType<typeof normalizeFindings>, unverified: ReturnType<typeof normalizeFindings>, manualAuthority: ReturnType<typeof normalizeFindings>, conflicts: ReturnType<typeof normalizeFindings>, observedAuthority: ReturnType<typeof normalizeObservedAuthority> | null}} assessment */
 function validateChannelEvidence(channel, assessment) {
+  /** @type {Map<string, Set<string>>} */
   const categoriesByBoundary = new Map();
   for (const category of /** @type {const} */ ([
     "matches",
@@ -738,6 +739,7 @@ function validateChannelEvidence(channel, assessment) {
     for (const finding of assessment[category]) {
       const boundary = boundaryFor(channel, finding.object);
       if (boundary === null) continue;
+      /** @type {Set<string>} */
       const categories = categoriesByBoundary.get(boundary) ?? new Set();
       categories.add(category);
       categoriesByBoundary.set(boundary, categories);

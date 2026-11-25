@@ -1,13 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { FakeBacklog } from "../../../src/adapters/fake-backlog.js";
-import { FakeEnvironment } from "../../../src/adapters/fake-env.js";
-import { FixedClock } from "../../../src/adapters/fixed-clock.js";
-import { MemoryFileSystem } from "../../../src/adapters/memory-fs.js";
 import { type CliDeps, run } from "../../../src/cli.js";
 import type { SkillRef } from "../../../src/core/model/index.js";
 import { parseManifest } from "../../../src/core/services/schema/index.js";
 import type { CliIo, OutputSink } from "../../../src/util/exit.js";
 import { parseYaml } from "../../../src/util/yaml.js";
+import { FakeBacklog } from "../../doubles/fake-backlog.js";
+import { FakeEnvironment } from "../../doubles/fake-env.js";
+import { FixedClock } from "../../doubles/fixed-clock.js";
+import { MemoryFileSystem } from "../../doubles/memory-fs.js";
 
 /**
  * Acceptance tests for the PROJECT-scoped INSTALLER-SKILLS family (Family F) — `project installer-skills add` /

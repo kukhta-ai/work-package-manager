@@ -32,7 +32,7 @@ import type { ApplyContext, ApplyOutcome, OperationSpec } from "./lifecycle.js";
  */
 
 /** The input to both advisor commands: the target bundle id (selected by the `bundle <id>` routing). */
-export interface AdvisorInput {
+interface AdvisorInput {
   /** The enabled bundle id whose advisor is added or removed. */
   readonly id: string;
 }

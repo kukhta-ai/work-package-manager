@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { FakeEnvironment } from "../../../src/adapters/fake-env.js";
-import { MemoryFileSystem } from "../../../src/adapters/memory-fs.js";
 import {
   type ProjectContext,
   resolveContext,
   WORKSPACE_MARKER,
 } from "../../../src/core/services/context.js";
+import { FakeEnvironment } from "../../doubles/fake-env.js";
+import { MemoryFileSystem } from "../../doubles/memory-fs.js";
 
 /**
  * Make `dir` an authoring WORKSPACE root for the resolver by writing the workspace marker `wip/manifest.yml`

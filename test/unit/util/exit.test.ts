@@ -40,7 +40,7 @@ function io(
 /** Run a body that throws `error` through {@link runWithExit}, returning the exit code + the io. */
 async function runThrowing(error: unknown, debug = false) {
   const i = io(debug);
-  const code = await runWithExit(i, async () => {
+  const code = await runWithExit(i, () => {
     throw error;
   });
   return { code, io: i };

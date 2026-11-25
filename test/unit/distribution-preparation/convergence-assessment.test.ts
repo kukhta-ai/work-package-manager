@@ -8,6 +8,7 @@ import {
   ACTIVATION_FACT_KEYS,
   assessInactiveDistribution,
 } from "../../../distribution-preparation/readiness.js";
+import { match } from "../../helpers/match.js";
 
 const REVISION = "a".repeat(40);
 const SHA256 = `sha256:${"1".repeat(64)}`;
@@ -273,9 +274,9 @@ describe("convergent dual-channel state", () => {
     expect(result.completedBoundaries).toEqual(["npm.version"]);
     expect(result.outstandingBoundaries).toEqual(["npm.final-dist-tag"]);
     expect(result.compatibleEvidence).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ channel: "npm", object: "version", state: "matching" }),
-        expect.objectContaining({ channel: "npm", object: "tag", state: "manual-authority" }),
+      match.arrayContaining([
+        match.objectContaining({ channel: "npm", object: "version", state: "matching" }),
+        match.objectContaining({ channel: "npm", object: "tag", state: "manual-authority" }),
       ]),
     );
     expect(result.conflicts).toEqual([]);
@@ -287,7 +288,7 @@ describe("convergent dual-channel state", () => {
     expect(result.classification).toBe("blocked");
     expect(result.requiredBoundaries).toEqual([]);
     expect(result.blockers).toEqual([
-      expect.objectContaining({ kind: "missing-policy", field: "requiredBoundaries" }),
+      match.objectContaining({ kind: "missing-policy", field: "requiredBoundaries" }),
     ]);
   });
 
@@ -310,14 +311,14 @@ describe("convergent dual-channel state", () => {
 
     expect(result.classification).toBe("conflicting");
     expect(result.conflicts).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ channel: "github", object: "tag", field: "targetRevision" }),
-        expect.objectContaining({ channel: "npm", object: "version", field: "integrity" }),
+      match.arrayContaining([
+        match.objectContaining({ channel: "github", object: "tag", field: "targetRevision" }),
+        match.objectContaining({ channel: "npm", object: "version", field: "integrity" }),
       ]),
     );
     expect(result.blockers).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ kind: "missing-policy", field: "requiredBoundaries" }),
+      match.arrayContaining([
+        match.objectContaining({ kind: "missing-policy", field: "requiredBoundaries" }),
       ]),
     );
     expect(result.recovery.safeActions).toEqual([]);
@@ -337,8 +338,8 @@ describe("convergent dual-channel state", () => {
     const blocked = classify(missing, npmAssessment("absent"));
     expect(blocked.classification).toBe("blocked");
     expect(blocked.blockers).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ channel: "github", kind: "missing-binding" }),
+      match.arrayContaining([
+        match.objectContaining({ channel: "github", kind: "missing-binding" }),
       ]),
     );
 
@@ -359,7 +360,7 @@ describe("convergent dual-channel state", () => {
       npm: { candidateId: candidate().candidateId, version: "0.1.0" },
     });
     expect(conflicting.conflicts.map(({ channel, field }) => `${channel}.${field}`)).toEqual(
-      expect.arrayContaining([
+      match.arrayContaining([
         "github.candidateId",
         "github.package.version",
         "github.artifact.digests.sha256",
@@ -377,8 +378,8 @@ describe("convergent dual-channel state", () => {
 
     expect(result.classification).toBe("blocked");
     expect(result.blockers).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
+      match.arrayContaining([
+        match.objectContaining({
           channel: "github",
           kind: "missing-binding",
           field: "assessment",
@@ -449,14 +450,14 @@ describe("convergent dual-channel state", () => {
     expect(result.classification).toBe("conflicting");
     expect(result.conflicts).toHaveLength(mismatchedFields.length * 2 + 2);
     expect(conflicts).toEqual(
-      expect.arrayContaining([
+      match.arrayContaining([
         "github.required.checksums.sha256",
         "github.required.checksums.sha512",
       ]),
     );
     for (const channel of ["github", "npm"] as const) {
       expect(conflicts).toEqual(
-        expect.arrayContaining(mismatchedFields.map((field) => `${channel}.${field}`)),
+        match.arrayContaining(mismatchedFields.map((field) => `${channel}.${field}`)),
       );
     }
   });
@@ -476,8 +477,8 @@ describe("convergent dual-channel state", () => {
 
     expect(result.classification).toBe("blocked");
     expect(result.blockers).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ channel: "npm", boundary: "npm.version", kind: "observation" }),
+      match.arrayContaining([
+        match.objectContaining({ channel: "npm", boundary: "npm.version", kind: "observation" }),
       ]),
     );
   });
@@ -628,9 +629,7 @@ describe("convergent dual-channel state", () => {
 
     expect(result.classification).toBe("blocked");
     expect(result.blockers).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ channel: "npm", boundary: "npm.version" }),
-      ]),
+      match.arrayContaining([match.objectContaining({ channel: "npm", boundary: "npm.version" })]),
     );
   });
 
@@ -674,7 +673,7 @@ describe("convergent dual-channel state", () => {
 
     expect(result.classification).toBe("conflicting");
     expect(fields).toEqual(
-      expect.arrayContaining([
+      match.arrayContaining([
         "github.required.tag.name",
         "github.required.tag.targetRevision",
         "github.required.checksums.sha256",

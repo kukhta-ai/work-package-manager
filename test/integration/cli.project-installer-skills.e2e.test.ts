@@ -61,7 +61,7 @@ function authoringTaskTitles(proj: string): string {
     cwd: join(proj, ".authoring-backlog"),
     stdout: "pipe",
     stderr: "pipe",
-  }).stdout as string;
+  }).stdout;
 }
 
 /** Write a SKILL.md at the conventional root path `installer-skills/<name>/SKILL.md`; return its absolute path. */

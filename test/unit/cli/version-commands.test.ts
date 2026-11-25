@@ -1,8 +1,4 @@
 import { describe, expect, it } from "vitest";
-import { FakeBacklog } from "../../../src/adapters/fake-backlog.js";
-import { FakeEnvironment } from "../../../src/adapters/fake-env.js";
-import { FixedClock } from "../../../src/adapters/fixed-clock.js";
-import { MemoryFileSystem } from "../../../src/adapters/memory-fs.js";
 import { buildProgram, type CliDeps, run } from "../../../src/cli.js";
 import { completeArgv } from "../../../src/completion/complete.js";
 import { defaultRegistry } from "../../../src/completion/registry.js";
@@ -11,6 +7,10 @@ import { parseManifest } from "../../../src/core/services/schema/index.js";
 import { bumpSemVer } from "../../../src/core/services/version-constraint.js";
 import type { CliIo, OutputSink } from "../../../src/util/exit.js";
 import { parseYaml } from "../../../src/util/yaml.js";
+import { FakeBacklog } from "../../doubles/fake-backlog.js";
+import { FakeEnvironment } from "../../doubles/fake-env.js";
+import { FixedClock } from "../../doubles/fixed-clock.js";
+import { MemoryFileSystem } from "../../doubles/memory-fs.js";
 
 /**
  * Acceptance tests for the `project version` / `version bump` / `version set` family (tasks 39/40/41 — the

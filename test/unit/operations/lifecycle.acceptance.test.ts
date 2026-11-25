@@ -1,6 +1,4 @@
 import { describe, expect, it } from "vitest";
-import { FakeBacklog } from "../../../src/adapters/fake-backlog.js";
-import { MemoryFileSystem } from "../../../src/adapters/memory-fs.js";
 import type { AgentName, Project } from "../../../src/core/model/index.js";
 import {
   type LifecycleDeps,
@@ -10,6 +8,8 @@ import {
   runRead,
 } from "../../../src/core/operations/lifecycle.js";
 import type { DesiredArtefacts } from "../../../src/core/services/derived-artefacts.js";
+import { FakeBacklog } from "../../doubles/fake-backlog.js";
+import { MemoryFileSystem } from "../../doubles/memory-fs.js";
 
 /**
  * Acceptance test for the shared mutation lifecycle harness (doc 13 §5/§8), exercised through its public API

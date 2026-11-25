@@ -2,15 +2,11 @@ import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { FakeBacklog } from "../../../src/adapters/fake-backlog.js";
-import { FakeEnvironment } from "../../../src/adapters/fake-env.js";
-import { MemoryFileSystem } from "../../../src/adapters/memory-fs.js";
 import {
   HandoffVerificationError,
   MutationFailure,
   WorkspaceIntegrationPreflightError,
 } from "../../../src/core/errors.js";
-import { perBundleAuthoringTasks } from "../../../src/core/operations/create-bundle.js";
 import { makeArtefactDeriver } from "../../../src/core/operations/derive-artefacts-capability.js";
 import {
   initProject as executeInitProject,
@@ -40,6 +36,11 @@ import {
 } from "../../../src/core/services/workspace-handoff.js";
 import { toPosix } from "../../../src/util/posix-path.js";
 import { parseYaml } from "../../../src/util/yaml.js";
+import { FakeBacklog } from "../../doubles/fake-backlog.js";
+import { FakeEnvironment } from "../../doubles/fake-env.js";
+import { MemoryFileSystem } from "../../doubles/memory-fs.js";
+import { perBundleAuthoringTasks } from "../../helpers/legacy-create-bundle.js";
+import { match } from "../../helpers/match.js";
 
 /**
  * Unit test for the `initProject` operation (task-87) over the IN-MEMORY ports — the pure-core half of the
@@ -583,7 +584,7 @@ describe("initProject — scaffolds an authoring workspace (task-87; docs 06/10/
     }
     expect(caught).toBeInstanceOf(WorkspaceIntegrationPreflightError);
     expect((caught as WorkspaceIntegrationPreflightError).blockers).toEqual(
-      expect.arrayContaining([expect.objectContaining({ code: "workspace-plan-path-escapes" })]),
+      match.arrayContaining([match.objectContaining({ code: "workspace-plan-path-escapes" })]),
     );
     expect(fs.inspectPath(TARGET).kind).toBe("missing");
   });
@@ -625,7 +626,7 @@ describe("initProject — scaffolds an authoring workspace (task-87; docs 06/10/
 
     expect(caught).toBeInstanceOf(WorkspaceIntegrationPreflightError);
     expect((caught as WorkspaceIntegrationPreflightError).blockers.map(({ code }) => code)).toEqual(
-      expect.arrayContaining([
+      match.arrayContaining([
         "authoring-client-unsupported",
         "packaged-skill-shape-invalid",
         "backlog-unavailable",
@@ -665,7 +666,7 @@ describe("initProject — scaffolds an authoring workspace (task-87; docs 06/10/
 
     expect(caught).toBeInstanceOf(WorkspaceIntegrationPreflightError);
     expect((caught as WorkspaceIntegrationPreflightError).blockers).toEqual(
-      expect.arrayContaining([expect.objectContaining({ code: "workspace-target-exists" })]),
+      match.arrayContaining([match.objectContaining({ code: "workspace-target-exists" })]),
     );
     expect(fs.read(`${WIP}/manifest.yml`)).toBe(manifestBefore);
     expect(fs.read(`${TARGET}/${WORKSPACE_HANDOFF_RECEIPT_PATH}`)).toBe(receiptBefore);
@@ -694,7 +695,7 @@ describe("initProject — scaffolds an authoring workspace (task-87; docs 06/10/
     }
     expect(caught).toBeInstanceOf(WorkspaceIntegrationPreflightError);
     expect((caught as WorkspaceIntegrationPreflightError).blockers.map(({ code }) => code)).toEqual(
-      expect.arrayContaining(["project-template-missing", "workspace-target-exists"]),
+      match.arrayContaining(["project-template-missing", "workspace-target-exists"]),
     );
     expect(fs.exists(`${WIP}/manifest.yml`)).toBe(false);
     expect(fs.read(`${TARGET}/user-file`)).toBe("preserve\n");
@@ -1048,9 +1049,7 @@ describe("initProject — scaffolds an authoring workspace (task-87; docs 06/10/
     }
     expect(caught).toBeInstanceOf(WorkspaceIntegrationPreflightError);
     expect((caught as WorkspaceIntegrationPreflightError).blockers).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ code: "workspace-partial-unplanned-path" }),
-      ]),
+      match.arrayContaining([match.objectContaining({ code: "workspace-partial-unplanned-path" })]),
     );
     expect(fs.read(`${TARGET}/USER.txt`)).toBe("preserve me\n");
   });
@@ -1084,8 +1083,8 @@ describe("initProject — scaffolds an authoring workspace (task-87; docs 06/10/
     }
     expect(caught).toBeInstanceOf(WorkspaceIntegrationPreflightError);
     expect((caught as WorkspaceIntegrationPreflightError).blockers).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ code: "workspace-partial-request-mismatch" }),
+      match.arrayContaining([
+        match.objectContaining({ code: "workspace-partial-request-mismatch" }),
       ]),
     );
     expect(fs.read(`${WIP}/manifest.yml`)).toBe(partialManifest);
@@ -1125,7 +1124,7 @@ describe("initProject — scaffolds an authoring workspace (task-87; docs 06/10/
     }
     expect(caught).toBeInstanceOf(WorkspaceIntegrationPreflightError);
     expect((caught as WorkspaceIntegrationPreflightError).blockers).toEqual(
-      expect.arrayContaining([expect.objectContaining({ code: "integration-version-invalid" })]),
+      match.arrayContaining([match.objectContaining({ code: "integration-version-invalid" })]),
     );
     expect(fs.inspectPath(TARGET).kind).toBe("missing");
   });
@@ -1154,8 +1153,8 @@ describe("initProject — scaffolds an authoring workspace (task-87; docs 06/10/
     }
     expect(caught).toBeInstanceOf(WorkspaceIntegrationPreflightError);
     expect((caught as WorkspaceIntegrationPreflightError).blockers).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ code: "workspace-partial-backlog-conflict" }),
+      match.arrayContaining([
+        match.objectContaining({ code: "workspace-partial-backlog-conflict" }),
       ]),
     );
     expect(JSON.parse(fs.read(`${TARGET}/${WORKSPACE_INTEGRATION_STATE_PATH}`))).toMatchObject({
@@ -1193,8 +1192,8 @@ describe("initProject — scaffolds an authoring workspace (task-87; docs 06/10/
     }
     expect(caught).toBeInstanceOf(WorkspaceIntegrationPreflightError);
     expect((caught as WorkspaceIntegrationPreflightError).blockers).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ code: "workspace-partial-backlog-conflict" }),
+      match.arrayContaining([
+        match.objectContaining({ code: "workspace-partial-backlog-conflict" }),
       ]),
     );
     expect(backlog.taskDetail(authoringRoot, partial?.id ?? "")).toMatchObject({
@@ -1461,7 +1460,7 @@ describe("initProject — honors a template that DECLARES targets / pre-includes
       dependencies: [],
     });
     expect(backlog.readTask(root, "authoring-10")).toMatchObject({
-      labels: expect.arrayContaining([TEMPLATE_TASK_LABEL, "wpm:template-key:verify-shared-work"]),
+      labels: match.arrayContaining([TEMPLATE_TASK_LABEL, "wpm:template-key:verify-shared-work"]),
       dependencies: ["authoring-9", "authoring-1"],
     });
 
@@ -1482,7 +1481,7 @@ describe("initProject — honors a template that DECLARES targets / pre-includes
     expect(tasks[36]?.title).toBe("Prepare beta shared work");
     expect(tasks[37]?.title).toBe("Verify beta shared work");
     expect(backlog.readTask(root, "authoring-37")).toMatchObject({
-      labels: expect.arrayContaining(["wpm:bundle:beta", "wpm:template-key:shared-work"]),
+      labels: match.arrayContaining(["wpm:bundle:beta", "wpm:template-key:shared-work"]),
       dependencies: ["authoring-25"],
     });
     expect(backlog.readTask(root, "authoring-38")).toMatchObject({
@@ -1505,13 +1504,13 @@ describe("initProject — honors a template that DECLARES targets / pre-includes
     expect(caught).toMatchObject({
       failedBeat: "MATERIALISE",
       failed: { id: "authoring-task-plan:verify" },
-      completed: expect.arrayContaining([
-        expect.objectContaining({
+      completed: match.arrayContaining([
+        match.objectContaining({
           id: "authoring-task:template:built-in:bundle:default@bundle-r2:verify-shared-work#bundle:beta",
         }),
       ]),
-      unattempted: expect.arrayContaining([
-        expect.objectContaining({ id: "handoff-receipt:preparing" }),
+      unattempted: match.arrayContaining([
+        match.objectContaining({ id: "handoff-receipt:preparing" }),
       ]),
     });
     expect(fs.inspectPath(`${TARGET}/${WORKSPACE_HANDOFF_RECEIPT_PATH}`).kind).toBe("missing");
@@ -1618,8 +1617,8 @@ describe("initProject — honors a template that DECLARES targets / pre-includes
     }
     expect(caught).toBeInstanceOf(WorkspaceIntegrationPreflightError);
     expect((caught as WorkspaceIntegrationPreflightError).blockers).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ code: "workspace-partial-request-mismatch" }),
+      match.arrayContaining([
+        match.objectContaining({ code: "workspace-partial-request-mismatch" }),
       ]),
     );
     expect(backlog.listTasks(root).map(({ id }) => backlog.readTask(root, id))).toEqual(
@@ -1644,10 +1643,10 @@ describe("initProject — honors a template that DECLARES targets / pre-includes
     }
     expect(caught).toBeInstanceOf(WorkspaceIntegrationPreflightError);
     expect((caught as WorkspaceIntegrationPreflightError).blockers).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
+      match.arrayContaining([
+        match.objectContaining({
           code: "template-task-bundle-identity-mismatch",
-          message: expect.stringContaining("#bundle:alpha"),
+          message: match.stringContaining("#bundle:alpha"),
         }),
       ]),
     );
@@ -1699,7 +1698,7 @@ describe("initProject — honors a template that DECLARES targets / pre-includes
     expect(caught).toBeInstanceOf(WorkspaceIntegrationPreflightError);
     const blockers = (caught as WorkspaceIntegrationPreflightError).blockers;
     expect(blockers.map(({ code }) => code)).toEqual(
-      expect.arrayContaining([
+      match.arrayContaining([
         "workspace-target-exists",
         "project-derived-plan-invalid",
         "template-task-acceptance-criteria-empty",
@@ -1765,7 +1764,7 @@ describe("initProject — honors a template that DECLARES targets / pre-includes
     }
     expect(caught).toBeInstanceOf(WorkspaceIntegrationPreflightError);
     expect((caught as WorkspaceIntegrationPreflightError).blockers.map(({ code }) => code)).toEqual(
-      expect.arrayContaining([
+      match.arrayContaining([
         "project-template-invalid",
         "template-task-bundle-context-invalid",
         "template-task-acceptance-criteria-empty",
@@ -1881,7 +1880,7 @@ describe("initProject retained personal authoring defaults", () => {
 
     expect(error).toBeInstanceOf(WorkspaceIntegrationPreflightError);
     expect((error as WorkspaceIntegrationPreflightError).blockers).toEqual(
-      expect.arrayContaining([expect.objectContaining({ code: "personal-state-invalid" })]),
+      match.arrayContaining([match.objectContaining({ code: "personal-state-invalid" })]),
     );
     expect(fs.inspectPath(TARGET).kind).toBe("missing");
   });

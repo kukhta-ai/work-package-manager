@@ -17,6 +17,7 @@ import {
   checkProcessArtifacts,
   formatProcessArtifactResult,
 } from "../../../scripts/check-process-artifacts.mjs";
+import { match } from "../../helpers/match.js";
 
 const REPOSITORY_ROOT = fileURLToPath(new URL("../../..", import.meta.url));
 const temporaryRepositories: string[] = [];
@@ -182,14 +183,14 @@ describe("repository process-artifact boundary", () => {
     runGit(root, ["rm", "--cached", "research/evolution/gates/candidate.json"]);
     let result = checkProcessArtifacts({ repositoryRoot: root, requireTrackedEvidence: true });
     expect(result.violations).toEqual(
-      expect.arrayContaining([expect.objectContaining({ code: "untracked-durable-evidence" })]),
+      match.arrayContaining([match.objectContaining({ code: "untracked-durable-evidence" })]),
     );
 
     runGit(root, ["add", "research/evolution/gates/candidate.json"]);
     appendFileSync(join(root, "research/evolution/gates/candidate.json"), "\n");
     result = checkProcessArtifacts({ repositoryRoot: root, requireTrackedEvidence: true });
     expect(result.violations).toEqual(
-      expect.arrayContaining([expect.objectContaining({ code: "unstaged-durable-evidence" })]),
+      match.arrayContaining([match.objectContaining({ code: "unstaged-durable-evidence" })]),
     );
   });
 
@@ -217,7 +218,7 @@ describe("repository process-artifact boundary", () => {
     writeFileSync(schemaPath, `${JSON.stringify(schema, null, 2)}\n`);
     let result = checkProcessArtifacts({ repositoryRoot: root });
     expect(result.violations).toEqual(
-      expect.arrayContaining([expect.objectContaining({ code: "invalid-evidence-schema" })]),
+      match.arrayContaining([match.objectContaining({ code: "invalid-evidence-schema" })]),
     );
 
     delete schema.maximum;
@@ -229,7 +230,7 @@ describe("repository process-artifact boundary", () => {
     );
     result = checkProcessArtifacts({ repositoryRoot: root });
     expect(result.violations).toEqual(
-      expect.arrayContaining([expect.objectContaining({ code: "unknown-git-revision" })]),
+      match.arrayContaining([match.objectContaining({ code: "unknown-git-revision" })]),
     );
   });
 

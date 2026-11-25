@@ -37,7 +37,7 @@ const MANIFEST_FILE = "manifest.yml";
  * when present (omitted ones are left unchanged — AC38#1). Every field is a free string (a name / one-line
  * description / SPDX license id / repository URL / author), validated by neither the CLI nor the spec.
  */
-export interface EditProjectMetaInput {
+interface EditProjectMetaInput {
   /** When present, the new project name (sets `manifest.yml` `project.name`; also drives the ④ RERENDER). */
   readonly name?: string;
   /** When present, the new one-line description (sets `project.description`). */

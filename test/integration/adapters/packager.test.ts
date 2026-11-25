@@ -10,14 +10,14 @@ import {
   symlinkSync,
   writeFileSync,
 } from "node:fs";
-import { delimiter, join } from "node:path";
+import { basename, delimiter, dirname, join, relative } from "node:path";
 import { describe, expect, it } from "vitest";
-import { MemoryFileSystem } from "../../../src/adapters/memory-fs.js";
 import { NodeFileSystem } from "../../../src/adapters/node-fs.js";
 import { createArchive, pushArchive } from "../../../src/adapters/packager.js";
 import { isDomainError } from "../../../src/core/errors.js";
 import { toPosix } from "../../../src/util/posix-path.js";
 import { runSync } from "../../../src/util/shell.js";
+import { MemoryFileSystem } from "../../doubles/memory-fs.js";
 import { withTempDir } from "../../helpers/tmpdir.js";
 
 /**
@@ -71,7 +71,10 @@ function useToolPath(bin: string, includeExisting = true): () => void {
 
 /** Return a normalized root-relative layout for any gzip-tar archive, ignoring directory-only entries. */
 function tarLayout(archive: string): string[] {
-  return execFileSync("tar", ["-tzf", archive], { encoding: "utf8" })
+  return execFileSync("tar", ["-tzf", `./${basename(archive)}`], {
+    cwd: dirname(archive),
+    encoding: "utf8",
+  })
     .split("\n")
     .map((line) => line.replace(/^\.\//, "").trim())
     .filter((line) => line.length > 0 && !line.endsWith("/"))
@@ -106,7 +109,7 @@ function seedShip(root: string): string[] {
 
 describe("createArchive — tarball (always available)", () => {
   it("produces a real .tgz at the returned path containing EXACTLY the shippable files", async () => {
-    await withTempDir(async (dir) => {
+    await withTempDir((dir) => {
       const root = join(dir, "proj");
       mkdirSync(root, { recursive: true });
       const files = seedShip(root);
@@ -126,7 +129,10 @@ describe("createArchive — tarball (always available)", () => {
       expect(existsSync(archive)).toBe(true);
 
       // Untar and assert the entries are exactly the listed files (and NOT .authoring-backlog/).
-      const listed = execFileSync("tar", ["-tzf", archive], { encoding: "utf8" })
+      const listed = execFileSync("tar", ["-tzf", `./${basename(archive)}`], {
+        cwd: dirname(archive),
+        encoding: "utf8",
+      })
         .split("\n")
         .map((l) => l.trim())
         .filter((l) => l.length > 0 && !l.endsWith("/"));
@@ -136,7 +142,7 @@ describe("createArchive — tarball (always available)", () => {
   });
 
   it("an empty shippable set is a typed error (exit-1 class), not a crash", async () => {
-    await withTempDir(async (dir) => {
+    await withTempDir((dir) => {
       const root = join(dir, "proj");
       mkdirSync(root, { recursive: true });
       let thrown: unknown;
@@ -152,7 +158,7 @@ describe("createArchive — tarball (always available)", () => {
 
 describe("createArchive — front-door transforms (task-90, staging)", () => {
   it("strips `_AGENTS.md` → `AGENTS.md` (verbatim) + the alias, preserves scope-alias symlinks, drops `_AGENTS.md`", async () => {
-    await withTempDir(async (dir) => {
+    await withTempDir((dir) => {
       const root = join(dir, "proj");
       mkdirSync(join(root, "bundles", "core"), { recursive: true });
       mkdirSync(join(root, "installer-skills"), { recursive: true });
@@ -190,7 +196,10 @@ describe("createArchive — front-door transforms (task-90, staging)", () => {
         ],
       });
 
-      const listed = execFileSync("tar", ["-tzf", archive], { encoding: "utf8" })
+      const listed = execFileSync("tar", ["-tzf", `./${basename(archive)}`], {
+        cwd: dirname(archive),
+        encoding: "utf8",
+      })
         .split("\n")
         .map((l) => l.trim())
         .filter((l) => l.length > 0 && !l.endsWith("/"));
@@ -212,7 +221,7 @@ describe("createArchive — front-door transforms (task-90, staging)", () => {
       // still a symlink to installer-skills/ (symlink preservation).
       const ex = join(dir, "ex");
       mkdirSync(ex, { recursive: true });
-      execFileSync("tar", ["-xzf", archive, "-C", ex]);
+      execFileSync("tar", ["-xzf", relative(ex, archive).replaceAll("\\", "/")], { cwd: ex });
       expect(readFileSync(join(ex, "AGENTS.md"), "utf8")).toBe(ROOT_BYTES);
       expect(readFileSync(join(ex, "bundles", "core", "AGENTS.md"), "utf8")).toBe(BUNDLE_BYTES);
       expect(lstatSync(join(ex, "CLAUDE.md")).isSymbolicLink()).toBe(true);
@@ -237,7 +246,7 @@ describe("createArchive — portable scope aliases (TASK-128)", () => {
     portableFormats,
   )("%s synthesizes relative root/bundle links from canonical shipped contents, never source aliases", async (format) => {
     if (process.platform === "win32") return;
-    await withTempDir(async (dir) => {
+    await withTempDir((dir) => {
       const root = join(dir, "authoring-workspace", "wip");
       mkdirSync(join(root, "installer-skills", "root-skill", "references"), { recursive: true });
       mkdirSync(join(root, "bundles", "core", "installer-skills", "bundle-skill", "assets"), {
@@ -286,7 +295,10 @@ describe("createArchive — portable scope aliases (TASK-128)", () => {
       const extracted = join(dir, `extracted-${format}`);
       mkdirSync(extracted, { recursive: true });
       if (format === "zip") execFileSync("unzip", ["-q", archive, "-d", extracted]);
-      else execFileSync("tar", ["-xzf", archive, "-C", extracted]);
+      else
+        execFileSync("tar", ["-xzf", relative(extracted, archive).replaceAll("\\", "/")], {
+          cwd: extracted,
+        });
 
       for (const alias of scopeAliases) {
         const path = join(extracted, alias.linkPath);
@@ -317,7 +329,7 @@ describe("createArchive — portable scope aliases (TASK-128)", () => {
   });
 
   it("copy fallback exposes complete nested root and bundle skill packages", async () => {
-    await withTempDir(async (dir) => {
+    await withTempDir((dir) => {
       const root = join(dir, "proj");
       mkdirSync(join(root, "installer-skills", "root", "references"), { recursive: true });
       mkdirSync(join(root, "bundles", "core", "installer-skills", "bundle", "assets"), {
@@ -348,7 +360,9 @@ describe("createArchive — portable scope aliases (TASK-128)", () => {
       });
       const extracted = join(dir, "fallback-extracted");
       mkdirSync(extracted, { recursive: true });
-      execFileSync("tar", ["-xzf", archive, "-C", extracted]);
+      execFileSync("tar", ["-xzf", relative(extracted, archive).replaceAll("\\", "/")], {
+        cwd: extracted,
+      });
       expect(lstatSync(join(extracted, ".claude", "skills")).isDirectory()).toBe(true);
       expect(
         readFileSync(
@@ -367,7 +381,7 @@ describe("createArchive — portable scope aliases (TASK-128)", () => {
 
   it("POSIX tar/Git/ZIP keep empty and missing canonical alias targets resolvable with layout parity", async () => {
     if (process.platform === "win32") return;
-    await withTempDir(async (dir) => {
+    await withTempDir((dir) => {
       const root = join(dir, "proj");
       mkdirSync(join(root, "installer-skills"), { recursive: true });
       mkdirSync(join(root, "bundles", "core"), { recursive: true });
@@ -392,7 +406,10 @@ describe("createArchive — portable scope aliases (TASK-128)", () => {
         const extracted = join(dir, `empty-targets-${format}-extracted`);
         mkdirSync(extracted, { recursive: true });
         if (format === "zip") execFileSync("unzip", ["-q", archive, "-d", extracted]);
-        else execFileSync("tar", ["-xzf", archive, "-C", extracted]);
+        else
+          execFileSync("tar", ["-xzf", relative(extracted, archive).replaceAll("\\", "/")], {
+            cwd: extracted,
+          });
 
         for (const alias of scopeAliases) {
           const link = join(extracted, alias.linkPath);
@@ -413,7 +430,7 @@ describe("createArchive — portable scope aliases (TASK-128)", () => {
   });
 
   it("forced-win32 copy fallback keeps empty and missing canonical alias targets resolvable", async () => {
-    await withTempDir(async (dir) => {
+    await withTempDir((dir) => {
       const root = join(dir, "proj");
       mkdirSync(join(root, "installer-skills"), { recursive: true });
       mkdirSync(join(root, "bundles", "core"), { recursive: true });
@@ -436,7 +453,9 @@ describe("createArchive — portable scope aliases (TASK-128)", () => {
       });
       const extracted = join(dir, "empty-targets-fallback-extracted");
       mkdirSync(extracted, { recursive: true });
-      execFileSync("tar", ["-xzf", archive, "-C", extracted]);
+      execFileSync("tar", ["-xzf", relative(extracted, archive).replaceAll("\\", "/")], {
+        cwd: extracted,
+      });
 
       for (const alias of scopeAliases) {
         const copy = join(extracted, alias.linkPath);
@@ -471,7 +490,7 @@ describe("createArchive — portable scope aliases (TASK-128)", () => {
     sourceLink,
   }) => {
     if (process.platform === "win32") return;
-    await withTempDir(async (dir) => {
+    await withTempDir((dir) => {
       const root = join(dir, "proj");
       const poison = join(dir, "authoring-only-poison");
       mkdirSync(root, { recursive: true });
@@ -509,7 +528,7 @@ describe("createArchive — portable scope aliases (TASK-128)", () => {
 
 describe("createArchive — git (TASK-95 prepared-tree parity)", () => {
   it("archives exactly the transformed ship set and matches the tarball layout", async () => {
-    await withTempDir(async (dir) => {
+    await withTempDir((dir) => {
       const root = join(dir, "proj");
       mkdirSync(join(root, "bundles", "core"), { recursive: true });
       mkdirSync(join(root, "bundles", "disabled"), { recursive: true });
@@ -624,7 +643,9 @@ describe("createArchive — git (TASK-95 prepared-tree parity)", () => {
       // transcoded by attributes carried in the deliverable itself.
       const extracted = join(dir, "git-extracted");
       mkdirSync(extracted, { recursive: true });
-      execFileSync("tar", ["-xzf", archive, "-C", extracted]);
+      execFileSync("tar", ["-xzf", relative(extracted, archive).replaceAll("\\", "/")], {
+        cwd: extracted,
+      });
       expect(readFileSync(join(extracted, "ident.txt"))).toEqual(
         readFileSync(join(root, "ident.txt")),
       );
@@ -633,7 +654,7 @@ describe("createArchive — git (TASK-95 prepared-tree parity)", () => {
   });
 
   it("does not require the source deliverable to be a Git repository", async () => {
-    await withTempDir(async (dir) => {
+    await withTempDir((dir) => {
       const root = join(dir, "proj");
       mkdirSync(root, { recursive: true });
       const files = seedShip(root);
@@ -651,7 +672,7 @@ describe("createArchive — git (TASK-95 prepared-tree parity)", () => {
 
 describe("createArchive — zip (missing-tool handling)", () => {
   it("reports unavailable when no zip command resolves through the production launcher", async () => {
-    await withTempDir(async (dir) => {
+    await withTempDir((dir) => {
       const root = join(dir, "proj");
       const emptyBin = join(dir, "empty-bin");
       mkdirSync(root, { recursive: true });
@@ -675,7 +696,7 @@ describe("createArchive — zip (missing-tool handling)", () => {
   });
 
   it("treats a non-zero version probe as unavailable and never invokes the archiver", async () => {
-    await withTempDir(async (dir) => {
+    await withTempDir((dir) => {
       const root = join(dir, "proj");
       const bin = join(dir, "bin");
       const invoked = join(dir, "archive-invoked");
@@ -712,7 +733,7 @@ describe("createArchive — zip (missing-tool handling)", () => {
 
   it("requests symlink-preserving mode instead of dereferencing planned alias paths", async () => {
     if (process.platform === "win32") return;
-    await withTempDir(async (dir) => {
+    await withTempDir((dir) => {
       const root = join(dir, "proj");
       const bin = join(dir, "bin");
       mkdirSync(join(root, "installer-skills"), { recursive: true });
@@ -751,7 +772,7 @@ describe("createArchive — zip (missing-tool handling)", () => {
   });
 
   it("replaces an existing archive so incremental zip updates cannot retain stale entries", async () => {
-    await withTempDir(async (dir) => {
+    await withTempDir((dir) => {
       const root = join(dir, "proj");
       const bin = join(dir, "bin");
       mkdirSync(root, { recursive: true });
@@ -812,7 +833,7 @@ describe("createArchive — zip (missing-tool handling)", () => {
       ? "produces a real .zip when zip is usable"
       : "raises unavailable guidance when zip's version probe is not successful",
     async () => {
-      await withTempDir(async (dir) => {
+      await withTempDir((dir) => {
         const root = join(dir, "proj");
         mkdirSync(root, { recursive: true });
         const files = seedShip(root);
@@ -849,7 +870,7 @@ describe("createArchive — zip (missing-tool handling)", () => {
 
 describe("pushArchive — destination kinds", () => {
   it("a local directory destination: the archive is copied in", async () => {
-    await withTempDir(async (dir) => {
+    await withTempDir((dir) => {
       const root = join(dir, "proj");
       mkdirSync(root, { recursive: true });
       const files = seedShip(root);
@@ -888,7 +909,7 @@ describe("pushArchive — destination kinds", () => {
   });
 
   it("a git-remote destination: pushes to a local bare repo (headless)", async () => {
-    await withTempDir(async (dir) => {
+    await withTempDir((dir) => {
       const root = join(dir, "proj");
       mkdirSync(root, { recursive: true });
       seedShip(root);

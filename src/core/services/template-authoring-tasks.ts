@@ -11,7 +11,7 @@ export interface TemplateProducer {
 }
 
 /** The operation family where a contribution can later be materialised. */
-export type TemplateAuthoringTaskMaterialisationScope =
+type TemplateAuthoringTaskMaterialisationScope =
   | "project-initialization"
   | "bundle-creation-or-enablement";
 
@@ -94,7 +94,7 @@ export type TemplateAuthoringTaskInspection =
     });
 
 /** Inputs to the pure contribution inspector. */
-export interface InspectTemplateAuthoringTasksInput {
+interface InspectTemplateAuthoringTasksInput {
   readonly template: Template;
   readonly producer: TemplateProducer;
   readonly mandatoryTasks: readonly MandatoryAuthoringTask[];

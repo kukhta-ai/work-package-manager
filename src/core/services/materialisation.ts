@@ -18,7 +18,7 @@ import type { BacklogMd, TaskSummary } from "../ports/index.js";
  */
 
 /** The result of a materialisation: the tasks created this run, and the titles that already existed. */
-export interface MaterialiseResult {
+interface MaterialiseResult {
   /** The tasks newly created this run (e.g. for the operation result's "materialised task titles"). */
   readonly created: TaskSummary[];
   /** The titles that were skipped because a task with that title already existed. */

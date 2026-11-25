@@ -1,9 +1,9 @@
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { MemoryFileSystem } from "../../../src/adapters/memory-fs.js";
 import { DomainError } from "../../../src/core/errors.js";
 import { scaffoldAdvisor } from "../../../src/core/operations/advisor.js";
 import { renderSkillStub } from "../../../src/core/operations/scaffold-skill.js";
+import { MemoryFileSystem } from "../../doubles/memory-fs.js";
 
 /**
  * Unit tests for the GENERALISED stub renderer (`renderSkillStub`) — the helper lifted out of the original

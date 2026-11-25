@@ -13,6 +13,7 @@ import {
   UNCONDITIONAL_BUNDLE_MANDATORY_REFERENCES,
 } from "../../../src/core/services/bundle-authoring-task-plan.js";
 import { inspectTemplateAuthoringTasks } from "../../../src/core/services/template-authoring-tasks.js";
+import { match } from "../../helpers/match.js";
 
 const PRODUCER = { source: "built-in", scope: "bundle", name: "default" } as const;
 
@@ -190,14 +191,14 @@ describe("bundle authoring task plan", () => {
     expect(result.ok).toBe(false);
     if (result.ok) return;
     expect(result.problems.map(({ code }) => code)).toEqual(
-      expect.arrayContaining([
+      match.arrayContaining([
         "existing-definition-mismatch",
         "malformed-template-ownership",
         "existing-dependency-mismatch",
       ]),
     );
     expect(result.preserved.map(({ id }) => id)).toEqual(
-      expect.arrayContaining(["authoring-1", "authoring-3"]),
+      match.arrayContaining(["authoring-1", "authoring-3"]),
     );
     expect(result.missing.length).toBeGreaterThan(0);
   });
@@ -364,10 +365,10 @@ describe("bundle authoring task plan", () => {
     expect(result.ok).toBe(false);
     if (!result.ok) {
       expect(result.problems).toEqual(
-        expect.arrayContaining([
-          expect.objectContaining({
+        match.arrayContaining([
+          match.objectContaining({
             code: "dependency-unresolved",
-            message: expect.stringContaining("not an unconditional bundle mandatory reference"),
+            message: match.stringContaining("not an unconditional bundle mandatory reference"),
           }),
         ]),
       );

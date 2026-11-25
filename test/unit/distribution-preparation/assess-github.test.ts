@@ -5,6 +5,8 @@ import { describe, expect, it } from "vitest";
 import { runGitHubAssessment } from "../../../distribution-preparation/assess-github.js";
 import { createCandidateIdentity } from "../../../distribution-preparation/candidate.js";
 import { assessInactiveDistribution } from "../../../distribution-preparation/readiness.js";
+import { match } from "../../helpers/match.js";
+import { findingRecords } from "./json-fixtures.js";
 
 const REVISION = "a".repeat(40);
 
@@ -126,9 +128,9 @@ describe("local GitHub staging assessment command", () => {
         activation: "disabled",
         releaseEligibility: "ineligible",
         missing: [
-          expect.objectContaining({ object: "tag" }),
-          expect.objectContaining({ object: "release" }),
-          expect.objectContaining({ object: "asset" }),
+          match.objectContaining({ object: "tag" }),
+          match.objectContaining({ object: "release" }),
+          match.objectContaining({ object: "asset" }),
         ],
       },
     });
@@ -148,7 +150,7 @@ describe("local GitHub staging assessment command", () => {
     ).toBe(1);
     expect(JSON.parse(out.text)).toMatchObject({
       status: "rejected",
-      findings: [expect.objectContaining({ field: "policy.file" })],
+      findings: [match.objectContaining({ field: "policy.file" })],
     });
     expect(snapshot(input)).toEqual(before);
   });
@@ -167,9 +169,9 @@ describe("local GitHub staging assessment command", () => {
     expect(JSON.parse(out.text)).toMatchObject({
       status: "rejected",
       findings: [
-        expect.objectContaining({
+        match.objectContaining({
           field: "policy.file",
-          detail: expect.stringMatching(/utf-8|encoded data/i),
+          detail: match.stringMatching(/utf-8|encoded data/i),
         }),
       ],
     });
@@ -194,7 +196,7 @@ describe("local GitHub staging assessment command", () => {
     expect(JSON.parse(out.text)).toMatchObject({
       status: "rejected",
     });
-    expect(JSON.parse(out.text).findings.map(({ field }: { field: string }) => field)).toEqual([
+    expect(findingRecords(out.text).map(({ field }: { field: string }) => field)).toEqual([
       "observation",
       "policy",
     ]);
@@ -220,9 +222,9 @@ describe("local GitHub staging assessment command", () => {
       expect(JSON.parse(out.text)).toMatchObject({
         status: "rejected",
         findings: [
-          expect.objectContaining({
+          match.objectContaining({
             field: "policy.file",
-            detail: expect.stringMatching(/symbolic link/i),
+            detail: match.stringMatching(/symbolic link/i),
           }),
         ],
       });
@@ -245,7 +247,7 @@ describe("local GitHub staging assessment command", () => {
         }),
       }),
     ).toBe(1);
-    expect(JSON.parse(out.text).findings.map(({ field }: { field: string }) => field)).toEqual([
+    expect(findingRecords(out.text).map(({ field }: { field: string }) => field)).toEqual([
       "artifact.digests.sha256",
       "candidate.distribution",
     ]);

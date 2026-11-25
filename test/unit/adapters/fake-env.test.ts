@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { FakeEnvironment } from "../../../src/adapters/fake-env.js";
 import type { Environment } from "../../../src/core/ports/environment.js";
+import { FakeEnvironment } from "../../doubles/fake-env.js";
 
 describe("FakeEnvironment (the Environment fake — pins cwd/platform/env, AC#2)", () => {
   it("returns the constructed cwd, platform, and env vars", () => {

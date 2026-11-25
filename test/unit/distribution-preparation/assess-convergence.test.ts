@@ -11,6 +11,8 @@ import {
   ACTIVATION_FACT_KEYS,
   assessInactiveDistribution,
 } from "../../../distribution-preparation/readiness.js";
+import { match } from "../../helpers/match.js";
+import { findingRecords } from "./json-fixtures.js";
 
 const REVISION = "a".repeat(40);
 const SHA256 = `sha256:${"1".repeat(64)}`;
@@ -262,7 +264,7 @@ describe("local dual-channel convergence command", () => {
         }),
       }),
     ).toBe(1);
-    expect(JSON.parse(out.text).findings.map(({ field }: { field: string }) => field)).toEqual([
+    expect(findingRecords(out.text).map(({ field }: { field: string }) => field)).toEqual([
       "artifact.digests.sha512",
       "github",
       "npm",
@@ -290,9 +292,9 @@ describe("local dual-channel convergence command", () => {
       expect(JSON.parse(out.text)).toMatchObject({
         status: "rejected",
         findings: [
-          expect.objectContaining({
+          match.objectContaining({
             field: "github.file",
-            detail: expect.stringMatching(/symbolic link/i),
+            detail: match.stringMatching(/symbolic link/i),
           }),
         ],
       });
@@ -314,9 +316,9 @@ describe("local dual-channel convergence command", () => {
     expect(JSON.parse(out.text)).toMatchObject({
       status: "rejected",
       findings: [
-        expect.objectContaining({
+        match.objectContaining({
           field: "npm.file",
-          detail: expect.stringMatching(/UTF-8/i),
+          detail: match.stringMatching(/UTF-8/i),
         }),
       ],
     });

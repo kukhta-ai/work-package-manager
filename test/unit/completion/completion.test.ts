@@ -1,8 +1,4 @@
 import { describe, expect, it } from "vitest";
-import { FakeBacklog } from "../../../src/adapters/fake-backlog.js";
-import { FakeEnvironment } from "../../../src/adapters/fake-env.js";
-import { FixedClock } from "../../../src/adapters/fixed-clock.js";
-import { MemoryFileSystem } from "../../../src/adapters/memory-fs.js";
 import { buildProgram, type CliDeps, COMPLETION_SPECS } from "../../../src/cli.js";
 import { completeArgv } from "../../../src/completion/complete.js";
 import { defaultRegistry } from "../../../src/completion/registry.js";
@@ -13,6 +9,11 @@ import {
   type Shell,
 } from "../../../src/util/completion-install.js";
 import type { CliIo } from "../../../src/util/exit.js";
+import { FakeBacklog } from "../../doubles/fake-backlog.js";
+import { FakeEnvironment } from "../../doubles/fake-env.js";
+import { FixedClock } from "../../doubles/fixed-clock.js";
+import { MemoryFileSystem } from "../../doubles/memory-fs.js";
+import { match } from "../../helpers/match.js";
 
 /**
  * Tests for the tab-completion plumbing (task-29). They drive the testable seams IN-PROCESS — `completeArgv`
@@ -240,7 +241,7 @@ describe("AC#3 — state-dependent completions via named sources; a new source s
       partial: "",
     };
     expect(registry.resolve("target-names", ctx)).toEqual(
-      expect.arrayContaining(["claude-code", "codex", "hermes", "openclaw"]),
+      match.arrayContaining(["claude-code", "codex", "hermes", "openclaw"]),
     );
     expect(registry.resolve("installed-target-names", ctx).sort()).toEqual([
       "claude-code",
@@ -274,7 +275,7 @@ describe("AC#3 — state-dependent completions via named sources; a new source s
     // ...but a flag partial still completes the command's flags:
     const flags = complete(deps, ["bundle", "new", "--"]);
     expect(flags).toEqual(
-      expect.arrayContaining(["--version", "--disabled", "--no-advisor", "--template"]),
+      match.arrayContaining(["--version", "--disabled", "--no-advisor", "--template"]),
     );
   });
 
@@ -344,7 +345,7 @@ describe("the __complete dispatch derives commands/flags from the commander tree
     const deps = seededDeps();
     const groups = complete(deps, [""]);
     expect(groups).toEqual(
-      expect.arrayContaining(["init", "template", "project", "bundle", "build", "completion"]),
+      match.arrayContaining(["init", "template", "project", "bundle", "build", "completion"]),
     );
     // a prefix narrows:
     expect(complete(deps, ["b"]).sort()).toEqual(["build", "bundle"]);
@@ -352,7 +353,7 @@ describe("the __complete dispatch derives commands/flags from the commander tree
 
   it("completes a group's subcommands (`bundle <tab>` → its leaves)", () => {
     const deps = seededDeps();
-    expect(complete(deps, ["bundle", ""])).toEqual(expect.arrayContaining(["new"]));
+    expect(complete(deps, ["bundle", ""])).toEqual(match.arrayContaining(["new"]));
   });
 
   it("the hidden __complete command runs end-to-end via run() and prints suggestions", async () => {

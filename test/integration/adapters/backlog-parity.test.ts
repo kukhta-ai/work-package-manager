@@ -1,8 +1,8 @@
 import { execaSync } from "execa";
 import { describe, expect, it } from "vitest";
 import { BacklogCli } from "../../../src/adapters/backlog-cli.js";
-import { FakeBacklog } from "../../../src/adapters/fake-backlog.js";
 import type { BacklogMd } from "../../../src/core/ports/backlog.js";
+import { FakeBacklog } from "../../doubles/fake-backlog.js";
 import { withTempDir } from "../../helpers/tmpdir.js";
 
 function backlogAvailable(): boolean {

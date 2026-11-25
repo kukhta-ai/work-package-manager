@@ -26,7 +26,7 @@ const CONFIRMATION_LEVELS: readonly ConfirmationLevel[] = ["safe", "dangerous"];
  * serialization target — pure data, `requires` as a plain `{ id: range }` record (not a Map) — distinct from
  * the parsed {@link BundleManifest}.
  */
-export interface BundleManifestData {
+interface BundleManifestData {
   readonly id: string;
   readonly version: string;
   readonly summary: string;
@@ -248,7 +248,7 @@ export function parseSkillRefs(
   const packageRoots: Array<{ readonly root: string; readonly field: string }> = [];
   const payloadSkillNames = new Map<string, string>();
   for (let i = 0; i < raw.length; i++) {
-    const entry = raw[i];
+    const entry: unknown = raw[i];
     const field = `${fieldBase}[${i}]`;
     if (!isPlainObject(entry)) {
       return {
@@ -348,7 +348,7 @@ function parsePayloadCategory(raw: unknown, field: string, ctx: string): Parsed<
 export function serializeBundleManifest(bundle: BundleManifest): BundleManifestData {
   const requires: Record<string, string> = {};
   for (const [depId, range] of bundle.requires) {
-    requires[depId as string] = range as string;
+    requires[depId as string] = range;
   }
   return {
     id: bundle.id,

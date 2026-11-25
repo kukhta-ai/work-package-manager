@@ -1,6 +1,4 @@
 import { describe, expect, it } from "vitest";
-import { FakeBacklog } from "../../../src/adapters/fake-backlog.js";
-import { MemoryFileSystem } from "../../../src/adapters/memory-fs.js";
 import {
   isRemovableBundle,
   removeBundleSpec,
@@ -8,6 +6,8 @@ import {
 } from "../../../src/core/operations/bundle-remove.js";
 import { runMutation } from "../../../src/core/operations/lifecycle.js";
 import type { DesiredArtefacts } from "../../../src/core/services/derived-artefacts.js";
+import { FakeBacklog } from "../../doubles/fake-backlog.js";
+import { MemoryFileSystem } from "../../doubles/memory-fs.js";
 
 /**
  * Unit tests for the `bundle remove` core operation (task-53) — the pure `removeBundleSpec` over the in-memory

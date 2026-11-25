@@ -1,14 +1,13 @@
 import { describe, expect, it } from "vitest";
 import {
-  buildLockfile,
   hashArtifactFiles,
   type Lockfile,
   parseLockfile,
-  serializeLockfile,
   type VendoredArtifact,
   type VendoredFile,
   verifyLockfile,
 } from "../../../src/core/services/integrity.js";
+import { buildLockfile, serializeLockfile } from "../../helpers/legacy-lockfile.js";
 
 /** A vendored artifact fixture. */
 function artifact(

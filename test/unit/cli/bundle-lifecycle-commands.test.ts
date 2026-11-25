@@ -1,14 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { FakeBacklog } from "../../../src/adapters/fake-backlog.js";
-import { FakeEnvironment } from "../../../src/adapters/fake-env.js";
-import { FixedClock } from "../../../src/adapters/fixed-clock.js";
-import { MemoryFileSystem } from "../../../src/adapters/memory-fs.js";
 import { buildProgram, type CliDeps, COMPLETION_SPECS, run } from "../../../src/cli.js";
 import { completeArgv } from "../../../src/completion/complete.js";
 import { defaultRegistry } from "../../../src/completion/registry.js";
 import { parseBundleManifest, parseManifest } from "../../../src/core/services/schema/index.js";
 import type { CliIo, OutputSink } from "../../../src/util/exit.js";
 import { parseYaml } from "../../../src/util/yaml.js";
+import { FakeBacklog } from "../../doubles/fake-backlog.js";
+import { FakeEnvironment } from "../../doubles/fake-env.js";
+import { FixedClock } from "../../doubles/fixed-clock.js";
+import { MemoryFileSystem } from "../../doubles/memory-fs.js";
 
 /**
  * Acceptance tests for the `bundle` membership-lifecycle family — `bundle new` / `enable` / `disable` (tasks
@@ -263,7 +263,7 @@ describe("bundle new (task-50)", () => {
     expect(i.err.text).toContain("init");
   });
 
-  it("AC#6 — --template completes from bundle-scope template names", async () => {
+  it("AC#6 — --template completes from bundle-scope template names", () => {
     const { fs, backlog } = seed();
     expect(complete(fs, backlog, ["bundle", "new", "--template", ""])).toContain("default");
   });
@@ -353,7 +353,7 @@ describe("bundle enable (task-51)", () => {
     expect(i.err.text).toContain("manifest.yml");
   });
 
-  it("AC#5 — the id positional completes from disabled-but-present bundle dirs (not enabled, not bundle-template)", async () => {
+  it("AC#5 — the id positional completes from disabled-but-present bundle dirs (not enabled, not bundle-template)", () => {
     const { fs, backlog } = seed({ enabled: ["web"], disabledDirs: ["doc"] });
     // also stage a bundle-template dir which must be excluded:
     fs.makeDirectories(`${PROJ}/wip/bundles/bundle-template`);
@@ -412,7 +412,7 @@ describe("bundle disable (task-52)", () => {
     expect(i.err.text).toContain("manifest.yml");
   });
 
-  it("AC#4 — the id positional completes from the currently-enabled bundles", async () => {
+  it("AC#4 — the id positional completes from the currently-enabled bundles", () => {
     const { fs, backlog } = seed({ enabled: ["web", "doc"] });
     const out = complete(fs, backlog, ["bundle", "disable", ""]);
     expect(out).toContain("web");

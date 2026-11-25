@@ -1,1 +1,2 @@
-npx lint-staged
+node node_modules/lint-staged/bin/lint-staged.js
+node scripts/agents.mjs check --index

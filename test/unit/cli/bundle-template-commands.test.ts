@@ -1,8 +1,4 @@
 import { describe, expect, it } from "vitest";
-import { FakeBacklog } from "../../../src/adapters/fake-backlog.js";
-import { FakeEnvironment } from "../../../src/adapters/fake-env.js";
-import { FixedClock } from "../../../src/adapters/fixed-clock.js";
-import { MemoryFileSystem } from "../../../src/adapters/memory-fs.js";
 import { buildProgram, type CliDeps, COMPLETION_SPECS, run } from "../../../src/cli.js";
 import { completeArgv } from "../../../src/completion/complete.js";
 import { defaultRegistry } from "../../../src/completion/registry.js";
@@ -11,6 +7,10 @@ import {
   parseBundleAuthoringContributions,
 } from "../../../src/core/services/bundle-authoring-contributions.js";
 import type { CliIo, OutputSink } from "../../../src/util/exit.js";
+import { FakeBacklog } from "../../doubles/fake-backlog.js";
+import { FakeEnvironment } from "../../doubles/fake-env.js";
+import { FixedClock } from "../../doubles/fixed-clock.js";
+import { MemoryFileSystem } from "../../doubles/memory-fs.js";
 
 /**
  * Acceptance tests for the `bundle template` fixed subgroup — `bundle template show` (task-55, read-only) and
@@ -181,7 +181,7 @@ describe("bundle template set (task-56)", () => {
     expect(i.err.text).toContain("init");
   });
 
-  it("AC#3 — the name positional completes from bundle-scope templates", async () => {
+  it("AC#3 — the name positional completes from bundle-scope templates", () => {
     const fs = seed();
     const out = complete(fs, ["bundle", "template", "set", ""]);
     expect(out).toContain("default"); // a bundle-scope template

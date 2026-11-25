@@ -4,7 +4,7 @@ import type {
   TemplateFile,
 } from "../model/index.js";
 import { parseBundleId } from "../model/index.js";
-import { UNCONDITIONAL_BUNDLE_MANDATORY_REFERENCES } from "./bundle-authoring-task-plan.js";
+import { UNCONDITIONAL_BUNDLE_MANDATORY_REFERENCES } from "./bundle-mandatory-references.js";
 import { hashArtifactFiles } from "./integrity.js";
 import {
   type PlannedProjectAuthoringTask,
@@ -81,7 +81,7 @@ export interface BundleAuthoringContributions {
   readonly bundles: readonly RecordedBundleContributionEntry[];
 }
 
-export type BundleAuthoringContributionsParseResult =
+type BundleAuthoringContributionsParseResult =
   | { readonly ok: true; readonly value: BundleAuthoringContributions }
   | { readonly ok: false; readonly reason: string };
 
@@ -279,7 +279,7 @@ function parseTask(
     return undefined;
   }
   return {
-    identity: value.identity as string,
+    identity: value.identity,
     key: value.key,
     title: value.title,
     acceptanceCriteria,

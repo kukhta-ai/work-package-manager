@@ -1,8 +1,6 @@
 import { describe, expect, it } from "vitest";
-import {
-  parseTemplateDescriptor,
-  serializeTemplateDescriptor,
-} from "../../../src/core/services/schema/index.js";
+import { parseTemplateDescriptor } from "../../../src/core/services/schema/index.js";
+import { serializeTemplateDescriptor } from "../../helpers/legacy-serialization.js";
 
 /** A well-formed template.yml descriptor (with a top-level description). */
 function wellFormed() {
@@ -125,7 +123,7 @@ describe("parseTemplateDescriptor — well-formed (AC#1, AC#2)", () => {
 
 describe("parseTemplateDescriptor — malformed (AC#3)", () => {
   it.each([
-    ["not an object", 7 as unknown, "must be a mapping"],
+    ["not an object", 7, "must be a mapping"],
     ["missing name", { scope: "project" }, "name"],
     ["missing scope", { name: "x" }, "scope"],
     ["bad scope", { name: "x", scope: "global" }, "scope"],

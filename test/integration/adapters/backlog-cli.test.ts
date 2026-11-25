@@ -55,7 +55,7 @@ function taskDetail(root: string, id: string): string {
     env: { ...process.env, ...isolatedEnv(root) },
     stdout: "pipe",
     stderr: "pipe",
-  }).stdout as string;
+  }).stdout;
 }
 
 describeIfBacklog(
@@ -143,6 +143,34 @@ describeIfBacklog(
 
         appendFileSync(join(dir, "backlog", "config.yml"), "unexpected_setting: true\n");
         expect(bl.inspectTaskInventory(dir).configurationMatchesFreshDefaults).toBe(false);
+      });
+    });
+
+    it("lists every native priority without losing identities, titles or status filters", async () => {
+      await withTempDir((dir) => {
+        const bl = new BacklogCli("backlog", isolatedEnv(dir));
+        bl.init(dir, { taskPrefix: "authoring" });
+        const cases = [
+          { priority: null, status: "To Do", title: "No priority" },
+          { priority: "high", status: "In Progress", title: "High - [LOW] is title text" },
+          { priority: "medium", status: "Done", title: "Medium priority" },
+          { priority: "low", status: "To Do", title: "Low priority" },
+        ] as const;
+        const expected = cases.map(({ priority, status, title }) => {
+          const task = bl.createTask(dir, { title });
+          const args = ["task", "edit", task.id, "--status", status];
+          if (priority !== null) args.push("--priority", priority);
+          execaSync("backlog", args, {
+            cwd: dir,
+            env: { ...process.env, ...isolatedEnv(dir) },
+          });
+          return { ...task, status };
+        });
+
+        expect(bl.listTasks(dir).sort((a, b) => a.id.localeCompare(b.id))).toEqual(expected);
+        expect(
+          bl.listTasks(dir, { status: "To Do" }).sort((a, b) => a.id.localeCompare(b.id)),
+        ).toEqual(expected.filter(({ status }) => status === "To Do"));
       });
     });
 

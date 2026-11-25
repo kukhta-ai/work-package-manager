@@ -4,7 +4,13 @@ import { spawnSync } from "node:child_process";
 import { existsSync, lstatSync, readdirSync, readFileSync, realpathSync } from "node:fs";
 import { basename, dirname, extname, join, posix, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { parse } from "yaml";
+import { parse as parseYaml } from "yaml";
+import { decodeJson } from "./json.mjs";
+
+/** @param {string} text @returns {unknown} */
+function parse(text) {
+  return parseYaml(text);
+}
 
 /** @typedef {{ path: string, code: string, detail: string }} ProcessArtifactViolation */
 /** @typedef {Record<string, unknown>} UnknownRecord */
@@ -290,8 +296,11 @@ export function validateSchemaDefinition(schema) {
         }
       }
     }
-    if (node.format !== undefined && !["date", "date-time"].includes(String(node.format))) {
-      problems.push(`${path}.format: unsupported format ${String(node.format)}`);
+    if (
+      node.format !== undefined &&
+      (typeof node.format !== "string" || !["date", "date-time"].includes(node.format))
+    ) {
+      problems.push(`${path}.format: unsupported format ${JSON.stringify(node.format)}`);
     }
     for (const keyword of ["minLength", "minItems"]) {
       if (
@@ -319,10 +328,10 @@ export function validateSchemaDefinition(schema) {
       }
     }
 
-    for (const [keyword, children] of [
+    for (const [keyword, children] of /** @type {[string, unknown][]} */ ([
       ["properties", node.properties],
       ["$defs", node.$defs],
-    ]) {
+    ])) {
       if (children === undefined) continue;
       if (!isRecord(children)) {
         problems.push(`${path}.${keyword}: must be an object of schemas`);
@@ -902,7 +911,7 @@ function validateGovernedFile(repositoryRoot, path) {
 /** @param {string} path */
 function readStructuredFile(path) {
   const text = readFileSync(path, "utf8");
-  return extname(path) === ".json" ? JSON.parse(text) : parse(text);
+  return extname(path) === ".json" ? decodeJson(text) : parse(text);
 }
 
 /** @param {string} root @param {string} path */
@@ -994,7 +1003,7 @@ export function validateArchiveMetadata(path, value, policy) {
     }
   }
 
-  let checksumMatches = false;
+  let checksumMatches;
   try {
     checksumMatches =
       typeof pointer.checksum === "string" &&
@@ -1552,7 +1561,7 @@ export function checkProcessArtifacts(options) {
   /** @param {string} schemaPath @returns {UnknownRecord | undefined} */
   const loadSchema = (schemaPath) => {
     try {
-      const value = JSON.parse(readFileSync(join(repositoryRoot, schemaPath), "utf8"));
+      const value = decodeJson(readFileSync(join(repositoryRoot, schemaPath), "utf8"));
       if (!isRecord(value)) throw new TypeError("schema root must be an object");
       const schemaProblems = validateSchemaDefinition(value);
       if (schemaProblems.length > 0) {
@@ -1574,7 +1583,7 @@ export function checkProcessArtifacts(options) {
   const evolutionSchema = loadSchema(policy.durableEvidence.evolutionRecords.schema);
   const gateSchema = loadSchema(policy.durableEvidence.gateReceipts.schema);
 
-  const gitObjectCache = new Map();
+  const gitObjectCache = new Map(/** @type {Iterable<[string, boolean]>} */ ([]));
   /** @param {string} path @param {string} label @param {unknown} revision */
   const validateRevision = (path, label, revision) => {
     if (typeof revision !== "string" || !/^[a-f0-9]{40}$/.test(revision)) return;
@@ -1633,7 +1642,7 @@ export function checkProcessArtifacts(options) {
   };
 
   const episodeIds = new Set();
-  const episodeRecordsByPath = new Map();
+  const episodeRecordsByPath = new Map(/** @type {Iterable<[string, UnknownRecord]>} */ ([]));
   if (evolutionSchema !== undefined) {
     for (const file of recordFiles) {
       const path = repositoryPath(repositoryRoot, file);
@@ -1677,7 +1686,7 @@ export function checkProcessArtifacts(options) {
   }
 
   const gateIds = new Set();
-  const gateReceiptsByPath = new Map();
+  const gateReceiptsByPath = new Map(/** @type {Iterable<[string, UnknownRecord]>} */ ([]));
   if (gateSchema !== undefined) {
     for (const file of gateFiles) {
       const path = repositoryPath(repositoryRoot, file);

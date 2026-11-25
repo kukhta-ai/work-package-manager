@@ -1,5 +1,4 @@
 import { type Document, parse, stringify, parseDocument as yamlParseDocument } from "yaml";
-
 /**
  * Comment-preserving YAML, the `yaml` (eemeli/yaml) wrapper (doc 12 §"YAML"). A **pure leaf**: it transforms
  * strings and values only and performs **no** file I/O — reading and writing files is the FileSystem port's
@@ -30,8 +29,6 @@ import { type Document, parse, stringify, parseDocument as yamlParseDocument } f
  * This reflow is inherent to eemeli/yaml and accepted (doc 12 chose this library). It does not affect the
  * canonical files the CLI produces; it only normalizes hand-aligned author formatting.
  */
-
-export type { Document } from "yaml";
 
 /**
  * Parse YAML text into a plain JavaScript value (the form the schema service validates).
@@ -64,16 +61,6 @@ export function stringifyYaml(value: unknown): string {
  */
 export function parseDocument(text: string): Document.Parsed {
   return yamlParseDocument(text);
-}
-
-/**
- * Serialize an editable {@link Document} back to YAML text, preserving everything its CST retained.
- *
- * @param doc - The document to serialize.
- * @returns The YAML text.
- */
-export function stringifyDocument(doc: Document): string {
-  return doc.toString();
 }
 
 /**

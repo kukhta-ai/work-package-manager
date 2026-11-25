@@ -2,9 +2,6 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { FakeBacklog } from "../../src/adapters/fake-backlog.js";
-import { FakeEnvironment } from "../../src/adapters/fake-env.js";
-import { FixedClock } from "../../src/adapters/fixed-clock.js";
 import { NodeFileSystem } from "../../src/adapters/node-fs.js";
 import { type CliDeps, run } from "../../src/cli.js";
 import {
@@ -13,6 +10,9 @@ import {
   WORKSPACE_SKILL_NAMES,
 } from "../../src/core/services/workspace-authoring-integration.js";
 import type { CliIo, OutputSink } from "../../src/util/exit.js";
+import { FakeBacklog } from "../doubles/fake-backlog.js";
+import { FakeEnvironment } from "../doubles/fake-env.js";
+import { FixedClock } from "../doubles/fixed-clock.js";
 import { withTempDir } from "../helpers/tmpdir.js";
 
 const TEMPLATES = fileURLToPath(new URL("../../templates", import.meta.url));

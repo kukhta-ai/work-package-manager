@@ -24,7 +24,9 @@ import { parseTemplateDescriptor } from "./schema/index.js";
  * (`<projectRoot>/templates/`).
  */
 
-/** The injected dependencies a resolution needs: the filesystem port and the two template roots. */
+/** The injected dependencies a resolution needs: the filesystem port and the two template roots.
+ * @internal Runtime type exported for typed test fixtures; not a public SDK surface.
+ */
 export interface ResolverDeps {
   /** The injected filesystem port (real or fake). */
   readonly fs: FileSystem;
@@ -57,7 +59,7 @@ export interface ListFilter {
  * Not-found domain error, task-23) — not a thrown error. (A malformed `template.yml` on a found template *is*
  * thrown, because that is a template-authoring bug.)
  */
-export type TemplateResolution =
+type TemplateResolution =
   | {
       readonly found: true;
       readonly template: Template;
@@ -123,7 +125,7 @@ function readTemplate(fs: FileSystem, templateDir: string): Template {
     readonly token: string;
     readonly line: number;
     readonly column: number;
-  }[] = [];
+  }[];
   try {
     const document = parseDocument(descriptorText);
     yamlProblems = [...document.errors, ...document.warnings].map((problem) => ({

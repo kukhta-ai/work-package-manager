@@ -81,7 +81,7 @@ export interface CurrentState {
 }
 
 /** The delta to apply: only the files/aliases that differ from the current state (empty when up to date). */
-export interface ChangeSet {
+interface ChangeSet {
   /** Files whose content is missing or differs and must be written. */
   readonly filesToWrite: RenderedFile[];
   /** Aliases that do not yet exist and must be created. */

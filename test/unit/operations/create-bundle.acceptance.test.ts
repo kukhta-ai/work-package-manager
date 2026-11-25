@@ -1,14 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { FakeBacklog } from "../../../src/adapters/fake-backlog.js";
-import { MemoryFileSystem } from "../../../src/adapters/memory-fs.js";
-import {
-  createBundleSpec,
-  perBundleAuthoringTasks,
-} from "../../../src/core/operations/create-bundle.js";
 import { makeArtefactDeriver } from "../../../src/core/operations/derive-artefacts-capability.js";
 import { type LifecycleDeps, runMutation } from "../../../src/core/operations/lifecycle.js";
 import { parseBundleManifest, parseManifest } from "../../../src/core/services/schema/index.js";
 import { parseYaml } from "../../../src/util/yaml.js";
+import { FakeBacklog } from "../../doubles/fake-backlog.js";
+import { MemoryFileSystem } from "../../doubles/memory-fs.js";
+import { createBundleSpec, perBundleAuthoringTasks } from "../../helpers/legacy-create-bundle.js";
 
 /**
  * Acceptance test for `createBundle` (the `bundle new` use case) as the COMPOSITION PROOF (task-26; doc 13 §5):

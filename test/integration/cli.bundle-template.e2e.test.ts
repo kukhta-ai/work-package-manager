@@ -129,7 +129,7 @@ describeIfBuilt("bundle template show / set E2E via dist/cli.js (tasks 55/56)", 
     });
   });
 
-  it("56#3/55 — help is substantive for both leaves; show synopsis names the command", async () => {
+  it("56#3/55 — help is substantive for both leaves; show synopsis names the command", () => {
     const setHelp = cli(["bundle", "template", "set", "--help"]);
     expect(setHelp.status).toBe(0);
     expect(setHelp.stdout).toContain("bundle template set");
