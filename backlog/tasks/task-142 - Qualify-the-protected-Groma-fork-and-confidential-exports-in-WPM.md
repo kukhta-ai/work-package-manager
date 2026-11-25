@@ -4,7 +4,7 @@ title: Qualify the protected Groma fork and confidential exports in WPM
 status: Done
 assignee: []
 created_date: '2026-11-06 11:09'
-updated_date: '2026-11-25 01:43'
+updated_date: '2026-11-25 02:24'
 labels: []
 dependencies:
   - TASK-141
@@ -49,6 +49,7 @@ modified_files:
   - research/evolution/records/wpm-vnext-protected-tooling.yaml
   - research/evolution/gates/wpm-vnext-e88c2ba-local.json
   - research/evolution/gates/wpm-vnext-pr-7.json
+  - test/unit/process-artifacts/policy.test.ts
 ordinal: 142000
 ---
 
@@ -77,6 +78,10 @@ New private candidate B: source e88c2ba, version0.1.0, ID sha256:952097387f7e7a1
 Capacity correction:10GiB was conservative headroom, never a measured requirement or current hard policy floor. Serialized pinned analyzer provisioning succeeded from3999911936 free bytes with minimum266096640; fresh final Groma setup started2182660096, minimum669106176; candidate B started2551062528, minimum1509974016. Shared backing-pool changes are included. Only classified owned caches/obsolete artifacts were retired; live application data, histories, profiles, active extensions and global settings preserved.
 
 Delivery remains active: WPM sourceB CI45519390653 has policy plus five consumer cells green, Node24/Windows still running. No final Required pass is claimed. Next: commit these task/compact-evidence records without executable changes; candidate:prepare from that clean final revision with scoped native ZIP tools, verify persisted bytes and full plain journey; push same revision to existing PR7 (base dev), wait all six cells and Required, then bind final source/candidate identity in PR body. No candidate digest rebinding, skipped tools, reduced scope, timeout increases, merge, tag or publication. Fresh Claude model behavior remains unqualified without authentication; remote APM dependencies/recipient agent execution remain separate. Compact local gate and pending PR handoff are separate durable records.
+
+Final-source CI5fd6911 reproduced one stale repository-inventory assertion (expected1 evolution record/2 receipts after legitimate new2/4 evidence); all other Linux26 cases passed. Local focused reproduction is7 passed/1 failed. Stopped only the known provably failing C candidate process group, preserving raw logs and earlier verified B candidate. Correct the test to require the original pilot files plus exact full maintained-directory counts, retaining schema/negative-fixture/minimum policy enforcement; independent review and fresh final-source candidate/CI required. No quality policy, test scope, timeout or artifact digest is relaxed.
+
+Inventory regression corrected:14 focused process-artifact tests pass and full quality:fast passes after formatter output. Bounded independent review reports no blocker: exact counts cover the complete maintained corpus, original pilot files remain required, violations/schema/negative/minimum/index checks are unchanged. The fix changes only the existing test and this task evidence; product, fork pins, runtime scripts, quality policy, deadlines and scope remain unchanged. Native C web/provider/export and actual two-revision WPM map export passed; inherit those only for unchanged executable sources, while the next clean source still needs its own full candidate:prepare, saved-byte plain journey, independent binding review and all6 CI cells plus Required. No failed C artifact exists or is relabelled.
 <!-- SECTION:NOTES:END -->
 
 ## Definition of Done
