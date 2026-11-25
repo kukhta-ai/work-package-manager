@@ -1,10 +1,10 @@
 ---
 id: TASK-145
 title: Complete single-package vNext authoring lifecycle
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-11-25T13:26:00Z'
-updated_date: '2026-11-25T15:00:44Z'
+updated_date: '2026-11-25T15:19:27Z'
 labels: []
 dependencies: []
 references:
@@ -49,17 +49,17 @@ Authors can develop native operation drafts, inspect current release readiness, 
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 A native draft can be authored, inspected, finalized and built without checking recipient acceptance criteria.
-- [ ] #2 Invalid source and referenced removals fail before effects; interrupted retirement can be resumed without losing source.
-- [ ] #3 Group changes preserve prerequisite meaning and version changes invalidate an existing integrity lock.
-- [ ] #4 The complete authoring journey works from installed package bytes with native Backlog.md.
+- [x] #1 A native draft can be authored, inspected, finalized and built without checking recipient acceptance criteria.
+- [x] #2 Invalid source and referenced removals fail before effects; interrupted retirement can be resumed without losing source.
+- [x] #3 Group changes preserve prerequisite meaning and version changes invalidate an existing integrity lock.
+- [x] #4 The complete authoring journey works from installed package bytes with native Backlog.md.
 <!-- AC:END -->
 
 ## Definition of Done
 <!-- DOD:BEGIN -->
-- [ ] #1 Typechecks clean (tsc --noEmit) and Biome clean (biome ci)
-- [ ] #2 Tests added and green (vitest): unit for pure logic, integration where it touches ports
-- [ ] #3 Public functions documented; no dead code; the core import-boundary rule is not violated
+- [x] #1 Typechecks clean (tsc --noEmit) and Biome clean (biome ci)
+- [x] #2 Tests added and green (vitest): unit for pure logic, integration where it touches ports
+- [x] #3 Public functions documented; no dead code; the core import-boundary rule is not violated
 <!-- DOD:END -->
 
 ## Implementation Notes
@@ -76,4 +76,12 @@ Final compatibility review accepted by authoring_review: ready subset/full snaps
 Additional exact-root defect reproduced in1.57.4: foreign BACKLOG_CWD redirected createTask despite explicit cwd. Adapter now pins per-process BACKLOG_CWD=resolve(root); view edit reference carries env and docs/skills require scoped binding. Two-root native regression PASS; independent review of adapter delta2files/15tests PASS, installed-vNext plus adapter/wire3files/16tests PASS. User space arrived (~2.3GiB), removing resource blocker; retain active SDK. Final full CI/release/candidate will use new committed revision; prior source qualification is not reused as a pass.
 
 Source65bdd2b complete CI:169files passed, two fixture failures diagnosed (offline native archive cache missing after cleanup; native ready display regroups InProgress rows). Exact pinned native/wrapper archives reseeded by npm pack; isolated peer test and complete installed journey now PASS. Ready post-claim assertion compares unchanged ID membership while checking statuses/source bytes separately. Isolated source-edit correction af3d273: red-before test showed surviving operation lost its comment; stable-identity YAML reconciliation now retains comments/aliases and preflights setup/retirement transitions. Fresh worktree npmci, quality:fast PASS128modules, focused3files39tests PASS, mutation accepted with no new waivers; independent review accepted. Original generic editor and waiver files unchanged. Correction cherry-picked as a6519af. Final joint full gates/candidate next.
+
+Implementation gate completed: quality:ci on 968fad30558690fbe1905f5c915f3b01f138e8c6 PASS, 170 files/2377 tests plus 2 existing host-conditional skips; required analyzers and critical mutation PASS without new waivers. Final bounded correction suppresses YAML parse warnings with logLevel:error while preserving parse-error rejection (red-before regression, 24 authoring tests PASS; 3 affected files/38 tests PASS before equivalent final parse option; quality:fast PASS; independent authoring_review accepted final line). All task outcomes and DoD are implemented and verified, including earlier installed native journey. Added storage is available and previous ENOSPC blocker is resolved. Next action is private candidate preparation from the following clean committed revision; that command runs the complete quality:release band and binds exact source/artifact bytes. Candidate qualification and exact-head hosted CI results will be recorded on PR8 and in ignored private receipts; no current claim that the final release gate has already passed. Public distribution remains inactive, with no merge/tag/publication.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Completed vNext single-package authoring and upgraded authoring Backlog.md to 1.57.4. Native task content remains authoritative; drafts, readiness, finalization, setup/group changes, resumable archival and versions are covered while recipient acceptance stays unchecked and legacy behavior remains available. Full implementation CI and independent review passed. PR8 carries the final immutable-candidate qualification and human review handoff.
+<!-- SECTION:FINAL_SUMMARY:END -->

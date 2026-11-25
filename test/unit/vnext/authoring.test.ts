@@ -1,6 +1,6 @@
 import fc from "fast-check";
-import { describe, expect, it } from "vitest";
-import { parse, stringify } from "yaml";
+import { describe, expect, it, vi } from "vitest";
+import { parse, parseDocument, stringify } from "yaml";
 import type { TaskRecord } from "../../../src/core/ports/backlog.js";
 import {
   changeGroup,
@@ -126,6 +126,19 @@ describe("authoring decisions", () => {
         expect(nextVersion(`1.2.${n}`, "patch")).toBe(`1.2.${n + 1}`);
       }),
     );
+  });
+  it("edits tagged source without emitting ambient warnings", () => {
+    const source = emptyPackage("tagged");
+    const text = stringify(source).replace("name: tagged", "name: !custom tagged");
+    const warning = vi.spyOn(process, "emitWarning").mockImplementation(() => {});
+    try {
+      const after = { ...source, version: "0.2.0" };
+      const edited = editAuthoringSourceText(text, source, after);
+      expect(parseDocument(edited).toJS()).toEqual(after);
+      expect(warning).not.toHaveBeenCalled();
+    } finally {
+      warning.mockRestore();
+    }
   });
   it("retains comments on the surviving operation and direct group members", () => {
     const before = {

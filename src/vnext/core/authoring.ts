@@ -114,7 +114,7 @@ export function editAuthoringSourceText(
   }
   const rebased: unknown = document.toJS();
   const result = editSourceText(document.toString(), rebased, after);
-  const actual: unknown = parse(result);
+  const actual: unknown = parse(result, { logLevel: "error" });
   if (stableJson(actual) !== stableJson(after))
     throw new Error("authored YAML aliases conflict with source edit");
   return result;
