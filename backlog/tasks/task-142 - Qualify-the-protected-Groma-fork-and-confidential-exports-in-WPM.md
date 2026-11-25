@@ -4,7 +4,7 @@ title: Qualify the protected Groma fork and confidential exports in WPM
 status: In Progress
 assignee: []
 created_date: '2026-11-06 11:09'
-updated_date: '2026-11-25 00:09'
+updated_date: '2026-11-25 00:35'
 labels: []
 dependencies:
   - TASK-141
@@ -45,6 +45,7 @@ modified_files:
   - test/unit/quality.test.ts
   - test/helpers/integration-environment.ts
   - vitest.config.ts
+  - groma/config.json
 ordinal: 142000
 ---
 
@@ -109,6 +110,12 @@ Windows isolated-worker MSYS correction passes quality:fast and the existing env
 Native11 Node24/Linux timeouts justify qualifying the measured2-worker integration profile: actual4-worker cases56.00–59.17s versus2-worker47.74–50.49s, with wall59.18s versus98.76s. Independent policy review found no scope/threshold relaxation: keep all files/cases, forks/isolation, within-file sequence,120s case budgets and90m CI deadline. Set only integration maxWorkers2; the full exact-source OS/Node matrix must prove both latency and total deadline. Read-only profiling attributes98.6% of representative scenario time to mandated Backlog1.45.2 calls; no equivalent full-record batch CLI exists. A fresh NODE_COMPILE_CACHE trial showed no meaningful benefit and is not adopted. Preimage/recheck guarantees and native authoring scenarios remain unchanged.
 
 Final tracked2-worker configuration plus069181f passes the same4 previously slow native CLI cases on Node24; case seconds: 48.848, 47.198, 46.765, 48.474. quality:fast also passes. This focused result does not substitute for the full OS/Node matrix or90m deadline. Fork cedf271baf7ff6e3eb069059ef7627d894bbed65 is under full native CI45515317232 after successful TypeScript/Biome/scanner-exclusions checks and fail-closed child-lifetime probes; local full fork check939/64skips/28 missing-tool failures remains explicitly unverified.
+
+Actual compiled native web qualification reproduces a configuration mismatch: root groma/config.json selects Backlog1.45.2, but the independently approved Groma-only SDK and frozen recipe select1.55.3. Native plugin presence blocks that work source, so authenticated startup offers Restore and map edit routes remain unavailable. Align only the Groma project selection with its already reviewed1.55.3 SDK, using the verified fork configuration writer and preserving portable config without host-specific digests; root WPM development/product Backlog1.45.2 stays pinned. Native plugin Update would write a platform digest and mutate the independently bound approvals ledger, so it is not the right configuration-only operation here. Add a failing configuration regression for this mismatch, then check actual authenticated native editing/export again. Final fork CI and candidate remain pending.
+
+Project configuration was updated using updateGromaConfig from the completely verified fork source under its private Bun environment, changing only workSources Backlog1.45.2 to1.55.3; no host integrity or external approval change was written. A regression fails before the validator fix and passes after. Actual compiled headless web on ad95fd4 with the working diff atop33536d4 now passes authenticated add/edit/remove, one-use bootstrap/cookie/CSRF, Host/Origin/private-read rejection and live-credential exclusion from a real export; server and synthetic fixture were reaped. Full fork CI45515317232 is terminal SUCCESS for cedf271 on all3 OSs; Windows999 pass32 standard conditional skips0 fail, all3 previously failing parent and child cases executed and passed. Final pin is cedf271 with source digest3d5bc79b6b8321e0982087b5e619fca248558392519c236ef4822e76e10a3956 and unchanged773fac... lock; review and fresh root setup next.
+
+Final pin/config delta passed bounded independent review: reviewer independently recomputed3120 source entries and source/lock digests for cedf271, checked exact three-OS CI identity, and verified that Java link preservation and Windows EPERM reuse preserve content-consent checks. Groma work-source configuration now matches the existing approved1.55.3 client, while WPM1.45.2 is unchanged. After the unknown-input type annotation and native JSON formatting, focused39 tests pass with1 host-specific inapplicable; quality:fast passes. Files are frozen for fresh setup of the final immutable fork. Native web/export prequalification on ad95 is evidence for the wiring only; final selected-build proofs and full source gates are still required.
 <!-- SECTION:NOTES:END -->
 
 ## Definition of Done

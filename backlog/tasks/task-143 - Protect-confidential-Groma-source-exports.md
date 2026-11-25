@@ -4,7 +4,7 @@ title: Protect confidential Groma source exports
 status: In Progress
 assignee: []
 created_date: '2026-11-06 11:24'
-updated_date: '2026-11-13 06:55'
+updated_date: '2026-11-25 00:20'
 labels: []
 dependencies:
   - TASK-141
@@ -43,6 +43,8 @@ Preserve complete fork exports with explicit acknowledgement and a raw per-revis
 Independent review reproduced two export defects and both are fixed: caller must now pass --ack-source-export before effects; original vendor paths could bypass default Gitleaks filtering, so captured raw sources are scanned under neutral ordinal .txt paths with original provenance retained in the captured manifest. Production native qualifier and independent random generic-key control both reject historical node_modules-only secrets, accept clean output and remove staging. Five focused unit tests, whole WPM TypeScript and scoped typed ESLint pass. Actual final compiled-fork export and final candidate remain pending; no release qualification claimed yet.
 
 Resume review reproduced final source export root being0755 under umask022 after leaving private staging. Enforced chmod0700 before rename and extended delivered-permissions regression. Independent verification passes; actual final fork/native scanner/export qualification remains pending disk capacity. Source manifest and old-revision detector behavior retained.
+
+Native prequalification on WPM33536d4 with the currently approved compiled fork ad95fd4 and freshly source-built pinned Gitleaks passes: explicit acknowledgement before effects; actual clean vendor-path source export; delivered0700 permissions; a synthetic secret present only in the older selected node_modules/fixture source blocks delivery; private staging is removed; existing user content and checkout/alias destinations are preserved/rejected. Disposable Git fixture and exports were removed after success; compact provenance report is .quality/evidence/export-native-33536d4-ad95fd4.json. This is actual compiled-runtime behavior, not an injected exporter/scanner stub. Final qualification will repeat on the revised immutable fork after its Windows CI completes; no candidate or final gate pass is claimed.
 <!-- SECTION:NOTES:END -->
 
 ## Definition of Done

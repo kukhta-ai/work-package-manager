@@ -1,8 +1,8 @@
 {
   "schemaVersion": 1,
   "repository": "https://github.com/kukhta-ai/Groma.md",
-  "revision": "ad95fd42e65f0d3e159c3069a191866e5af54bb5",
-  "sourceSha256": "5a5c65052799f2f48ac7ec9f398778d197f9b39b7f659ea1cc10e5263fb2138c",
+  "revision": "cedf271baf7ff6e3eb069059ef7627d894bbed65",
+  "sourceSha256": "3d5bc79b6b8321e0982087b5e619fca248558392519c236ef4822e76e10a3956",
   "lockSha256": "773fac363fa405175cc95479b554dc26ace6855ea0d7c5660bfff0bf328ef66a",
   "version": "0.7.8",
   "bunVersion": "1.4.4",

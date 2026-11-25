@@ -22,6 +22,7 @@ import {
 const config = () => ({
   automaticUpdates: false,
   useGitignore: true,
+  workSources: [{ id: "backlog", version: "1.55.3" }],
   exclude: [...GROMA_PRODUCT_EXCLUDE],
   scanners: [
     {
@@ -62,6 +63,11 @@ describe("Groma qualification contract", () => {
         scanners: [{ ...config().scanners[0], exclude: ["src/"] }],
       }),
     ).toThrow();
+  });
+  it("rejects a Backlog selection that differs from the approved Groma client", () => {
+    expect(() =>
+      validateGromaConfig({ ...config(), workSources: [{ id: "backlog", version: "1.45.2" }] }),
+    ).toThrow(/Backlog/);
   });
   it("rejects scanner failure even if upstream printed ok", () => {
     for (const detail of [

@@ -76,6 +76,13 @@ export function validateGromaConfig(value) {
   if (!record(value) || value.automaticUpdates !== false || value.useGitignore !== true) {
     throw new Error("Groma must disable automaticUpdates and honor Git ignores");
   }
+  /** @type {unknown} */
+  const workSource =
+    Array.isArray(value.workSources) && value.workSources.length === 1
+      ? value.workSources[0]
+      : undefined;
+  if (!record(workSource) || workSource.id !== "backlog" || workSource.version !== "1.55.3")
+    throw new Error("Groma requires the reviewed Backlog 1.55.3 client");
   if (!Array.isArray(value.scanners) || value.scanners.length !== 1) {
     throw new Error("exactly the pinned TypeScript scanner must be configured");
   }
