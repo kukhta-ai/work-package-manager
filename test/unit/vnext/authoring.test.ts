@@ -1,9 +1,11 @@
 import fc from "fast-check";
 import { describe, expect, it } from "vitest";
+import { parse, stringify } from "yaml";
 import type { TaskRecord } from "../../../src/core/ports/backlog.js";
 import {
   changeGroup,
   draftLabel,
+  editAuthoringSourceText,
   nextVersion,
   operationProblems,
 } from "../../../src/vnext/core/authoring.js";
@@ -124,5 +126,170 @@ describe("authoring decisions", () => {
         expect(nextVersion(`1.2.${n}`, "patch")).toBe(`1.2.${n + 1}`);
       }),
     );
+  });
+  it("retains comments on the surviving operation and direct group members", () => {
+    const before = {
+      ...emptyPackage("comments"),
+      work: [
+        { operation: "first", task: "operation-1" },
+        { operation: "second", task: "operation-2" },
+      ],
+      groups: { delivery: { operations: ["first", "second"], groups: [] } },
+    };
+    const text = stringify(before)
+      .replace("operation: first", "operation: first # FIRST operation")
+      .replace("operation: second", "operation: second # SECOND operation")
+      .replace("- first\n", "- first # FIRST member\n")
+      .replace("- second\n", "- second # SECOND member\n");
+    const after = {
+      ...before,
+      work: before.work.slice(1),
+      groups: { delivery: { operations: ["second"], groups: [] } },
+    };
+    const edited = editAuthoringSourceText(text, before, after);
+    expect(parse(edited)).toEqual(after);
+    expect(edited).toContain("operation: second # SECOND operation");
+    expect(edited).toContain("second # SECOND member");
+    expect(edited).not.toContain("FIRST");
+  });
+  it("keeps group-reference comments and handles deleted definitions", () => {
+    const before = {
+      ...emptyPackage("groups"),
+      groups: {
+        delivery: { operations: [], groups: ["first", "second"] },
+        first: { operations: [], groups: [] },
+        second: { operations: [], groups: [] },
+      },
+    };
+    const text = stringify(before)
+      .replace("- first\n", "- first # FIRST group\n")
+      .replace("- second\n", "- second # SECOND group\n");
+    const after = {
+      ...before,
+      groups: { ...before.groups, delivery: { operations: [], groups: ["second"] } },
+    };
+    const edited = editAuthoringSourceText(text, before, after);
+    expect(parse(edited)).toEqual(after);
+    expect(edited).toContain("second # SECOND group");
+    expect(edited).not.toContain("FIRST group");
+    expect(parse(editAuthoringSourceText(text, before, { ...before, groups: {} }))).toEqual({
+      ...before,
+      groups: {},
+    });
+    expect(() => editAuthoringSourceText("[unclosed", before, after)).toThrow(
+      "malformed authoring YAML",
+    );
+  });
+  it("rejects coupled alias changes instead of silently changing unrelated source", () => {
+    const text = stringify({
+      ...emptyPackage("comments"),
+      work: [
+        { operation: "first", task: "operation-1" },
+        { operation: "second", task: "operation-2" },
+      ],
+      workerSetup: {
+        default: "first",
+        setups: { first: { source: "worker-setup/first", backend: "plain" } },
+      },
+    })
+      .replace("operation: first", "operation: &setup first")
+      .replace("default: first", "default: *setup");
+    const before = parse(text) as ReturnType<typeof emptyPackage>;
+    expect(() =>
+      editAuthoringSourceText(text, before, { ...before, work: before.work.slice(1) }),
+    ).toThrow("alias");
+    expect(editAuthoringSourceText(text, before, before)).toBe(text);
+  });
+  it("roundtrips removals, replacement and reordering without changing declared meaning", () => {
+    fc.assert(
+      fc.property(
+        fc.uniqueArray(fc.integer({ min: 0, max: 10 })),
+        fc.uniqueArray(fc.integer({ min: 0, max: 10 })),
+        (a, b) => {
+          const operations = (values: number[]) =>
+            values.map((n) => ({ operation: `op-${n}`, task: `operation-${n + 1}` }));
+          const before = { ...emptyPackage("property"), work: operations(a) };
+          const after = { ...before, work: operations(b) };
+          expect(parse(editAuthoringSourceText(stringify(before), before, after))).toEqual(after);
+        },
+      ),
+      { numRuns: 80 },
+    );
+  });
+  it("rejects alias rebinding and deletes prototype-named group definitions safely", () => {
+    const source = {
+      ...emptyPackage("first"),
+      workerSetup: {
+        default: "first",
+        setups: { first: { source: "worker-setup/first", backend: "plain" as const } },
+      },
+    };
+    const text = stringify(source)
+      .replace("name: first", "name: &shared first")
+      .replace("default: first", "default: *shared");
+    expect(() => editAuthoringSourceText(text, source, { ...source, name: "renamed" })).toThrow(
+      "authored YAML aliases conflict",
+    );
+    const before = {
+      ...emptyPackage("prototype"),
+      groups: { constructor: { operations: [], groups: [] } },
+    };
+    const after = { ...before, groups: {} };
+    expect(parse(editAuthoringSourceText(stringify(before), before, after))).toEqual(after);
+  });
+  it("retains comments when updating, reordering and replacing stable identities", () => {
+    const before = {
+      ...emptyPackage("identity"),
+      work: [
+        { operation: "first", task: "operation-1" },
+        { operation: "second", task: "operation-2" },
+      ],
+      groups: { delivery: { operations: ["first", "second"], groups: [] } },
+    };
+    const text = stringify(before)
+      .replace("operation: first", "operation: first # FIRST operation")
+      .replace("operation: second", "operation: second # SECOND operation")
+      .replace("- first\n", "- first # FIRST member\n")
+      .replace("- second\n", "- second # SECOND member\n");
+    const after = {
+      ...before,
+      work: [
+        { ...before.work[1], operation: "second", task: "operation-2", setup: null },
+        { operation: "first", task: "operation-1" },
+      ],
+    };
+    const edited = editAuthoringSourceText(text, before, after);
+    expect(parse(edited)).toEqual(after);
+    expect(edited).toContain("operation: second # SECOND operation");
+    expect(edited).toContain("operation: first # FIRST operation");
+    const replacement = { ...before, groups: { delivery: { operations: ["second"], groups: [] } } };
+    expect(editAuthoringSourceText(text, before, replacement)).toContain("second # SECOND member");
+  });
+  it("preserves unchanged sequence aliases and rejects direct alias selection edits", () => {
+    const before = {
+      ...emptyPackage("aliases"),
+      work: [{ operation: "first", task: "operation-1" }],
+      groups: {
+        one: { operations: ["first"], groups: [] },
+        two: { operations: ["first"], groups: [] },
+      },
+    };
+    const text = stringify(before)
+      .replace("operations:\n      - first", "operations: &members\n      - first")
+      .replace("two:\n    operations:\n      - first", "two:\n    operations: *members");
+    const after = { ...before, version: "0.2.0" };
+    expect(parse(editAuthoringSourceText(text, before, after))).toEqual(after);
+    expect(() =>
+      editAuthoringSourceText(text, before, {
+        ...before,
+        groups: { ...before.groups, two: { operations: [], groups: [] } },
+      }),
+    ).toThrow("resolve source sequence alias");
+  });
+  it("leaves byte-identical authored formatting on semantic no-op requests", () => {
+    const before = emptyPackage("unchanged");
+    const text = stringify(before).replace("name: unchanged", "name: unchanged  ");
+    const after = { ...before, groups: { ...before.groups } };
+    expect(editAuthoringSourceText(text, before, after)).toBe(text);
   });
 });

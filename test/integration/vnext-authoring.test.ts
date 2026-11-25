@@ -2,6 +2,7 @@ import { copyFileSync, existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { execaSync } from "execa";
 import { describe, expect, it } from "vitest";
+import { stringify } from "yaml";
 import { BacklogCli } from "../../src/adapters/backlog-cli.js";
 import { VnextWorkspace } from "../../src/vnext/adapters/workspace.js";
 import { withTempDir } from "../helpers/tmpdir.js";
@@ -231,5 +232,61 @@ describe("native single-package authoring", () => {
       );
       expect(w.view().work).toHaveLength(1);
       expect(existsSync(join(root, ".wpm-pending-retirement.json"))).toBe(false);
+    }));
+  it("keeps surviving operation comments through real retirement and refuses dangling source aliases before effects", async () =>
+    withTempDir((root) => {
+      const b = new BacklogCli();
+      const w = new VnextWorkspace(root, b);
+      w.init("comments");
+      w.addOperation("first", "First", add);
+      w.addOperation("second", "Second", add);
+      const manifest = join(root, "package.yml");
+      writeFileSync(
+        manifest,
+        stringify(w.view())
+          .replace("operation: first", "operation: first # FIRST")
+          .replace("operation: second", "operation: second # SECOND"),
+      );
+      w.deleteOperations(["first"]);
+      expect(readFileSync(manifest, "utf8")).toContain("operation: second # SECOND");
+      expect(readFileSync(manifest, "utf8")).not.toContain("FIRST");
+      w.addOperation("third", "Third", add);
+      w.createSetup("second");
+      writeFileSync(
+        manifest,
+        readFileSync(manifest, "utf8")
+          .replace("operation: second", "operation: &setup second")
+          .replace("workerSetup:", "workerSetup:\n  default: *setup"),
+      );
+      const before = readFileSync(manifest, "utf8");
+      expect(() => w.deleteOperations(["second"])).toThrow("alias");
+      expect(readFileSync(manifest, "utf8")).toBe(before);
+      expect(b.inspectTaskInventory(join(root, ".wpm-source")).activeEntries).toEqual([
+        "operation-2",
+        "operation-3",
+      ]);
+      expect(existsSync(join(root, ".wpm-pending-retirement.json"))).toBe(false);
+    }));
+  it("preflights coupled setup aliases before materializing owned source", async () =>
+    withTempDir((root) => {
+      const w = new VnextWorkspace(root);
+      w.init("setup-alias");
+      w.createSetup("first");
+      w.addOperation("brief", "Brief", { ...add, setup: "first" });
+      const source = w.view();
+      const { work, ...rest } = source;
+      const text = stringify({
+        ...rest,
+        workerSetup: { ...source.workerSetup, default: "first" },
+        work,
+      })
+        .replace("default: first", "default: &profile first")
+        .replace("setup: first", "setup: *profile");
+      const manifest = join(root, "package.yml");
+      writeFileSync(manifest, text);
+      expect(() => w.createSetup()).toThrow("authored YAML aliases conflict");
+      expect(readFileSync(manifest, "utf8")).toBe(text);
+      expect(existsSync(join(root, "worker-setup/default"))).toBe(false);
+      expect(existsSync(join(root, ".wpm-pending-setup.json"))).toBe(false);
     }));
 });

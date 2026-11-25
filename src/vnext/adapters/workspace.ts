@@ -23,7 +23,13 @@ import { parse, stringify } from "yaml";
 import { BacklogCli } from "../../adapters/backlog-cli.js";
 import { NodeFileSystem } from "../../adapters/node-fs.js";
 import type { BacklogMd, TaskRecord } from "../../core/ports/backlog.js";
-import { changeGroup, draftLabel, nextVersion, operationProblems } from "../core/authoring.js";
+import {
+  changeGroup,
+  draftLabel,
+  editAuthoringSourceText,
+  nextVersion,
+  operationProblems,
+} from "../core/authoring.js";
 import {
   assertPortablePath,
   assertSlug,
@@ -36,7 +42,6 @@ import {
   selectOperations,
   stableJson,
 } from "../core/model.js";
-import { editSourceText } from "../core/source-text.js";
 import { ApmBackend, type ApmTarget, type ApmTool, preparedApmSetup } from "./apm.js";
 import { assertPortableTree } from "./portable-tree.js";
 
@@ -181,7 +186,7 @@ export class VnextWorkspace {
     parsePackage(source);
     this.writeText(
       "package.yml",
-      editSourceText(snapshot.text, snapshot.source, source),
+      editAuthoringSourceText(snapshot.text, snapshot.source, source),
       snapshot.text,
     );
   }
@@ -436,6 +441,8 @@ export class VnextWorkspace {
         ? { ...snapshot.source.workerSetup, default: selected, setups }
         : { ...snapshot.source.workerSetup, setups };
     const source = parsePackage({ ...snapshot.source, workerSetup });
+    // Reject alias coupling before creating any owned setup source or pending record.
+    editAuthoringSourceText(snapshot.text, snapshot.source, source);
     if (!dryRun) {
       const pending = this.pending(pendingPath, {
         schemaVersion: 1,
@@ -823,7 +830,7 @@ export class VnextWorkspace {
         schemaVersion: 1,
         ids,
         before: snapshot.text,
-        after: editSourceText(snapshot.text, snapshot.source, source),
+        after: editAuthoringSourceText(snapshot.text, snapshot.source, source),
         tasks,
       };
     };
