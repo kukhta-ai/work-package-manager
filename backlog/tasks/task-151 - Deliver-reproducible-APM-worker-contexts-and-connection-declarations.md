@@ -4,7 +4,7 @@ title: Deliver reproducible APM worker contexts and connection declarations
 status: In Progress
 assignee: []
 created_date: '2026-11-25T19:23:17Z'
-updated_date: '2026-11-25T20:17:34Z'
+updated_date: '2026-11-25T20:35:41Z'
 labels: []
 dependencies: []
 references:
@@ -67,5 +67,7 @@ Implement the approved APM worker plan: pin0.39.0, local/remote source resolutio
 ## Implementation Notes
 
 <!-- SECTION:NOTES:BEGIN -->
-Base2504a748; branch feat/vnext-apm-workers. Skills:wpm-repo-dev/test/architecture/review. APM0.39 implementation and actual shared-dist native/graph probes pass; focused6files238tests and fast135modules pass. Full quality:ci on2402bded completed178files:2637passed,1help-contract failure,2existinghostskips; NOT a passed full gate. Closed that missing-example defect and independently reproduced canonical metadata import gap with strict closed-byte validation+6regressions; closeout3files45tests PASS and fast135modules PASS. Existing Ajv equivalence renewal independently approved10556comparisons, unchanged2waivers; frozen1333mutants accepted, unreviewed0. Next: full quality:ci on committed fixes, isolated actual saved-SDK native APM+multigraph journeys, then task closeout and final clean-source candidate(fullquality:release). Candidate source/artifact and hosted results must be bound separately; public distribution inactive.
+Base2504a748; branch feat/vnext-apm-workers. Skills:wpm-repo-dev/test/architecture/review. Source1a1135e8bfecbf4600d7c56550638324909121f2 full quality:ci PASS178files2644passed2existinghostconditional skips. Its isolated savedSDK SHA256d060b65e3f884c317c991d0395b3313d80780545a7ec9e2e469701fb698b5847 passes native0.39 local/transitive/pinned-remote, bothnativeconfigparsers, network-deniedoffline, relocation, graph2/import3; independently verified artifact/source affinity. Closeout review then found stale MCP after removing all declarations: minimal adapter fix preflights exact prior hashes and regularfiles for BOTH managedpaths before any MCP effects, retires owned outputs or replaces complete projection; explicitretry preserves foreignfiles. New14regressions: red8fail/6pass, fixed4files87PASS; purecore unchanged. Existing1333mutants disposition unchanged2waivers, Ajv equivalence independently approved10556comparisons. Next: independent bounded lifecyclefixreview, fresh stable-source quality:ci, updated actualsavedSDK native/graph/remote-wrapper/retirement proofs, then finalcleancommitted private candidate(fullquality:release) and exact-byte review. PriorSDK is baselineonly afterfix; no model/authentication or work-operation execution claimed. PR10draft/publicdistributioninactive.
+
+Lifecycle fix independent bounded review PASS; independent14regressions PASS, quality:fast PASS135modules. Top-level remote setup source actual saved-SDK baseline probe PASS with add-only declaration delta, exact commit and both targets. Refresh all SDK evidence after the adapter fix; old SDK digest is baseline only.
 <!-- SECTION:NOTES:END -->

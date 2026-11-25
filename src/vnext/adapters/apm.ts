@@ -1075,18 +1075,29 @@ export class ApmBackend {
       this.command(["compile", "--target", target, "--root", destination, "--no-links"]);
       const mcpManifest = this.validateClosure();
       const projection = projectMcp(mcpManifest, target);
-      for (const file of projection.files) {
-        const path = regularPath(destination, join(destination, file.path), "optional");
-        if (existsSync(path) && !previous.files.some((entry) => entry.path === file.path))
-          throw new Error(`APM output conflicts with WPM MCP owner: ${file.path}`);
-        mkdirSync(join(path, ".."), { recursive: true });
-        writeFileSync(path, file.contents);
+      const projectedMcp = projection.files.length
+        ? [{ path: "MCP.json", contents: stableJson(mcpManifest) }, ...projection.files]
+        : [];
+      const managedMcpPaths = ["MCP.json", target === "codex" ? ".codex/config.toml" : ".mcp.json"];
+      // Preflight every replacement/removal before changing either file. An installed receipt
+      // still owns the previous projection, including partial effects from an explicit retry.
+      for (const name of managedMcpPaths) {
+        const path = regularPath(destination, join(destination, name), "optional");
+        if (!existsSync(path)) continue;
+        regularPath(destination, path, "file");
+        const owned = previous.files.find((entry) => entry.path === name);
+        if (!owned || owned.sha256 !== sha256(readFileSync(path)))
+          throw new Error(`APM output conflicts with WPM MCP owner: ${name}`);
       }
-      if (projection.files.length)
-        writeFileSync(
-          regularPath(destination, join(destination, "MCP.json"), "optional"),
-          stableJson(mcpManifest),
-        );
+      for (const name of managedMcpPaths) {
+        const path = regularPath(destination, join(destination, name), "optional");
+        if (!projectedMcp.some((file) => file.path === name) && existsSync(path)) rmSync(path);
+      }
+      for (const file of projectedMcp) {
+        const path = regularPath(destination, join(destination, file.path), "optional");
+        mkdirSync(join(path, ".."), { recursive: true });
+        writeFileSync(path, file.contents, { flag: existsSync(path) ? "w" : "wx" });
+      }
       const receipt = { ...this.receipt(target, "compiled", destination), support: projection };
       if (
         receipt.sourceSha256 !== previous.sourceSha256 ||

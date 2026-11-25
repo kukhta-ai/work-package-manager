@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createRequire, syncBuiltinESMExports } from "node:module";
 import { join, sep } from "node:path";
 import { describe, expect, it, vi } from "vitest";
@@ -198,6 +198,170 @@ function mcpFiles(target: Target) {
     })),
   ];
 }
+
+function preparedMcpFixture(root: string, selected: Target) {
+  const context = fixture(root);
+  const authored = join(root, "worker-setup/composed/apm.yml");
+  const target = join(context.state, "targets", selected);
+  const config = join(target, selected === "codex" ? ".codex/config.toml" : ".mcp.json");
+  const metadata = join(target, "MCP.json");
+  const author = (declarations: readonly unknown[]): void => {
+    writeFileSync(
+      authored,
+      stringify({
+        name: "composed",
+        version: "1.0.0",
+        dependencies: {
+          apm: ["owner/dependency#aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"],
+          mcp: declarations,
+        },
+      }),
+    );
+  };
+  const prepare = (): void => {
+    context.backend.lock();
+    context.backend.install(selected);
+    context.backend.compile(selected);
+  };
+  author(manifest.dependencies.mcp);
+  prepare();
+  return { ...context, target, config, metadata, author, prepare };
+}
+
+function interruptMcpRetirement(backend: ApmBackend, selected: Target, metadata: string): void {
+  const nativeFs = createRequire(import.meta.url)("node:fs") as typeof import("node:fs");
+  const original = nativeFs.rmSync;
+  let armed = true;
+  const spy = vi
+    .spyOn(nativeFs, "rmSync")
+    .mockImplementation((...args: Parameters<typeof original>) => {
+      original(...args);
+      if (armed && args[0] === metadata) {
+        armed = false;
+        throw new Error("injected MCP retirement interruption");
+      }
+    });
+  syncBuiltinESMExports();
+  try {
+    expect(() => backend.compile(selected)).toThrow("injected MCP retirement interruption");
+  } finally {
+    spy.mockRestore();
+    syncBuiltinESMExports();
+  }
+  expect(armed).toBe(false);
+}
+
+for (const selected of ["codex", "claude"] as const)
+  describe(`APM ${selected} MCP declaration synchronization`, () => {
+    it("removes retired owned declarations from the target and prepared release", async () =>
+      withTempDir((root) => {
+        const context = preparedMcpFixture(root, selected);
+        expect(existsSync(context.config) && existsSync(context.metadata)).toBe(true);
+        context.author([]);
+        context.prepare();
+        expect(existsSync(context.config) || existsSync(context.metadata)).toBe(false);
+        expect(context.backend.check(selected)).toMatchObject({ checked: true });
+        const captured = preparedApmSetup(root, "composed", "worker-setup/composed");
+        expect(
+          captured.some((file) =>
+            /(?:MCP\.json|\.mcp\.json|\.codex\/config\.toml)$/.test(file.path),
+          ),
+        ).toBe(false);
+        expect(context.workspace.viewSetup("composed", selected)).toMatchObject({
+          prepared: true,
+          requirements: [],
+          requiredVariables: [],
+        });
+      }));
+
+    it("replaces nonempty declarations and canonical metadata with the new source projection", async () =>
+      withTempDir((root) => {
+        const context = preparedMcpFixture(root, selected);
+        const updated = [
+          {
+            name: "updated-http",
+            registry: false,
+            transport: "http",
+            url: "https://mcp.example.test/updated",
+            headers: { Authorization: `Bearer ${variableReference}` },
+          },
+        ];
+        context.author(updated);
+        context.prepare();
+        const expected = { dependencies: { mcp: updated } };
+        expect(readFileSync(context.metadata, "utf8")).toBe(stableJson(expected));
+        expect(readFileSync(context.config, "utf8")).toBe(
+          projectMcp(expected, selected).files[0]?.contents,
+        );
+        expect(context.workspace.viewSetup("composed", selected)).toMatchObject({
+          prepared: true,
+          requirements: [{ name: "updated-http" }],
+        });
+        expect(context.backend.check(selected)).toMatchObject({ checked: true });
+      }));
+
+    it("recovers a retirement interrupted after removing metadata through explicit install and compile", async () =>
+      withTempDir((root) => {
+        const context = preparedMcpFixture(root, selected);
+        context.author([]);
+        context.backend.lock();
+        context.backend.install(selected);
+        interruptMcpRetirement(context.backend, selected, context.metadata);
+        expect(existsSync(context.metadata)).toBe(false);
+        expect(existsSync(context.config)).toBe(true);
+        expect(
+          JSON.parse(readFileSync(join(context.state, `${selected}.json`), "utf8")),
+        ).toMatchObject({ phase: "failed" });
+        context.backend.install(selected);
+        context.backend.compile(selected);
+        expect(existsSync(context.config) || existsSync(context.metadata)).toBe(false);
+        expect(context.backend.check(selected)).toMatchObject({ checked: true });
+      }));
+
+    it.each([
+      "metadata inserted",
+      "config edited",
+    ] as const)("preserves %s after a failed retirement instead of adopting it on retry", async (mode) =>
+      withTempDir((root) => {
+        const context = preparedMcpFixture(root, selected);
+        context.author([]);
+        context.backend.lock();
+        context.backend.install(selected);
+        interruptMcpRetirement(context.backend, selected, context.metadata);
+        writeFileSync(
+          mode === "metadata inserted" ? context.metadata : context.config,
+          "Late foreign authored bytes\n",
+        );
+        const before = snapshot(context.target);
+        const receipt = readFileSync(join(context.state, `${selected}.json`));
+        expect(() => context.backend.install(selected)).toThrow(/authored|unrecorded|changed/);
+        expect(snapshot(context.target)).toEqual(before);
+        expect(readFileSync(join(context.state, `${selected}.json`))).toEqual(receipt);
+      }));
+
+    it.each([
+      "metadata edited",
+      "config directory",
+    ] as const)("rejects %s before synchronizing declarations", async (mode) =>
+      withTempDir((root) => {
+        const context = preparedMcpFixture(root, selected);
+        context.author([]);
+        context.backend.lock();
+        context.backend.install(selected);
+        if (mode === "metadata edited") writeFileSync(context.metadata, "Foreign metadata\n");
+        else {
+          rmSync(context.config);
+          mkdirSync(context.config);
+        }
+        const before = snapshot(context.target);
+        const receipt = readFileSync(join(context.state, `${selected}.json`));
+        const calls = context.calls.length;
+        expect(() => context.backend.compile(selected)).toThrow(/stale|changed/);
+        expect(snapshot(context.target)).toEqual(before);
+        expect(readFileSync(join(context.state, `${selected}.json`))).toEqual(receipt);
+        expect(context.calls).toHaveLength(calls);
+      }));
+  });
 
 describe("APM worker executable, closure and replay boundaries", () => {
   it.each([
