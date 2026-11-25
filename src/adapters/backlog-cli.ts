@@ -457,8 +457,8 @@ function parseTaskList(stdout: string): TaskSummary[] {
       current = header;
       continue;
     }
-    // A task line: indented `<ID> - <title>`.
-    const taskMatch = /^\s+(\S+)\s+-\s+(.*)$/.exec(rawLine);
+    // Native rows may prefix the identity with a priority badge; title text stays untouched.
+    const taskMatch = /^\s+(?:\[(?:HIGH|MEDIUM|LOW)\]\s+)?(\S+)\s+-\s+(.*)$/.exec(rawLine);
     if (taskMatch?.[1] !== undefined && current !== undefined) {
       summaries.push({ id: toCliId(taskMatch[1]), title: taskMatch[2] ?? "", status: current });
     }

@@ -4,7 +4,7 @@ title: Qualify the protected Groma fork and confidential exports in WPM
 status: Done
 assignee: []
 created_date: '2026-11-06 11:09'
-updated_date: '2026-11-25 02:24'
+updated_date: '2026-11-25 02:52'
 labels: []
 dependencies:
   - TASK-141
@@ -82,6 +82,8 @@ Delivery remains active: WPM sourceB CI45519390653 has policy plus five consumer
 Final-source CI5fd6911 reproduced one stale repository-inventory assertion (expected1 evolution record/2 receipts after legitimate new2/4 evidence); all other Linux26 cases passed. Local focused reproduction is7 passed/1 failed. Stopped only the known provably failing C candidate process group, preserving raw logs and earlier verified B candidate. Correct the test to require the original pilot files plus exact full maintained-directory counts, retaining schema/negative-fixture/minimum policy enforcement; independent review and fresh final-source candidate/CI required. No quality policy, test scope, timeout or artifact digest is relaxed.
 
 Inventory regression corrected:14 focused process-artifact tests pass and full quality:fast passes after formatter output. Bounded independent review reports no blocker: exact counts cover the complete maintained corpus, original pilot files remain required, violations/schema/negative/minimum/index checks are unchanged. The fix changes only the existing test and this task evidence; product, fork pins, runtime scripts, quality policy, deadlines and scope remain unchanged. Native C web/provider/export and actual two-revision WPM map export passed; inherit those only for unchanged executable sources, while the next clean source still needs its own full candidate:prepare, saved-byte plain journey, independent binding review and all6 CI cells plus Required. No failed C artifact exists or is relabelled.
+
+Delivery qualification subsequently found and independently reproduced TASK-144: the product Backlog adapter dropped native priority badges, allowing duplicate vNext operation recovery. D candidate was stopped after that confirmed P1; no D artifact is approved. TASK-144 records the minimal parser correction, four red-before/green-after real-native regressions, 24 passing focused integration tests, successful quality:fast, independent review and rebuilt CLI proof. Final source must include this fix and qualify its saved archive with prioritized recovery; previous B candidate is historical, superseded by this additional required correction.
 <!-- SECTION:NOTES:END -->
 
 ## Definition of Done

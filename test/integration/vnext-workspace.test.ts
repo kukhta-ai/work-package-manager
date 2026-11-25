@@ -1,7 +1,9 @@
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
+import { execaSync } from "execa";
 import { describe, expect, it, vi } from "vitest";
+import { BacklogCli } from "../../src/adapters/backlog-cli.js";
 import { NodeFileSystem } from "../../src/adapters/node-fs.js";
 import type { CreateTaskInput } from "../../src/core/ports/backlog.js";
 import { VnextWorkspace } from "../../src/vnext/adapters/workspace.js";
@@ -56,6 +58,57 @@ describe("vNext workspace effects", () => {
       backlog.injected = ["operation-999"];
       expect(() => workspace.build()).toThrow("unregistered operation prerequisite");
       expect(existsSync(join(root, "builds"))).toBe(false);
+    });
+  });
+
+  it.each([
+    "matching",
+    "conflicting",
+    "ambiguous",
+  ] as const)("handles %s prioritized native recovery without creating duplicate tasks", async (scenario) => {
+    await withTempDir((root) => {
+      const backlog = new BacklogCli();
+      const workspace = new VnextWorkspace(root, backlog);
+      workspace.init("prioritized-recovery");
+      const authoring = join(root, ".wpm-source");
+      const createOrphan = (title: string, priority: string) => {
+        const task = backlog.createTask(authoring, {
+          title,
+          description: "Preserve authored details",
+          acceptanceCriteria: op.acceptanceCriteria,
+          definitionOfDone: ["Preserve this authored done criterion"],
+          labels: ["wpm-operation:brief", "author:keep"],
+        });
+        execaSync("backlog", ["task", "edit", task.id, "--priority", priority], {
+          cwd: authoring,
+        });
+        return task;
+      };
+      const first = createOrphan(scenario === "conflicting" ? "Authored title" : "Brief", "high");
+      const tasks = scenario === "ambiguous" ? [first, createOrphan("Brief", "medium")] : [first];
+      const details = () =>
+        tasks.map(
+          ({ id }) => execaSync("backlog", ["task", id, "--plain"], { cwd: authoring }).stdout,
+        );
+      const beforeDetails = details();
+      const beforeSource = readFileSync(join(root, "package.yml"), "utf8");
+
+      if (scenario === "matching") {
+        workspace.addOperation("brief", "Brief", op);
+        expect(workspace.view().work).toEqual([{ operation: "brief", task: first.id }]);
+      } else {
+        expect(() => workspace.addOperation("brief", "Brief", op)).toThrow(
+          scenario === "conflicting"
+            ? "interrupted operation conflicts with native authored task"
+            : "ambiguous native operation identity",
+        );
+        expect(readFileSync(join(root, "package.yml"), "utf8")).toBe(beforeSource);
+      }
+      expect(backlog.inspectTaskInventory(authoring).activeEntries).toEqual(
+        tasks.map(({ id }) => id),
+      );
+      expect(details()).toEqual(beforeDetails);
+      expect(existsSync(join(root, ".wpm-mutation.lock"))).toBe(false);
     });
   });
 
