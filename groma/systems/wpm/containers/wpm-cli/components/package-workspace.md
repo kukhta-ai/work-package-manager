@@ -8,6 +8,7 @@ groma:
   code:
     - scanner: typescript
       file: src/vnext/adapters/package-workspace.ts
+      symbol: PackageWorkspace
 description: Coordinates local catalogs, graph locks and portable composition
 ---
 
