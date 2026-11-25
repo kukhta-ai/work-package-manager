@@ -23,6 +23,7 @@ import { parse, stringify } from "yaml";
 import { BacklogCli } from "../../adapters/backlog-cli.js";
 import { NodeFileSystem } from "../../adapters/node-fs.js";
 import type { BacklogMd, TaskRecord } from "../../core/ports/backlog.js";
+import { changeGroup, draftLabel, nextVersion, operationProblems } from "../core/authoring.js";
 import {
   assertPortablePath,
   assertSlug,
@@ -35,7 +36,6 @@ import {
   selectOperations,
   stableJson,
 } from "../core/model.js";
-
 import { editSourceText } from "../core/source-text.js";
 import { ApmBackend, type ApmTarget, type ApmTool, preparedApmSetup } from "./apm.js";
 import { assertPortableTree } from "./portable-tree.js";
@@ -132,7 +132,9 @@ export class VnextWorkspace {
   }
 
   /** Serialize WPM writers. An interrupted reservation is preserved for deliberate inspection. */
-  private reserve<T>(action: () => T): T {
+  private reserve<T>(action: () => T, retirement = false): T {
+    if (!retirement && existsSync(this.confined(".wpm-pending-retirement.json")))
+      throw new Error("interrupted retirement must be resumed before another mutation");
     const path = this.confined(".wpm-mutation.lock");
     const contents = stableJson({ schemaVersion: 1, request: randomUUID(), process: process.pid });
     try {
@@ -311,6 +313,7 @@ export class VnextWorkspace {
       acceptanceCriteria: string[];
       setup?: string | null;
       dryRun: boolean;
+      draft?: boolean;
     },
   ): unknown {
     assertSlug(id);
@@ -321,7 +324,7 @@ export class VnextWorkspace {
       throw new Error(`operation already exists: ${id}`);
     if (!title.trim()) throw new Error("operation title must not be empty");
     if (
-      !options.acceptanceCriteria.length ||
+      (!options.draft && !options.acceptanceCriteria.length) ||
       options.acceptanceCriteria.some((criterion) => !criterion.trim())
     )
       throw new Error("operation requires nonempty observable acceptance criteria");
@@ -357,7 +360,8 @@ export class VnextWorkspace {
         stableJson(task.dependencies.map((entry) => entry.toLowerCase()).sort()) !==
           stableJson(dependencies.map((entry) => entry.toLowerCase()).sort()) ||
         stableJson(task.acceptanceCriteria.map((criterion) => criterion.text)) !==
-          stableJson(options.acceptanceCriteria))
+          stableJson(options.acceptanceCriteria) ||
+        task.labels.includes(draftLabel) !== Boolean(options.draft))
     )
       throw new Error(
         `interrupted operation conflicts with native authored task: ${id}; inspect ${task.id}`,
@@ -368,7 +372,10 @@ export class VnextWorkspace {
           title,
           dependencies,
           acceptanceCriteria: options.acceptanceCriteria,
-          labels: [`wpm-operation:${id}`],
+          labels: [
+            `wpm-operation:${id}`,
+            ...(options.draft ? [draftLabel, "wpm-authoring:v1"] : []),
+          ],
         }),
       );
       task = this.nativeCall(authoring, () => this.backlog.readTask(authoring, created.id));
@@ -582,16 +589,374 @@ export class VnextWorkspace {
     return { removed: [...new Set(names)], sourcePreserved: true, dryRun };
   }
 
-  private compileOperations(source: PackageSource): CompiledOperation[] {
+  /** Read native content and current release readiness without executing work. */
+  viewOperation(id: string) {
+    const source = this.snapshot().source;
+    const work = source.work.find((item) => item.operation === id);
+    if (!work) throw new Error(`unknown operation: ${id}`);
+    const authoring = this.authoringRoot();
+    const task = this.nativeCall(authoring, () => this.backlog.readTask(authoring, work.task));
+    const problems = operationProblems(task, id, task.labels.includes("wpm-authoring:v1"));
+    const byTask = new Map(source.work.map((item) => [item.task.toLowerCase(), item.operation]));
+    for (const dependency of task.dependencies)
+      if (!byTask.has(dependency.toLowerCase()))
+        problems.push(`unregistered prerequisite: ${dependency}`);
+    // Read the complete graph so readiness cannot hide cycles behind a single-operation view.
+    try {
+      this.compileOperations(source, true);
+    } catch (error) {
+      problems.push(error instanceof Error ? error.message : String(error));
+    }
+    const draft = task.labels.includes(draftLabel);
+    return {
+      id,
+      task,
+      source: draft ? "draft" : "active",
+      readiness: problems.length ? "blocked" : draft ? "draft" : "ready",
+      problems: [...new Set(problems)],
+      setup: effectiveSetup(source, work),
+      prerequisites: task.dependencies.map(
+        (dependency) => byTask.get(dependency.toLowerCase()) ?? dependency,
+      ),
+      groups: Object.keys(source.groups).filter((name) =>
+        selectOperations(source, name).includes(id),
+      ),
+      nativeEdit: { cwd: authoring, argv: ["backlog", "task", "edit", task.id] },
+    };
+  }
+
+  /** Enumerate current authoring state without maintaining a parallel task-content store. */
+  listOperations() {
+    return this.snapshot().source.work.map((work) => {
+      const view = this.viewOperation(work.operation);
+      return { ...view, operation: work.operation, task: work.task, nativeTask: view.task };
+    });
+  }
+
+  /** Validate authored instructions and promote a task-backed draft without completing its work. */
+  finalizeOperation(id: string, dryRun = false): unknown {
+    if (!dryRun && !this.reserved) return this.reserve(() => this.finalizeOperation(id, dryRun));
+    const snapshot = this.snapshot();
+    const view = this.viewOperation(id);
+    const problems = [...view.problems, ...operationProblems(view.task, id, true)];
+    if (problems.length)
+      throw new Error(`operation not ready: ${[...new Set(problems)].join("; ")}`);
+    const authoring = this.authoringRoot();
+    if (!dryRun && view.source === "draft") {
+      if (
+        stableJson(
+          this.nativeCall(authoring, () => this.backlog.readTask(authoring, view.task.id)),
+        ) !== stableJson(view.task)
+      )
+        throw new Error("native source changed before finalization");
+      if (this.readBytes("package.yml").toString("utf8") !== snapshot.text)
+        throw new Error("package source changed before finalization");
+      this.nativeCall(authoring, () =>
+        this.backlog.editTask(authoring, view.task.id, { removeLabels: [draftLabel] }),
+      );
+      const after = this.nativeCall(authoring, () =>
+        this.backlog.readTask(authoring, view.task.id),
+      );
+      if (after.labels.includes(draftLabel))
+        throw new Error("native finalization did not remove draft marker");
+    }
+    return {
+      id,
+      finalized: true,
+      changed: view.source === "draft",
+      dryRun,
+      recipientWorkCompleted: false,
+    };
+  }
+
+  /** Assign a named setup, explicit null, or inherited default without changing native task text. */
+  setOperationSetup(id: string, setup: string | null | undefined, dryRun = false): unknown {
+    if (!dryRun && !this.reserved)
+      return this.reserve(() => this.setOperationSetup(id, setup, dryRun));
+    const snapshot = this.snapshot();
+    if (!snapshot.source.work.some((work) => work.operation === id))
+      throw new Error(`unknown operation: ${id}`);
+    const source = parsePackage({
+      ...snapshot.source,
+      work: snapshot.source.work.map((work) => {
+        if (work.operation !== id) return work;
+        const base = { operation: work.operation, task: work.task };
+        return setup === undefined ? base : { ...base, setup };
+      }),
+    });
+    if (!dryRun) this.save(snapshot, source);
+    return {
+      id,
+      mode: setup === undefined ? "inherit" : setup === null ? "none" : "named",
+      effectiveSetup: effectiveSetup(
+        source,
+        source.work.find((work) => work.operation === id) ?? { operation: id, task: "" },
+      ),
+      dryRun,
+    };
+  }
+
+  /** Show direct selection separately from expansion and prerequisites outside it. */
+  viewGroup(name: string) {
+    const source = this.snapshot().source;
+    const definition = Object.hasOwn(source.groups, name) ? source.groups[name] : undefined;
+    if (!definition) throw new Error(`unknown group: ${name}`);
+    const selection = selectOperations(source, name);
+    const prerequisites = this.listOperations()
+      .filter((work) => selection.includes(work.id))
+      .flatMap((work) => work.prerequisites)
+      .filter((id) => !selection.includes(id));
+    return {
+      name,
+      ...definition,
+      selection,
+      externalPrerequisites: [...new Set(prerequisites)].sort(),
+    };
+  }
+
+  /** Modify direct references only, never native prerequisites. */
+  changeGroupMembers(
+    name: string,
+    operations: string[],
+    groups: string[],
+    action: "add" | "remove",
+    dryRun = false,
+  ): unknown {
+    if (!dryRun && !this.reserved)
+      return this.reserve(() => this.changeGroupMembers(name, operations, groups, action, dryRun));
+    const snapshot = this.snapshot();
+    const source = changeGroup(snapshot.source, name, operations, groups, action);
+    if (!dryRun) this.save(snapshot, source);
+    return {
+      name,
+      ...source.groups[name],
+      changed: stableJson(source) !== stableJson(snapshot.source),
+      dryRun,
+    };
+  }
+
+  /** Remove a complete batch of unreferenced group definitions, preserving operations. */
+  deleteGroups(names: string[], dryRun = false): unknown {
+    if (!dryRun && !this.reserved) return this.reserve(() => this.deleteGroups(names, dryRun));
+    const snapshot = this.snapshot();
+    const selected = new Set(names);
+    if (!selected.size) throw new Error("select at least one group");
+    for (const name of selected)
+      if (!Object.hasOwn(snapshot.source.groups, name)) throw new Error(`unknown group: ${name}`);
+    for (const [name, group] of Object.entries(snapshot.source.groups))
+      if (!selected.has(name) && group.groups.some((id) => selected.has(id)))
+        throw new Error(`group ${name} references selected group`);
+    const source = {
+      ...snapshot.source,
+      groups: Object.fromEntries(
+        Object.entries(snapshot.source.groups).filter(([name]) => !selected.has(name)),
+      ),
+    };
+    if (!dryRun) this.save(snapshot, source);
+    return { removed: [...selected], sourcePreserved: true, dryRun };
+  }
+
+  /** Read or change only the package version; never lock, build, tag or publish. */
+  version(value?: string, preid?: string, dryRun = false): unknown {
+    if (preid !== undefined && value === undefined)
+      throw new Error("--preid requires a prerelease increment");
+    if (value !== undefined && !dryRun && !this.reserved)
+      return this.reserve(() => this.version(value, preid, dryRun));
+    const snapshot = this.snapshot();
+    const version =
+      value === undefined
+        ? snapshot.source.version
+        : nextVersion(snapshot.source.version, value, preid);
+    if (value !== undefined && !dryRun) this.save(snapshot, { ...snapshot.source, version });
+    return {
+      version,
+      previous: snapshot.source.version,
+      changed: version !== snapshot.source.version,
+      dryRun,
+    };
+  }
+
+  /** Retire an explicit operation batch, preserving native text in the archive and journaling partial effects. */
+  deleteOperations(names: string[], dryRun = false): unknown {
+    if (!dryRun && !this.reserved)
+      return this.reserve(() => this.deleteOperations(names, dryRun), true);
+    const ids = [...new Set(names)].sort();
+    if (!ids.length) throw new Error("select at least one operation");
+    const path = ".wpm-pending-retirement.json";
+    const existing = existsSync(this.confined(path))
+      ? this.readBytes(path).toString("utf8")
+      : undefined;
+    const authoring = this.authoringRoot();
+    const snapshot = this.snapshot();
+    const prepare = () => {
+      const selected = snapshot.source.work.filter((work) => ids.includes(work.operation));
+      if (selected.length !== ids.length) throw new Error("unknown operation in retirement batch");
+      for (const [name, group] of Object.entries(snapshot.source.groups))
+        if (group.operations.some((id) => ids.includes(id)))
+          throw new Error(`group ${name} references selected operation`);
+      const tasks = selected.map((work) => ({
+        id: work.task.toLowerCase(),
+        operation: work.operation,
+        record: this.nativeCall(authoring, () => this.backlog.readTask(authoring, work.task)),
+      }));
+      const taskIds = tasks.map((task) => task.id.toLowerCase());
+      const remaining = this.nativeCall(authoring, () => this.backlog.listTasks(authoring)).filter(
+        (task) => !taskIds.includes(task.id.toLowerCase()),
+      );
+      for (const task of remaining) {
+        const record = this.nativeCall(authoring, () => this.backlog.readTask(authoring, task.id));
+        if (record.dependencies.some((id) => taskIds.includes(id.toLowerCase())))
+          throw new Error(`native task ${task.id} references selected operation`);
+      }
+      for (const task of tasks)
+        if (!task.record.labels.includes(`wpm-operation:${task.operation}`))
+          throw new Error("retirement source lacks stable identity");
+      const source = parsePackage({
+        ...snapshot.source,
+        work: snapshot.source.work.filter((work) => !ids.includes(work.operation)),
+      });
+      return {
+        schemaVersion: 1,
+        ids,
+        before: snapshot.text,
+        after: editSourceText(snapshot.text, snapshot.source, source),
+        tasks,
+      };
+    };
+    // Validate an interrupted record as the exact shape this command writes, before using any contained identity.
+    const decode = (text: string): ReturnType<typeof prepare> => {
+      const value: unknown = JSON.parse(text);
+      if (
+        !value ||
+        typeof value !== "object" ||
+        !("ids" in value) ||
+        stableJson(value.ids) !== stableJson(ids) ||
+        !("before" in value) ||
+        typeof value.before !== "string" ||
+        !("after" in value) ||
+        typeof value.after !== "string"
+      )
+        throw new Error("another interrupted retirement owns this workspace");
+      const before = parsePackage(parse(value.before));
+      const after = parsePackage(parse(value.after));
+      const expected = {
+        ...before,
+        work: before.work.filter((work) => !ids.includes(work.operation)),
+      };
+      if (stableJson(after) !== stableJson(expected))
+        throw new Error("invalid retirement source transition");
+      if (
+        !("tasks" in value) ||
+        !Array.isArray(value.tasks) ||
+        value.tasks.some(
+          (task: unknown) =>
+            !task ||
+            typeof task !== "object" ||
+            !("id" in task) ||
+            typeof task.id !== "string" ||
+            !("operation" in task) ||
+            typeof task.operation !== "string" ||
+            !("record" in task) ||
+            !task.record ||
+            typeof task.record !== "object" ||
+            !("id" in task.record) ||
+            typeof task.record.id !== "string",
+        )
+      )
+        throw new Error("invalid retirement task inventory");
+      const record = value as ReturnType<typeof prepare>;
+      if (
+        record.schemaVersion !== 1 ||
+        !Array.isArray(record.tasks) ||
+        record.tasks.length !== ids.length ||
+        new Set(record.tasks.map((task) => task.id)).size !== ids.length ||
+        stableJson(record.tasks.map((task) => task.operation).sort()) !== stableJson(ids) ||
+        record.tasks.some(
+          (task) =>
+            !before.work.some(
+              (work) =>
+                work.operation === task.operation &&
+                work.task.toLowerCase() === task.id &&
+                ids.includes(work.operation),
+            ) ||
+            !task.record ||
+            task.record.id !== task.id,
+        )
+      )
+        throw new Error("invalid retirement task inventory");
+      return record;
+    };
+    const plan = existing === undefined ? prepare() : decode(existing);
+    if (snapshot.text !== plan.before && snapshot.text !== plan.after)
+      throw new Error("interrupted retirement conflicts with authored source");
+    const active = this.nativeCall(authoring, () => this.backlog.listTasks(authoring));
+    const selectedTasks = new Set(plan.tasks.map((task) => task.id.toLowerCase()));
+    for (const task of active.filter((item) => !selectedTasks.has(item.id.toLowerCase()))) {
+      const current = this.nativeCall(authoring, () => this.backlog.readTask(authoring, task.id));
+      if (current.dependencies.some((id) => selectedTasks.has(id.toLowerCase())))
+        throw new Error(`native task ${task.id} references selected operation`);
+    }
+    const inventory = this.nativeCall(authoring, () =>
+      this.backlog.inspectTaskInventory(authoring),
+    );
+    if (inventory.draftEntries?.length)
+      throw new Error("native drafts require explicit reconciliation before retirement");
+    for (const task of plan.tasks) {
+      if (active.some((item) => item.id === task.id)) {
+        if (
+          inventory.activeEntries.filter((id) => id === task.id).length !== 1 ||
+          inventory.inactiveEntries.includes(task.id)
+        )
+          throw new Error(`retirement task storage ambiguous: ${task.id}`);
+        const current = this.nativeCall(authoring, () => this.backlog.readTask(authoring, task.id));
+        if (stableJson(current) !== stableJson(task.record))
+          throw new Error(`retirement conflicts with authored task: ${task.id}`);
+      } else if (
+        existing === undefined ||
+        inventory.inactiveEntries.filter((id) => id === task.id).length !== 1
+      )
+        throw new Error(`retirement task missing or ambiguous: ${task.id}`);
+    }
+    if (dryRun) return { removed: ids, sourcePreserved: true, dryRun };
+    const pending = this.pending(path, plan);
+    for (const task of plan.tasks) {
+      if (active.some((item) => item.id === task.id)) {
+        if (
+          stableJson(
+            this.nativeCall(authoring, () => this.backlog.readTask(authoring, task.id)),
+          ) !== stableJson(task.record)
+        )
+          throw new Error(`retirement task changed: ${task.id}`);
+        this.nativeCall(authoring, () => this.backlog.archiveTask(authoring, task.id));
+        const after = this.nativeCall(authoring, () =>
+          this.backlog.inspectTaskInventory(authoring),
+        );
+        if (
+          after.activeEntries.includes(task.id) ||
+          after.inactiveEntries.filter((id) => id === task.id).length !== 1
+        )
+          throw new Error(`native archival incomplete: ${task.id}`);
+      }
+    }
+    this.writeText("package.yml", plan.after, snapshot.text);
+    this.clearPending(path, pending.contents);
+    return { removed: ids, sourcePreserved: true, dryRun };
+  }
+
+  private compileOperations(source: PackageSource, authoring = false): CompiledOperation[] {
     if (source.work.length === 0) return [];
     const root = this.authoringRoot();
     const byTask = new Map(source.work.map((work) => [work.task.toLowerCase(), work.operation]));
     const result = source.work
       .map((work) => {
         const task = this.nativeCall(root, () => this.backlog.readTask(root, work.task));
+        if (!authoring && task.labels.includes(draftLabel))
+          throw new Error(`operation is a draft; finalize it before building: ${work.operation}`);
+        if (!authoring && task.labels.includes("wpm-authoring:v1") && !task.description?.trim())
+          throw new Error(`operation requires instructions: ${work.operation}`);
         if (!task.labels.includes(`wpm-operation:${work.operation}`))
           throw new Error(`native task lacks stable operation identity: ${work.operation}`);
-        if (task.acceptanceCriteria.length === 0)
+        if (!authoring && task.acceptanceCriteria.length === 0)
           throw new Error(`operation requires observable acceptance criteria: ${work.operation}`);
         const prerequisites = task.dependencies
           .map((dependency) => {
@@ -624,14 +989,16 @@ export class VnextWorkspace {
     return result;
   }
 
-  private capture(): {
+  private capture(authoring = false): {
     files: CapturedFile[];
     source: PackageSource;
     operations: CompiledOperation[];
   } {
+    if (existsSync(this.confined(".wpm-pending-retirement.json")))
+      throw new Error("interrupted retirement must be resumed before capture");
     const snapshot = this.snapshot();
     const source = snapshot.source;
-    const operations = this.compileOperations(source);
+    const operations = this.compileOperations(source, authoring);
     const files: CapturedFile[] = [];
     for (const path of [...source.files].sort()) files.push({ path, bytes: this.readBytes(path) });
     for (const [name, definition] of Object.entries(source.workerSetup.setups).sort(([a], [b]) =>
@@ -685,9 +1052,12 @@ export class VnextWorkspace {
 
   /** Check actual authored content, associations and native task prerequisites without effects. */
   check(): unknown {
-    const { source, operations, files } = this.capture();
+    const { source, operations, files } = this.capture(true);
+    const readiness = this.listOperations();
     return {
       valid: true,
+      releaseReady: readiness.every((operation) => operation.readiness === "ready"),
+      readiness,
       name: source.name,
       version: source.version,
       operations: operations.length,

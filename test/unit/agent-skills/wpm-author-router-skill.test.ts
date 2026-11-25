@@ -106,11 +106,13 @@ describe("wpm-author workspace router skill", () => {
 
     for (const command of [
       "backlog task list --plain",
-      "backlog sequence list --plain",
+      "backlog task list --ready --plain",
       "backlog task <id> --plain",
     ]) {
       expect(body, command).toContain(command);
     }
+    expect(body).not.toContain("backlog sequence list");
+    expect(body).toContain("backlog task view <id> --json");
     expect(normalized).toMatch(/every.*in progress|all.*in progress/);
     expect(normalized).toMatch(/before.*choos|before.*claim/);
     expect(normalized).toMatch(/do not infer.*title|title.*not.*enough|not.*title.*alone/);
@@ -128,9 +130,11 @@ describe("wpm-author workspace router skill", () => {
     expect(normalized).toMatch(/exactly one status mutation|single.*status mutation/);
     expect(normalized).toMatch(/do not mutate a second task|never.*second task/);
     expect(normalized).toMatch(/re-read.*task|read.*again.*task/);
-    expect(normalized).toMatch(/sequence order.*tie|deterministic.*order|existing order.*tie/);
+    expect(normalized).toMatch(
+      /native ready-list order.*deterministic|deterministic.*order|existing order.*tie/,
+    );
     expect(normalized).toMatch(/immediately before.*(?:claim|status edit)|freshness.*barrier/);
-    expect(normalized).toMatch(/re-run.*task list.*sequence|task list.*sequence.*re-read/);
+    expect(normalized).toMatch(/re-run.*task list.*--ready|task list.*--ready.*re-read/);
     expect(normalized).toMatch(/stale|drift|changed snapshot/);
     expect(normalized).toMatch(/do not invent.*(?:lock|conditional)|no .*compare-and-set/);
     expect(normalized).toMatch(/serialized.*(?:selection|authoring)|serialize.*selection/);

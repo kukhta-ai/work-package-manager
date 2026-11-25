@@ -76,6 +76,8 @@ export interface BacklogTaskInventory {
   readonly activeEntries: readonly string[];
   /** Entries in archive/draft/completed task stores; a fresh authoring plan expects none. */
   readonly inactiveEntries: readonly string[];
+  /** Present when native draft storage contains entries requiring explicit author reconciliation. */
+  readonly draftEntries?: readonly string[];
   /** Any path outside the deterministic Backlog.md task-store layout expected immediately after init. */
   readonly unexpectedEntries: readonly string[];
 }

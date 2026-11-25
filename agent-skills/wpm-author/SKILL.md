@@ -80,11 +80,11 @@ files, indexes, sequences, or configuration directly.
 
 1. Run `backlog task list --plain`. Retain the complete result and surface **every** task whose status is
    `In Progress` before choosing, resuming, or claiming work.
-2. Run `backlog sequence list --plain`.
+2. Run `backlog task list --ready --plain`. This is only the native unblocked subset, never the complete backlog.
 3. Run `backlog task <id> --plain` for every task identity present in either view. Use task records—not title
-   keywords or sequence position alone—to obtain status, dependencies, description, acceptance criteria, and
+   keywords or ready-list position alone—to obtain status, dependencies, description, acceptance criteria, and
    scope.
-4. Cross-check identities, statuses, and dependency edges across all three views. Every listed dependency of
+4. Read `backlog task view <id> --json` for exact direct dependencies; do not infer them from the rendered dependency graph. Cross-check identities, statuses, and dependency edges across all views. Every listed dependency of
    a selectable task must have a record whose status is `Done`.
 
 Treat these reads as one fresh logical snapshot. If a command fails, a task record is missing, or the views
@@ -150,9 +150,9 @@ Do not load every specialist and do not let the specialist select, claim, or rep
 ## Refresh at the selection boundary
 
 Immediately before reporting an active task as resumed or performing a claim status edit, apply one CLI-only
-freshness barrier: re-run `backlog task list --plain` and `backlog sequence list --plain`, then re-read the
-selected task and every dependency record with `backlog task <id> --plain`. Compare identities, all active
-statuses, the selected status, and dependency statuses with the retained snapshot.
+freshness barrier: re-run `backlog task list --plain` and `backlog task list --ready --plain`, then re-read the
+selected task and every dependency record with `backlog task <id> --plain` and `backlog task view <id> --json`. Compare identities, all active
+statuses, the selected status, exact direct dependency IDs, and dependency statuses with the retained snapshot.
 
 If any relevant fact drifted, if a new active task appeared, or if a dependency is no longer `Done`, stop
 without mutation and restart orientation from a new complete snapshot. Do not route, resume, or claim from
@@ -164,8 +164,7 @@ Only when no task is `In Progress`, evaluate every task record in the snapshot. 
 only on a readable, consistent task being `To Do` with every listed dependency `Done`. Classification and
 specialist compatibility are later claim preconditions; they do not redefine dependency eligibility.
 
-Use the existing dependency-sequence order, then the records' existing order and identity as the deterministic
-tie-break. Do not invent priorities or reorder work. Preflight the first dependency-eligible task's
+Use the existing native ready-list order as the deterministic order and identity as its tie-break. Do not invent priorities or reorder work. Preflight the first dependency-eligible task's
 classification and every applicable workspace, Backlog, and specialist prerequisite. A classification or
 specialist defect is a blocked selection with its own recovery; it does not mean that no dependency-eligible
 work exists, and it is not permission to skip to unrelated later work.
@@ -179,8 +178,8 @@ That status edit is the only mutation authorized during orientation and selectio
 `backlog task create`, `--notes`, `--check-ac`, `--check-dod`, or any criteria or dependency mutation. Do not
 mutate a second task.
 
-After the status edit, re-run `backlog task list --plain` and `backlog sequence list --plain`, then re-read the
-selected task and its dependency records. Only a matching `In Progress` record, still-`Done` dependencies, and
+After the status edit, re-run `backlog task list --plain` and `backlog task list --ready --plain`, then re-read the
+selected task and its dependency records, including `backlog task view <id> --json` for exact direct dependency IDs. Only a matching `In Progress` record, unchanged direct dependency IDs, still-`Done` dependencies, and
 no conflicting newly active task make the claim observable as current. If the edit command fails, its outcome
 is uncertain, or the post-edit reads disagree, do not retry the status edit, roll it back, edit another task,
 or dispatch work. Return a blocked selection with the exact command and observed post-edit evidence plus one

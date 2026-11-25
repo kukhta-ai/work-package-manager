@@ -86,38 +86,114 @@ export function registerVnextCommands(
   const operations = vnext
     .command("operation")
     .description("Native authoring tasks with stable package operation identities");
-  const operationAdd = operations
-    .command("add")
-    .argument("<id>", "stable operation identity")
-    .argument("<title>", "native task title")
-    .description("Create one native Backlog.md task")
-    .option(
-      "--prerequisite <operation>",
-      "existing operation required before this one",
-      collect,
-      [],
-    )
-    .option("--ac <outcome>", "observable acceptance outcome (repeatable)", collect, [])
-    .option("--setup <name>", "explicit worker setup; omitted inherits package default")
-    .option("--without-setup", "explicitly require no additional setup", false);
-  operationAdd.action((id: string, title: string) =>
-    execute(operationAdd, (workspace) => {
-      const options = operationAdd.optsWithGlobals<OperationOptions & { withoutSetup: boolean }>();
-      if (options.setup !== undefined && options.withoutSetup)
-        throw new Error("--setup conflicts with --without-setup");
-      const setup = options.withoutSetup ? null : options.setup;
-      const input = {
-        prerequisites: options.prerequisite,
-        acceptanceCriteria: options.ac,
-        dryRun: options.dryRun,
-      };
-      return workspace.addOperation(id, title, setup === undefined ? input : { ...input, setup });
-    }),
-  );
+  for (const verb of ["add", "create"] as const) {
+    const operationAdd = operations
+      .command(verb)
+      .argument("<id>", "stable operation identity")
+      .argument("<title>", "native task title")
+      .description(
+        verb === "create"
+          ? "Create an editable native task-backed draft"
+          : "Create one native Backlog.md task",
+      )
+      .option(
+        "--prerequisite <operation>",
+        "existing operation required before this one",
+        collect,
+        [],
+      )
+      .option("--ac <outcome>", "observable acceptance outcome (repeatable)", collect, [])
+      .option("--setup <name>", "explicit worker setup; omitted inherits package default")
+      .option("--without-setup", "explicitly require no additional setup", false);
+    operationAdd.action((id: string, title: string) =>
+      execute(operationAdd, (workspace) => {
+        const options = operationAdd.optsWithGlobals<
+          OperationOptions & { withoutSetup: boolean }
+        >();
+        if (options.setup !== undefined && options.withoutSetup)
+          throw new Error("--setup conflicts with --without-setup");
+        const setup = options.withoutSetup ? null : options.setup;
+        const input = {
+          prerequisites: options.prerequisite,
+          acceptanceCriteria: options.ac,
+          dryRun: options.dryRun,
+          draft: verb === "create",
+        };
+        return workspace.addOperation(id, title, setup === undefined ? input : { ...input, setup });
+      }),
+    );
+    withExamples(operationAdd, [
+      {
+        command: `wpm vnext --root ./brief operation ${verb} brief "Produce a brief"${verb === "add" ? ' --ac "A readable brief exists"' : ""}`,
+      },
+    ]);
+  }
   const operationList = operations
     .command("list")
     .description("List stable operation/task associations");
-  operationList.action(() => execute(operationList, (workspace) => workspace.view().work));
+  operationList.action(() => execute(operationList, (workspace) => workspace.listOperations()));
+  const operationView = operations
+    .command("view")
+    .argument("<id>")
+    .description("Inspect native source, readiness and edit command");
+  operationView.action((id: string) =>
+    execute(operationView, (workspace) => workspace.viewOperation(id)),
+  );
+  const finalize = operations
+    .command("finalize")
+    .argument("<id>")
+    .description("Validate authored instructions and finalize without completing recipient work");
+  finalize.action((id: string) =>
+    execute(finalize, (workspace, options) => workspace.finalizeOperation(id, options.dryRun)),
+  );
+  const setSetup = operations
+    .command("set-setup")
+    .description("Change only the operation setup association; preserve native task content")
+    .argument("<id>", "stable operation identity")
+    .option("--setup <name>", "select an existing named worker setup")
+    .option("--inherit", "inherit the explicit default", false)
+    .option("--without-setup", "disable setup inheritance", false);
+  setSetup.action((id: string) =>
+    execute(setSetup, (workspace, common) => {
+      const options = setSetup.optsWithGlobals<
+        CommonOptions & { setup?: string; inherit: boolean; withoutSetup: boolean }
+      >();
+      if (
+        Number(options.setup !== undefined) +
+          Number(options.inherit) +
+          Number(options.withoutSetup) !==
+        1
+      )
+        throw new Error("select exactly one of --setup, --inherit or --without-setup");
+      return workspace.setOperationSetup(
+        id,
+        options.withoutSetup ? null : options.setup,
+        common.dryRun,
+      );
+    }),
+  );
+  const operationDelete = operations
+    .command("delete")
+    .argument("<ids...>")
+    .option("--yes", "confirm retirement of the explicit batch", false)
+    .description("Archive unreferenced operation source without losing authored text");
+  operationDelete.action((ids: string[]) =>
+    execute(operationDelete, (workspace, options) => {
+      if (!options.dryRun && !operationDelete.opts<{ yes: boolean }>().yes)
+        throw new Error("operation delete requires --yes or --dry-run");
+      return workspace.deleteOperations(ids, options.dryRun);
+    }),
+  );
+  const version = vnext
+    .command("version")
+    .argument("[value]")
+    .option("--preid <identifier>", "identifier for an explicit prerelease increment")
+    .description("Read, set or increment package version without tagging or publishing");
+  version.action((value?: string) =>
+    execute(version, (workspace, options) =>
+      workspace.version(value, version.opts<{ preid?: string }>().preid, options.dryRun),
+    ),
+  );
   const groups = vnext
     .command("group")
     .description("Operation selections, independent of prerequisites");
@@ -137,6 +213,50 @@ export function registerVnextCommands(
     .command("list")
     .description("List named operation selections and nested group membership");
   groupList.action(() => execute(groupList, (workspace) => workspace.view().groups));
+  const groupView = groups
+    .command("view")
+    .argument("<name>")
+    .description("Inspect direct and expanded group selection");
+  groupView.action((name: string) => execute(groupView, (workspace) => workspace.viewGroup(name)));
+  for (const action of ["add", "remove"] as const) {
+    const command = groups
+      .command(action)
+      .description(
+        action === "add"
+          ? "Add direct references without changing prerequisites"
+          : "Remove direct references and preserve source definitions",
+      )
+      .argument("<name>", "existing operation group")
+      .option("--operation <id>", "direct member", collect, [])
+      .option("--group <name>", "nested member", collect, []);
+    command.action((name: string) =>
+      execute(command, (workspace, common) => {
+        const options = command.optsWithGlobals<GroupOptions>();
+        return workspace.changeGroupMembers(
+          name,
+          options.operation,
+          options.group,
+          action,
+          common.dryRun,
+        );
+      }),
+    );
+    withExamples(command, [
+      { command: `wpm vnext --root ./brief group ${action} delivery --operation brief` },
+    ]);
+  }
+  const groupDelete = groups
+    .command("delete")
+    .argument("<names...>")
+    .option("--yes", "confirm deletion of the explicit batch", false)
+    .description("Delete unreferenced group definitions and preserve operations");
+  groupDelete.action((names: string[]) =>
+    execute(groupDelete, (workspace, options) => {
+      if (!options.dryRun && !groupDelete.opts<{ yes: boolean }>().yes)
+        throw new Error("group delete requires --yes or --dry-run");
+      return workspace.deleteGroups(names, options.dryRun);
+    }),
+  );
   const setups = vnext
     .command("worker-setup")
     .description("Source definitions for the recipient's existing agent");
@@ -230,12 +350,22 @@ export function registerVnextCommands(
     },
   ]);
   withExamples(init, [{ command: "wpm vnext --root ./brief init brief" }]);
-  withExamples(operationAdd, [
+  withExamples(operations, [
     {
       command:
         'wpm vnext --root ./brief operation add brief "Produce a brief" --ac "A readable brief exists"',
     },
   ]);
+  for (const [command, example] of [
+    [operationView, "wpm vnext --root ./brief operation view brief"],
+    [finalize, "wpm vnext --root ./brief operation finalize brief"],
+    [setSetup, "wpm vnext --root ./brief operation set-setup brief --without-setup"],
+    [operationDelete, "wpm vnext --root ./brief operation delete brief --dry-run"],
+    [version, "wpm vnext --root ./brief version prerelease --preid beta"],
+    [groupView, "wpm vnext --root ./brief group view delivery"],
+    [groupDelete, "wpm vnext --root ./brief group delete delivery --yes"],
+  ] as const)
+    withExamples(command, [{ command: example }]);
   withExamples(groupSet, [
     {
       command: "wpm vnext --root ./brief group set install --operation brief",

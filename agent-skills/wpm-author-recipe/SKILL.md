@@ -24,12 +24,12 @@ The bundle's install backlog is the single recipe task source:
    copy or platform fallback would create a shadow recipe, so report it as a blocker.
 3. Run `backlog --version`, `backlog task create --help`, and `backlog task edit --help` before relying on exact
    flags. Inspect tasks with `backlog task list --plain`, `backlog search --type task --plain`, and
-   `backlog task <task-id> --plain`; inspect dependency order with `backlog sequence list --plain`; inspect
+   `backlog task <task-id> --plain`; inspect dependency order with `backlog task list --ready --plain`; inspect
    configured receipt defaults with `backlog config get definitionOfDone`.
 
 Use Backlog.md directly through those supported commands. Never hand-edit its task, archive, index, or config
 files. There is no WPM recipe-task command: do not invent or use a `wpm` task mirror, second recipe, or authoring
-receipt. Backlog.md 1.45.2 does not support `backlog config set definitionOfDone`; when project defaults need
+receipt. Backlog.md 1.57.4 does not support `backlog config set definitionOfDone`; when project defaults need
 repair, use its supported interactive `backlog config` editor only when interaction is available, then re-read
 the result. Otherwise leave the configuration defect blocked rather than editing YAML or claiming per-task
 patches repaired the project default. If the alias identity, bundle identity, or supported Backlog surface is
@@ -97,7 +97,7 @@ unresolved and block readiness. Do not turn uncertainty into a migration “just
 An ordering requirement is a Backlog dependency, never task file order or prose. Draft edges with step slugs,
 validate the whole proposed graph, then resolve each edge to the actual task ID returned by
 `backlog task list --plain`. Use the current `--dep` or `--depends-on` task-ID surface supported by
-`backlog task create` or `backlog task edit`. On the verified 1.45.2 surface, edit-time `--dep` replaces the
+`backlog task create` or `backlog task edit`. On the verified 1.57.4 surface, edit-time `--dep` replaces the
 complete dependency set rather than appending one edge, while `--ac` and `--dod` append. Do not repeat
 `--acceptance-criteria` to replace a set: that form does not reliably retain every supplied value. To replace
 criteria, re-read the task, remove its existing criteria by descending index with repeatable `--remove-ac`,
@@ -105,10 +105,11 @@ then append the complete intended set with repeatable `--ac`. Re-read the result
 drops unrelated edges nor duplicates or preserves stale criteria.
 
 Pass dependency IDs exactly as the plain task listing displays them, including the complete prefix and case;
-do not shorten them to a number or rewrite their spelling. In `backlog sequence list --plain`, each numbered
-`Sequence N` is a dependency stage, not a separate disconnected graph. A detect → setup → verify chain
-correctly appears as one task in each successive stage; tasks shown together in one stage are independent at
-that point. Never rewrite a valid dependency merely to collapse those stage headings. Use explicit edit flags
+do not shorten them to a number or rewrite their spelling. In `backlog task list --ready --plain`, only
+unblocked tasks are listed; this is not the complete backlog or a replacement for direct dependency edges.
+Read `backlog task view <id> --json` for exact dependencies. A detect → setup → verify chain remains three
+operations with prerequisites; after one is completed the native ready list is recomputed. Never rewrite a
+valid dependency merely to make blocked work appear ready. Use explicit edit flags
 only—do not invoke a bare interactive task editor or supply an `EDITOR` script to rewrite managed task files.
 
 Before applying an edge, check the complete relevant graph for:
@@ -169,7 +170,7 @@ Report every discoverable blocker in one pass. If any remains, the recipe is **n
 failure by stopping at the first, and do not present successful individual edits as overall readiness.
 
 When preflight is coherent, apply the smallest supported `backlog task create` and `backlog task edit` changes.
-Re-read every affected task, the plain task listing, and `backlog sequence list --plain`, then simulate a fresh
+Re-read every affected task, the plain task listing, and `backlog task list --ready --plain`, then simulate a fresh
 executor and, for a revision, an executor arriving from each supported prior-version state.
 
 Return an inspectable result:

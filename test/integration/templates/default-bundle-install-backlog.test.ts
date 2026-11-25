@@ -18,7 +18,7 @@ import { withTempDir } from "../../helpers/tmpdir.js";
  *
  * FOLDER-NAME DIVERGENCE (recorded): doc 06/07 name the per-bundle recipe folder `install-backlog/`, and the
  * template ships it under that name (the unit test `test/unit/templates/default-bundle.test.ts` verifies the
- * shipped structure). But the installed Backlog.md (1.45.2) discovers a backlog root ONLY by a folder literally
+ * shipped structure). But the installed Backlog.md (1.57.4) discovers a backlog root ONLY by a folder literally
  * named `backlog/` at the project root — it does NOT discover `install-backlog/` (probed: `task list` reports
  * "No Backlog.md project found"). Reconciling the `install-backlog/` folder name with the executing agent's
  * Backlog.md is an EXECUTION-time concern (doc 03/09; a future task — e.g. the executor renames/links the

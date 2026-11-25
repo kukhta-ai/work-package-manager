@@ -24,7 +24,7 @@ const STATUSES: readonly TaskStatus[] = ["To Do", "In Progress", "Done"];
  * `backlog` CLI synchronously (`execaSync` via `src/util/shell.ts`) — the core is synchronous — always with
  * an explicit `cwd` (the backlog root), so it never resolves an ambient backlog (e.g. the repo's own). All
  * arguments are passed as an argv array (no shell), so values can never be interpreted as shell syntax.
- * Reads parse `--plain` output into {@link TaskSummary}; writes pass flags. Mapped to Backlog.md v1.45.2.
+ * Reads parse `--plain` output into {@link TaskSummary}; writes pass flags. Mapped to Backlog.md v1.57.4, retaining legacy folder-root compatibility.
  *
  * It lives under `src/adapters/`, outside the pure core, so shelling out here is correct.
  */
@@ -99,7 +99,6 @@ export class BacklogCli implements BacklogMd {
         "backlog/archive/drafts",
         "backlog/archive/milestones",
         "backlog/archive/tasks",
-        "backlog/completed",
         "backlog/decisions",
         "backlog/docs",
         "backlog/drafts",
@@ -222,7 +221,47 @@ export class BacklogCli implements BacklogMd {
       args.push("--status", filter.status);
     }
     const { stdout } = runSync(this.executable, args, this.opts(root));
-    return parseTaskList(stdout);
+    const summaries = parseTaskList(stdout);
+    if (!summaries.some((summary) => / \(ac: \d+\/\d+\)$/.test(summary.title))) return summaries;
+    // Native 1.57 decorates titles with AC progress. Resolve the whole list once rather than
+    // performing one additional task read (and dependency-graph read) per authored operation.
+    const { stdout: json } = runSync(
+      this.executable,
+      [...args.filter((arg) => arg !== "--plain"), "--json"],
+      this.opts(root),
+    );
+    const value: unknown = JSON.parse(json);
+    if (
+      !value ||
+      typeof value !== "object" ||
+      !("schemaVersion" in value) ||
+      value.schemaVersion !== 1 ||
+      !("kind" in value) ||
+      value.kind !== "task-list" ||
+      !("tasks" in value) ||
+      !Array.isArray(value.tasks)
+    )
+      throw new Error("invalid native task list JSON");
+    const titles = new Map<string, string>();
+    for (const item of value.tasks as unknown[]) {
+      if (
+        !item ||
+        typeof item !== "object" ||
+        !("id" in item) ||
+        typeof item.id !== "string" ||
+        !("title" in item) ||
+        typeof item.title !== "string" ||
+        titles.has(toCliId(item.id))
+      )
+        throw new Error("invalid native task list identity");
+      titles.set(toCliId(item.id), item.title);
+    }
+    if (titles.size !== summaries.length || summaries.some((item) => !titles.has(item.id)))
+      throw new Error("native task list changed during capture");
+    return summaries.map((summary) => ({
+      ...summary,
+      title: titles.get(summary.id) ?? summary.title,
+    }));
   }
 
   /** @inheritdoc */
@@ -231,6 +270,36 @@ export class BacklogCli implements BacklogMd {
     const record = parseTaskRecord(stdout);
     if (record === undefined) {
       throw new Error(`Could not parse task '${id}' from backlog output:\n${stdout}`);
+    }
+    if (/^Dependency Graph:\r?$/m.test(stdout)) {
+      const { stdout: json } = runSync(
+        this.executable,
+        ["task", "view", id, "--json"],
+        this.opts(root),
+      );
+      const value: unknown = JSON.parse(json);
+      if (
+        !value ||
+        typeof value !== "object" ||
+        !("schemaVersion" in value) ||
+        value.schemaVersion !== 1 ||
+        !("kind" in value) ||
+        value.kind !== "task-view" ||
+        !("task" in value) ||
+        !value.task ||
+        typeof value.task !== "object" ||
+        !("id" in value.task) ||
+        typeof value.task.id !== "string" ||
+        toCliId(value.task.id) !== record.id ||
+        !("dependencies" in value.task) ||
+        !Array.isArray(value.task.dependencies) ||
+        !value.task.dependencies.every(
+          (item: unknown): item is string =>
+            typeof item === "string" && /^[A-Za-z]+-\d+$/.test(item),
+        )
+      )
+        throw new Error("invalid native task dependency JSON");
+      return { ...record, dependencies: value.task.dependencies.map(toCliId) };
     }
     return record;
   }
@@ -274,7 +343,7 @@ export class BacklogCli implements BacklogMd {
       }
     }
     for (const [name, kind] of expectedTopLevel) {
-      if (name === ".locks") continue;
+      if (name === ".locks" || name === "completed") continue;
       if (!actualTopLevel.some((entry) => entry.name === name)) {
         throw new Error(`Backlog path '${join(backlogRoot, name)}' is missing (expected ${kind})`);
       }
@@ -298,8 +367,9 @@ export class BacklogCli implements BacklogMd {
     }
 
     const activeEntries = taskDirectoryEntries(backlogRoot, "tasks");
+    const draftEntries = taskDirectoryEntries(backlogRoot, "drafts");
     const inactiveEntries = [
-      ...taskDirectoryEntries(backlogRoot, "drafts"),
+      ...draftEntries,
       ...taskDirectoryEntries(backlogRoot, "completed"),
       ...taskDirectoryEntries(backlogRoot, "archive/drafts"),
       ...taskDirectoryEntries(backlogRoot, "archive/tasks"),
@@ -326,8 +396,15 @@ export class BacklogCli implements BacklogMd {
     const expectedConfig =
       prefixMatch?.[1] === undefined ? undefined : freshBacklogConfig(prefixMatch[1].trim());
     return {
-      configurationMatchesFreshDefaults: config === expectedConfig,
+      configurationMatchesFreshDefaults:
+        config === expectedConfig ||
+        config ===
+          expectedConfig
+            ?.replace("date_format: yyyy-mm-dd", 'date_format: "yyyy-mm-dd"')
+            .replace('default_editor: "vim"', "default_editor: 'vim'")
+            .replace("default_port: 6420\n", 'default_port: 6420\nbrowser_hostname: "127.0.0.1"\n'),
       activeEntries: activeEntries.sort(),
+      ...(draftEntries.length ? { draftEntries: draftEntries.sort() } : {}),
       inactiveEntries: inactiveEntries.sort(),
       unexpectedEntries: unexpectedEntries.sort(),
     };
@@ -523,7 +600,12 @@ function parseTaskRecord(stdout: string): TaskRecord | undefined {
 
   if (ordinal === undefined || !Number.isFinite(ordinal)) return undefined;
   const descriptionText = sectionText(sections.get("Description"));
-  const knownHeadings = new Set(["Description", "Acceptance Criteria", "Definition of Done"]);
+  const knownHeadings = new Set([
+    "Description",
+    "Acceptance Criteria",
+    "Definition of Done",
+    "Dependency Graph",
+  ]);
   return {
     ...summary,
     ordinal,
@@ -572,6 +654,14 @@ function assertRegularDirectory(path: string): void {
 
 function taskDirectoryEntries(backlogRoot: string, relativeDirectory: string): string[] {
   const directory = join(backlogRoot, relativeDirectory);
+  if (relativeDirectory === "completed") {
+    try {
+      lstatSync(directory);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
+      throw error;
+    }
+  }
   assertRegularDirectory(directory);
   return readdirSync(directory, { withFileTypes: true }).map((entry) => {
     const match = /^([A-Za-z]+-\d+)\s+-\s+.+\.md$/.exec(entry.name);

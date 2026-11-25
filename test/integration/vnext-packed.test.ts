@@ -67,12 +67,27 @@ describe("installed vNext recipient journey", () => {
       command("worker-setup", "create");
       command(
         "operation",
-        "add",
+        "create",
         "brief",
         "Produce a brief",
         "--ac",
         "The brief describes the selected problem",
       );
+      expect(command("check")).toMatchObject({ releaseReady: false });
+      execaSync(
+        process.execPath,
+        [
+          join(repository, "node_modules/backlog.md/cli.js"),
+          "task",
+          "edit",
+          "operation-1",
+          "--description",
+          "Produce a brief addressing the selected problem",
+        ],
+        { cwd: join(sourceRoot, ".wpm-source") },
+      );
+      expect(command("operation", "view", "brief")).toMatchObject({ source: "draft" });
+      command("operation", "finalize", "brief");
       command(
         "operation",
         "add",
@@ -90,6 +105,26 @@ describe("installed vNext recipient journey", () => {
         operations: 2,
         agentSupport: { loaded: false },
       });
+      expect(command("operation", "list")).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            id: "brief",
+            operation: "brief",
+            task: "operation-1",
+            readiness: "ready",
+          }),
+        ]),
+      );
+      expect(command("group", "view", "review")).toMatchObject({
+        externalPrerequisites: ["brief"],
+      });
+      command("group", "set", "all");
+      command("group", "add", "all", "--group", "review");
+      command("group", "remove", "all", "--group", "review");
+      command("group", "delete", "all", "--yes");
+      command("operation", "set-setup", "review", "--inherit");
+      command("operation", "set-setup", "review", "--without-setup");
+      expect(command("version", "minor")).toMatchObject({ version: "0.2.0" });
       command("lock");
       const first = command("build");
       expect(command("build")).toEqual(first);
@@ -98,7 +133,7 @@ describe("installed vNext recipient journey", () => {
         readFileSync(join(sourceRoot, "test-results/vnext-latest.json"), "utf8"),
       );
       expect(result).toMatchObject({ passed: true });
-      const archive = join(sourceRoot, "builds/installed-0.1.0.tgz");
+      const archive = join(sourceRoot, "builds/installed-0.2.0.tgz");
       const listing = execaSync("tar", ["-tzf", `./${basename(archive)}`], {
         cwd: dirname(archive),
       }).stdout;

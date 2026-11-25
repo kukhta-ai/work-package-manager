@@ -49,7 +49,7 @@ interface FakeRoot {
  */
 export class FakeBacklog implements BacklogMd {
   private readonly roots = new Map<string, FakeRoot>();
-  private availability: BacklogAvailability = { available: true, version: "1.45.2" };
+  private availability: BacklogAvailability = { available: true, version: "1.57.4" };
 
   /** @inheritdoc */
   inspectAvailability(): BacklogAvailability {

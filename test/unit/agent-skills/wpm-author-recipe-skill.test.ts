@@ -56,7 +56,7 @@ describe("wpm-author-recipe workspace skill", () => {
       "backlog task create --help",
       "backlog task edit --help",
       "backlog task list --plain",
-      "backlog sequence list --plain",
+      "backlog task list --ready --plain",
       "backlog config get definitionOfDone",
       "backlog task create",
       "backlog task edit",
@@ -115,10 +115,10 @@ describe("wpm-author-recipe workspace skill", () => {
     expect(body).toMatch(
       /dependency ids exactly.*plain task listing|plain task listing.*dependency ids/,
     );
-    expect(body).toMatch(/sequence n.*dependency stage|dependency stage.*sequence n/);
-    expect(body).toMatch(
-      /one task in each successive stage|successive stage.*detect.*setup.*verify/,
-    );
+    expect(body).not.toContain("backlog sequence list");
+    expect(body).toContain("backlog task view <id> --json");
+    expect(body).toMatch(/unblocked tasks.*not the complete backlog/);
+    expect(body).toMatch(/detect.*setup.*verify.*prerequisites/);
     expect(body).toMatch(
       /do not invoke .*interactive task editor|editor script.*managed task files/,
     );

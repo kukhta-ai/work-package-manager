@@ -66,12 +66,19 @@ function authoringTaskTitles(proj: string): string {
 }
 
 function authoringTaskId(proj: string, title: string): string {
-  const output = authoringTaskTitles(proj);
-  const escaped = title.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const id = new RegExp(`^\\s{2}([A-Za-z][A-Za-z0-9-]*-\\d+)\\s+-\\s+${escaped}$`, "m").exec(
-    output,
-  )?.[1];
-  if (id === undefined) throw new Error(`Backlog task not found: ${title}`);
+  const output: unknown = JSON.parse(
+    execaSync("backlog", ["task", "list", "--json"], { cwd: join(proj, ".authoring-backlog") })
+      .stdout,
+  );
+  if (!output || typeof output !== "object" || !("tasks" in output) || !Array.isArray(output.tasks))
+    throw new Error("invalid native task list");
+  const item: unknown = output.tasks.find(
+    (task: unknown) =>
+      task !== null && typeof task === "object" && "title" in task && task.title === title,
+  );
+  if (!item || typeof item !== "object" || !("id" in item) || typeof item.id !== "string")
+    throw new Error(`Backlog task not found: ${title}`);
+  const id = item.id;
   return id;
 }
 

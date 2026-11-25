@@ -44,7 +44,7 @@ const WORKSPACE_SKILL_NAMES = [
   "wpm-review-package",
 ] as const;
 const PERSONAL_BOOTSTRAP_SKILL_NAME = "wpm-create-package";
-const BACKLOG_PEER_PACKAGE = "backlog.md@1.45.2";
+const BACKLOG_PEER_PACKAGE = "backlog.md@1.57.4";
 const TEST_NPM_TIMEOUT_MS = 660_000;
 const COMPLETE_JOURNEY_TIMEOUT_MS = 720_000;
 
@@ -347,9 +347,10 @@ function taskIdsFromPlainOutput(output: string): string[] {
 
 function taskIdForTitle(output: string, title: string): string {
   const escapedTitle = title.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const id = new RegExp(`^\\s{2}([A-Za-z][A-Za-z0-9-]*-\\d+)\\s+-\\s+${escapedTitle}$`, "m").exec(
-    output,
-  )?.[1];
+  const id = new RegExp(
+    `^\\s{2}([A-Za-z][A-Za-z0-9-]*-\\d+)\\s+-\\s+${escapedTitle}(?: \\(ac: \\d+/\\d+\\))?$`,
+    "m",
+  ).exec(output)?.[1];
   if (id === undefined) throw new Error(`Backlog task not found: ${title}`);
   return id;
 }
@@ -360,14 +361,24 @@ function taskStatusFromRecord(record: string): "To Do" | "In Progress" | "Done" 
   throw new Error("Backlog task record exposed no supported status");
 }
 
-function dependencyIdsFromTaskRecord(record: string): string[] {
-  const dependencies = /^Dependencies:\s*(.+)$/m.exec(record)?.[1];
-  return dependencies === undefined
-    ? []
-    : dependencies
-        .split(",")
-        .map((dependency) => dependency.trim())
-        .filter((dependency) => dependency !== "");
+function dependencyIdsFromTaskJson(record: string): string[] {
+  const value: unknown = JSON.parse(record);
+  if (
+    !value ||
+    typeof value !== "object" ||
+    !("schemaVersion" in value) ||
+    value.schemaVersion !== 1 ||
+    !("kind" in value) ||
+    value.kind !== "task-view" ||
+    !("task" in value) ||
+    !value.task ||
+    typeof value.task !== "object" ||
+    !("dependencies" in value.task) ||
+    !Array.isArray(value.task.dependencies) ||
+    !value.task.dependencies.every((id: unknown): id is string => typeof id === "string")
+  )
+    throw new Error("invalid native dependency JSON");
+  return value.task.dependencies;
 }
 
 function classifyCoreTask(record: string): { level: "project"; specialist: null } {
@@ -441,14 +452,14 @@ describe("fresh local packed-install and inactive-candidate journey", () => {
       status: 0,
       stderr: "",
     });
-    expect(String(provisioned.version.stdout).trim()).toBe("1.45.2");
+    expect(String(provisioned.version.stdout).trim()).toBe("1.57.4");
     expect(realpathSync(provisioned.packageRoot).startsWith(`${resolve(prefix)}${sep}`)).toBe(true);
     expect(resolve(provisioned.shimPath).startsWith(`${resolve(prefix)}${sep}`)).toBe(true);
     expect(resolve(provisioned.packageRoot).startsWith(`${resolve(REPO_ROOT)}${sep}`)).toBe(false);
     expect(resolve(provisioned.shimPath).startsWith(`${resolve(REPO_ROOT)}${sep}`)).toBe(false);
     expect(
       JSON.parse(readFileSync(join(provisioned.packageRoot, "package.json"), "utf8")),
-    ).toMatchObject({ name: "backlog.md", version: "1.45.2" });
+    ).toMatchObject({ name: "backlog.md", version: "1.57.4" });
 
     const wpmManifest = JSON.parse(readFileSync(join(REPO_ROOT, "package.json"), "utf8")) as {
       dependencies?: Record<string, string>;
@@ -459,7 +470,7 @@ describe("fresh local packed-install and inactive-candidate journey", () => {
     expect(wpmManifest.peerDependencies).toEqual({ "backlog.md": ">=1.0.0" });
     expect(wpmManifest.peerDependenciesMeta?.["backlog.md"]).toEqual({ optional: false });
     expect(wpmManifest.dependencies ?? {}).not.toHaveProperty("backlog.md");
-    expect(wpmManifest.devDependencies?.["backlog.md"]).toBe("1.45.2");
+    expect(wpmManifest.devDependencies?.["backlog.md"]).toBe("1.57.4");
   });
 
   it(
@@ -676,7 +687,7 @@ describe("fresh local packed-install and inactive-candidate journey", () => {
       expect(result.installation.cacheBootstrap.archives).toEqual([
         expect.objectContaining({
           name: `backlog.md-${process.platform === "win32" ? "windows" : process.platform}-${process.arch}`,
-          version: "1.45.2",
+          version: "1.57.4",
           integrity: `sha512-${createHash("sha512").update(readFileSync(nativeCacheArchive)).digest("base64")}`,
         }),
       ]);
@@ -686,8 +697,8 @@ describe("fresh local packed-install and inactive-candidate journey", () => {
       expect(result.installation.explicitPeers.packages).toEqual([
         match.objectContaining({
           name: "backlog.md",
-          version: "1.45.2",
-          observedVersion: "1.45.2",
+          version: "1.57.4",
+          observedVersion: "1.57.4",
           integrity: `sha512-${createHash("sha512").update(readFileSync(peerArchive)).digest("base64")}`,
         }),
       ]);
@@ -847,7 +858,7 @@ describe("fresh local packed-install and inactive-candidate journey", () => {
         optional: false,
       });
       expect(installedWpmManifest.dependencies ?? {}).not.toHaveProperty("backlog.md");
-      expect(installedWpmManifest.devDependencies?.["backlog.md"]).toBe("1.45.2");
+      expect(installedWpmManifest.devDependencies?.["backlog.md"]).toBe("1.57.4");
       expect(existsSync(join(result.environment.packageRoot, "node_modules", "groma.md"))).toBe(
         false,
       );
@@ -887,7 +898,7 @@ describe("fresh local packed-install and inactive-candidate journey", () => {
         status: installedBacklog.version.status,
         stderr: installedBacklog.version.stderr,
       }).toEqual({ status: 0, stderr: "" });
-      expect(String(installedBacklog.version.stdout).trim()).toBe("1.45.2");
+      expect(String(installedBacklog.version.stdout).trim()).toBe("1.57.4");
       expect(
         realpathSync(installedBacklog.packageRoot).startsWith(
           `${resolve(result.environment.prefix)}${sep}`,
@@ -1057,7 +1068,11 @@ describe("fresh local packed-install and inactive-candidate journey", () => {
         stderr: packedContributionRecord.stderr,
       }).toEqual({ status: 0, stderr: "" });
       const packedContributionRecordText = String(packedContributionRecord.stdout);
-      expect(dependencyIdsFromTaskRecord(packedContributionRecordText)).toEqual([planSourceFreeId]);
+      expect(
+        dependencyIdsFromTaskJson(
+          String(runPackedBundleBacklog(["task", "view", packedContributionId, "--json"]).stdout),
+        ),
+      ).toEqual([planSourceFreeId]);
       expect(packedContributionRecordText).toContain("wpm:template-origin:built-in:bundle:default");
       expect(packedContributionRecordText).toContain("wpm:template-revision:packed-bundle-r2");
       expect(packedContributionRecordText).toContain("wpm:template-key:inspect-packed-runtime");
@@ -1717,20 +1732,31 @@ describe("fresh local packed-install and inactive-candidate journey", () => {
         stderr: "",
       });
       const initialTaskList = runInstalledBacklog(["task", "list", "--plain"]);
-      const initialSequence = runInstalledBacklog(["sequence", "list", "--plain"]);
+      const initialReady = runInstalledBacklog(["task", "list", "--ready", "--plain"]);
       expect({ status: initialTaskList.status, stderr: initialTaskList.stderr }).toEqual({
         status: 0,
         stderr: "",
       });
-      expect({ status: initialSequence.status, stderr: initialSequence.stderr }).toEqual({
+      expect({ status: initialReady.status, stderr: initialReady.stderr }).toEqual({
         status: 0,
         stderr: "",
       });
       expect(String(initialTaskList.stdout)).not.toMatch(/\bIn Progress\b/);
       const initialTaskIds = taskIdsFromPlainOutput(String(initialTaskList.stdout));
-      const initialSequenceIds = taskIdsFromPlainOutput(String(initialSequence.stdout));
+      const initialReadyIds = taskIdsFromPlainOutput(String(initialReady.stdout));
       expect(initialTaskIds.length).toBeGreaterThan(0);
-      expect([...initialSequenceIds].sort()).toEqual([...initialTaskIds].sort());
+      expect(initialReadyIds.length).toBeGreaterThan(0);
+      expect(initialReadyIds.every((id) => initialTaskIds.includes(id))).toBe(true);
+      const nativeTaskRoot = join(installedWorkspace, ".authoring-backlog/backlog/tasks");
+      const taskSource = (id: string): string => {
+        const names = readdirSync(nativeTaskRoot).filter((name) =>
+          name.toLowerCase().startsWith(`${id.toLowerCase()} - `),
+        );
+        expect(names).toHaveLength(1);
+        if (!names[0]) throw new Error(`missing native task file: ${id}`);
+        return readFileSync(join(nativeTaskRoot, names[0]), "utf8");
+      };
+      const initialTaskSources = new Map(initialTaskIds.map((id) => [id, taskSource(id)]));
       const initialTaskRecords = new Map<string, string>();
       for (const taskId of initialTaskIds) {
         const task = runInstalledBacklog(["task", taskId, "--plain"]);
@@ -1742,7 +1768,7 @@ describe("fresh local packed-install and inactive-candidate journey", () => {
         initialTaskRecords.set(taskId, String(task.stdout));
       }
 
-      const selectedTask = initialSequenceIds[0];
+      const selectedTask = initialReadyIds[0];
       expect(selectedTask).toBeDefined();
       if (selectedTask === undefined) throw new Error("fresh sequence exposed no eligible task");
       expect(String(initialTaskList.stdout)).toContain(selectedTask);
@@ -1751,7 +1777,9 @@ describe("fresh local packed-install and inactive-candidate journey", () => {
         throw new Error("selected task was absent from full read");
       expect(taskStatusFromRecord(initialTaskRecord)).toBe("To Do");
       expect(classifyCoreTask(initialTaskRecord)).toEqual({ level: "project", specialist: null });
-      const selectedDependencies = dependencyIdsFromTaskRecord(initialTaskRecord);
+      const selectedDependencies = dependencyIdsFromTaskJson(
+        String(runInstalledBacklog(["task", "view", selectedTask, "--json"]).stdout),
+      );
       for (const dependency of selectedDependencies) {
         const dependencyRecord = initialTaskRecords.get(dependency);
         expect(
@@ -1763,9 +1791,9 @@ describe("fresh local packed-install and inactive-candidate journey", () => {
       }
 
       const freshTaskList = runInstalledBacklog(["task", "list", "--plain"]);
-      const freshSequence = runInstalledBacklog(["sequence", "list", "--plain"]);
+      const freshReady = runInstalledBacklog(["task", "list", "--ready", "--plain"]);
       expect(String(freshTaskList.stdout)).toBe(String(initialTaskList.stdout));
-      expect(String(freshSequence.stdout)).toBe(String(initialSequence.stdout));
+      expect(String(freshReady.stdout)).toBe(String(initialReady.stdout));
       for (const taskId of initialTaskIds) {
         const freshTask = runInstalledBacklog(["task", taskId, "--plain"]);
         expect({ taskId, status: freshTask.status, stderr: freshTask.stderr }).toEqual({
@@ -1778,15 +1806,25 @@ describe("fresh local packed-install and inactive-candidate journey", () => {
         );
       }
 
+      expect(
+        dependencyIdsFromTaskJson(
+          String(runInstalledBacklog(["task", "view", selectedTask, "--json"]).stdout),
+        ),
+      ).toEqual(selectedDependencies);
       const claim = runInstalledBacklog(["task", "edit", selectedTask, "-s", "In Progress"]);
       expect({ status: claim.status, stderr: claim.stderr }).toEqual({ status: 0, stderr: "" });
+      expect(
+        dependencyIdsFromTaskJson(
+          String(runInstalledBacklog(["task", "view", selectedTask, "--json"]).stdout),
+        ),
+      ).toEqual(selectedDependencies);
       const claimedTaskList = runInstalledBacklog(["task", "list", "--plain"]);
-      const claimedSequence = runInstalledBacklog(["sequence", "list", "--plain"]);
+      const claimedReady = runInstalledBacklog(["task", "list", "--ready", "--plain"]);
       expect({ status: claimedTaskList.status, stderr: claimedTaskList.stderr }).toEqual({
         status: 0,
         stderr: "",
       });
-      expect({ status: claimedSequence.status, stderr: claimedSequence.stderr }).toEqual({
+      expect({ status: claimedReady.status, stderr: claimedReady.stderr }).toEqual({
         status: 0,
         stderr: "",
       });
@@ -1806,12 +1844,13 @@ describe("fresh local packed-install and inactive-candidate journey", () => {
           .map(([taskId]) => taskId),
       ).toEqual([selectedTask]);
       for (const taskId of initialTaskIds.filter((taskId) => taskId !== selectedTask)) {
-        expect(claimedRecords.get(taskId), `${taskId}: unaffected by exact claim`).toBe(
-          initialTaskRecords.get(taskId),
+        // Native display graphs change when a prerequisite status changes; authored source must not.
+        expect(taskSource(taskId), `${taskId}: unaffected source after exact claim`).toBe(
+          initialTaskSources.get(taskId),
         );
       }
       expect(taskIdsFromPlainOutput(String(claimedTaskList.stdout))).toContain(selectedTask);
-      expect(String(claimedSequence.stdout)).toBe(String(initialSequence.stdout));
+      expect(taskIdsFromPlainOutput(String(claimedReady.stdout))).toEqual(initialReadyIds);
       const resumeVerification = runInstalledWpm(
         ["-C", installedWorkspace, "authoring", "handoff", "verify", "--client", "codex", "--json"],
         installedWorkspace,

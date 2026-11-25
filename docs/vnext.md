@@ -47,6 +47,38 @@ files: []
 
 An operation's prerequisites come from its native Backlog task dependencies. Group membership only selects work, including nested groups; selecting `review` never silently adds `brief` to the group. The recipient contract separately records the prerequisite. External unregistered tasks and prerequisite cycles block building. Every operation needs observable acceptance criteria.
 
+## Complete single-package authoring
+
+Backlog.md **1.57.4** is the pinned authoring CLI. It replaces the former native sequence command with `task list --ready`; shipped author guidance reads the complete list separately and obtains exact direct dependencies from versioned JSON task views. Ready-list order is native ordering, never group-defined execution order. WPM keeps all task content native:
+
+```sh
+wpm vnext --root ./brief operation create brief "Produce a brief"
+# Run the local Backlog.md CLI with ./brief/.wpm-source as cwd:
+# backlog task edit operation-1 --description "Produce a readable brief" --ac "The brief addresses the selected problem"
+wpm vnext --root ./brief operation view brief
+wpm vnext --root ./brief operation finalize brief
+wpm vnext --root ./brief group set delivery --operation brief
+wpm vnext --root ./brief group view delivery
+wpm vnext --root ./brief version minor
+wpm vnext --root ./brief check
+wpm vnext --root ./brief lock
+wpm vnext --root ./brief build
+```
+
+`operation create` creates an ordinary, CLI-editable native task marked `wpm-authoring:draft` and `wpm-authoring:v1`. This deliberately avoids native draft storage: the previously pinned CLI could not edit drafts through `task edit`, and promotion changed their IDs. A task-backed draft keeps one content owner and a stable native ID. `create` accepts the same prerequisites, criteria and setup options as `add`, but permits missing criteria while authoring. Existing `add` still creates an active operation under its previous contract.
+
+`operation view <id>` and `list` read current native content, setup, prerequisites, group memberships, readiness and an argv/cwd edit reference. `finalize` requires instructions, criteria, identity and valid package relationships, then removes only the draft label. It leaves status, criteria checks, task content and native ID intact. It never means recipient work was executed. The persistent `wpm-authoring:v1` label identifies the stricter authoring contract, not cached readiness: removing instructions or criteria invalidates release readiness on the next check/build. Repeat finalization revalidates current content. Legacy `add` operations remain compatible without a mandatory migration.
+
+`check` accepts structurally valid source containing drafts and reports `releaseReady: false` with current operation diagnostics. Invalid package structure, graph references, paths or payload still fail. Lock/build/static rehearsal require finalized, valid operations. No stored readiness flag substitutes for checking current content.
+
+`operation set-setup <id>` requires exactly one of `--setup <name>`, `--inherit`, or `--without-setup`. It changes only the package association. Text, criteria and prerequisites remain editable through native Backlog.md.
+
+`group view <name>` shows direct members, expanded selection and external prerequisites separately. `group add/remove <name>` accepts repeated `--operation` and `--group`; repeated additions and removal of absent references are unchanged. Unknown definitions and cycles fail before effects. `group set` continues replacing the full direct selection. `group delete <names...> --yes` removes definitions only and rejects references from retained groups.
+
+`operation delete <ids...> --yes` preflights the whole batch, including retained native task dependencies and group references. It archives source through Backlog.md, never destroys authored task text, and retains existing built archives. Internal dependencies within a retired batch are allowed. True native drafts in `backlog/drafts` block retirement until explicitly reconciled, because the qualified task-edit surface cannot inspect them as ordinary tasks; archived historical source does not block it. Dry runs need no `--yes` and create no ownership records. An interrupted batch retains `.wpm-pending-retirement.json`: retry the identical ID set to continue. Other mutations and artifact capture are blocked until that request is resolved. Changed manifest/task preimages, missing or ambiguous native entries and new external references cause a conflict, preserving evidence; native archival and manifest update are explicitly separate effects.
+
+`version` without an argument reads the package version. An exact SemVer or `major`, `minor`, `patch`, `premajor`, `preminor`, `prepatch`, `prerelease` changes only `package.yml`; `--preid` requires a prerelease increment. No lock refresh, build, tag or publication occurs. As with other authored changes, an existing integrity lock becomes stale.
+
 ## Worker setup
 
 - `worker-setup create` creates `worker-setup/default/WORKER.md` and explicitly selects it as the package default.
