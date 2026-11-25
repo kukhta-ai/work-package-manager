@@ -1,5 +1,5 @@
 import { inc, parse as parseVersion, type ReleaseType } from "semver";
-import { isSeq, parse, parseDocument } from "yaml";
+import { isSeq, parseDocument } from "yaml";
 import type { TaskRecord } from "../../core/ports/backlog.js";
 import { type PackageSource, parsePackage, stableJson } from "./model.js";
 import { editSourceText } from "./source-text.js";
@@ -114,7 +114,7 @@ export function editAuthoringSourceText(
   }
   const rebased: unknown = document.toJS();
   const result = editSourceText(document.toString(), rebased, after);
-  const actual: unknown = parse(result, { logLevel: "error" });
+  const actual: unknown = parseDocument(result).toJS();
   if (stableJson(actual) !== stableJson(after))
     throw new Error("authored YAML aliases conflict with source edit");
   return result;
