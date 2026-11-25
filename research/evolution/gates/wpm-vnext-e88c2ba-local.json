@@ -1,0 +1,55 @@
+{
+  "schemaVersion": 1,
+  "episodeId": "wpm-vnext-protected-tooling",
+  "waivers": [],
+  "preCleanupRevision": "e88c2ba103504ede0cafe0ec596be609d7cf4950",
+  "updatedAt": "2026-11-25T01:41:15Z",
+  "id": "wpm-vnext-e88c2ba-local",
+  "candidate": {
+    "revision": "e88c2ba103504ede0cafe0ec596be609d7cf4950",
+    "baselineRevision": "46329318b1c599df8f6983a6546423ba91d4d973",
+    "branch": "feat/wpm-vnext",
+    "pullRequest": null
+  },
+  "verdict": "pass",
+  "checks": [
+    {
+      "name": "full-release",
+      "status": "passed",
+      "evidence": [
+        "candidate:prepare invoked full quality:release on clean e88c2ba;167 files2332 tests passed2 host-specific skips; analyzers, architecture, mutation and native artifact checks passed."
+      ]
+    },
+    {
+      "name": "protected-fork-native-workflows",
+      "status": "passed",
+      "evidence": [
+        "Fork cedf271baf7ff6e3eb069059ef7627d894bbed65 full three-OS CI https://github.com/kukhta-ai/Groma.md/actions/runs/45515317232 success.",
+        "Fresh private setup/doctor/scanner/freshness passed;87 map records preserved. Native web authenticated add/edit/remove, credential exclusion and historical-secret export rejection passed.",
+        "Actual1.55.3 provider matched all 143 legacy 1.45.2 task summaries plus TASK-136 details, observed legacy edit through native watch and reaped watcher."
+      ]
+    },
+    {
+      "name": "immutable-candidate",
+      "status": "passed",
+      "evidence": [
+        "Candidate sha256:952097387f7e7a1d34be366cef7c18e3bc3d9cdd50ba24949ade3ef1c8925868; archive733836 bytes SHA256e9bfbbc2b60b38aa05f99d793420504e2b2920d3c4e5a8b9e47b5c7c77dc3a77.",
+        "Explicit candidate:verify and independent digest/inventory verification passed;508 files, no repository development roots or unsafe archive members.",
+        "Exact archive clean consumer installation, aliases and resources passed; full plain/no-APM journey was separately packed from the same source in release suite."
+      ]
+    },
+    {
+      "name": "native-zip",
+      "status": "passed",
+      "evidence": [
+        "Scoped real Zip/UnZip: packager21 tests passed; TASK105 real tar/Git/ZIP journey passed47.19s."
+      ]
+    }
+  ],
+  "residualRisks": [
+    "Final closeout revision still requires its own candidate:prepare, same-byte verification and full PR7 CI. Evidence below binds e88c2ba, never an automatically substituted later revision.",
+    "Human PR review and merge remain pending; public distribution is inactive.",
+    "Fresh Claude model behavior remains unqualified without authentication; remote APM dependencies and recipient-agent execution are separate qualifications.",
+    "This local gate does not claim completed WPM remote matrix: run45519390653 still has Node24/Windows in progress at recording time."
+  ]
+}

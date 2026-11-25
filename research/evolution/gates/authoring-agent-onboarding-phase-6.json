@@ -1,0 +1,59 @@
+{
+  "schemaVersion": 1,
+  "id": "authoring-agent-onboarding-phase-6",
+  "episodeId": "authoring-agent-onboarding",
+  "candidate": {
+    "revision": "c7753aa4829c758964a1c6811fc05b8d06aad4cd",
+    "baselineRevision": "24d4ed8cea927da16abf9f99297168c4f2cdc550",
+    "branch": "feature/authoring-agent-onboarding",
+    "pullRequest": null
+  },
+  "verdict": "waived",
+  "checks": [
+    {
+      "name": "acceptance-coverage",
+      "status": "passed",
+      "evidence": ["192/192 acceptance criteria FULL; P0 150/150 and P1 42/42"]
+    },
+    {
+      "name": "exact-final-cold-candidate",
+      "status": "passed",
+      "evidence": [
+        "candidate c7753aa4829c758964a1c6811fc05b8d06aad4cd passed 140/140 files and 1944/1944 tests",
+        "accepted package sha256 0bda2b18a1669d35d68ec1269399d73b125136e9a7e70a467f806f4fffc901ce"
+      ]
+    },
+    {
+      "name": "nfr-assessment",
+      "status": "passed",
+      "evidence": ["17 PASS, 0 CONCERNS, 0 FAIL, 1 WAIVED across NFR1-NFR18"]
+    },
+    {
+      "name": "authenticated-claude-parity",
+      "status": "waived",
+      "waiverId": "authenticated-claude-parity",
+      "evidence": [
+        "0/24 required Claude behavioral subruns executed because OAuth returned 401 before every cell",
+        "No Claude behavioral acceptance is claimed"
+      ]
+    }
+  ],
+  "waivers": [
+    {
+      "id": "authenticated-claude-parity",
+      "scope": "NFR8 authenticated Claude six-skill parity",
+      "authority": "human",
+      "approvedBy": "project user",
+      "approvedAt": "2026-08-25",
+      "limitation": "Zero of 24 cells executed after OAuth expiry; no Claude behavioral acceptance is claimed.",
+      "evidence": [
+        "git:9d28f96903cb3cf9b9cb8765f4f33fd76d07af39:_bmad-output/test-artifacts/gate-decision-authoring-agent-onboarding-complete.json"
+      ]
+    }
+  ],
+  "residualRisks": [
+    "Claude behavioral parity remains unproven until a human reauthenticates and all 24 fresh subruns execute."
+  ],
+  "preCleanupRevision": "9d28f96903cb3cf9b9cb8765f4f33fd76d07af39",
+  "updatedAt": "2026-08-25T11:53:25Z"
+}

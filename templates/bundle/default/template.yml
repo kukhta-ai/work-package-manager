@@ -1,0 +1,13 @@
+name: default
+scope: bundle
+description: The default bundle scaffold — per-bundle scope notes, a pre-initialized install-backlog (a config.yml with task_prefix + a Definition of Done, and a starter detect→setup→verify task trio), the payload delivery slots, and the installer-skills / installer-scripts slots. The operation writes bundle.yml canonically; this template ships everything else.
+parameters:
+  - name: bundle-id
+    description: The bundle's stable id (kebab-case); becomes the install-backlog task_prefix and the task-id prefix.
+    required: true
+  - name: version
+    description: The bundle's initial version (semver); recorded in the scope notes.
+    required: true
+  - name: project-name
+    description: The parent project's name; named in the per-bundle scope-notes front door.
+    required: true

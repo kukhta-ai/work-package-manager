@@ -1,0 +1,61 @@
+{
+  "schemaVersion": 1,
+  "waivers": [
+    {
+      "file": "src/vnext/core/model.ts",
+      "sourceSha256": "77119b48dd91f3ba862e27a60fcb33df9e0342513ece83c8b51955519186cd81",
+      "mutatorName": "BooleanLiteral",
+      "location": {
+        "end": {
+          "column": 63,
+          "line": 108
+        },
+        "start": {
+          "column": 59,
+          "line": 108
+        }
+      },
+      "original": "true",
+      "replacement": "false",
+      "status": "Survived",
+      "versions": {
+        "@stryker-mutator/core": "10.1.1",
+        "ajv": "8.20.0"
+      },
+      "review": {
+        "reviewedBy": "/root/authoring_review",
+        "disposition": "equivalent",
+        "rationale": "For these exact schema vNext2 source bytes, Ajv 8.20.0 produces byte-identical strict true/false validator functions (SHA256 1df2dfde37492dfceb76f10a33e9aaae96c98b94ade7784de9a4e949e3fb287f). Independent review compared decisions and errors on 10556 schema-boundary and seeded JSON values (seed146148). All keywords/types are known and there are no numeric type validators whose strictNumbers behavior differs. Any source or Ajv change requires renewed review."
+      },
+      "fingerprint": "7a0446787a1afd553f3109d8d0f158c2da2227713fd4fbbd15eb89ade3a664fe"
+    },
+    {
+      "file": "src/vnext/core/source-text.ts",
+      "sourceSha256": "cd54c103e378812a56b11893e1a610db276f42ddf168d611f82d06d92efd103a",
+      "mutatorName": "ArithmeticOperator",
+      "location": {
+        "end": {
+          "column": 41,
+          "line": 13
+        },
+        "start": {
+          "column": 24,
+          "line": 13
+        }
+      },
+      "original": "before.length - 1",
+      "replacement": "before.length + 1",
+      "status": "Survived",
+      "versions": {
+        "@stryker-mutator/core": "10.1.1",
+        "yaml": "2.9.0"
+      },
+      "review": {
+        "reviewedBy": "/root/native_agents",
+        "disposition": "equivalent",
+        "rationale": "With previous matching the parsed source and concrete YAML sequences, starting at length plus one performs two extra absent-index deletions. YAML 2.9.0 YAMLSeq.delete uses items.splice(index, 1); both extra deletions are no-ops, followed by the original descending deletions. The separate equality guard preserving untouched aliases remains enforced by its regression test."
+      },
+      "fingerprint": "111710818255d41fb9acebbcb646a81bcc6be40feb773bc35b35b3a1b0939a16"
+    }
+  ]
+}

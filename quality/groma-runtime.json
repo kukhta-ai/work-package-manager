@@ -1,0 +1,106 @@
+{
+  "schemaVersion": 1,
+  "repository": "https://github.com/kukhta-ai/Groma.md",
+  "revision": "cedf271baf7ff6e3eb069059ef7627d894bbed65",
+  "sourceSha256": "3d5bc79b6b8321e0982087b5e619fca248558392519c236ef4822e76e10a3956",
+  "lockSha256": "773fac363fa405175cc95479b554dc26ace6855ea0d7c5660bfff0bf328ef66a",
+  "version": "0.7.8",
+  "bunVersion": "1.4.4",
+  "nodeVersion": "26.12.1",
+  "tools": {
+    "linux-arm64": {
+      "bun": {
+        "url": "https://github.com/oven-sh/bun/releases/download/bun-v1.4.4/bun-linux-aarch64.zip",
+        "sha256": "baa6bb36f51d6e58561e02bbea825038a9df454f673d6d776e8bbf86f8c7850e",
+        "binarySha256": "354c2b049c716aca07b2e5cddb887928ac58950675d1258bb6312083917793b6",
+        "member": "bun-linux-aarch64/bun",
+        "format": "zip"
+      },
+      "node": {
+        "url": "https://nodejs.org/dist/v26.12.1/node-v26.12.1-linux-arm64.tar.xz",
+        "sha256": "42aa04922591ee5d4dbc7740d452621acf28508239daa512f5ee8c47ee224fdb",
+        "binarySha256": "7d32bda549eb24395c1d9830731470a0045781b15797d5943591c333a085b2da",
+        "member": "node-v26.12.1-linux-arm64/bin/node",
+        "format": "tar.xz"
+      }
+    },
+    "linux-x64": {
+      "bun": {
+        "url": "https://github.com/oven-sh/bun/releases/download/bun-v1.4.4/bun-linux-x64.zip",
+        "sha256": "bf8ccbfb2b0b80159e0f9a6d15c55317add8077534dbc6130a3edb52fccb395c",
+        "binarySha256": "10702245766b225e70bbf6235fd6b47214fd94b4760d00ffaed8ab0df57ac235",
+        "member": "bun-linux-x64/bun",
+        "format": "zip"
+      },
+      "node": {
+        "url": "https://nodejs.org/dist/v26.12.1/node-v26.12.1-linux-x64.tar.xz",
+        "sha256": "6170b2d474e1c626f43cff3adc118df9fe3b573258a4fc3d850c8dbc6b079bbd",
+        "binarySha256": "08f12d42fb304468e8ee86247fe686aae5b225836ea65e9d6566c11ae6ba2e8e",
+        "member": "node-v26.12.1-linux-x64/bin/node",
+        "format": "tar.xz"
+      }
+    }
+  },
+  "build": {
+    "args": ["run", "build"],
+    "binary": "dist/groma"
+  },
+  "sdkRecipes": {
+    "typescript": {
+      "manifest": "quality/groma-sdk/typescript/package.json",
+      "manifestSha256": "523354a750bb5dd3809608b3d58e264bf3b359d17d8d2aa636a985d497e84345",
+      "lock": "quality/groma-sdk/typescript/bun.lock",
+      "lockSha256": "ba6625ac8d10259db1b08ce17f530beed939e2fd5f80c3ea330fdd4d456389a9"
+    },
+    "backlog": {
+      "manifest": "quality/groma-sdk/backlog/package.json",
+      "manifestSha256": "712bdaf41b7f9a519be927e0535156ca0c9ffac1d53cf03335f7c9edf13cc095",
+      "lock": "quality/groma-sdk/backlog/bun.lock",
+      "lockSha256": "f07a9a47d73adc8ab6df8b579ccdbb85863609884e38eee5665fe7d62081d41e"
+    }
+  },
+  "pluginTrust": {
+    "linux-arm64": {
+      "schemaVersion": 1,
+      "approvals": [
+        {
+          "kind": "scanner",
+          "id": "typescript",
+          "source": "@groma/scanner-typescript@0.2.4",
+          "name": "@groma/scanner-typescript",
+          "version": "0.2.4",
+          "integrity": "sha256:6a8b8e1458b79344a4f7028f4e2ef757fd84e9e029a45efe07c61b7a1daad85e"
+        },
+        {
+          "kind": "workSource",
+          "id": "backlog",
+          "source": "backlog.md@1.55.3",
+          "name": "backlog.md",
+          "version": "1.55.3",
+          "integrity": "sha256:30667af9b7ede0a2276b25170535911ec6f02abdad0dae444f325de3ee4e6aa8"
+        }
+      ]
+    },
+    "linux-x64": {
+      "schemaVersion": 1,
+      "approvals": [
+        {
+          "kind": "scanner",
+          "id": "typescript",
+          "source": "@groma/scanner-typescript@0.2.4",
+          "name": "@groma/scanner-typescript",
+          "version": "0.2.4",
+          "integrity": "sha256:6a8b8e1458b79344a4f7028f4e2ef757fd84e9e029a45efe07c61b7a1daad85e"
+        },
+        {
+          "kind": "workSource",
+          "id": "backlog",
+          "source": "backlog.md@1.55.3",
+          "name": "backlog.md",
+          "version": "1.55.3",
+          "integrity": "sha256:8080510a0e89465ce7d8f4ff4bc5c26c8803f94f41971d83bed7de351f281354"
+        }
+      ]
+    }
+  }
+}
