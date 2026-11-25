@@ -4,7 +4,7 @@ title: Complete single-package vNext authoring lifecycle
 status: In Progress
 assignee: []
 created_date: '2026-11-25T13:26:00Z'
-updated_date: '2026-11-25T14:26:37Z'
+updated_date: '2026-11-25T15:00:44Z'
 labels: []
 dependencies: []
 references:
@@ -74,4 +74,6 @@ Current validation: quality:fast PASS (128 product modules); all unit files PASS
 Final compatibility review accepted by authoring_review: ready subset/full snapshot distinction, exact JSON dependencies at freshness and post-claim boundaries, unchanged native source-byte assertions. 3 focused review files/27 tests PASS. Latest complete-band attempt again exhausted disk as npm cache grew~400MB; log40960bytes truncated and gate exit1, not a pass. npm cache cleaned, ~400MB restored; active SDK intact. User confirmed additional space within30min. Draft PR may be opened while full qualification/candidate remain pending; no publication/merge/tag authorization.
 
 Additional exact-root defect reproduced in1.57.4: foreign BACKLOG_CWD redirected createTask despite explicit cwd. Adapter now pins per-process BACKLOG_CWD=resolve(root); view edit reference carries env and docs/skills require scoped binding. Two-root native regression PASS; independent review of adapter delta2files/15tests PASS, installed-vNext plus adapter/wire3files/16tests PASS. User space arrived (~2.3GiB), removing resource blocker; retain active SDK. Final full CI/release/candidate will use new committed revision; prior source qualification is not reused as a pass.
+
+Source65bdd2b complete CI:169files passed, two fixture failures diagnosed (offline native archive cache missing after cleanup; native ready display regroups InProgress rows). Exact pinned native/wrapper archives reseeded by npm pack; isolated peer test and complete installed journey now PASS. Ready post-claim assertion compares unchanged ID membership while checking statuses/source bytes separately. Isolated source-edit correction af3d273: red-before test showed surviving operation lost its comment; stable-identity YAML reconciliation now retains comments/aliases and preflights setup/retirement transitions. Fresh worktree npmci, quality:fast PASS128modules, focused3files39tests PASS, mutation accepted with no new waivers; independent review accepted. Original generic editor and waiver files unchanged. Correction cherry-picked as a6519af. Final joint full gates/candidate next.
 <!-- SECTION:NOTES:END -->
