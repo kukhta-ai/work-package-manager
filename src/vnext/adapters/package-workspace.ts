@@ -104,6 +104,7 @@ function json(text: string): unknown {
 export class PackageWorkspace {
   readonly directory: string;
   private readonly io: VnextWorkspace;
+  /** Discover the nearest explicit workspace, falling back to standalone package context. */
   constructor(root: string) {
     let current = resolve(root);
     while (!existsSync(join(current, "workspace.yml")) && dirname(current) !== current)
@@ -111,6 +112,7 @@ export class PackageWorkspace {
     this.directory = existsSync(join(current, "workspace.yml")) ? current : resolve(root);
     this.io = new VnextWorkspace(this.directory);
   }
+  /** Create an empty registration catalog without configuring any agent. */
   init(dryRun = false) {
     if (existsSync(join(this.directory, "workspace.yml")))
       throw new Error("workspace already exists");
@@ -147,6 +149,7 @@ export class PackageWorkspace {
       parse(new VnextWorkspace(directory).readForGraph("package.yml").toString("utf8")),
     );
   }
+  /** Read validated local package identities in stable locator order. */
   list(): PackageCandidate[] {
     const entries = this.declaration().source.packages.map((locator) => {
       const source = this.source(this.local(locator));
@@ -160,6 +163,7 @@ export class PackageWorkspace {
     }
     return entries.sort((a, b) => (a.locator < b.locator ? -1 : a.locator > b.locator ? 1 : 0));
   }
+  /** Register existing confined source; preserve its native tasks and bytes. */
   add(path: string, dryRun = false) {
     const action = () => {
       if (existsSync(this.io.pathForGraph(".wpm-pending-package.json")))
@@ -186,6 +190,7 @@ export class PackageWorkspace {
     };
     return dryRun ? action() : this.io.reserveForGraph(action);
   }
+  /** Create owned source and register it, retaining exact inventory evidence for recovery. */
   create(name: string, path = `packages/${name}`, dryRun = false) {
     assertSlug(name);
     const directory = this.local(path);
@@ -278,6 +283,7 @@ export class PackageWorkspace {
     return dryRun ? action() : this.io.reserveForGraph(action);
   }
 
+  /** Resolve one explicit or unambiguous package identity to its local source root. */
   select(root: string, name?: string, version?: string): string {
     if (!existsSync(join(this.directory, "workspace.yml"))) {
       const source = this.source(resolve(root));
@@ -296,9 +302,11 @@ export class PackageWorkspace {
       throw new Error("select an unambiguous --package and --package-version");
     return this.local(required(candidates[0]).locator);
   }
+  /** Inspect the registration catalog without effects. */
   view() {
     return { schemaVersion: 1, packages: this.list() };
   }
+  /** Check all registered identities and the current graph locks required by version2 source. */
   check() {
     const packages = this.list();
     for (const entry of packages) {
@@ -312,6 +320,7 @@ export class PackageWorkspace {
     if (this.source(directory).schemaVersion === 2) this.lock(directory, true);
     return own;
   }
+  /** Capture local or frozen package instances and resolve a finite exact dependency graph. */
   graph(
     directory: string,
     previous?: PackageGraph,
@@ -467,11 +476,13 @@ export class PackageWorkspace {
       throw new Error("workspace changed during graph capture");
     return { graph, captured };
   }
+  /** Read and validate an existing graph lock without resolving or modifying it. */
   readLock(directory: string): PackageGraph | undefined {
     const io = new VnextWorkspace(directory);
     if (!existsSync(io.pathForGraph(graphLock))) return undefined;
     return parseGraph(json(io.readForGraph(graphLock).toString("utf8")));
   }
+  /** Check or intentionally reconcile exact decisions; upgrade is an explicit opt-in. */
   lock(directory: string, check = false, upgrade = false, dryRun = false) {
     const io = new VnextWorkspace(directory);
     if (existsSync(io.pathForGraph(pendingPath)))
@@ -487,6 +498,7 @@ export class PackageWorkspace {
       io.reserveForGraph(() => io.writeForGraph(graphLock, stableJson(result), lockBefore));
     return { graph: result, checked: check, dryRun };
   }
+  /** Read or change one package version while serializing workspace identity decisions. */
   version(directory: string, value?: string, preid?: string, dryRun = false) {
     const action = () => {
       if (value && existsSync(this.io.pathForGraph(".wpm-pending-package.json")))
@@ -515,6 +527,7 @@ export class PackageWorkspace {
       : action();
   }
 
+  /** Inspect declarations, locked instances and optional finite tree expansion. */
   dependencies(directory: string, tree = false) {
     const source = this.source(directory);
     const graph = this.readLock(directory);
@@ -524,6 +537,7 @@ export class PackageWorkspace {
       tree: tree && graph ? graphTree(graph) : null,
     };
   }
+  /** Reconcile a declaration and graph lock using a request-bound recoverable journal. */
   editDependency(
     directory: string,
     name: string,
@@ -652,6 +666,7 @@ export class PackageWorkspace {
     const path = `builds/${source.name}-${source.version}.tgz`;
     return { source, files, bytes, path, graph, instances: Object.keys(runtime.nodes).length };
   }
+  /** Build the locked runtime closure once per namespaced instance without dev-only content. */
   build(directory: string, dryRun = false) {
     const io = new VnextWorkspace(directory);
     if (this.source(directory).schemaVersion === 1) return io.build(dryRun);
@@ -682,6 +697,7 @@ export class PackageWorkspace {
       dryRun,
     };
   }
+  /** Rehearse graph extraction under an owned reservation and retain byte-bound results. */
   test(directory: string, dryRun = false) {
     const io = new VnextWorkspace(directory);
     if (existsSync(io.pathForGraph(pendingPath)))

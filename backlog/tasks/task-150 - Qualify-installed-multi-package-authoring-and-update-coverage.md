@@ -1,10 +1,10 @@
 ---
 id: TASK-150
 title: Qualify installed multi-package authoring and update coverage
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-11-25T17:36:09Z'
-updated_date: '2026-11-25T18:22:37Z'
+updated_date: '2026-11-25T18:40:30Z'
 labels: []
 dependencies:
   - TASK-149
@@ -25,20 +25,24 @@ modified_files:
   - quality/mutation-waivers.json
   - README.md
   - src/vnext/cli.ts
+  - test/unit/adapters/backlog-dependencies.test.ts
+  - src/vnext/adapters/package-workspace.ts
+  - src/vnext/adapters/workspace.ts
+  - src/vnext/adapters/package-archive.ts
 ordinal: 150000
 ---
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 The installed CLI creates, versions, links and builds a multi-version cyclic graph without global state changes.
-- [ ] #2 Legacy behavior and source/archive compatibility pass required gates and independent review.
+- [x] #1 The installed CLI creates, versions, links and builds a multi-version cyclic graph without global state changes.
+- [x] #2 Legacy behavior and source/archive compatibility pass required gates and independent review.
 <!-- AC:END -->
 
 ## Definition of Done
 <!-- DOD:BEGIN -->
-- [ ] #1 Typechecks clean (tsc --noEmit) and Biome clean (biome ci)
-- [ ] #2 Tests added and green (vitest): unit for pure logic, integration where it touches ports
-- [ ] #3 Public functions documented; no dead code; the core import-boundary rule is not violated
+- [x] #1 Typechecks clean (tsc --noEmit) and Biome clean (biome ci)
+- [x] #2 Tests added and green (vitest): unit for pure logic, integration where it touches ports
+- [x] #3 Public functions documented; no dead code; the core import-boundary rule is not violated
 <!-- DOD:END -->
 
 ## Implementation Notes
@@ -51,4 +55,12 @@ Implementation complete pending full qualification: workspace/source2 selection,
 Stable CI0e90876518be603eb3c50fe5108372a4394c2262 stopped early at Knip production: parseGraph was an unnecessary test-only export. Removed export and routed malformed-graph regression through actual archive import. Also reject host-absolute/drive-relative/backslash file references at the filesystem boundary, preserving portable declarations. Fast132modules and default/production Knip PASS; all12 native graph integration cases PASS; independent bounded delta review PASS2targetedcases. Pure core and reviewed waiver unchanged. Next stable full gate on following committed revision; no full CI success claim yet.
 
 Full CI684e6a3 passed Knip/security but stopped before mutation/tests because Groma Code symbol metadata still described the removed parseGraph export. Refreshed via verified groma:scan; focused groma:check PASS. No map hand edits or gate-policy changes. Next full gate uses committed refreshed map; previous two stopped bands are not passes.
+
+Implementation/AC/DoD complete. Full quality:ci PASS on5f719bb51de9f596ebc27ec327e7540c980123c9:173files,2412passed,2existinghost-conditional skips; all required analyzer/architecture/mutation bands passed. Mutation819 accepted with0unreviewed and exactly2existing independently reviewed equivalents. Final follow-up changes only document adapter public methods and correct host-path expectations in an inherited Windows unit fixture (88ed8ed; focused4tests PASS). Post-comment quality:fast132modules and Groma freshness92records PASS. Independent code review signed off all material findings. Candidate preparation from the following clean committed closeout revision is the final required fullquality:release and exact-byte gate; PR9 and private immutable receipts carry its actual source/digest and hosted matrix outcome. No current claim that this final candidate or final-head hosted matrix has already passed. Public distribution inactive; human review/integration remain next.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Implemented the approved local multi-package graph slice; full implementation CI and independent review passed. Final immutable candidate and hosted exact-head evidence are recorded on PR9.
+<!-- SECTION:FINAL_SUMMARY:END -->

@@ -1017,15 +1017,19 @@ export class VnextWorkspace {
   readForGraph(path: string): Buffer {
     return this.readBytes(path);
   }
+  /** Resolve a confined source path without creating it. */
   pathForGraph(path: string): string {
     return this.confined(path);
   }
+  /** Commit exact graph-owned text using a checked source preimage. */
   writeForGraph(path: string, text: string, expected?: string): void {
     this.writeText(path, text, expected);
   }
+  /** Retire exact owned journal bytes through the confined quarantine. */
   removeForGraph(path: string, expected: string): void {
     this.clearPending(path, expected);
   }
+  /** Serialize graph effects; the caller validates its own pending request. */
   reserveForGraph<T>(action: () => T): T {
     return this.reserve(action, false, true);
   }

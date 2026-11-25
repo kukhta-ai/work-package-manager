@@ -29,6 +29,7 @@ export function contentDigest(files: PackageFile[]): string {
     ),
   );
 }
+/** SHA-256 identity for exact captured bytes. */
 export function hash(bytes: Buffer | string): string {
   return createHash("sha256").update(bytes).digest("hex");
 }
