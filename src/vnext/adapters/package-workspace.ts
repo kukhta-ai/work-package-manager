@@ -10,7 +10,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join, relative, resolve } from "node:path";
+import { dirname, join, relative, resolve, win32 } from "node:path";
 import { execaSync } from "execa";
 import { valid } from "semver";
 import { parse, stringify } from "yaml";
@@ -67,6 +67,12 @@ const graphLock = "wpm.dependencies.lock.json";
 const pendingPath = ".wpm-pending-dependencies.json";
 function object(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+/** Archive source locators are portable references inside the workspace, never host paths. */
+function assertArchiveReference(source: string): void {
+  const path = source.slice(5);
+  if (win32.parse(path).root || path.includes("\\"))
+    throw new Error("archive sources require portable relative paths");
 }
 function packageInventory(directory: string): Record<string, string> {
   const io = new VnextWorkspace(directory);
@@ -370,6 +376,7 @@ export class PackageWorkspace {
       return record;
     };
     const archive = (parent: PackageCandidate, reference: string): PackageCandidate | undefined => {
+      assertArchiveReference(reference);
       const base = parent.locator.startsWith("file:")
         ? dirname(this.local(parent.locator.slice(5)))
         : this.local(parent.locator);
@@ -526,6 +533,7 @@ export class PackageWorkspace {
     dryRun = false,
   ) {
     assertSlug(name);
+    if (declaration?.source.startsWith("file:")) assertArchiveReference(declaration.source);
     const io = new VnextWorkspace(directory);
     const request = stableJson({ name, declaration: declaration ?? null, kind, manifestOnly });
     const action = () => {
@@ -788,7 +796,7 @@ function parsePending(value: unknown): PendingEdit {
   return plan;
 }
 /** Validate complete finite graphs before trusting locks or importing frozen release content. */
-export function parseGraph(value: unknown): PackageGraph {
+function parseGraph(value: unknown): PackageGraph {
   const fields = (entry: Record<string, unknown>, allowed: string[]) => {
     if (Object.keys(entry).some((key) => !allowed.includes(key)))
       throw new Error("unsupported graph fields");
@@ -833,6 +841,9 @@ export function parseGraph(value: unknown): PackageGraph {
       ),
     });
     validateDependencies(node.record);
+    for (const kind of dependencyKinds)
+      for (const entry of Object.values(node.record[kind] ?? {}))
+        if (entry.source.startsWith("file:")) assertArchiveReference(entry.source);
     const expected = new Map(
       dependencyKinds
         .filter((kind) => kind !== "devDependencies" || id === graph.root)

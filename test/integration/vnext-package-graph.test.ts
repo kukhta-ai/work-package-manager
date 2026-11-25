@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { parse, stringify } from "yaml";
 import { readPackageArchive } from "../../src/vnext/adapters/package-archive.js";
-import { PackageWorkspace, parseGraph } from "../../src/vnext/adapters/package-workspace.js";
+import { PackageWorkspace } from "../../src/vnext/adapters/package-workspace.js";
 import { createDeterministicTarball, VnextWorkspace } from "../../src/vnext/adapters/workspace.js";
 import { withTempDir } from "../helpers/tmpdir.js";
 
@@ -29,6 +29,30 @@ function declarations(directory: string, value: Record<string, unknown>) {
   writeFileSync(path, stringify({ ...source, schemaVersion: 2, ...value }));
 }
 describe("multi-package graph on real native authoring sources", () => {
+  it("rejects host-absolute and nonportable archive references before edits", async () =>
+    withTempDir((root) => {
+      const ws = setup(root);
+      const app = make(ws, "app");
+      const before = readFileSync(join(app, "package.yml"));
+      for (const path of [
+        "/absolute/lib.tgz",
+        "C:/host/lib.tgz",
+        "C:relative-drive.tgz",
+        "..\\lib.tgz",
+      ]) {
+        expect(() =>
+          ws.editDependency(
+            app,
+            "lib",
+            { source: `file:${path}`, range: "*" },
+            "dependencies",
+            true,
+          ),
+        ).toThrow("portable relative");
+      }
+      expect(readFileSync(join(app, "package.yml"))).toEqual(before);
+    }));
+
   it("never adopts a foreign source after an ambiguous create interruption", async () =>
     withTempDir((root) => {
       const ws = setup(root);
@@ -201,8 +225,28 @@ describe("multi-package graph on real native authoring sources", () => {
         locator: "lib",
         dependencies: { missing: dep() },
       };
+      const invalid = {
+        schemaVersion: 2,
+        graph: { schemaVersion: 2, root: id, nodes: { [id]: { record, edges: [] } } },
+        packages: {},
+      };
+      writeFileSync(
+        join(root, "archives/lib.tgz"),
+        createDeterministicTarball(
+          files.map((file) =>
+            file.path === "contract.json"
+              ? { ...file, bytes: Buffer.from(JSON.stringify(invalid)) }
+              : file,
+          ),
+        ),
+      );
       expect(() =>
-        parseGraph({ schemaVersion: 2, root: id, nodes: { [id]: { record, edges: [] } } }),
+        ws.editDependency(
+          app,
+          "lib",
+          { source: "file:../../archives/lib.tgz", range: "*" },
+          "dependencies",
+        ),
       ).toThrow("missing declared");
     }));
   it("rejects pending transitive edits and selected metadata drift before changing lock", async () =>

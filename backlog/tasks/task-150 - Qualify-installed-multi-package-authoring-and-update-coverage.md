@@ -4,7 +4,7 @@ title: Qualify installed multi-package authoring and update coverage
 status: In Progress
 assignee: []
 created_date: '2026-11-25T17:36:09Z'
-updated_date: '2026-11-25T18:14:49Z'
+updated_date: '2026-11-25T18:19:53Z'
 labels: []
 dependencies:
   - TASK-149
@@ -47,4 +47,6 @@ ordinal: 150000
 Implementation on feat/vnext-package-graph, base7dea213. Local multiversion cyclic graph, schema2, lock/edit recovery and runtime composition under implementation. Focused unit/integration tests passed during development; independent review findings receive regression tests. Full gates/candidate pending.
 
 Implementation complete pending full qualification: workspace/source2 selection, pure multi-version resolver, package cycles, ordinary/root-dev/optional scopes, deterministic namespaced graph releases and immutable archive imports. Focused installed/native/archive suites passed; latest stable focused run and full CI next. quality:fast PASS132modules without warnings. Independent authoring_review signoff PASS after ownership/inventory/metadata/journal/archive regressions. Existing Ajv strict waiver renewed for model SHA8856ad5c894c004153451e7875bc568e755cee633e9c12b5fb5c14b59b3df52c by independent identical-validator/10556-case review; two total waivers, no new exclusions. Fresh819-mutant collection reviewed accepted after renewal (803killed9timeouts2existingreviewed5static schema-init errors), zero unreviewed. Sourcebase7dea213 plus current worktree. Next: committed stable fullquality:ci, final evidence/task close, clean-source candidate:prepare fullquality:release, private exact-byte verification and PR review; publication inactive.
+
+Stable CI0e90876518be603eb3c50fe5108372a4394c2262 stopped early at Knip production: parseGraph was an unnecessary test-only export. Removed export and routed malformed-graph regression through actual archive import. Also reject host-absolute/drive-relative/backslash file references at the filesystem boundary, preserving portable declarations. Fast132modules and default/production Knip PASS; all12 native graph integration cases PASS; independent bounded delta review PASS2targetedcases. Pure core and reviewed waiver unchanged. Next stable full gate on following committed revision; no full CI success claim yet.
 <!-- SECTION:NOTES:END -->
