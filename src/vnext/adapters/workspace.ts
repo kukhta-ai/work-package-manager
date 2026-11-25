@@ -23,6 +23,7 @@ import { parse, stringify } from "yaml";
 import { BacklogCli } from "../../adapters/backlog-cli.js";
 import { NodeFileSystem } from "../../adapters/node-fs.js";
 import type { BacklogMd, TaskRecord } from "../../core/ports/backlog.js";
+import { apmReference } from "../core/apm-source.js";
 import {
   changeGroup,
   draftLabel,
@@ -42,7 +43,14 @@ import {
   selectOperations,
   stableJson,
 } from "../core/model.js";
-import { ApmBackend, type ApmTarget, type ApmTool, preparedApmSetup } from "./apm.js";
+import { projectMcp } from "../core/worker-context.js";
+import {
+  ApmBackend,
+  type ApmTarget,
+  type ApmTool,
+  preparedApmSetup,
+  preparedApmSupport,
+} from "./apm.js";
 import { assertPortableTree } from "./portable-tree.js";
 
 interface SourceSnapshot {
@@ -415,10 +423,11 @@ export class VnextWorkspace {
   }
 
   /** Create a plain source draft. Named drafts never silently become defaults. */
-  createSetup(name?: string, dryRun = false): unknown {
+  createSetup(name?: string, dryRun = false, backend: "plain" | "apm" = "plain"): unknown {
     const selected = name ?? "default";
     assertSlug(selected);
-    if (!dryRun && !this.reserved) return this.reserve(() => this.createSetup(name, dryRun));
+    if (!dryRun && !this.reserved)
+      return this.reserve(() => this.createSetup(name, dryRun, backend));
     const snapshot = this.snapshot();
     const sourcePath = `worker-setup/${selected}`;
     const workerPath = `${sourcePath}/WORKER.md`;
@@ -431,7 +440,7 @@ export class VnextWorkspace {
         existsSync(this.confined(sourcePath)))
     )
       throw new Error(`setup declaration or source already exists: ${selected}`);
-    const definition = { source: sourcePath, backend: "plain" as const };
+    const definition = { source: sourcePath, backend };
     const prior = Object.hasOwn(snapshot.source.workerSetup.setups, selected)
       ? snapshot.source.workerSetup.setups[selected]
       : undefined;
@@ -448,7 +457,7 @@ export class VnextWorkspace {
     if (!dryRun) {
       const pending = this.pending(pendingPath, {
         schemaVersion: 1,
-        kind: "plain-setup",
+        kind: backend === "apm" ? "apm-setup" : "plain-setup",
         name: selected,
         default: name === undefined,
         source: sourcePath,
@@ -457,7 +466,9 @@ export class VnextWorkspace {
       if (existsSync(this.confined(sourcePath))) {
         if (
           !pending.resumed ||
-          readdirSync(this.confined(sourcePath, "directory")).length !== 1 ||
+          readdirSync(this.confined(sourcePath, "directory")).some(
+            (file) => !["WORKER.md", ...(backend === "apm" ? ["apm.yml"] : [])].includes(file),
+          ) ||
           this.readBytes(workerPath).toString("utf8") !== contents
         )
           throw new Error(`interrupted setup source has authored changes; preserved ${sourcePath}`);
@@ -466,6 +477,16 @@ export class VnextWorkspace {
           kind: "missing",
           parentTree: "missing",
         });
+      if (backend === "apm") {
+        const manifestPath = `${sourcePath}/apm.yml`;
+        const manifest = `name: ${selected}\nversion: 1.0.0\ndependencies:\n  apm: []\n`;
+        if (!existsSync(this.confined(manifestPath)))
+          this.fs.writeConfined(this.root, this.confined(manifestPath), manifest, {
+            kind: "missing",
+          });
+        else if (this.readBytes(manifestPath).toString("utf8") !== manifest)
+          throw new Error("APM draft manifest changed; preserved");
+      }
       this.save(snapshot, source);
       this.clearPending(pendingPath, pending.contents);
     }
@@ -484,8 +505,18 @@ export class VnextWorkspace {
 
     assertSlug(name);
     const snapshot = this.snapshot();
-    const source = assertSourcePath(path);
-    this.confined(source, "directory");
+    const reference =
+      requestedBackend === "apm" &&
+      (path.startsWith("apm:") ||
+        path.startsWith("https:") ||
+        (!path.startsWith(".") && !existsSync(this.confined(path))))
+        ? path.startsWith("apm:")
+          ? path
+          : `apm:${path}`
+        : path;
+    const remote = requestedBackend === "apm" && apmReference(reference) !== undefined;
+    const source = remote ? reference : assertSourcePath(path);
+    if (!remote) this.confined(source, "directory");
     const backend =
       requestedBackend ??
       (existsSync(this.confined(`${source}/apm.yml`))
@@ -495,12 +526,13 @@ export class VnextWorkspace {
           : undefined);
     if (!backend)
       throw new Error(`unresolved setup source format: ${source}; no WORKER.md or apm.yml`);
-    this.confined(`${source}/${backend === "plain" ? "WORKER.md" : "apm.yml"}`, "file");
+    if (!remote)
+      this.confined(`${source}/${backend === "plain" ? "WORKER.md" : "apm.yml"}`, "file");
     const previous = Object.hasOwn(snapshot.source.workerSetup.setups, name)
       ? snapshot.source.workerSetup.setups[name]
       : undefined;
     if (previous) {
-      if (assertSourcePath(previous.source) === source && previous.backend === backend)
+      if (previous.source === source && previous.backend === backend)
         return { name, ...previous, unchanged: true };
       throw new Error(`setup name already references another source: ${name}`);
     }
@@ -518,10 +550,11 @@ export class VnextWorkspace {
   /** Explicit native composition phases; only selected setup sources and owned target projects are affected. */
   apmPhase(
     name: string,
-    phase: "lock" | "install" | "compile",
+    phase: "lock" | "install" | "compile" | "check",
     target: ApmTarget | undefined,
     tool: ApmTool,
     dryRun = false,
+    flags: { check?: boolean; upgrade?: boolean; offline?: boolean } = {},
   ): unknown {
     assertSlug(name);
     const source = this.snapshot().source;
@@ -529,7 +562,7 @@ export class VnextWorkspace {
       ? source.workerSetup.setups[name]
       : undefined;
     if (definition?.backend !== "apm") throw new Error(`setup is not an APM definition: ${name}`);
-    if (phase !== "lock" && phase !== "install" && phase !== "compile")
+    if (phase !== "lock" && phase !== "install" && phase !== "compile" && phase !== "check")
       throw new Error("unknown APM phase");
     if (phase !== "lock" && target !== "codex" && target !== "claude")
       throw new Error("select a qualified APM target explicitly");
@@ -547,22 +580,30 @@ export class VnextWorkspace {
             ? ["native apm.lock.yaml resolution"]
             : ["owned native target project", "composition receipt"],
       };
-    if (!this.reserved) return this.reserve(() => this.apmPhase(name, phase, target, tool, dryRun));
+    if (!this.reserved && phase !== "check" && !flags.check)
+      return this.reserve(() => this.apmPhase(name, phase, target, tool, dryRun, flags));
     const backend = new ApmBackend(this.root, name, definition.source, tool);
     switch (phase) {
       case "lock":
-        return backend.lock();
+        return backend.lock(flags);
       case "install":
         if (target === undefined) throw new Error("missing APM target");
-        return backend.install(target);
+        return backend.install(target, flags.offline);
       case "compile":
         if (target === undefined) throw new Error("missing APM target");
-        return backend.compile(target);
+        return backend.compile(target, flags.offline);
+      case "check":
+        if (target === undefined) throw new Error("missing APM target");
+        return backend.check(target);
     }
   }
 
   /** Select only the explicit default; a lone named setup is not a default. */
-  viewSetup(name?: string): unknown {
+  viewSetup(
+    name?: string,
+    target?: ApmTarget,
+    opening: "project" | "session" = "project",
+  ): unknown {
     const source = this.snapshot().source;
     const selected = name ?? source.workerSetup.default;
     if (selected === undefined) {
@@ -574,18 +615,52 @@ export class VnextWorkspace {
       ? source.workerSetup.setups[selected]
       : undefined;
     if (!definition) throw new Error(`unknown setup: ${selected}`);
+    const remote = definition.backend === "apm" && apmReference(definition.source) !== undefined;
+    const manifestPath = remote
+      ? `.wpm-apm/${selected}/source/apm.yml`
+      : `${assertSourcePath(definition.source)}/${definition.backend === "plain" ? "WORKER.md" : "apm.yml"}`;
+    const content = existsSync(this.confined(manifestPath))
+      ? this.readBytes(manifestPath).toString("utf8")
+      : null;
+    let support =
+      definition.backend === "apm" && content !== null && target
+        ? projectMcp(parse(content), target)
+        : undefined;
+    const prepared =
+      target && definition.backend === "apm"
+        ? (() => {
+            try {
+              support = preparedApmSupport(this.root, selected, definition.source, target);
+              return true;
+            } catch {
+              return false;
+            }
+          })()
+        : false;
     return {
       name: selected,
       ...definition,
+      operations: source.work
+        .filter((work) => effectiveSetup(source, work) === selected)
+        .map((work) => work.operation),
+      isDefault: source.workerSetup.default === selected,
+      resolved: content !== null,
+      target: target ?? null,
+      opening,
+      prepared,
+      requirements: support?.requirements ?? [],
+      requiredVariables: support?.requiredVariables ?? [],
+      loading:
+        opening === "project"
+          ? "Open the prepared target project explicitly and approve project context/connections in the host."
+          : "Read this selected WORKER.md and selected native instructions explicitly. Ask the host to configure or reload MCP; no automatic session reload is claimed.",
+      servicesConnected: false,
+      agentLaunched: false,
       representation:
         definition.backend === "plain"
           ? "plain instructions for existing agent"
-          : "pinned APM native project composition; instructions and skills only",
-      content: new TextDecoder("utf-8", { fatal: true }).decode(
-        this.readBytes(
-          `${assertSourcePath(definition.source)}/${definition.backend === "plain" ? "WORKER.md" : "apm.yml"}`,
-        ),
-      ),
+          : "pinned APM native project composition; instructions, skills and MCP declarations",
+      content,
     };
   }
 

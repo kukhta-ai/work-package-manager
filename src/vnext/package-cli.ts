@@ -76,13 +76,35 @@ export function registerPackageCommands(
     .command("view")
     .argument("[name]")
     .description("Inspect selected package source");
+  packageView
+    .option("--agent-support", "inspect worker setup support", false)
+    .option("--target <agent>", "codex or claude-code")
+    .option("--opening <method>", "project or session", "project");
   packageView.action((name?: string) =>
     run(packageView, (workspace, options) => {
       if (name && options.package && name !== options.package)
         throw new Error("conflicting package selection");
-      return new VnextWorkspace(
+      const selected = new VnextWorkspace(
         workspace.select(options.root, name ?? options.package, options.packageVersion),
-      ).view();
+      );
+      const flags = packageView.opts<{ agentSupport: boolean; target?: string; opening: string }>();
+      if (flags.target !== undefined && flags.target !== "codex" && flags.target !== "claude-code")
+        throw new Error("target must be codex or claude-code");
+      if (flags.opening !== "project" && flags.opening !== "session")
+        throw new Error("opening must be project or session");
+      return flags.agentSupport
+        ? Object.keys(selected.view().workerSetup.setups).map((setup) =>
+            selected.viewSetup(
+              setup,
+              flags.target === "claude-code"
+                ? "claude"
+                : flags.target === "codex"
+                  ? "codex"
+                  : undefined,
+              flags.opening as "project" | "session",
+            ),
+          )
+        : selected.view();
     }),
   );
   const version = packages

@@ -10,7 +10,7 @@ import { FakeBacklog } from "../doubles/fake-backlog.js";
 import { withTempDir } from "../helpers/tmpdir.js";
 
 type ApmCommand = NonNullable<ConstructorParameters<typeof ApmBackend>[4]>;
-const EXPECTED_APM_VERSION = "0.35.0";
+const EXPECTED_APM_VERSION = "0.39.0";
 
 function fixture(root: string) {
   const source = join(root, "worker-setup/composed");
@@ -34,7 +34,7 @@ function fixture(root: string) {
 
 /** Contract stub: verifies adapter argv/effects; it is separate from live CLI qualification evidence. */
 function commandStub(
-  source: string,
+  _source: string,
   calls: { args: string[]; env: Record<string, string> }[],
 ): ApmCommand {
   return (_executable, args, options) => {
@@ -42,11 +42,11 @@ function commandStub(
     expect(options.env.APM_NO_SCRIPTS).toBe("1");
     if (args[0] === "--version")
       return { stdout: `APM CLI, version ${EXPECTED_APM_VERSION}`, stderr: "" };
-    expect(options.cwd).toBe(source);
+    expect(options.cwd).toContain("native-source");
     if (args[0] === "lock")
       writeFileSync(
-        join(source, "apm.lock.yaml"),
-        "lockfile_version: '1'\napm_version: 0.35.0\ndependencies: []\n",
+        join(options.cwd, "apm.lock.yaml"),
+        "lockfile_version: '4'\napm_version: 0.39.0\ndependencies: []\n",
       );
     if (args[0] === "install" || args[0] === "compile") {
       const destination = args[args.indexOf("--root") + 1];
@@ -236,7 +236,7 @@ describe("optional pinned APM integration contract", () => {
       expect(install?.args).not.toContain("--frozen");
       expect(calls.filter((call) => call.args[0] === "install")[1]?.args).toContain("--frozen");
       expect(install?.env.APM_HOME).toBe(join(root, ".wpm-apm/composed/home"));
-      expect(install?.env).not.toHaveProperty("HOME");
+      expect(install?.env.HOME).toBe(join(root, ".wpm-apm/composed/home"));
       expect(calls.every((call) => call.env.APM_NO_SCRIPTS === "1")).toBe(true);
       writeFileSync(
         join(root, ".wpm-apm/composed/targets/codex/AGENTS.md"),

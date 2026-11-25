@@ -19,3 +19,4 @@ Operations retain stable IDs and prerequisites; groups select work independently
 | Source | Target | Description | Technology |
 | --- | --- | --- | --- |
 | [src/vnext/core/model.ts](../../../../../../src/vnext/core/model.ts) | [src/vnext/core/dependencies.ts](../../../../../../src/vnext/core/dependencies.ts) | Validates dependency declarations | Pure function calls |
+| [src/vnext/core/model.ts](../../../../../../src/vnext/core/model.ts) | [src/vnext/core/apm-source.ts](../../../../../../src/vnext/core/apm-source.ts) | Validates remote setup locators | Pure reference contract |

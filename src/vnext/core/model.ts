@@ -1,5 +1,6 @@
 import { Ajv } from "ajv";
 import { parse as parseVersion } from "semver";
+import { apmReference } from "./apm-source.js";
 import { type DependencyDeclarations, validateDependencies } from "./dependencies.js";
 
 /** A source definition for the recipient's existing agent; never an installed agent. */
@@ -212,7 +213,8 @@ export function parsePackage(value: unknown): PackageSource {
   if (defaultSetup !== undefined && !Object.hasOwn(value.workerSetup.setups, defaultSetup))
     throw new Error(`unknown default setup: ${defaultSetup}`);
   for (const definition of Object.values(value.workerSetup.setups))
-    assertSourcePath(definition.source);
+    if (!(definition.backend === "apm" && apmReference(definition.source) !== undefined))
+      assertSourcePath(definition.source);
   const portableFiles = new Set<string>();
   for (const file of value.files) {
     const portable = assertSourcePath(file).normalize("NFC").toLowerCase();

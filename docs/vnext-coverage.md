@@ -8,10 +8,10 @@ Reference: the worker-setup-v1 prototype has 37 author-side invocable commands. 
 | init / package create/list | Workspace init/add and package create/list, independent native Backlogs, owned creation recovery | Presets/templates and one-step prototype initialization |
 | package view/version | Source view and explicit SemVer read/set/increment; workspace identity serialization | Full agent/opening-method support projection |
 | package deps add/remove/list | Local sources/archives, ordinary/dev/optional declarations, tree display, transactional reconciliation | Git, registries and peer dependencies |
-| lock | Exact multi-version graphs, package cycles, preserved pins/omissions, check/upgrade | Network resolution and an aggregate APM/package resolver |
+| lock | Exact multi-version package graphs plus explicit APM setup resolution, preserved pins, check/upgrade and APM prepared-image cache replay | Network package-source resolution outside APM; cross-owner lock updates are not atomic |
 | operation create/list/view/finalize/delete | Native task-backed authoring, readiness, setup assignment, source archival and recovery | Delayed authoring tasks, full source/release projection and transitive view |
 | group create/list/view/add/remove/delete | Editable direct/nested membership, separate prerequisites, safe deletion | Preset generation and source group linkage to a published release digest |
-| worker-setup | Plain local sources and explicit pinned APM composition | External package references as setup declarations; full project/plugin/session support |
+| worker-setup | Plain/local/remote APM0.39 sources, pinned instruction/skill composition, secret-free MCP, project/session support and verified offline prepared images | Plugins, LSP, unresolved MCP registry entries and actual host context-loading/authentication |
 | package check/test | Source and graph-lock validation; static graph archive extraction and byte checks | Named behavioral fixtures and real recipient-agent sessions |
 | release build | Deterministic standalone or namespaced graph tgz, frozen archive dependencies, dev exclusion | ZIP/directory formats and multiple explicit release roots |
 | release view/review/verify | Not implemented as product commands | Inspection, independent semantic review and verification of saved work artifacts |

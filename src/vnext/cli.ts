@@ -1,7 +1,7 @@
 import type { Command } from "commander";
 import { ValidationError } from "../core/errors.js";
 import { withExamples } from "../help/examples.js";
-import type { ApmTarget } from "./adapters/apm.js";
+import { type ApmTarget, inspectApmDistribution } from "./adapters/apm.js";
 import { PackageWorkspace } from "./adapters/package-workspace.js";
 import { VnextWorkspace } from "./adapters/workspace.js";
 import { packageSchema, stableJson } from "./core/model.js";
@@ -26,6 +26,11 @@ interface ApmOptions extends CommonOptions {
   executable: string;
   sha256: string;
   target?: string;
+  distributionSha256?: string;
+  check: boolean;
+  upgrade: boolean;
+  offline: boolean;
+  authEnv: string[];
 }
 interface AddSetupOptions extends CommonOptions {
   as: string;
@@ -87,7 +92,20 @@ export function registerVnextCommands(
   const view = vnext
     .command("view")
     .description("Inspect source declarations without activating an agent");
-  view.action(() => execute(view, (workspace) => workspace.view()));
+  view
+    .option("--agent-support", "inspect worker setup support", false)
+    .option("--target <agent>", "codex or claude-code")
+    .option("--opening <method>", "project or session", "project");
+  view.action(() =>
+    execute(view, (workspace) => {
+      const flags = view.opts<{ agentSupport: boolean; target?: string; opening: string }>();
+      return flags.agentSupport
+        ? Object.keys(workspace.view().workerSetup.setups).map((name) =>
+            workspace.viewSetup(name, parseTarget(flags.target), parseOpening(flags.opening)),
+          )
+        : workspace.view();
+    }),
+  );
   const check = vnext
     .command("check")
     .alias("validate")
@@ -102,19 +120,63 @@ export function registerVnextCommands(
     .description("Intentionally capture local source integrity (plain source needs no APM)");
   lock
     .option("--check", "check the dependency lock without writing", false)
-    .option("--upgrade", "allow newer versions matching declarations", false);
+    .option("--upgrade", "allow newer versions matching declarations", false)
+    .option("--offline", "use only verified APM cache", false)
+    .option("--executable <file>", "explicit approved APM executable")
+    .option("--sha256 <digest>", "approved APM executable digest")
+    .option("--distribution-sha256 <digest>", "approved full APM distribution digest")
+    .option("--auth-env <name>", "explicit source authentication variable", collect, []);
   lock.action(() =>
     execute(lock, (workspace, options) => {
-      const flags = lock.opts<{ check: boolean; upgrade: boolean }>();
-      if (flags.check && flags.upgrade) throw new Error("--check conflicts with --upgrade");
-      return workspace.view().schemaVersion === 2 || flags.check || flags.upgrade
-        ? new PackageWorkspace(options.root).lock(
-            workspace.root,
-            flags.check,
-            flags.upgrade,
-            options.dryRun,
-          )
-        : workspace.lock(options.dryRun);
+      const flags = lock.opts<ApmOptions>();
+      const phases: unknown[] = [];
+      const completed: string[] = [];
+      let current = "package";
+      try {
+        for (const [name, definition] of Object.entries(workspace.view().workerSetup.setups)) {
+          if (definition.backend !== "apm") continue;
+          current = name;
+          if (!flags.executable || !flags.sha256)
+            throw new Error(
+              "APM setups require explicit --executable and --sha256 for aggregate lock",
+            );
+          phases.push(
+            workspace.apmPhase(
+              name,
+              "lock",
+              undefined,
+              {
+                executable: flags.executable,
+                sha256: flags.sha256,
+                authEnv: flags.authEnv,
+                distributionSha256: flags.distributionSha256,
+              },
+              options.dryRun,
+              flags,
+            ),
+          );
+          completed.push(name);
+        }
+        current = "package";
+        if (flags.check && flags.upgrade) throw new Error("--check conflicts with --upgrade");
+        const result =
+          workspace.view().schemaVersion === 2 || flags.check || flags.upgrade
+            ? new PackageWorkspace(options.root).lock(
+                workspace.root,
+                flags.check,
+                flags.upgrade,
+                options.dryRun,
+              )
+            : workspace.lock(options.dryRun);
+        return phases.length ? { apm: phases, package: result } : result;
+      } catch (error) {
+        if (completed.length || current !== "package")
+          throw new Error(
+            `Aggregate lock failed at ${current}; completed APM setups: ${completed.join(", ") || "none"}; package lock not completed. ${error instanceof Error ? error.message : String(error)}`,
+            { cause: error },
+          );
+        throw error;
+      }
     }),
   );
   withExamples(lock, [{ command: "wpm vnext --root ./suite --package app lock --check" }]);
@@ -319,9 +381,16 @@ export function registerVnextCommands(
   const setupCreate = setups
     .command("create")
     .argument("[name]", "optional setup name; omitted creates the package default")
-    .description("Create a plain WORKER.md draft; unnamed create sets the default");
+    .description("Create a WORKER.md draft; unnamed create sets the default")
+    .option("--backend <backend>", "plain or apm", "plain");
   setupCreate.action((name?: string) =>
-    execute(setupCreate, (workspace, options) => workspace.createSetup(name, options.dryRun)),
+    execute(setupCreate, (workspace, options) =>
+      workspace.createSetup(
+        name,
+        options.dryRun,
+        parseBackend(setupCreate.opts<{ backend: string }>().backend),
+      ),
+    ),
   );
   const setupAdd = setups
     .command("add")
@@ -338,12 +407,25 @@ export function registerVnextCommands(
     }),
   );
   const setupList = setups.command("list").description("List definitions, not agents");
-  setupList.action(() => execute(setupList, (workspace) => workspace.view().workerSetup));
+  setupList.action(() =>
+    execute(setupList, (workspace) =>
+      Object.keys(workspace.view().workerSetup.setups).map((name) => workspace.viewSetup(name)),
+    ),
+  );
   const setupView = setups
     .command("view")
     .argument("[name]", "setup name; omitted selects only the declared default")
     .description("Read selected source or the declared package default");
-  setupView.action((name?: string) => execute(setupView, (workspace) => workspace.viewSetup(name)));
+  setupView
+    .option("--agent-support", "show native support", false)
+    .option("--target <agent>", "codex or claude-code")
+    .option("--opening <method>", "project or session", "project");
+  setupView.action((name?: string) =>
+    execute(setupView, (workspace) => {
+      const flags = setupView.opts<{ target?: string; opening: string }>();
+      return workspace.viewSetup(name, parseTarget(flags.target), parseOpening(flags.opening));
+    }),
+  );
   const setupRemove = setups
     .command("remove")
     .argument("<names...>", "unused setup declarations to remove together")
@@ -356,9 +438,23 @@ export function registerVnextCommands(
   const apm = setups
     .command("apm")
     .description(
-      "Explicit pinned APM 0.35.0 composition; no implicit installation or agent launch",
+      "Explicit pinned APM 0.39.0 composition; no implicit installation or agent launch",
     );
-  for (const phase of ["lock", "install", "compile"] as const) {
+  const inspectTool = apm
+    .command("inspect-tool")
+    .description("Inspect distribution bytes without executing APM; output is not approval")
+    .requiredOption("--executable <file>", "absolute APM executable path");
+  inspectTool.action(() => {
+    const executable = inspectTool.opts<{ executable: string }>().executable;
+    output.write(
+      stableJson({
+        ...inspectApmDistribution({ executable, sha256: "" }),
+        approved: false,
+        executed: false,
+      }),
+    );
+  });
+  for (const phase of ["lock", "install", "compile", "check"] as const) {
     const command = apm
       .command(phase)
       .argument("<name>", "declared APM setup name")
@@ -369,8 +465,15 @@ export function registerVnextCommands(
             ? "Install primitives into an owned target project from its native lock"
             : "Compile native instructions into an already installed target project",
       )
-      .requiredOption("--executable <file>", "absolute path to the approved APM 0.35.0 executable")
-      .requiredOption("--sha256 <digest>", "approved SHA-256 of that executable");
+      .requiredOption("--executable <file>", "absolute path to the approved APM 0.39.0 executable")
+      .requiredOption("--sha256 <digest>", "approved SHA-256 of that executable")
+      .option("--offline", "use exact verified prepared cache without invoking APM", false)
+      .option("--distribution-sha256 <digest>", "approved full APM distribution digest")
+      .option("--auth-env <name>", "explicit source authentication variable", collect, []);
+    if (phase === "lock")
+      command
+        .option("--check", "read-only native lock check", false)
+        .option("--upgrade", "upgrade native pins intentionally", false);
     if (phase !== "lock")
       command.requiredOption("--target <agent>", "codex or claude-code; no target auto-detection");
     command.action((name: string) =>
@@ -386,8 +489,14 @@ export function registerVnextCommands(
           name,
           phase,
           target,
-          { executable: options.executable, sha256: options.sha256 },
+          {
+            executable: options.executable,
+            sha256: options.sha256,
+            authEnv: options.authEnv,
+            distributionSha256: options.distributionSha256,
+          },
           options.dryRun,
+          options,
         );
       }),
     );
@@ -448,4 +557,20 @@ export function registerVnextCommands(
 
 function collect(value: string, previous: string[]): string[] {
   return [...new Set([...previous, value])];
+}
+
+function parseTarget(target?: string): ApmTarget | undefined {
+  if (target === undefined) return undefined;
+  if (target !== "codex" && target !== "claude-code")
+    throw new Error("target must be codex or claude-code");
+  return target === "claude-code" ? "claude" : "codex";
+}
+function parseOpening(value: string): "project" | "session" {
+  if (value !== "project" && value !== "session")
+    throw new Error("opening must be project or session");
+  return value;
+}
+function parseBackend(value: string): "plain" | "apm" {
+  if (value !== "plain" && value !== "apm") throw new Error("backend must be plain or apm");
+  return value;
 }

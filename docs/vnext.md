@@ -118,37 +118,9 @@ Source reads reject static symlinks and bind captured bytes to a regular file de
 
 ## Optional APM composition
 
-APM is optional and is invoked only by explicit composition commands. `worker-setup add <local-directory> --as <name>` detects a known `apm.yml` source; `--backend apm` makes that choice explicit. Plain packages never invoke or require APM.
+APM **0.39.0** provides explicitly pinned instruction/skill composition for Codex and Claude Code. WPM adds secret-free MCP project declarations, exact local/remote dependency capture, verified prepared-image offline replay and separate project/session support inspection. Native phases remain explicit; ordinary builds never invoke APM.
 
-The supported external CLI is pinned to **APM 0.35.0**. Obtain and verify its distribution separately from the [upstream release](https://github.com/microsoft/apm/releases/tag/v0.35.0). Every invocation requires an absolute executable path plus its approved SHA-256. WPM checks that file and its reported version; it neither searches PATH nor installs a tool. The executable pin identifies the entry file. For multi-file distributions, verifying the release archive and preserving its companion files remains part of tool provisioning.
-
-```sh
-wpm vnext --root ./brief worker-setup apm lock research --executable /approved/apm --sha256 <approved-executable-digest>
-wpm vnext --root ./brief worker-setup apm install research --target codex --executable /approved/apm --sha256 <approved-executable-digest>
-wpm vnext --root ./brief worker-setup apm compile research --target codex --executable /approved/apm --sha256 <approved-executable-digest>
-```
-
-Use `--target claude-code` for Claude Code; the native APM target/project directory is named `claude`. There is no target auto-detection. WPM supplies project-local `APM_HOME`, `APM_CACHE_DIR` and `APM_TEMP_DIR`; it does not change HOME, global agent configuration or credentials.
-
-The phases remain distinct. Native `lock` resolves `apm.lock.yaml` without target deployment. The first explicit install bootstraps the native deployment ledger in an owned target project. WPM compares the resolved graph with the source lock, excluding only native deployment metadata. Subsequent unchanged installs use APM's `--frozen` replay. `compile` generates instruction context into that existing project. This follows the separate responsibilities of [APM lock](https://microsoft.github.io/apm/reference/cli/lock/), [install](https://microsoft.github.io/apm/reference/cli/install/) and [compile](https://microsoft.github.io/apm/reference/cli/compile/).
-
-The qualified primitive scope is instructions and skills. Root `scripts` and `lifecycle` declarations and other source primitive families fail explicitly. Every external invocation also sets `APM_NO_SCRIPTS=1`: the pinned 0.35.0 lifecycle firing boundary disables organization, user and project scripts before discovery. This is a version-specific integration seam, not a general guarantee supplied by `--only apm` or `--no-trust-bin`; an APM upgrade requires renewed qualification. Generated agent definitions are outside the output allowlist. Install uses `--only apm` and `--no-trust-bin`; it does not configure MCP/LSP services or launch agents. Authenticated connections, remote dependency resolution and fresh-agent behavior require separate qualification.
-
-Composition receipts bind the tool pin/version, source closure, native lock and complete generated inventory. Source/lock changes, edited outputs and newly added outputs invalidate the prepared context. Failed installs retain owned partial targets and a failed receipt for explicit retry; such targets cannot enter a release. Foreign or unrecorded changes block replacement.
-
-The built package contains each prepared target under `worker-setup/<name>/targets/<target>/`, plus `WORKER.md` explaining its use. WPM never merges every named setup into global package instructions. Opening a prepared target project or loading its instructions is an explicit host action. A separate generated-output allowlist permits native rules/skills while continuing to exclude repository development skills and tool state. WPM build/check read the bound output and do not implicitly run APM.
-
-For reproducible live integration qualification after the caller has built WPM:
-
-```sh
-node scripts/qualify-apm.mjs --executable /approved/apm --sha256 <approved-executable-digest>
-```
-
-The qualifier creates a disposable local package with a local dependency, instructions and a skill; runs the real native phases for Codex and Claude Code; verifies both prepared projects enter the archive; and checks repeated WPM builds produce identical bytes. It records success/failure under `.quality/`, cleans its temporary context, and performs no remote-dependency or agent execution. An explicitly requested `--keep-on-failure` retains the failed fixture for diagnosis. The script never builds or deletes shared `dist/` itself.
-
-The official Linux arm64 v0.35.0 distribution passed this local qualification in the current environment. The verified release archive digest was `ada8901ce1b29e5d188629eeed64e8499853a8cb5f047630ebedbde24008508e`; the entry executable digest was `9d2f7cf34ec2fa0b3d806a4711abd223ee429839ec96787279f1c5d82abd25b8`. This is local integration evidence, not a claim that a target agent loaded or executed the generated context.
-
-The current vNext tree has no publication command. It does not activate npm or GitHub distribution. Candidate qualification and publication approval belong to the repository release process, with the exact artifact digest as their boundary.
+See [APM worker contexts](vnext-apm.md) for source formats, tool distribution approval, command examples, ownership/recovery, migration from 0.35.0 and real qualification boundaries. Plain packages continue working without APM.
 
 ## Executable evidence
 

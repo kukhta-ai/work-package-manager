@@ -37,6 +37,7 @@ import {
   parsePackage,
   stableJson,
 } from "../core/model.js";
+import { validateApmMcpFiles } from "./apm.js";
 import {
   assertArchiveSizes,
   contentDigest,
@@ -1009,12 +1010,24 @@ function validateLeaf(value: Record<string, unknown>, files: PackageFile[]): voi
     const output = target[2] ?? "";
     if (output.split("/").some((part) => part.toLowerCase().startsWith("wpm-repo-")))
       throw new Error("repository development content in archive");
-    if (["AGENTS.md", "CLAUDE.md"].includes(output)) continue;
+    if (["AGENTS.md", "CLAUDE.md", ".mcp.json", ".codex/config.toml", "MCP.json"].includes(output))
+      continue;
     if (!/^(\.agents|\.claude)\/(skills|rules)\//.test(output))
       throw new Error("unsupported native target output");
     assertSourcePath(output.split("/").slice(1).join("/"));
   }
+  for (const name of names)
+    for (const target of ["codex", "claude"] as const) {
+      const prefix = `worker-setup/${name}/targets/${target}/`;
+      validateApmMcpFiles(
+        files
+          .filter((file) => file.path.startsWith(prefix))
+          .map((file) => ({ path: file.path.slice(prefix.length), bytes: file.bytes })),
+        target,
+      );
+    }
 }
+
 function validateBundle(value: Record<string, unknown>, files: PackageFile[]): Bundle {
   const graph = parseGraph(value.graph);
   if (!object(value.packages)) throw new Error("missing package inventories");
