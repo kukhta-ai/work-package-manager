@@ -6,6 +6,7 @@ import { PackageWorkspace } from "./adapters/package-workspace.js";
 import { VnextWorkspace } from "./adapters/workspace.js";
 import { packageSchema, stableJson } from "./core/model.js";
 import { registerPackageCommands } from "./package-cli.js";
+import { registerReleaseCommands } from "./release-cli.js";
 
 interface CommonOptions {
   root: string;
@@ -54,6 +55,7 @@ export function registerVnextCommands(
   vnext.option("--package <name>", "select a registered workspace package");
   vnext.option("--package-version <version>", "disambiguate multiple workspace versions");
   registerPackageCommands(vnext, output);
+  registerReleaseCommands(vnext, output);
   vnext.option("--root <directory>", "package source directory", ".");
   vnext.option("--dry-run", "report intended effects without changing files or tasks", false);
   const execute = (

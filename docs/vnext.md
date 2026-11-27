@@ -47,6 +47,10 @@ files: []
 
 An operation's prerequisites come from its native Backlog task dependencies. Group membership only selects work, including nested groups; selecting `review` never silently adds `brief` to the group. The recipient contract separately records the prerequisite. External unregistered tasks and prerequisite cycles block building. Every operation needs observable acceptance criteria.
 
+## Saved work-package releases
+
+The [release contract](vnext-releases.md) adds TGZ/ZIP/directory build, saved-artifact view and integrity verification, and digest-bound external static review requests/report import under `wpm vnext release`. It retains one root and its runtime closure; existing build/test commands remain compatible. No package code, reviewer agent or publication is launched.
+
 ## Multi-package workspaces
 
 The additive [local package graph contract](vnext-dependencies.md) extends this surface with workspace registration, package selection, ordinary/dev/optional dependencies, multiple versions, finite package cycles, graph locks and namespaced release composition. Existing single-package source remains supported. See the [prototype coverage map](vnext-coverage.md) for remaining gaps.

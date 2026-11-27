@@ -13,7 +13,7 @@ import { tmpdir } from "node:os";
 import { dirname, join, relative, resolve, win32 } from "node:path";
 import { execaSync } from "execa";
 import { valid } from "semver";
-import { parse, stringify } from "yaml";
+import { parse, parseDocument, stringify } from "yaml";
 import { editAuthoringSourceText, nextVersion } from "../core/authoring.js";
 import {
   type DependencyDeclaration,
@@ -45,6 +45,7 @@ import {
   type PackageFile,
   readPackageArchive,
 } from "./package-archive.js";
+import { validateReleaseEnvelope } from "./release-artifact.js";
 import { createDeterministicTarball, VnextWorkspace } from "./workspace.js";
 
 interface WorkspaceDeclaration {
@@ -98,7 +99,10 @@ function required<T>(value: T | undefined): T {
   return value;
 }
 function json(text: string): unknown {
-  return JSON.parse(text);
+  const value: unknown = JSON.parse(text);
+  if (parseDocument(text, { uniqueKeys: true }).errors.length)
+    throw new Error("duplicate contract JSON fields");
+  return value;
 }
 
 /** Workspace discovery never guesses a package among several registered versions. */
@@ -399,7 +403,7 @@ export class PackageWorkspace {
         if (hash(this.io.readForGraph(path)) !== hash(bytes))
           throw new Error("archive changed during graph capture");
       });
-      const files = readPackageArchive(bytes);
+      const files = validateReleaseEnvelope(readPackageArchive(bytes)).files;
       const contractFile = files.find((f) => f.path === "contract.json");
       if (!contractFile) throw new Error("archive has no contract");
       const contract: unknown = json(contractFile.bytes.toString("utf8"));
@@ -667,6 +671,19 @@ export class PackageWorkspace {
     const path = `builds/${source.name}-${source.version}.tgz`;
     return { source, files, bytes, path, graph, instances: Object.keys(runtime.nodes).length };
   }
+  /** Capture immutable release content without changing existing build serialization. */
+  captureRelease(
+    directory: string,
+    authorizedReservation = false,
+  ): { source: PackageSource; files: PackageFile[] } {
+    if (this.source(directory).schemaVersion === 1) {
+      const captured = new VnextWorkspace(directory).captureForRelease(authorizedReservation);
+      return { source: captured.source, files: captured.files };
+    }
+    const captured = this.prepareGraph(directory, authorizedReservation);
+    return { source: captured.source, files: captured.files };
+  }
+
   /** Build the locked runtime closure once per namespaced instance without dev-only content. */
   build(directory: string, dryRun = false) {
     const io = new VnextWorkspace(directory);
@@ -974,6 +991,7 @@ function validateLeaf(value: Record<string, unknown>, files: PackageFile[]): voi
     },
     files: [],
   });
+  if (new Set(names).size !== names.length) throw new Error("duplicate archived setup names");
   for (const name of names)
     if (!files.some((f) => f.path === `worker-setup/${name}/WORKER.md`))
       throw new Error("missing archived setup");
@@ -1060,4 +1078,51 @@ function validateBundle(value: Record<string, unknown>, files: PackageFile[]): B
   }
   if (files.some((f) => !expected.has(f.path))) throw new Error("unexpected graph archive file");
   return bundle;
+}
+
+/** Validate saved runtime contracts using the same semantic checks as frozen imports. */
+export function validateReleaseFiles(files: PackageFile[]): Record<string, unknown> {
+  const entry = files.find((file) => file.path === "contract.json");
+  if (!entry) throw new Error("release has no contract.json");
+  const value: unknown = json(entry.bytes.toString("utf8"));
+  if (!object(value)) throw new Error("invalid release contract");
+  const fields = (item: Record<string, unknown>, allowed: string[]) => {
+    if (Object.keys(item).some((key) => !allowed.includes(key)))
+      throw new Error("unsupported release contract field");
+  };
+  const leaf = (contract: Record<string, unknown>, own: PackageFile[]) => {
+    fields(contract, ["schemaVersion", "name", "version", "operations", "groups", "workerSetup"]);
+    if (!object(contract.workerSetup) || !Array.isArray(contract.operations))
+      throw new Error("invalid release work/setup");
+    fields(contract.workerSetup, ["default", "names"]);
+    for (const operation of contract.operations) {
+      if (!object(operation)) throw new Error("invalid release operation");
+      fields(operation, ["id", "prerequisites", "setup"]);
+      if (operation.setup !== null && typeof operation.setup !== "string")
+        throw new Error("invalid release setup association");
+    }
+    validateLeaf(contract, own);
+  };
+  if (value.schemaVersion === 1) leaf(value, files);
+  else if (value.schemaVersion === 2) {
+    fields(value, ["schemaVersion", "graph", "packages"]);
+    const bundle = validateBundle(value, files);
+    if (
+      Object.keys(bundle.packages).sort().join("\0") !==
+      Object.keys(bundle.graph.nodes).sort().join("\0")
+    )
+      throw new Error("release instance inventory differs from graph");
+    for (const id of Object.keys(bundle.graph.nodes)) {
+      const prefix = `packages/${id.slice(0, 16)}/`;
+      const own = files
+        .filter((file) => file.path.startsWith(prefix))
+        .map((file) => ({ path: file.path.slice(prefix.length), bytes: file.bytes }));
+      const contractFile = own.find((file) => file.path === "contract.json");
+      if (!contractFile) throw new Error("missing instance contract");
+      const contract: unknown = json(contractFile.bytes.toString("utf8"));
+      if (!object(contract)) throw new Error("invalid instance contract");
+      leaf(contract, own);
+    }
+  } else throw new Error("unsupported release contract version");
+  return value;
 }

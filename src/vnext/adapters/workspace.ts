@@ -1088,6 +1088,19 @@ export class VnextWorkspace {
     return this.capture(false, authorizedEdit);
   }
 
+  /** Capture the standalone release and check any existing source integrity lock. */
+  captureForRelease(authorizedReservation = false) {
+    if (!authorizedReservation && existsSync(this.confined(".wpm-mutation.lock")))
+      throw new Error("another package writer owns source");
+    const captured = this.capture();
+    if (
+      existsSync(this.confined("wpm.lock.json")) &&
+      this.readBytes("wpm.lock.json").toString("utf8") !== this.lockContents(captured)
+    )
+      throw new Error("source integrity lock is stale; run wpm vnext lock intentionally");
+    return captured;
+  }
+
   /** Reuse confined IO and reservation semantics for multi-package transactions. */
   readForGraph(path: string): Buffer {
     return this.readBytes(path);

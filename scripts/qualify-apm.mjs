@@ -383,6 +383,57 @@ function qualifyApm(argv) {
     assert(files.some((file) => file.endsWith("targets/codex/.codex/config.toml")));
     assert(files.some((file) => file.endsWith("targets/claude/.mcp.json")));
     assert(files.some((file) => file.includes("style-checker/SKILL.md")));
+    /** @type {unknown[]} */
+    const portableReleaseFormats = [];
+    const portableContent = new Set();
+    for (const format of ["tgz", "zip", "directory"]) {
+      const output = join(root, "builds", `portable-${format}`);
+      const built = invoke("release", "build", "--format", format, "--out", output);
+      assert(built && typeof built === "object" && "contentDigest" in built);
+      portableContent.add(built.contentDigest);
+      /** @param {unknown} value @returns {Record<string, unknown>} */
+      const releaseRecord = (value) => {
+        assert(value && typeof value === "object" && !Array.isArray(value));
+        return /** @type {Record<string, unknown>} */ (value);
+      };
+      const verified = releaseRecord(invoke("release", "verify", output));
+      assert.equal(verified.status, "verified");
+      assert.equal(verified.contentDigest, built.contentDigest);
+      const support = ["codex", "claude-code"].map((target) => {
+        const view = releaseRecord(
+          invoke(
+            "release",
+            "view",
+            output,
+            "--agent-support",
+            "--target",
+            target,
+            "--opening",
+            "session",
+          ),
+        );
+        assert(Array.isArray(view.agentSupport) && view.agentSupport.length === 1);
+        const entry = releaseRecord(view.agentSupport[0]);
+        assert.equal(entry.target, target);
+        assert.equal(entry.opening, "session");
+        assert(
+          Array.isArray(entry.requiredVariables) &&
+            entry.requiredVariables.includes("WPM_FIXTURE_TOKEN"),
+        );
+        const nativePath =
+          target === "codex" ? "targets/codex/.codex/config.toml" : "targets/claude/.mcp.json";
+        assert(
+          Array.isArray(entry.nativeFiles) &&
+            entry.nativeFiles.some((path) => typeof path === "string" && path.endsWith(nativePath)),
+        );
+        assert.equal(entry.contextLoaded, false);
+        assert.equal(entry.authenticated, false);
+        assert.equal(entry.agentExecution, false);
+        return view;
+      });
+      portableReleaseFormats.push({ format, built, verified, support });
+    }
+    assert.equal(portableContent.size, 1);
     const moved = `${root}-moved`;
     renameSync(root, moved);
     root = moved;
@@ -434,6 +485,7 @@ function qualifyApm(argv) {
       architecture: process.arch,
       phases,
       archiveSha256,
+      portableReleaseFormats,
       files,
       localDependencyQualified: true,
       lifecycleSuppressionQualified: true,
