@@ -1,0 +1,2933 @@
+{
+  "schemaVersion": 1,
+  "baselinePackage": "minimatch",
+  "baselineVersion": "10.2.6",
+  "cases": [
+    {
+      "pattern": "src/**",
+      "path": "src/cli.ts",
+      "option": {},
+      "result": true
+    },
+    {
+      "pattern": "src/**",
+      "path": "src/cli.ts",
+      "option": {
+        "dot": true
+      },
+      "result": true
+    },
+    {
+      "pattern": "src/**",
+      "path": "src/cli.ts",
+      "option": {
+        "nocase": true
+      },
+      "result": true
+    },
+    {
+      "pattern": "src/**",
+      "path": "src/cli.ts",
+      "option": {
+        "windowsPathsNoEscape": true
+      },
+      "result": true
+    },
+    {
+      "pattern": "src/**",
+      "path": "src/cli.ts",
+      "option": {
+        "matchBase": true
+      },
+      "result": true
+    },
+    {
+      "pattern": "src/**",
+      "path": "src/core/model/a.ts",
+      "option": {},
+      "result": true
+    },
+    {
+      "pattern": "src/**",
+      "path": "src/core/model/a.ts",
+      "option": {
+        "dot": true
+      },
+      "result": true
+    },
+    {
+      "pattern": "src/**",
+      "path": "src/core/model/a.ts",
+      "option": {
+        "nocase": true
+      },
+      "result": true
+    },
+    {
+      "pattern": "src/**",
+      "path": "src/core/model/a.ts",
+      "option": {
+        "windowsPathsNoEscape": true
+      },
+      "result": true
+    },
+    {
+      "pattern": "src/**",
+      "path": "src/core/model/a.ts",
+      "option": {
+        "matchBase": true
+      },
+      "result": true
+    },
+    {
+      "pattern": "src/**",
+      "path": "src/core/new.js",
+      "option": {},
+      "result": true
+    },
+    {
+      "pattern": "src/**",
+      "path": "src/core/new.js",
+      "option": {
+        "dot": true
+      },
+      "result": true
+    },
+    {
+      "pattern": "src/**",
+      "path": "src/core/new.js",
+      "option": {
+        "nocase": true
+      },
+      "result": true
+    },
+    {
+      "pattern": "src/**",
+      "path": "src/core/new.js",
+      "option": {
+        "windowsPathsNoEscape": true
+      },
+      "result": true
+    },
+    {
+      "pattern": "src/**",
+      "path": "src/core/new.js",
+      "option": {
+        "matchBase": true
+      },
+      "result": true
+    },
+    {
+      "pattern": "src/**",
+      "path": "src/vnext/core/a.ts",
+      "option": {},
+      "result": true
+    },
+    {
+      "pattern": "src/**",
+      "path": "src/vnext/core/a.ts",
+      "option": {
+        "dot": true
+      },
+      "result": true
+    },
+    {
+      "pattern": "src/**",
+      "path": "src/vnext/core/a.ts",
+      "option": {
+        "nocase": true
+      },
+      "result": true
+    },
+    {
+      "pattern": "src/**",
+      "path": "src/vnext/core/a.ts",
+      "option": {
+        "windowsPathsNoEscape": true
+      },
+      "result": true
+    },
+    {
+      "pattern": "src/**",
+      "path": "src/vnext/core/a.ts",
+      "option": {
+        "matchBase": true
+      },
+      "result": true
+    },
+    {
+      "pattern": "src/**",
+      "path": "test/unit/a.test.ts",
+      "option": {},
+      "result": false
+    },
+    {
+      "pattern": "src/**",
+      "path": "test/unit/a.test.ts",
+      "option": {
+        "dot": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "src/**",
+      "path": "test/unit/a.test.ts",
+      "option": {
+        "nocase": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "src/**",
+      "path": "test/unit/a.test.ts",
+      "option": {
+        "windowsPathsNoEscape": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "src/**",
+      "path": "test/unit/a.test.ts",
+      "option": {
+        "matchBase": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "src/**",
+      "path": "scripts/a.mjs",
+      "option": {},
+      "result": false
+    },
+    {
+      "pattern": "src/**",
+      "path": "scripts/a.mjs",
+      "option": {
+        "dot": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "src/**",
+      "path": "scripts/a.mjs",
+      "option": {
+        "nocase": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "src/**",
+      "path": "scripts/a.mjs",
+      "option": {
+        "windowsPathsNoEscape": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "src/**",
+      "path": "scripts/a.mjs",
+      "option": {
+        "matchBase": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "src/**",
+      "path": ".hidden.mjs",
+      "option": {},
+      "result": false
+    },
+    {
+      "pattern": "src/**",
+      "path": ".hidden.mjs",
+      "option": {
+        "dot": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "src/**",
+      "path": ".hidden.mjs",
+      "option": {
+        "nocase": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "src/**",
+      "path": ".hidden.mjs",
+      "option": {
+        "windowsPathsNoEscape": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "src/**",
+      "path": ".hidden.mjs",
+      "option": {
+        "matchBase": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "src/**",
+      "path": "space name.ts",
+      "option": {},
+      "result": false
+    },
+    {
+      "pattern": "src/**",
+      "path": "space name.ts",
+      "option": {
+        "dot": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "src/**",
+      "path": "space name.ts",
+      "option": {
+        "nocase": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "src/**",
+      "path": "space name.ts",
+      "option": {
+        "windowsPathsNoEscape": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "src/**",
+      "path": "space name.ts",
+      "option": {
+        "matchBase": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "src/**",
+      "path": "café.ts",
+      "option": {},
+      "result": false
+    },
+    {
+      "pattern": "src/**",
+      "path": "café.ts",
+      "option": {
+        "dot": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "src/**",
+      "path": "café.ts",
+      "option": {
+        "nocase": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "src/**",
+      "path": "café.ts",
+      "option": {
+        "windowsPathsNoEscape": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "src/**",
+      "path": "café.ts",
+      "option": {
+        "matchBase": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "src/**",
+      "path": "node_modules/foo/index.ts",
+      "option": {},
+      "result": false
+    },
+    {
+      "pattern": "src/**",
+      "path": "node_modules/foo/index.ts",
+      "option": {
+        "dot": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "src/**",
+      "path": "node_modules/foo/index.ts",
+      "option": {
+        "nocase": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "src/**",
+      "path": "node_modules/foo/index.ts",
+      "option": {
+        "windowsPathsNoEscape": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "src/**",
+      "path": "node_modules/foo/index.ts",
+      "option": {
+        "matchBase": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "src/**",
+      "path": "src/node_modules/x.ts",
+      "option": {},
+      "result": true
+    },
+    {
+      "pattern": "src/**",
+      "path": "src/node_modules/x.ts",
+      "option": {
+        "dot": true
+      },
+      "result": true
+    },
+    {
+      "pattern": "src/**",
+      "path": "src/node_modules/x.ts",
+      "option": {
+        "nocase": true
+      },
+      "result": true
+    },
+    {
+      "pattern": "src/**",
+      "path": "src/node_modules/x.ts",
+      "option": {
+        "windowsPathsNoEscape": true
+      },
+      "result": true
+    },
+    {
+      "pattern": "src/**",
+      "path": "src/node_modules/x.ts",
+      "option": {
+        "matchBase": true
+      },
+      "result": true
+    },
+    {
+      "pattern": "src/**/*.ts",
+      "path": "src/cli.ts",
+      "option": {},
+      "result": true
+    },
+    {
+      "pattern": "src/**/*.ts",
+      "path": "src/cli.ts",
+      "option": {
+        "dot": true
+      },
+      "result": true
+    },
+    {
+      "pattern": "src/**/*.ts",
+      "path": "src/cli.ts",
+      "option": {
+        "nocase": true
+      },
+      "result": true
+    },
+    {
+      "pattern": "src/**/*.ts",
+      "path": "src/cli.ts",
+      "option": {
+        "windowsPathsNoEscape": true
+      },
+      "result": true
+    },
+    {
+      "pattern": "src/**/*.ts",
+      "path": "src/cli.ts",
+      "option": {
+        "matchBase": true
+      },
+      "result": true
+    },
+    {
+      "pattern": "src/**/*.ts",
+      "path": "src/core/model/a.ts",
+      "option": {},
+      "result": true
+    },
+    {
+      "pattern": "src/**/*.ts",
+      "path": "src/core/model/a.ts",
+      "option": {
+        "dot": true
+      },
+      "result": true
+    },
+    {
+      "pattern": "src/**/*.ts",
+      "path": "src/core/model/a.ts",
+      "option": {
+        "nocase": true
+      },
+      "result": true
+    },
+    {
+      "pattern": "src/**/*.ts",
+      "path": "src/core/model/a.ts",
+      "option": {
+        "windowsPathsNoEscape": true
+      },
+      "result": true
+    },
+    {
+      "pattern": "src/**/*.ts",
+      "path": "src/core/model/a.ts",
+      "option": {
+        "matchBase": true
+      },
+      "result": true
+    },
+    {
+      "pattern": "src/**/*.ts",
+      "path": "src/core/new.js",
+      "option": {},
+      "result": false
+    },
+    {
+      "pattern": "src/**/*.ts",
+      "path": "src/core/new.js",
+      "option": {
+        "dot": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "src/**/*.ts",
+      "path": "src/core/new.js",
+      "option": {
+        "nocase": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "src/**/*.ts",
+      "path": "src/core/new.js",
+      "option": {
+        "windowsPathsNoEscape": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "src/**/*.ts",
+      "path": "src/core/new.js",
+      "option": {
+        "matchBase": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "src/**/*.ts",
+      "path": "src/vnext/core/a.ts",
+      "option": {},
+      "result": true
+    },
+    {
+      "pattern": "src/**/*.ts",
+      "path": "src/vnext/core/a.ts",
+      "option": {
+        "dot": true
+      },
+      "result": true
+    },
+    {
+      "pattern": "src/**/*.ts",
+      "path": "src/vnext/core/a.ts",
+      "option": {
+        "nocase": true
+      },
+      "result": true
+    },
+    {
+      "pattern": "src/**/*.ts",
+      "path": "src/vnext/core/a.ts",
+      "option": {
+        "windowsPathsNoEscape": true
+      },
+      "result": true
+    },
+    {
+      "pattern": "src/**/*.ts",
+      "path": "src/vnext/core/a.ts",
+      "option": {
+        "matchBase": true
+      },
+      "result": true
+    },
+    {
+      "pattern": "src/**/*.ts",
+      "path": "test/unit/a.test.ts",
+      "option": {},
+      "result": false
+    },
+    {
+      "pattern": "src/**/*.ts",
+      "path": "test/unit/a.test.ts",
+      "option": {
+        "dot": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "src/**/*.ts",
+      "path": "test/unit/a.test.ts",
+      "option": {
+        "nocase": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "src/**/*.ts",
+      "path": "test/unit/a.test.ts",
+      "option": {
+        "windowsPathsNoEscape": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "src/**/*.ts",
+      "path": "test/unit/a.test.ts",
+      "option": {
+        "matchBase": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "src/**/*.ts",
+      "path": "scripts/a.mjs",
+      "option": {},
+      "result": false
+    },
+    {
+      "pattern": "src/**/*.ts",
+      "path": "scripts/a.mjs",
+      "option": {
+        "dot": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "src/**/*.ts",
+      "path": "scripts/a.mjs",
+      "option": {
+        "nocase": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "src/**/*.ts",
+      "path": "scripts/a.mjs",
+      "option": {
+        "windowsPathsNoEscape": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "src/**/*.ts",
+      "path": "scripts/a.mjs",
+      "option": {
+        "matchBase": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "src/**/*.ts",
+      "path": ".hidden.mjs",
+      "option": {},
+      "result": false
+    },
+    {
+      "pattern": "src/**/*.ts",
+      "path": ".hidden.mjs",
+      "option": {
+        "dot": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "src/**/*.ts",
+      "path": ".hidden.mjs",
+      "option": {
+        "nocase": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "src/**/*.ts",
+      "path": ".hidden.mjs",
+      "option": {
+        "windowsPathsNoEscape": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "src/**/*.ts",
+      "path": ".hidden.mjs",
+      "option": {
+        "matchBase": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "src/**/*.ts",
+      "path": "space name.ts",
+      "option": {},
+      "result": false
+    },
+    {
+      "pattern": "src/**/*.ts",
+      "path": "space name.ts",
+      "option": {
+        "dot": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "src/**/*.ts",
+      "path": "space name.ts",
+      "option": {
+        "nocase": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "src/**/*.ts",
+      "path": "space name.ts",
+      "option": {
+        "windowsPathsNoEscape": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "src/**/*.ts",
+      "path": "space name.ts",
+      "option": {
+        "matchBase": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "src/**/*.ts",
+      "path": "café.ts",
+      "option": {},
+      "result": false
+    },
+    {
+      "pattern": "src/**/*.ts",
+      "path": "café.ts",
+      "option": {
+        "dot": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "src/**/*.ts",
+      "path": "café.ts",
+      "option": {
+        "nocase": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "src/**/*.ts",
+      "path": "café.ts",
+      "option": {
+        "windowsPathsNoEscape": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "src/**/*.ts",
+      "path": "café.ts",
+      "option": {
+        "matchBase": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "src/**/*.ts",
+      "path": "node_modules/foo/index.ts",
+      "option": {},
+      "result": false
+    },
+    {
+      "pattern": "src/**/*.ts",
+      "path": "node_modules/foo/index.ts",
+      "option": {
+        "dot": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "src/**/*.ts",
+      "path": "node_modules/foo/index.ts",
+      "option": {
+        "nocase": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "src/**/*.ts",
+      "path": "node_modules/foo/index.ts",
+      "option": {
+        "windowsPathsNoEscape": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "src/**/*.ts",
+      "path": "node_modules/foo/index.ts",
+      "option": {
+        "matchBase": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "src/**/*.ts",
+      "path": "src/node_modules/x.ts",
+      "option": {},
+      "result": true
+    },
+    {
+      "pattern": "src/**/*.ts",
+      "path": "src/node_modules/x.ts",
+      "option": {
+        "dot": true
+      },
+      "result": true
+    },
+    {
+      "pattern": "src/**/*.ts",
+      "path": "src/node_modules/x.ts",
+      "option": {
+        "nocase": true
+      },
+      "result": true
+    },
+    {
+      "pattern": "src/**/*.ts",
+      "path": "src/node_modules/x.ts",
+      "option": {
+        "windowsPathsNoEscape": true
+      },
+      "result": true
+    },
+    {
+      "pattern": "src/**/*.ts",
+      "path": "src/node_modules/x.ts",
+      "option": {
+        "matchBase": true
+      },
+      "result": true
+    },
+    {
+      "pattern": "**/node_modules/**",
+      "path": "src/cli.ts",
+      "option": {},
+      "result": false
+    },
+    {
+      "pattern": "**/node_modules/**",
+      "path": "src/cli.ts",
+      "option": {
+        "dot": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "**/node_modules/**",
+      "path": "src/cli.ts",
+      "option": {
+        "nocase": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "**/node_modules/**",
+      "path": "src/cli.ts",
+      "option": {
+        "windowsPathsNoEscape": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "**/node_modules/**",
+      "path": "src/cli.ts",
+      "option": {
+        "matchBase": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "**/node_modules/**",
+      "path": "src/core/model/a.ts",
+      "option": {},
+      "result": false
+    },
+    {
+      "pattern": "**/node_modules/**",
+      "path": "src/core/model/a.ts",
+      "option": {
+        "dot": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "**/node_modules/**",
+      "path": "src/core/model/a.ts",
+      "option": {
+        "nocase": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "**/node_modules/**",
+      "path": "src/core/model/a.ts",
+      "option": {
+        "windowsPathsNoEscape": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "**/node_modules/**",
+      "path": "src/core/model/a.ts",
+      "option": {
+        "matchBase": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "**/node_modules/**",
+      "path": "src/core/new.js",
+      "option": {},
+      "result": false
+    },
+    {
+      "pattern": "**/node_modules/**",
+      "path": "src/core/new.js",
+      "option": {
+        "dot": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "**/node_modules/**",
+      "path": "src/core/new.js",
+      "option": {
+        "nocase": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "**/node_modules/**",
+      "path": "src/core/new.js",
+      "option": {
+        "windowsPathsNoEscape": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "**/node_modules/**",
+      "path": "src/core/new.js",
+      "option": {
+        "matchBase": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "**/node_modules/**",
+      "path": "src/vnext/core/a.ts",
+      "option": {},
+      "result": false
+    },
+    {
+      "pattern": "**/node_modules/**",
+      "path": "src/vnext/core/a.ts",
+      "option": {
+        "dot": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "**/node_modules/**",
+      "path": "src/vnext/core/a.ts",
+      "option": {
+        "nocase": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "**/node_modules/**",
+      "path": "src/vnext/core/a.ts",
+      "option": {
+        "windowsPathsNoEscape": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "**/node_modules/**",
+      "path": "src/vnext/core/a.ts",
+      "option": {
+        "matchBase": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "**/node_modules/**",
+      "path": "test/unit/a.test.ts",
+      "option": {},
+      "result": false
+    },
+    {
+      "pattern": "**/node_modules/**",
+      "path": "test/unit/a.test.ts",
+      "option": {
+        "dot": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "**/node_modules/**",
+      "path": "test/unit/a.test.ts",
+      "option": {
+        "nocase": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "**/node_modules/**",
+      "path": "test/unit/a.test.ts",
+      "option": {
+        "windowsPathsNoEscape": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "**/node_modules/**",
+      "path": "test/unit/a.test.ts",
+      "option": {
+        "matchBase": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "**/node_modules/**",
+      "path": "scripts/a.mjs",
+      "option": {},
+      "result": false
+    },
+    {
+      "pattern": "**/node_modules/**",
+      "path": "scripts/a.mjs",
+      "option": {
+        "dot": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "**/node_modules/**",
+      "path": "scripts/a.mjs",
+      "option": {
+        "nocase": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "**/node_modules/**",
+      "path": "scripts/a.mjs",
+      "option": {
+        "windowsPathsNoEscape": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "**/node_modules/**",
+      "path": "scripts/a.mjs",
+      "option": {
+        "matchBase": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "**/node_modules/**",
+      "path": ".hidden.mjs",
+      "option": {},
+      "result": false
+    },
+    {
+      "pattern": "**/node_modules/**",
+      "path": ".hidden.mjs",
+      "option": {
+        "dot": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "**/node_modules/**",
+      "path": ".hidden.mjs",
+      "option": {
+        "nocase": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "**/node_modules/**",
+      "path": ".hidden.mjs",
+      "option": {
+        "windowsPathsNoEscape": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "**/node_modules/**",
+      "path": ".hidden.mjs",
+      "option": {
+        "matchBase": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "**/node_modules/**",
+      "path": "space name.ts",
+      "option": {},
+      "result": false
+    },
+    {
+      "pattern": "**/node_modules/**",
+      "path": "space name.ts",
+      "option": {
+        "dot": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "**/node_modules/**",
+      "path": "space name.ts",
+      "option": {
+        "nocase": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "**/node_modules/**",
+      "path": "space name.ts",
+      "option": {
+        "windowsPathsNoEscape": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "**/node_modules/**",
+      "path": "space name.ts",
+      "option": {
+        "matchBase": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "**/node_modules/**",
+      "path": "café.ts",
+      "option": {},
+      "result": false
+    },
+    {
+      "pattern": "**/node_modules/**",
+      "path": "café.ts",
+      "option": {
+        "dot": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "**/node_modules/**",
+      "path": "café.ts",
+      "option": {
+        "nocase": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "**/node_modules/**",
+      "path": "café.ts",
+      "option": {
+        "windowsPathsNoEscape": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "**/node_modules/**",
+      "path": "café.ts",
+      "option": {
+        "matchBase": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "**/node_modules/**",
+      "path": "node_modules/foo/index.ts",
+      "option": {},
+      "result": true
+    },
+    {
+      "pattern": "**/node_modules/**",
+      "path": "node_modules/foo/index.ts",
+      "option": {
+        "dot": true
+      },
+      "result": true
+    },
+    {
+      "pattern": "**/node_modules/**",
+      "path": "node_modules/foo/index.ts",
+      "option": {
+        "nocase": true
+      },
+      "result": true
+    },
+    {
+      "pattern": "**/node_modules/**",
+      "path": "node_modules/foo/index.ts",
+      "option": {
+        "windowsPathsNoEscape": true
+      },
+      "result": true
+    },
+    {
+      "pattern": "**/node_modules/**",
+      "path": "node_modules/foo/index.ts",
+      "option": {
+        "matchBase": true
+      },
+      "result": true
+    },
+    {
+      "pattern": "**/node_modules/**",
+      "path": "src/node_modules/x.ts",
+      "option": {},
+      "result": true
+    },
+    {
+      "pattern": "**/node_modules/**",
+      "path": "src/node_modules/x.ts",
+      "option": {
+        "dot": true
+      },
+      "result": true
+    },
+    {
+      "pattern": "**/node_modules/**",
+      "path": "src/node_modules/x.ts",
+      "option": {
+        "nocase": true
+      },
+      "result": true
+    },
+    {
+      "pattern": "**/node_modules/**",
+      "path": "src/node_modules/x.ts",
+      "option": {
+        "windowsPathsNoEscape": true
+      },
+      "result": true
+    },
+    {
+      "pattern": "**/node_modules/**",
+      "path": "src/node_modules/x.ts",
+      "option": {
+        "matchBase": true
+      },
+      "result": true
+    },
+    {
+      "pattern": "test/**/*.test.ts",
+      "path": "src/cli.ts",
+      "option": {},
+      "result": false
+    },
+    {
+      "pattern": "test/**/*.test.ts",
+      "path": "src/cli.ts",
+      "option": {
+        "dot": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "test/**/*.test.ts",
+      "path": "src/cli.ts",
+      "option": {
+        "nocase": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "test/**/*.test.ts",
+      "path": "src/cli.ts",
+      "option": {
+        "windowsPathsNoEscape": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "test/**/*.test.ts",
+      "path": "src/cli.ts",
+      "option": {
+        "matchBase": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "test/**/*.test.ts",
+      "path": "src/core/model/a.ts",
+      "option": {},
+      "result": false
+    },
+    {
+      "pattern": "test/**/*.test.ts",
+      "path": "src/core/model/a.ts",
+      "option": {
+        "dot": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "test/**/*.test.ts",
+      "path": "src/core/model/a.ts",
+      "option": {
+        "nocase": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "test/**/*.test.ts",
+      "path": "src/core/model/a.ts",
+      "option": {
+        "windowsPathsNoEscape": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "test/**/*.test.ts",
+      "path": "src/core/model/a.ts",
+      "option": {
+        "matchBase": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "test/**/*.test.ts",
+      "path": "src/core/new.js",
+      "option": {},
+      "result": false
+    },
+    {
+      "pattern": "test/**/*.test.ts",
+      "path": "src/core/new.js",
+      "option": {
+        "dot": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "test/**/*.test.ts",
+      "path": "src/core/new.js",
+      "option": {
+        "nocase": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "test/**/*.test.ts",
+      "path": "src/core/new.js",
+      "option": {
+        "windowsPathsNoEscape": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "test/**/*.test.ts",
+      "path": "src/core/new.js",
+      "option": {
+        "matchBase": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "test/**/*.test.ts",
+      "path": "src/vnext/core/a.ts",
+      "option": {},
+      "result": false
+    },
+    {
+      "pattern": "test/**/*.test.ts",
+      "path": "src/vnext/core/a.ts",
+      "option": {
+        "dot": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "test/**/*.test.ts",
+      "path": "src/vnext/core/a.ts",
+      "option": {
+        "nocase": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "test/**/*.test.ts",
+      "path": "src/vnext/core/a.ts",
+      "option": {
+        "windowsPathsNoEscape": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "test/**/*.test.ts",
+      "path": "src/vnext/core/a.ts",
+      "option": {
+        "matchBase": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "test/**/*.test.ts",
+      "path": "test/unit/a.test.ts",
+      "option": {},
+      "result": true
+    },
+    {
+      "pattern": "test/**/*.test.ts",
+      "path": "test/unit/a.test.ts",
+      "option": {
+        "dot": true
+      },
+      "result": true
+    },
+    {
+      "pattern": "test/**/*.test.ts",
+      "path": "test/unit/a.test.ts",
+      "option": {
+        "nocase": true
+      },
+      "result": true
+    },
+    {
+      "pattern": "test/**/*.test.ts",
+      "path": "test/unit/a.test.ts",
+      "option": {
+        "windowsPathsNoEscape": true
+      },
+      "result": true
+    },
+    {
+      "pattern": "test/**/*.test.ts",
+      "path": "test/unit/a.test.ts",
+      "option": {
+        "matchBase": true
+      },
+      "result": true
+    },
+    {
+      "pattern": "test/**/*.test.ts",
+      "path": "scripts/a.mjs",
+      "option": {},
+      "result": false
+    },
+    {
+      "pattern": "test/**/*.test.ts",
+      "path": "scripts/a.mjs",
+      "option": {
+        "dot": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "test/**/*.test.ts",
+      "path": "scripts/a.mjs",
+      "option": {
+        "nocase": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "test/**/*.test.ts",
+      "path": "scripts/a.mjs",
+      "option": {
+        "windowsPathsNoEscape": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "test/**/*.test.ts",
+      "path": "scripts/a.mjs",
+      "option": {
+        "matchBase": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "test/**/*.test.ts",
+      "path": ".hidden.mjs",
+      "option": {},
+      "result": false
+    },
+    {
+      "pattern": "test/**/*.test.ts",
+      "path": ".hidden.mjs",
+      "option": {
+        "dot": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "test/**/*.test.ts",
+      "path": ".hidden.mjs",
+      "option": {
+        "nocase": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "test/**/*.test.ts",
+      "path": ".hidden.mjs",
+      "option": {
+        "windowsPathsNoEscape": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "test/**/*.test.ts",
+      "path": ".hidden.mjs",
+      "option": {
+        "matchBase": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "test/**/*.test.ts",
+      "path": "space name.ts",
+      "option": {},
+      "result": false
+    },
+    {
+      "pattern": "test/**/*.test.ts",
+      "path": "space name.ts",
+      "option": {
+        "dot": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "test/**/*.test.ts",
+      "path": "space name.ts",
+      "option": {
+        "nocase": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "test/**/*.test.ts",
+      "path": "space name.ts",
+      "option": {
+        "windowsPathsNoEscape": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "test/**/*.test.ts",
+      "path": "space name.ts",
+      "option": {
+        "matchBase": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "test/**/*.test.ts",
+      "path": "café.ts",
+      "option": {},
+      "result": false
+    },
+    {
+      "pattern": "test/**/*.test.ts",
+      "path": "café.ts",
+      "option": {
+        "dot": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "test/**/*.test.ts",
+      "path": "café.ts",
+      "option": {
+        "nocase": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "test/**/*.test.ts",
+      "path": "café.ts",
+      "option": {
+        "windowsPathsNoEscape": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "test/**/*.test.ts",
+      "path": "café.ts",
+      "option": {
+        "matchBase": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "test/**/*.test.ts",
+      "path": "node_modules/foo/index.ts",
+      "option": {},
+      "result": false
+    },
+    {
+      "pattern": "test/**/*.test.ts",
+      "path": "node_modules/foo/index.ts",
+      "option": {
+        "dot": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "test/**/*.test.ts",
+      "path": "node_modules/foo/index.ts",
+      "option": {
+        "nocase": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "test/**/*.test.ts",
+      "path": "node_modules/foo/index.ts",
+      "option": {
+        "windowsPathsNoEscape": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "test/**/*.test.ts",
+      "path": "node_modules/foo/index.ts",
+      "option": {
+        "matchBase": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "test/**/*.test.ts",
+      "path": "src/node_modules/x.ts",
+      "option": {},
+      "result": false
+    },
+    {
+      "pattern": "test/**/*.test.ts",
+      "path": "src/node_modules/x.ts",
+      "option": {
+        "dot": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "test/**/*.test.ts",
+      "path": "src/node_modules/x.ts",
+      "option": {
+        "nocase": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "test/**/*.test.ts",
+      "path": "src/node_modules/x.ts",
+      "option": {
+        "windowsPathsNoEscape": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "test/**/*.test.ts",
+      "path": "src/node_modules/x.ts",
+      "option": {
+        "matchBase": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "*.mjs",
+      "path": "src/cli.ts",
+      "option": {},
+      "result": false
+    },
+    {
+      "pattern": "*.mjs",
+      "path": "src/cli.ts",
+      "option": {
+        "dot": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "*.mjs",
+      "path": "src/cli.ts",
+      "option": {
+        "nocase": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "*.mjs",
+      "path": "src/cli.ts",
+      "option": {
+        "windowsPathsNoEscape": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "*.mjs",
+      "path": "src/cli.ts",
+      "option": {
+        "matchBase": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "*.mjs",
+      "path": "src/core/model/a.ts",
+      "option": {},
+      "result": false
+    },
+    {
+      "pattern": "*.mjs",
+      "path": "src/core/model/a.ts",
+      "option": {
+        "dot": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "*.mjs",
+      "path": "src/core/model/a.ts",
+      "option": {
+        "nocase": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "*.mjs",
+      "path": "src/core/model/a.ts",
+      "option": {
+        "windowsPathsNoEscape": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "*.mjs",
+      "path": "src/core/model/a.ts",
+      "option": {
+        "matchBase": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "*.mjs",
+      "path": "src/core/new.js",
+      "option": {},
+      "result": false
+    },
+    {
+      "pattern": "*.mjs",
+      "path": "src/core/new.js",
+      "option": {
+        "dot": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "*.mjs",
+      "path": "src/core/new.js",
+      "option": {
+        "nocase": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "*.mjs",
+      "path": "src/core/new.js",
+      "option": {
+        "windowsPathsNoEscape": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "*.mjs",
+      "path": "src/core/new.js",
+      "option": {
+        "matchBase": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "*.mjs",
+      "path": "src/vnext/core/a.ts",
+      "option": {},
+      "result": false
+    },
+    {
+      "pattern": "*.mjs",
+      "path": "src/vnext/core/a.ts",
+      "option": {
+        "dot": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "*.mjs",
+      "path": "src/vnext/core/a.ts",
+      "option": {
+        "nocase": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "*.mjs",
+      "path": "src/vnext/core/a.ts",
+      "option": {
+        "windowsPathsNoEscape": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "*.mjs",
+      "path": "src/vnext/core/a.ts",
+      "option": {
+        "matchBase": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "*.mjs",
+      "path": "test/unit/a.test.ts",
+      "option": {},
+      "result": false
+    },
+    {
+      "pattern": "*.mjs",
+      "path": "test/unit/a.test.ts",
+      "option": {
+        "dot": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "*.mjs",
+      "path": "test/unit/a.test.ts",
+      "option": {
+        "nocase": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "*.mjs",
+      "path": "test/unit/a.test.ts",
+      "option": {
+        "windowsPathsNoEscape": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "*.mjs",
+      "path": "test/unit/a.test.ts",
+      "option": {
+        "matchBase": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "*.mjs",
+      "path": "scripts/a.mjs",
+      "option": {},
+      "result": false
+    },
+    {
+      "pattern": "*.mjs",
+      "path": "scripts/a.mjs",
+      "option": {
+        "dot": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "*.mjs",
+      "path": "scripts/a.mjs",
+      "option": {
+        "nocase": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "*.mjs",
+      "path": "scripts/a.mjs",
+      "option": {
+        "windowsPathsNoEscape": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "*.mjs",
+      "path": "scripts/a.mjs",
+      "option": {
+        "matchBase": true
+      },
+      "result": true
+    },
+    {
+      "pattern": "*.mjs",
+      "path": ".hidden.mjs",
+      "option": {},
+      "result": false
+    },
+    {
+      "pattern": "*.mjs",
+      "path": ".hidden.mjs",
+      "option": {
+        "dot": true
+      },
+      "result": true
+    },
+    {
+      "pattern": "*.mjs",
+      "path": ".hidden.mjs",
+      "option": {
+        "nocase": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "*.mjs",
+      "path": ".hidden.mjs",
+      "option": {
+        "windowsPathsNoEscape": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "*.mjs",
+      "path": ".hidden.mjs",
+      "option": {
+        "matchBase": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "*.mjs",
+      "path": "space name.ts",
+      "option": {},
+      "result": false
+    },
+    {
+      "pattern": "*.mjs",
+      "path": "space name.ts",
+      "option": {
+        "dot": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "*.mjs",
+      "path": "space name.ts",
+      "option": {
+        "nocase": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "*.mjs",
+      "path": "space name.ts",
+      "option": {
+        "windowsPathsNoEscape": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "*.mjs",
+      "path": "space name.ts",
+      "option": {
+        "matchBase": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "*.mjs",
+      "path": "café.ts",
+      "option": {},
+      "result": false
+    },
+    {
+      "pattern": "*.mjs",
+      "path": "café.ts",
+      "option": {
+        "dot": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "*.mjs",
+      "path": "café.ts",
+      "option": {
+        "nocase": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "*.mjs",
+      "path": "café.ts",
+      "option": {
+        "windowsPathsNoEscape": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "*.mjs",
+      "path": "café.ts",
+      "option": {
+        "matchBase": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "*.mjs",
+      "path": "node_modules/foo/index.ts",
+      "option": {},
+      "result": false
+    },
+    {
+      "pattern": "*.mjs",
+      "path": "node_modules/foo/index.ts",
+      "option": {
+        "dot": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "*.mjs",
+      "path": "node_modules/foo/index.ts",
+      "option": {
+        "nocase": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "*.mjs",
+      "path": "node_modules/foo/index.ts",
+      "option": {
+        "windowsPathsNoEscape": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "*.mjs",
+      "path": "node_modules/foo/index.ts",
+      "option": {
+        "matchBase": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "*.mjs",
+      "path": "src/node_modules/x.ts",
+      "option": {},
+      "result": false
+    },
+    {
+      "pattern": "*.mjs",
+      "path": "src/node_modules/x.ts",
+      "option": {
+        "dot": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "*.mjs",
+      "path": "src/node_modules/x.ts",
+      "option": {
+        "nocase": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "*.mjs",
+      "path": "src/node_modules/x.ts",
+      "option": {
+        "windowsPathsNoEscape": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "*.mjs",
+      "path": "src/node_modules/x.ts",
+      "option": {
+        "matchBase": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "src/vnext/core/**/*.ts",
+      "path": "src/cli.ts",
+      "option": {},
+      "result": false
+    },
+    {
+      "pattern": "src/vnext/core/**/*.ts",
+      "path": "src/cli.ts",
+      "option": {
+        "dot": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "src/vnext/core/**/*.ts",
+      "path": "src/cli.ts",
+      "option": {
+        "nocase": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "src/vnext/core/**/*.ts",
+      "path": "src/cli.ts",
+      "option": {
+        "windowsPathsNoEscape": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "src/vnext/core/**/*.ts",
+      "path": "src/cli.ts",
+      "option": {
+        "matchBase": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "src/vnext/core/**/*.ts",
+      "path": "src/core/model/a.ts",
+      "option": {},
+      "result": false
+    },
+    {
+      "pattern": "src/vnext/core/**/*.ts",
+      "path": "src/core/model/a.ts",
+      "option": {
+        "dot": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "src/vnext/core/**/*.ts",
+      "path": "src/core/model/a.ts",
+      "option": {
+        "nocase": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "src/vnext/core/**/*.ts",
+      "path": "src/core/model/a.ts",
+      "option": {
+        "windowsPathsNoEscape": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "src/vnext/core/**/*.ts",
+      "path": "src/core/model/a.ts",
+      "option": {
+        "matchBase": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "src/vnext/core/**/*.ts",
+      "path": "src/core/new.js",
+      "option": {},
+      "result": false
+    },
+    {
+      "pattern": "src/vnext/core/**/*.ts",
+      "path": "src/core/new.js",
+      "option": {
+        "dot": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "src/vnext/core/**/*.ts",
+      "path": "src/core/new.js",
+      "option": {
+        "nocase": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "src/vnext/core/**/*.ts",
+      "path": "src/core/new.js",
+      "option": {
+        "windowsPathsNoEscape": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "src/vnext/core/**/*.ts",
+      "path": "src/core/new.js",
+      "option": {
+        "matchBase": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "src/vnext/core/**/*.ts",
+      "path": "src/vnext/core/a.ts",
+      "option": {},
+      "result": true
+    },
+    {
+      "pattern": "src/vnext/core/**/*.ts",
+      "path": "src/vnext/core/a.ts",
+      "option": {
+        "dot": true
+      },
+      "result": true
+    },
+    {
+      "pattern": "src/vnext/core/**/*.ts",
+      "path": "src/vnext/core/a.ts",
+      "option": {
+        "nocase": true
+      },
+      "result": true
+    },
+    {
+      "pattern": "src/vnext/core/**/*.ts",
+      "path": "src/vnext/core/a.ts",
+      "option": {
+        "windowsPathsNoEscape": true
+      },
+      "result": true
+    },
+    {
+      "pattern": "src/vnext/core/**/*.ts",
+      "path": "src/vnext/core/a.ts",
+      "option": {
+        "matchBase": true
+      },
+      "result": true
+    },
+    {
+      "pattern": "src/vnext/core/**/*.ts",
+      "path": "test/unit/a.test.ts",
+      "option": {},
+      "result": false
+    },
+    {
+      "pattern": "src/vnext/core/**/*.ts",
+      "path": "test/unit/a.test.ts",
+      "option": {
+        "dot": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "src/vnext/core/**/*.ts",
+      "path": "test/unit/a.test.ts",
+      "option": {
+        "nocase": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "src/vnext/core/**/*.ts",
+      "path": "test/unit/a.test.ts",
+      "option": {
+        "windowsPathsNoEscape": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "src/vnext/core/**/*.ts",
+      "path": "test/unit/a.test.ts",
+      "option": {
+        "matchBase": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "src/vnext/core/**/*.ts",
+      "path": "scripts/a.mjs",
+      "option": {},
+      "result": false
+    },
+    {
+      "pattern": "src/vnext/core/**/*.ts",
+      "path": "scripts/a.mjs",
+      "option": {
+        "dot": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "src/vnext/core/**/*.ts",
+      "path": "scripts/a.mjs",
+      "option": {
+        "nocase": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "src/vnext/core/**/*.ts",
+      "path": "scripts/a.mjs",
+      "option": {
+        "windowsPathsNoEscape": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "src/vnext/core/**/*.ts",
+      "path": "scripts/a.mjs",
+      "option": {
+        "matchBase": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "src/vnext/core/**/*.ts",
+      "path": ".hidden.mjs",
+      "option": {},
+      "result": false
+    },
+    {
+      "pattern": "src/vnext/core/**/*.ts",
+      "path": ".hidden.mjs",
+      "option": {
+        "dot": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "src/vnext/core/**/*.ts",
+      "path": ".hidden.mjs",
+      "option": {
+        "nocase": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "src/vnext/core/**/*.ts",
+      "path": ".hidden.mjs",
+      "option": {
+        "windowsPathsNoEscape": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "src/vnext/core/**/*.ts",
+      "path": ".hidden.mjs",
+      "option": {
+        "matchBase": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "src/vnext/core/**/*.ts",
+      "path": "space name.ts",
+      "option": {},
+      "result": false
+    },
+    {
+      "pattern": "src/vnext/core/**/*.ts",
+      "path": "space name.ts",
+      "option": {
+        "dot": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "src/vnext/core/**/*.ts",
+      "path": "space name.ts",
+      "option": {
+        "nocase": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "src/vnext/core/**/*.ts",
+      "path": "space name.ts",
+      "option": {
+        "windowsPathsNoEscape": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "src/vnext/core/**/*.ts",
+      "path": "space name.ts",
+      "option": {
+        "matchBase": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "src/vnext/core/**/*.ts",
+      "path": "café.ts",
+      "option": {},
+      "result": false
+    },
+    {
+      "pattern": "src/vnext/core/**/*.ts",
+      "path": "café.ts",
+      "option": {
+        "dot": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "src/vnext/core/**/*.ts",
+      "path": "café.ts",
+      "option": {
+        "nocase": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "src/vnext/core/**/*.ts",
+      "path": "café.ts",
+      "option": {
+        "windowsPathsNoEscape": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "src/vnext/core/**/*.ts",
+      "path": "café.ts",
+      "option": {
+        "matchBase": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "src/vnext/core/**/*.ts",
+      "path": "node_modules/foo/index.ts",
+      "option": {},
+      "result": false
+    },
+    {
+      "pattern": "src/vnext/core/**/*.ts",
+      "path": "node_modules/foo/index.ts",
+      "option": {
+        "dot": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "src/vnext/core/**/*.ts",
+      "path": "node_modules/foo/index.ts",
+      "option": {
+        "nocase": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "src/vnext/core/**/*.ts",
+      "path": "node_modules/foo/index.ts",
+      "option": {
+        "windowsPathsNoEscape": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "src/vnext/core/**/*.ts",
+      "path": "node_modules/foo/index.ts",
+      "option": {
+        "matchBase": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "src/vnext/core/**/*.ts",
+      "path": "src/node_modules/x.ts",
+      "option": {},
+      "result": false
+    },
+    {
+      "pattern": "src/vnext/core/**/*.ts",
+      "path": "src/node_modules/x.ts",
+      "option": {
+        "dot": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "src/vnext/core/**/*.ts",
+      "path": "src/node_modules/x.ts",
+      "option": {
+        "nocase": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "src/vnext/core/**/*.ts",
+      "path": "src/node_modules/x.ts",
+      "option": {
+        "windowsPathsNoEscape": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "src/vnext/core/**/*.ts",
+      "path": "src/node_modules/x.ts",
+      "option": {
+        "matchBase": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "!src/core/**",
+      "path": "src/cli.ts",
+      "option": {},
+      "result": true
+    },
+    {
+      "pattern": "!src/core/**",
+      "path": "src/cli.ts",
+      "option": {
+        "dot": true
+      },
+      "result": true
+    },
+    {
+      "pattern": "!src/core/**",
+      "path": "src/cli.ts",
+      "option": {
+        "nocase": true
+      },
+      "result": true
+    },
+    {
+      "pattern": "!src/core/**",
+      "path": "src/cli.ts",
+      "option": {
+        "windowsPathsNoEscape": true
+      },
+      "result": true
+    },
+    {
+      "pattern": "!src/core/**",
+      "path": "src/cli.ts",
+      "option": {
+        "matchBase": true
+      },
+      "result": true
+    },
+    {
+      "pattern": "!src/core/**",
+      "path": "src/core/model/a.ts",
+      "option": {},
+      "result": false
+    },
+    {
+      "pattern": "!src/core/**",
+      "path": "src/core/model/a.ts",
+      "option": {
+        "dot": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "!src/core/**",
+      "path": "src/core/model/a.ts",
+      "option": {
+        "nocase": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "!src/core/**",
+      "path": "src/core/model/a.ts",
+      "option": {
+        "windowsPathsNoEscape": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "!src/core/**",
+      "path": "src/core/model/a.ts",
+      "option": {
+        "matchBase": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "!src/core/**",
+      "path": "src/core/new.js",
+      "option": {},
+      "result": false
+    },
+    {
+      "pattern": "!src/core/**",
+      "path": "src/core/new.js",
+      "option": {
+        "dot": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "!src/core/**",
+      "path": "src/core/new.js",
+      "option": {
+        "nocase": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "!src/core/**",
+      "path": "src/core/new.js",
+      "option": {
+        "windowsPathsNoEscape": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "!src/core/**",
+      "path": "src/core/new.js",
+      "option": {
+        "matchBase": true
+      },
+      "result": false
+    },
+    {
+      "pattern": "!src/core/**",
+      "path": "src/vnext/core/a.ts",
+      "option": {},
+      "result": true
+    },
+    {
+      "pattern": "!src/core/**",
+      "path": "src/vnext/core/a.ts",
+      "option": {
+        "dot": true
+      },
+      "result": true
+    },
+    {
+      "pattern": "!src/core/**",
+      "path": "src/vnext/core/a.ts",
+      "option": {
+        "nocase": true
+      },
+      "result": true
+    },
+    {
+      "pattern": "!src/core/**",
+      "path": "src/vnext/core/a.ts",
+      "option": {
+        "windowsPathsNoEscape": true
+      },
+      "result": true
+    },
+    {
+      "pattern": "!src/core/**",
+      "path": "src/vnext/core/a.ts",
+      "option": {
+        "matchBase": true
+      },
+      "result": true
+    },
+    {
+      "pattern": "!src/core/**",
+      "path": "test/unit/a.test.ts",
+      "option": {},
+      "result": true
+    },
+    {
+      "pattern": "!src/core/**",
+      "path": "test/unit/a.test.ts",
+      "option": {
+        "dot": true
+      },
+      "result": true
+    },
+    {
+      "pattern": "!src/core/**",
+      "path": "test/unit/a.test.ts",
+      "option": {
+        "nocase": true
+      },
+      "result": true
+    },
+    {
+      "pattern": "!src/core/**",
+      "path": "test/unit/a.test.ts",
+      "option": {
+        "windowsPathsNoEscape": true
+      },
+      "result": true
+    },
+    {
+      "pattern": "!src/core/**",
+      "path": "test/unit/a.test.ts",
+      "option": {
+        "matchBase": true
+      },
+      "result": true
+    },
+    {
+      "pattern": "!src/core/**",
+      "path": "scripts/a.mjs",
+      "option": {},
+      "result": true
+    },
+    {
+      "pattern": "!src/core/**",
+      "path": "scripts/a.mjs",
+      "option": {
+        "dot": true
+      },
+      "result": true
+    },
+    {
+      "pattern": "!src/core/**",
+      "path": "scripts/a.mjs",
+      "option": {
+        "nocase": true
+      },
+      "result": true
+    },
+    {
+      "pattern": "!src/core/**",
+      "path": "scripts/a.mjs",
+      "option": {
+        "windowsPathsNoEscape": true
+      },
+      "result": true
+    },
+    {
+      "pattern": "!src/core/**",
+      "path": "scripts/a.mjs",
+      "option": {
+        "matchBase": true
+      },
+      "result": true
+    },
+    {
+      "pattern": "!src/core/**",
+      "path": ".hidden.mjs",
+      "option": {},
+      "result": true
+    },
+    {
+      "pattern": "!src/core/**",
+      "path": ".hidden.mjs",
+      "option": {
+        "dot": true
+      },
+      "result": true
+    },
+    {
+      "pattern": "!src/core/**",
+      "path": ".hidden.mjs",
+      "option": {
+        "nocase": true
+      },
+      "result": true
+    },
+    {
+      "pattern": "!src/core/**",
+      "path": ".hidden.mjs",
+      "option": {
+        "windowsPathsNoEscape": true
+      },
+      "result": true
+    },
+    {
+      "pattern": "!src/core/**",
+      "path": ".hidden.mjs",
+      "option": {
+        "matchBase": true
+      },
+      "result": true
+    },
+    {
+      "pattern": "!src/core/**",
+      "path": "space name.ts",
+      "option": {},
+      "result": true
+    },
+    {
+      "pattern": "!src/core/**",
+      "path": "space name.ts",
+      "option": {
+        "dot": true
+      },
+      "result": true
+    },
+    {
+      "pattern": "!src/core/**",
+      "path": "space name.ts",
+      "option": {
+        "nocase": true
+      },
+      "result": true
+    },
+    {
+      "pattern": "!src/core/**",
+      "path": "space name.ts",
+      "option": {
+        "windowsPathsNoEscape": true
+      },
+      "result": true
+    },
+    {
+      "pattern": "!src/core/**",
+      "path": "space name.ts",
+      "option": {
+        "matchBase": true
+      },
+      "result": true
+    },
+    {
+      "pattern": "!src/core/**",
+      "path": "café.ts",
+      "option": {},
+      "result": true
+    },
+    {
+      "pattern": "!src/core/**",
+      "path": "café.ts",
+      "option": {
+        "dot": true
+      },
+      "result": true
+    },
+    {
+      "pattern": "!src/core/**",
+      "path": "café.ts",
+      "option": {
+        "nocase": true
+      },
+      "result": true
+    },
+    {
+      "pattern": "!src/core/**",
+      "path": "café.ts",
+      "option": {
+        "windowsPathsNoEscape": true
+      },
+      "result": true
+    },
+    {
+      "pattern": "!src/core/**",
+      "path": "café.ts",
+      "option": {
+        "matchBase": true
+      },
+      "result": true
+    },
+    {
+      "pattern": "!src/core/**",
+      "path": "node_modules/foo/index.ts",
+      "option": {},
+      "result": true
+    },
+    {
+      "pattern": "!src/core/**",
+      "path": "node_modules/foo/index.ts",
+      "option": {
+        "dot": true
+      },
+      "result": true
+    },
+    {
+      "pattern": "!src/core/**",
+      "path": "node_modules/foo/index.ts",
+      "option": {
+        "nocase": true
+      },
+      "result": true
+    },
+    {
+      "pattern": "!src/core/**",
+      "path": "node_modules/foo/index.ts",
+      "option": {
+        "windowsPathsNoEscape": true
+      },
+      "result": true
+    },
+    {
+      "pattern": "!src/core/**",
+      "path": "node_modules/foo/index.ts",
+      "option": {
+        "matchBase": true
+      },
+      "result": true
+    },
+    {
+      "pattern": "!src/core/**",
+      "path": "src/node_modules/x.ts",
+      "option": {},
+      "result": true
+    },
+    {
+      "pattern": "!src/core/**",
+      "path": "src/node_modules/x.ts",
+      "option": {
+        "dot": true
+      },
+      "result": true
+    },
+    {
+      "pattern": "!src/core/**",
+      "path": "src/node_modules/x.ts",
+      "option": {
+        "nocase": true
+      },
+      "result": true
+    },
+    {
+      "pattern": "!src/core/**",
+      "path": "src/node_modules/x.ts",
+      "option": {
+        "windowsPathsNoEscape": true
+      },
+      "result": true
+    },
+    {
+      "pattern": "!src/core/**",
+      "path": "src/node_modules/x.ts",
+      "option": {
+        "matchBase": true
+      },
+      "result": true
+    }
+  ]
+}

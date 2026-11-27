@@ -1,0 +1,5 @@
+interface:
+  display_name: "WPM repository release"
+  short_description: "Develop WPM with repository quality checks"
+policy:
+  allow_implicit_invocation: false
